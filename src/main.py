@@ -126,6 +126,67 @@ async def api_agents():
              "is_online": a.is_online, "last_heartbeat": a.last_heartbeat.isoformat()} for a in agents]
 
 
+from pydantic import BaseModel
+
+class ThreadCreate(BaseModel):
+    topic: str
+    metadata: dict | None = None
+
+class MessageCreate(BaseModel):
+    author: str = "human"
+    role: str = "system"
+    content: str
+
+@app.post("/api/threads", status_code=201)
+async def api_create_thread(body: ThreadCreate):
+    db = await get_db()
+    t = await crud.thread_create(db, body.topic, body.metadata)
+    return {"id": t.id, "topic": t.topic, "status": t.status,
+            "created_at": t.created_at.isoformat()}
+
+@app.post("/api/threads/{thread_id}/messages", status_code=201)
+async def api_post_message(thread_id: str, body: MessageCreate):
+    db = await get_db()
+    m = await crud.msg_post(db, thread_id=thread_id, author=body.author,
+                            content=body.content, role=body.role)
+    return {"id": m.id, "seq": m.seq, "author": m.author,
+            "role": m.role, "content": m.content}
+
+
+# ─────────────────────────────────────────────
+# Agent REST API (for simulation scripts)
+# ─────────────────────────────────────────────
+
+class AgentRegister(BaseModel):
+    name: str
+    description: str = ""
+    capabilities: list[str] | None = None
+
+class AgentToken(BaseModel):
+    agent_id: str
+    token: str
+
+@app.post("/api/agents/register", status_code=200)
+async def api_agent_register(body: AgentRegister):
+    db = await get_db()
+    a = await crud.agent_register(db, body.name, body.description, body.capabilities)
+    return {"agent_id": a.id, "token": a.token}
+
+@app.post("/api/agents/heartbeat")
+async def api_agent_heartbeat(body: AgentToken):
+    db = await get_db()
+    ok = await crud.agent_heartbeat(db, body.agent_id, body.token)
+    return {"ok": ok}
+
+@app.post("/api/agents/unregister")
+async def api_agent_unregister(body: AgentToken):
+    db = await get_db()
+    ok = await crud.agent_unregister(db, body.agent_id, body.token)
+    return {"ok": ok}
+
+
+
+
 # ─────────────────────────────────────────────
 # Health check
 # ─────────────────────────────────────────────
