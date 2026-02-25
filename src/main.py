@@ -75,7 +75,7 @@ async def mcp_sse_endpoint(request: Request):
 # Mount handle_post_message as a raw ASGI app (NOT a FastAPI route).
 # handle_post_message sends its own 202 response internally; wrapping it inside
 # a FastAPI route causes a second response attempt and the ASGI error.
-app.mount("/mcp/messages", app=sse_transport.handle_post_message)
+app.mount("/mcp/messages/", app=sse_transport.handle_post_message)
 
 
 # ─────────────────────────────────────────────
