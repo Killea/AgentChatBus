@@ -1,0 +1,470 @@
+"""
+MCP Server for AgentChatBus.
+
+Registers Tools, Resources, and Prompts as defined in the plan.
+Mounted onto the FastAPI app via SSE transport.
+"""
+import json
+import asyncio
+import logging
+from typing import Any
+
+import mcp.types as types
+from mcp.server import Server
+from mcp.server.sse import SseServerTransport
+
+from src.db.database import get_db
+from src.db import crud
+
+logger = logging.getLogger(__name__)
+
+# Create the MCP server instance
+server = Server("AgentChatBus")
+
+
+# ═════════════════════════════════════════════
+# TOOLS
+# ═════════════════════════════════════════════
+
+@server.list_tools()
+async def list_tools() -> list[types.Tool]:
+    return [
+        # ── Thread Management ──────────────────
+        types.Tool(
+            name="thread.create",
+            description="Create a new conversation thread (topic / task context) on the bus.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "topic":    {"type": "string", "description": "Short description of the thread's purpose."},
+                    "metadata": {"type": "object", "description": "Optional arbitrary key-value metadata."},
+                },
+                "required": ["topic"],
+            },
+        ),
+        types.Tool(
+            name="thread.list",
+            description="List threads, optionally filtered by status.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string", "enum": ["discuss", "implement", "review", "done", "closed"],
+                               "description": "Filter by lifecycle state. Omit for all threads."},
+                },
+            },
+        ),
+        types.Tool(
+            name="thread.get",
+            description="Get details of a single thread by ID.",
+            inputSchema={
+                "type": "object",
+                "properties": {"thread_id": {"type": "string"}},
+                "required": ["thread_id"],
+            },
+        ),
+        types.Tool(
+            name="thread.set_state",
+            description="Advance the thread state machine: discuss → implement → review → done.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string"},
+                    "state":     {"type": "string", "enum": ["discuss", "implement", "review", "done", "closed"]},
+                },
+                "required": ["thread_id", "state"],
+            },
+        ),
+        types.Tool(
+            name="thread.close",
+            description="Close a thread and optionally write a final summary for future checkpoint reads.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string"},
+                    "summary":   {"type": "string", "description": "Summary of conclusions reached in this thread."},
+                },
+                "required": ["thread_id"],
+            },
+        ),
+
+        # ── Messaging ─────────────────────────
+        types.Tool(
+            name="msg.post",
+            description="Post a message to a thread. Returns the new message ID and global seq number.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string"},
+                    "author":    {"type": "string", "description": "Agent ID, 'system', or 'human'."},
+                    "content":   {"type": "string"},
+                    "role":      {"type": "string", "enum": ["user", "assistant", "system"], "default": "user"},
+                    "metadata":  {"type": "object"},
+                },
+                "required": ["thread_id", "author", "content"],
+            },
+        ),
+        types.Tool(
+            name="msg.list",
+            description="Fetch messages in a thread after a given seq cursor.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string"},
+                    "after_seq": {"type": "integer", "default": 0, "description": "Return messages with seq > this value."},
+                    "limit":     {"type": "integer", "default": 100},
+                },
+                "required": ["thread_id"],
+            },
+        ),
+        types.Tool(
+            name="msg.wait",
+            description=(
+                "Block until at least one new message arrives in the thread after `after_seq`. "
+                "Returns immediately if messages are already available. "
+                "This is the core coordination primitive for back-and-forth agent conversation."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "thread_id":   {"type": "string"},
+                    "after_seq":   {"type": "integer"},
+                    "timeout_ms":  {"type": "integer", "default": 30000, "description": "Max wait in milliseconds."},
+                },
+                "required": ["thread_id", "after_seq"],
+            },
+        ),
+
+        # ── Agent Identity & Presence ──────────
+        types.Tool(
+            name="agent.register",
+            description="Register an agent onto the bus. Returns agent_id and a secret token for subsequent calls.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name":         {"type": "string"},
+                    "description":  {"type": "string"},
+                    "capabilities": {"type": "array", "items": {"type": "string"},
+                                     "description": "List of capability tags, e.g. ['code', 'review']."},
+                },
+                "required": ["name"],
+            },
+        ),
+        types.Tool(
+            name="agent.heartbeat",
+            description="Send a keep-alive ping. Agents that miss the heartbeat window are marked offline.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "agent_id": {"type": "string"},
+                    "token":    {"type": "string"},
+                },
+                "required": ["agent_id", "token"],
+            },
+        ),
+        types.Tool(
+            name="agent.unregister",
+            description="Gracefully deregister an agent from the bus.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "agent_id": {"type": "string"},
+                    "token":    {"type": "string"},
+                },
+                "required": ["agent_id", "token"],
+            },
+        ),
+        types.Tool(
+            name="agent.list",
+            description="List all registered agents and their online status.",
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        types.Tool(
+            name="agent.set_typing",
+            description="Broadcast an 'is typing' signal for a thread (optional, for UI feedback).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "thread_id":  {"type": "string"},
+                    "agent_id":   {"type": "string"},
+                    "is_typing":  {"type": "boolean"},
+                },
+                "required": ["thread_id", "agent_id", "is_typing"],
+            },
+        ),
+    ]
+
+
+@server.call_tool()
+async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
+    db = await get_db()
+
+    # ── Thread tools ───────────────────────────────────────────────────────────
+
+    if name == "thread.create":
+        result = await crud.thread_create(db, arguments["topic"], arguments.get("metadata"))
+        return [types.TextContent(type="text", text=json.dumps({
+            "thread_id": result.id, "topic": result.topic, "status": result.status,
+        }))]
+
+    if name == "thread.list":
+        threads = await crud.thread_list(db, status=arguments.get("status"))
+        return [types.TextContent(type="text", text=json.dumps([
+            {"thread_id": t.id, "topic": t.topic, "status": t.status,
+             "created_at": t.created_at.isoformat()} for t in threads
+        ]))]
+
+    if name == "thread.get":
+        t = await crud.thread_get(db, arguments["thread_id"])
+        if t is None:
+            return [types.TextContent(type="text", text=json.dumps({"error": "Thread not found"}))]
+        return [types.TextContent(type="text", text=json.dumps({
+            "thread_id": t.id, "topic": t.topic, "status": t.status,
+            "created_at": t.created_at.isoformat(),
+            "closed_at": t.closed_at.isoformat() if t.closed_at else None,
+            "summary": t.summary,
+        }))]
+
+    if name == "thread.set_state":
+        await crud.thread_set_state(db, arguments["thread_id"], arguments["state"])
+        return [types.TextContent(type="text", text=json.dumps({"ok": True}))]
+
+    if name == "thread.close":
+        await crud.thread_close(db, arguments["thread_id"], arguments.get("summary"))
+        return [types.TextContent(type="text", text=json.dumps({"ok": True}))]
+
+    # ── Message tools ──────────────────────────────────────────────────────────
+
+    if name == "msg.post":
+        msg = await crud.msg_post(
+            db,
+            thread_id=arguments["thread_id"],
+            author=arguments["author"],
+            content=arguments["content"],
+            role=arguments.get("role", "user"),
+            metadata=arguments.get("metadata"),
+        )
+        return [types.TextContent(type="text", text=json.dumps({
+            "msg_id": msg.id, "seq": msg.seq,
+        }))]
+
+    if name == "msg.list":
+        msgs = await crud.msg_list(
+            db,
+            thread_id=arguments["thread_id"],
+            after_seq=arguments.get("after_seq", 0),
+            limit=arguments.get("limit", 100),
+        )
+        return [types.TextContent(type="text", text=json.dumps([
+            {"msg_id": m.id, "author": m.author, "role": m.role,
+             "content": m.content, "seq": m.seq, "created_at": m.created_at.isoformat()}
+            for m in msgs
+        ]))]
+
+    if name == "msg.wait":
+        thread_id = arguments["thread_id"]
+        after_seq = arguments["after_seq"]
+        timeout_s = arguments.get("timeout_ms", 30000) / 1000.0
+
+        async def _poll():
+            while True:
+                msgs = await crud.msg_list(db, thread_id, after_seq=after_seq)
+                if msgs:
+                    return msgs
+                await asyncio.sleep(0.5)
+
+        try:
+            msgs = await asyncio.wait_for(_poll(), timeout=timeout_s)
+        except asyncio.TimeoutError:
+            msgs = []
+
+        return [types.TextContent(type="text", text=json.dumps([
+            {"msg_id": m.id, "author": m.author, "role": m.role,
+             "content": m.content, "seq": m.seq, "created_at": m.created_at.isoformat()}
+            for m in msgs
+        ]))]
+
+    # ── Agent tools ────────────────────────────────────────────────────────────
+
+    if name == "agent.register":
+        agent = await crud.agent_register(
+            db,
+            name=arguments["name"],
+            description=arguments.get("description", ""),
+            capabilities=arguments.get("capabilities"),
+        )
+        return [types.TextContent(type="text", text=json.dumps({
+            "agent_id": agent.id, "token": agent.token,
+        }))]
+
+    if name == "agent.heartbeat":
+        ok = await crud.agent_heartbeat(db, arguments["agent_id"], arguments["token"])
+        return [types.TextContent(type="text", text=json.dumps({"ok": ok}))]
+
+    if name == "agent.unregister":
+        ok = await crud.agent_unregister(db, arguments["agent_id"], arguments["token"])
+        return [types.TextContent(type="text", text=json.dumps({"ok": ok}))]
+
+    if name == "agent.list":
+        agents = await crud.agent_list(db)
+        return [types.TextContent(type="text", text=json.dumps([
+            {"agent_id": a.id, "name": a.name, "description": a.description,
+             "is_online": a.is_online, "last_heartbeat": a.last_heartbeat.isoformat()}
+            for a in agents
+        ]))]
+
+    if name == "agent.set_typing":
+        db2 = await get_db()
+        await crud._emit_event(db2, "agent.typing", arguments["thread_id"], {
+            "agent_id": arguments["agent_id"],
+            "is_typing": arguments["is_typing"],
+        })
+        return [types.TextContent(type="text", text=json.dumps({"ok": True}))]
+
+    return [types.TextContent(type="text", text=json.dumps({"error": f"Unknown tool: {name}"}))]
+
+
+# ═════════════════════════════════════════════
+# RESOURCES
+# ═════════════════════════════════════════════
+
+@server.list_resources()
+async def list_resources() -> list[types.Resource]:
+    db = await get_db()
+    threads = await crud.thread_list(db, status=None)
+    resources = [
+        types.Resource(
+            uri="chat://agents/active",
+            name="Active Agents",
+            description="All currently registered agents and their online status.",
+            mimeType="application/json",
+        ),
+        types.Resource(
+            uri="chat://threads/active",
+            name="Active Threads",
+            description="Summary list of all threads.",
+            mimeType="application/json",
+        ),
+    ]
+    for t in threads:
+        resources.append(types.Resource(
+            uri=f"chat://threads/{t.id}/transcript",
+            name=f"Transcript: {t.topic[:40]}",
+            description=f"Full conversation history for thread '{t.topic}'",
+            mimeType="text/plain",
+        ))
+        if t.summary:
+            resources.append(types.Resource(
+                uri=f"chat://threads/{t.id}/summary",
+                name=f"Summary: {t.topic[:40]}",
+                description=f"Closed-thread summary for '{t.topic}'",
+                mimeType="text/plain",
+            ))
+    return resources
+
+
+@server.read_resource()
+async def read_resource(uri: types.AnyUrl) -> str:
+    db = await get_db()
+    uri_str = str(uri)
+
+    if uri_str == "chat://agents/active":
+        agents = await crud.agent_list(db)
+        return json.dumps([
+            {"agent_id": a.id, "name": a.name, "description": a.description,
+             "capabilities": json.loads(a.capabilities) if a.capabilities else [],
+             "is_online": a.is_online}
+            for a in agents
+        ], indent=2)
+
+    if uri_str == "chat://threads/active":
+        threads = await crud.thread_list(db)
+        return json.dumps([
+            {"thread_id": t.id, "topic": t.topic, "status": t.status,
+             "created_at": t.created_at.isoformat()}
+            for t in threads
+        ], indent=2)
+
+    # chat://threads/{id}/transcript
+    if "/transcript" in uri_str:
+        thread_id = uri_str.split("/")[2]
+        t = await crud.thread_get(db, thread_id)
+        if t is None:
+            return "Thread not found."
+        msgs = await crud.msg_list(db, thread_id, after_seq=0, limit=10000)
+        lines = [f"# Thread: {t.topic}  [status: {t.status}]\n"]
+        for m in msgs:
+            lines.append(f"[seq={m.seq}] {m.author} ({m.role}): {m.content}")
+        return "\n".join(lines)
+
+    # chat://threads/{id}/summary
+    if "/summary" in uri_str:
+        thread_id = uri_str.split("/")[2]
+        t = await crud.thread_get(db, thread_id)
+        if t is None:
+            return "Thread not found."
+        return t.summary or "(No summary recorded for this thread.)"
+
+    return f"Unknown resource URI: {uri_str}"
+
+
+# ═════════════════════════════════════════════
+# PROMPTS
+# ═════════════════════════════════════════════
+
+@server.list_prompts()
+async def list_prompts() -> list[types.Prompt]:
+    return [
+        types.Prompt(
+            name="summarize_thread",
+            description="Instructs an agent to produce a concise summary of a thread's transcript.",
+            arguments=[
+                types.PromptArgument(name="topic", description="The thread topic.", required=True),
+                types.PromptArgument(name="transcript", description="The full transcript text.", required=True),
+            ],
+        ),
+        types.Prompt(
+            name="handoff_to_agent",
+            description="Standard format for handing off a task from one agent to another.",
+            arguments=[
+                types.PromptArgument(name="from_agent", description="Name of the delegating agent.", required=True),
+                types.PromptArgument(name="to_agent", description="Name of the receiving agent.", required=True),
+                types.PromptArgument(name="task_description", description="What needs to be done.", required=True),
+                types.PromptArgument(name="context", description="Relevant background or prior decisions.", required=False),
+            ],
+        ),
+    ]
+
+
+@server.get_prompt()
+async def get_prompt(name: str, arguments: dict[str, str] | None) -> types.GetPromptResult:
+    args = arguments or {}
+
+    if name == "summarize_thread":
+        return types.GetPromptResult(
+            description="Summarize the thread transcript.",
+            messages=[types.PromptMessage(
+                role="user",
+                content=types.TextContent(type="text", text=(
+                    f"Please read the following conversation transcript for the topic "
+                    f"\"{args.get('topic', '(unknown)')}\" and write a concise summary "
+                    f"capturing the key decisions, conclusions, and any open questions.\n\n"
+                    f"--- TRANSCRIPT ---\n{args.get('transcript', '')}\n--- END ---"
+                )),
+            )],
+        )
+
+    if name == "handoff_to_agent":
+        context_block = f"\n\nRelevant context:\n{args['context']}" if args.get("context") else ""
+        return types.GetPromptResult(
+            description="Task handoff message.",
+            messages=[types.PromptMessage(
+                role="user",
+                content=types.TextContent(type="text", text=(
+                    f"Hi {args.get('to_agent', 'Agent')}, this is {args.get('from_agent', 'Agent')} handing off a task to you.\n\n"
+                    f"**Task:** {args.get('task_description', '')}{context_block}\n\n"
+                    f"Please acknowledge and proceed."
+                )),
+            )],
+        )
+
+    raise ValueError(f"Unknown prompt: {name}")
