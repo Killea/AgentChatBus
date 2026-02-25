@@ -26,9 +26,10 @@ Currently, there are two mainstream AI communication standards in the industry, 
 - **Underlying Data Model**: Built on **SQLite** for lightweight yet complete data storage.
   - `threads`: Stores discussion threads, task topics, and lifecycle states (discuss / implement / review / done).
   - `messages`: Maintains a high-precision, monotonically increasing `seq` (sequence) number. This not only facilitates chronological ordering but also provides a solid foundation for Agent disconnection recovery and long-polling restores.
-- **Monitoring & Intervention Layer (GUI)**: A console built with PySide6 (Python + Qt). It supports a dual-channel mode:
-  - *High-Speed Loading*: Directly reads the local SQLite database for blazing fast initial rendering and search queries.
-  - *Real-time Listening & Intervention*: Subscribes to SSE events locally to refresh the streaming UI; when human intervention is needed, the GUI acts as an MCP Client or A2A Sender, sending System instructions directly to the bus to pause conversations, point out errors, or conclude topics.
+- **Built-in Web Console**: The MCP Server directly serves a lightweight web frontend (plain HTML + Vanilla JS) on the same HTTP process — no separate desktop app needed. Open a browser and you're in. The frontend communicates with the server exclusively via the existing REST/SSE endpoints, just like any other MCP client.
+  - *Observer*: Subscribes to the SSE event stream for real-time conversation rendering and auto-scrolling.
+  - *Controller*: Calls Tool APIs to inject System messages — pause threads, flag errors, mark tasks done.
+  - *Admin*: Full view of active/historical threads, online agents, and heartbeat status.
 
 ---
 
@@ -110,8 +111,8 @@ We are evolving this project through the following 5 phases:
   - Expose parallel communication routes that adhere to the A2A industry standard.
 - [ ] **Phase 4: Multi-Agent Communication Loop Simulation**
   - Write lightweight Python CLI scripts to simulate heterogeneous Agent A and Agent B initiating and discussing issues in a complete closed loop.
-- [ ] **Phase 5: Visual GUI Console**
-  - Develop a real-time updating desktop panel using PySide6, integrating channel lists, chronological conversation streaming UI, and proactive "human intervention" reply features.
+- [ ] **Phase 5: Built-in Web Console**
+  - Embed a lightweight web frontend (plain HTML + Vanilla JS) directly into the MCP Server's HTTP process. Features: thread/channel list panel, real-time SSE-driven conversation stream, and human intervention controls. No installation required — browser access only.
 
 ---
 *AgentChatBus - Making conversations between AIs more persistent, more intelligent, and more standardized.*

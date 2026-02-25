@@ -69,18 +69,25 @@ MCP 允许 Server 暴露可复用的 Prompt 模板，保证异构 Agent（不同
 - `summarize_thread`：给 Agent 的**摘要生成提示词**模板，自动附带 `{transcript}` 和 `{topic}` 占位符，用于驱动 Agent 生成高质量的结束 `summary`。
 - `handoff_to_agent`：向另一个 Agent **移交任务**时的标准提示词格式，规范化交接内容的结构。
 
-## 5. GUI 接入方案 (控制台与监控面板)
-为了最大的灵活性和响应速度，GUI 推荐采用 **双通道结合** 的模式：
-1. **直接读库 (初次渲染)**：由于是单机架构，GUI 启动时直接连接 SQLite，用于极速加载历史记录、快速筛选和搜索。
-2. **事件监听 (实时刷新)**：作为客户端监听 MCP 服务的本地 SSE 连接。当收到“新消息送达”或“线程状态变更”事件后，再从 SQLite 获取增量更新刷新 UI。
-3. **干预通道 (充当 Controller)**：当用户希望通过 GUI 下达指令（比如“暂停该线程的探讨”、“标记此话题已结束”、“强制以 System Role 贴入错误日志”）时，GUI 本身作为 MCP Client 调用上述的 Tools 进行写入。
+## 5. Web 控制台方案（无独立桌面 App）
+
+MCP Server 本身已是一个常驻 HTTP 服务。因此，**Web 界面由 MCP Server 直接内嵌提供**，无需安装任何额外客户端，用浏览器打开即可使用控制台。这大幅降低了部署门槛，也方便远程访问。
+
+**技术方案**
+- MCP Server 在同一 HTTP 进程里额外挂载几个静态路由，提供前端 HTML/JS 文件（纯 Vanilla JS 或轻量框架如 Alpine.js，不依赖复杂打包工具）。
+- Web 前端**不需要**直接访问 SQLite；它统一通过已有的 REST / SSE 接口与 Server 通信，与 MCP Agent 是平等的 HTTP 客户端。
+
+**Web 控制台的三种核心能力：**
+1. **实时观察（Observer）**：连接 SSE 事件流，实时渲染对话气泡与线程状态变化，自动滚动至最新消息。
+2. **人工干预（Controller）**：通过调用标准 REST/Tool 接口，向任意线程发送 System 消息（暂停对话、插入报错日志、标记任务完成等）。
+3. **总线管理（Admin）**：可视化查看所有活跃/历史线程清单、在线 Agent 列表及各 Agent 的心跳/在线状态。
 
 ## 6. 开发步骤规划
 - [ ] **Phase 1: 基础设施骨架** - 初始化 Python 虚拟环境，安装所需依赖 (`mcp`, `aiosqlite`, web server 等)。
 - [ ] **Phase 2: 存储层开发** - 编写 SQLite 的连接配置、表结构初始化 (DDL) 及常用 CRUD 操作。
 - [ ] **Phase 3: MCP Server 核心实现** - 编写 SSE 传输层的 MCP 服务，注册 Tools（接收信息）和 Resources（暴露历史）。
 - [ ] **Phase 4: 终端 Agent 模拟测试** - 编写两个轻便的 Python CLI 脚本分别模拟 Agent A 和 Agent B，验证跨进程通过 Bus 通信的功能闭环。
-- [ ] **Phase 5: GUI 客户端构建** - 基于 PySide6 制作“观察者/控制台”界面，左侧渲染频道/线程列表，右侧渲染对话流，打通实时监听和主动回话能力。
+- [ ] **Phase 5: Web 控制台构建** - 在 MCP Server 内直接内嵌轻量 Web 前端（纯 HTML + Vanilla JS），实现频道/线程列表、实时对话流渲染（SSE 驱动）以及人工干预回话能力。无需安装任何独立桌面应用，浏览器打开即用。
 
 ## 7. 与 A2A (Agent-to-Agent) 标准的兼容性设计与分析
 
