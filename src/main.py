@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI, Request
+from starlette.responses import Response
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from mcp.server.sse import SseServerTransport
@@ -56,7 +57,11 @@ sse_transport = SseServerTransport("/mcp/messages")
 
 @app.get("/mcp/sse")
 async def mcp_sse_endpoint(request: Request):
-    """MCP SSE connection endpoint for MCP clients."""
+    """
+    MCP SSE connection endpoint for MCP clients.
+    Must return Response() after the context manager exits, otherwise FastAPI
+    will attempt to send a second response and raise an ASGI error.
+    """
     async with sse_transport.connect_sse(
         request.scope, request.receive, request._send
     ) as streams:
@@ -64,12 +69,13 @@ async def mcp_sse_endpoint(request: Request):
             streams[0], streams[1],
             mcp_server.create_initialization_options(),
         )
+    return Response()  # <-- prevents 'response already completed' ASGI error
 
 
-@app.post("/mcp/messages")
-async def mcp_messages_endpoint(request: Request):
-    """MCP JSON-RPC message endpoint."""
-    await sse_transport.handle_post_message(request.scope, request.receive, request._send)
+# Mount handle_post_message as a raw ASGI app (NOT a FastAPI route).
+# handle_post_message sends its own 202 response internally; wrapping it inside
+# a FastAPI route causes a second response attempt and the ASGI error.
+app.mount("/mcp/messages", app=sse_transport.handle_post_message)
 
 
 # ─────────────────────────────────────────────

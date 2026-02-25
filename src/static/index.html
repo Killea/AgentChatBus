@@ -448,6 +448,8 @@ body {
       await refreshAgents();
       startSSE();
       setInterval(refreshAgents, 12000);
+      // Fallback poll: refresh messages every 3s in case an SSE event was missed
+      setInterval(() => { if (activeThreadId) loadNewMessages(); }, 3000);
     })();
 
     // ═══════════════════════════════════════════════
@@ -554,8 +556,7 @@ body {
           if (!activeThreadId) return;
           const msgs = await api(`/api/threads/${activeThreadId}/messages?after_seq=${lastSeq}&limit=100`) || [];
           msgs.forEach(appendBubble);
-          if (msgs.length) LastSeq = msgs[msgs.length - 1].seq; // keep updating
-          msgs.forEach(m => { lastSeq = Math.max(lastSeq, m.seq); });
+          msgs.forEach(m => { lastSeq = Math.max(lastSeq, m.seq); });  // always advance cursor
           if (msgs.length) scrollBottom();
         }
 
