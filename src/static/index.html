@@ -223,35 +223,62 @@ body {
 #messages::-webkit-scrollbar-track { background: transparent; }
 #messages::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
 
-.msg-group { display: flex; flex-direction: column; gap: 4px; }
-.msg-group.right { align-items: flex-end; }
-.msg-group.center { align-items: center; }
-
-.msg-author {
-  font-size: 11px; color: var(--text-3); margin: 0 4px;
-  font-weight: 500;
-}
-
-.bubble {
-  max-width: 72%;
-  padding: 10px 14px;
-  border-radius: 14px;
-  font-size: 13.5px;
-  line-height: 1.6;
-  word-break: break-word;
+/* ── Message rows (author-based coloring) ── */
+.msg-row {
+  display: flex; align-items: flex-start; gap: 10px; max-width: 82%;
   animation: bubble-in .2s ease;
 }
+.msg-row-left  { align-self: flex-start; }
+.msg-row-right { align-self: flex-end; flex-direction: row-reverse; }
+
 @keyframes bubble-in {
   from { opacity: 0; transform: translateY(6px) scale(.98); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-.bubble.user      { background: var(--bg-card); border: 1px solid var(--border-light); border-radius: 14px 14px 14px 4px; }
-.bubble.assistant { background: linear-gradient(135deg, #1e3a8a, #312e81); border-radius: 14px 14px 4px 14px; }
-.bubble.system    {
-  background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.2);
-  color: #fbbf24; font-size: 12px; font-style: italic;
-  border-radius: 10px; max-width: 85%; text-align: center;
+.msg-avatar {
+  width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; letter-spacing: .02em;
+  margin-top: 2px;
+}
+
+.msg-col { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.msg-row-right .msg-col { align-items: flex-end; }
+
+.msg-header {
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: 11px;
+}
+.msg-row-right .msg-header { flex-direction: row-reverse; }
+.msg-author-label { font-weight: 600; }
+.msg-time-label   { color: var(--text-3); }
+
+.bubble-v2 {
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 13.5px; line-height: 1.6;
+  word-break: break-word;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-left-width: 3px;
+  max-width: 100%;
+}
+.msg-row-right .bubble-v2 {
+  border-left-width: 1px;
+  border-right-width: 3px;
+}
+
+/* System event row (centered) */
+.msg-sys-event {
+  align-self: center; max-width: 80%;
+  padding: 6px 14px;
+  background: rgba(245,158,11,.07);
+  border: 1px solid rgba(245,158,11,.18);
+  border-radius: 20px;
+  font-size: 11.5px; font-style: italic; color: #fbbf24;
+  text-align: center;
+  animation: bubble-in .2s ease;
 }
 
 .bubble-meta { font-size: 10px; color: var(--text-3); margin: 0 4px; }
@@ -579,41 +606,103 @@ body {
     // ═══════════════════════════════════════════════
     // Messages
     // ═══════════════════════════════════════════════
-    function appendBubble(m) {
-    const box = document.getElementById('messages');
-    const group = document.createElement('div');
-    const align = m.role === 'assistant' ? 'right' : m.role === 'system' ? 'center' : 'left';
-    group.className = `msg-group ${align}`;
 
-    const authorLabel = m.role !== 'system'
-      ? `<div class="msg-author">${esc(m.author)}</div>` : '';
+  // ── Color palette: 12 distinct, accessible hues ──────────────────────────
+  const AUTHOR_PALETTE = [
+    '#60a5fa', // blue
+    '#34d399', // emerald
+    '#f472b6', // pink
+    '#fb923c', // orange
+    '#a78bfa', // purple
+    '#22d3ee', // cyan
+    '#facc15', // yellow
+    '#f87171', // red
+    '#4ade80', // green
+    '#38bdf8', // sky
+    '#e879f9', // fuchsia
+    '#a3e635', // lime
+  ];
+  const HUMAN_COLOR = '#fb923c'; // warm orange — always human
+  const SYSTEM_COLOR = '#fbbf24'; // amber  — system events
 
-    const time = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const meta = `<div class="bubble-meta">seq ${m.seq} · ${time}</div>`;
+  // Cache so the same author always gets the same color in a session
+  const _colorCache = {};
 
-    group.innerHTML = `
-    ${authorLabel}
-    <div class="bubble ${m.role}">${esc(m.content).replace(/\n/g, '<br/>')}</div>
-    ${m.role !== 'system' ? meta : ''}`;
-    box.appendChild(group);
+  function authorColor(author) {
+    if (author === 'human') return HUMAN_COLOR;
+    if (author === 'system') return SYSTEM_COLOR;
+    if (_colorCache[author]) return _colorCache[author];
+    // Stable hash → palette index
+    let h = 0;
+    for (let i = 0; i < author.length; i++) h = (Math.imul(31, h) + author.charCodeAt(i)) | 0;
+    const color = AUTHOR_PALETTE[Math.abs(h) % AUTHOR_PALETTE.length];
+    _colorCache[author] = color;
+    return color;
   }
 
-    // ── Typing indicator ────────────────────────────
+  function fmtTime(iso) {
+    if (!iso) return '';
+    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+    function appendBubble(m) {
+      const box = document.getElementById('messages');
+
+      // ── System event (centered pill) ─────────────────────────────────────
+      if (m.role === 'system' && m.author === 'system') {
+        const pill = document.createElement('div');
+        pill.className = 'msg-sys-event';
+        pill.textContent = m.content;
+        box.appendChild(pill);
+        return;
+      }
+
+      const color = authorColor(m.author);
+      const isHuman = m.author === 'human';
+      const initials = m.author.slice(0, 2).toUpperCase();
+      const bgAlpha = `${color}22`;  // ~13% alpha tint for avatar bg
+
+      const row = document.createElement('div');
+      row.className = `msg-row ${isHuman ? 'msg-row-right' : 'msg-row-left'}`;
+
+      row.innerHTML = `
+        <div class="msg-avatar" style="background:${bgAlpha};color:${color};border:1px solid ${color}44">${initials}</div>
+        <div class="msg-col">
+          <div class="msg-header">
+            <span class="msg-author-label" style="color:${color}">${esc(m.author)}</span>
+            <span class="msg-time-label">seq ${m.seq} · ${fmtTime(m.created_at)}</span>
+          </div>
+          <div class="bubble-v2" style="border-color:${color}55;${isHuman ? 'border-right-color' : 'border-left-color'}:${color}">${esc(m.content).replace(/\n/g, '<br/>')}</div>
+        </div>`;
+
+      box.appendChild(row);
+    }
+
+      // ── Typing indicator ─────────────────────────────────────────────────────
     function showTyping(agentId) {
       const box = document.getElementById('messages');
       let el = document.getElementById(`typing-${agentId}`);
       if (!el) {
-        const group = document.createElement('div');
-        group.className = 'msg-group left';
-        group.id = `typing-${agentId}`;
-        group.innerHTML = `<div class="msg-author">${esc(agentId.slice(0, 8))}… is typing</div>
-      <div class="typing-bubble"><span></span><span></span><span></span></div>`;
-        box.appendChild(group);
+        const color = authorColor(agentId);
+        const initials = agentId.slice(0, 2).toUpperCase();
+        const row = document.createElement('div');
+        row.className = 'msg-row msg-row-left';
+        row.id = `typing-${agentId}`;
+        row.innerHTML = `
+          <div class="msg-avatar" style="background:${color}22;color:${color};border:1px solid ${color}44">${initials}</div>
+          <div class="msg-col">
+            <div class="msg-header">
+              <span class="msg-author-label" style="color:${color}">${esc(agentId)}</span>
+              <span class="msg-time-label">typing…</span>
+            </div>
+            <div class="typing-bubble"><span></span><span></span><span></span></div>
+          </div>`;
+        box.appendChild(row);
         scrollBottom();
       }
       clearTimeout(typingTimers[agentId]);
       typingTimers[agentId] = setTimeout(() => hideTyping(agentId), 8000);
-  }
+    }
 
     function hideTyping(agentId) {
       const el = document.getElementById(`typing-${agentId}`);
