@@ -55,27 +55,65 @@ app = FastAPI(
 
 sse_transport = SseServerTransport("/mcp/messages")
 
+
+class _SseCompletedResponse:
+    """
+    Sentinel returned from mcp_sse_endpoint after connect_sse() exits.
+
+    The SSE transport sends the full HTTP response (http.response.start +
+    http.response.body chunks) directly to uvicorn via request._send.
+    If we return a real Response(), FastAPI calls it with send, which tries
+    to emit a SECOND http.response.start — uvicorn rejects this with:
+      "Unexpected ASGI message 'http.response.start'"  (normal close), or
+      "Expected 'http.response.body', got 'http.response.start'"  (abrupt close).
+
+    This no-op sentinel lets FastAPI complete its routing without sending
+    any additional ASGI messages.
+    """
+    async def __call__(self, scope, receive, send):
+        pass  # intentional no-op — SSE transport already sent the response
+
+
 @app.get("/mcp/sse")
 async def mcp_sse_endpoint(request: Request):
-    """
-    MCP SSE connection endpoint for MCP clients.
-    Must return Response() after the context manager exits, otherwise FastAPI
-    will attempt to send a second response and raise an ASGI error.
-    """
-    async with sse_transport.connect_sse(
-        request.scope, request.receive, request._send
-    ) as streams:
-        await mcp_server.run(
-            streams[0], streams[1],
-            mcp_server.create_initialization_options(),
-        )
-    return Response()  # <-- prevents 'response already completed' ASGI error
+    """MCP SSE endpoint consumed by MCP clients (Claude Desktop, Cursor, …)."""
+    try:
+        async with sse_transport.connect_sse(
+            request.scope, request.receive, request._send
+        ) as streams:
+            await mcp_server.run(
+                streams[0], streams[1],
+                mcp_server.create_initialization_options(),
+            )
+    except Exception as exc:
+        # Most are normal disconnects (anyio.ClosedResourceError, CancelledError…).
+        # Log at DEBUG to avoid polluting the terminal.
+        logger.debug("MCP SSE session ended: %s: %s", type(exc).__name__, exc)
+    return _SseCompletedResponse()
 
 
-# Mount handle_post_message as a raw ASGI app (NOT a FastAPI route).
-# handle_post_message sends its own 202 response internally; wrapping it inside
-# a FastAPI route causes a second response attempt and the ASGI error.
+# Mount handle_post_message as a raw ASGI app — NOT a FastAPI route.
+# The transport sends its own 202 Accepted internally; a FastAPI route wrapper
+# would attempt a second response and produce ASGI errors.
 app.mount("/mcp/messages/", app=sse_transport.handle_post_message)
+
+
+# ── Suppress leftover ASGI RuntimeErrors caused by client disconnects ──────────
+class _AsgiDisconnectFilter(logging.Filter):
+    """
+    Filters uvicorn 'Exception in ASGI application' records that are caused
+    by normal MCP client disconnects — not real bugs, just transport noise.
+    """
+    _NOISE = (
+        "Unexpected ASGI message 'http.response.start'",
+        "Expected ASGI message 'http.response.body'",
+    )
+    def filter(self, record: logging.LogRecord) -> bool:
+        return not any(n in record.getMessage() for n in self._NOISE)
+
+for _ln in ("uvicorn.error", "uvicorn"):
+    logging.getLogger(_ln).addFilter(_AsgiDisconnectFilter())
+
 
 
 # ─────────────────────────────────────────────
