@@ -187,6 +187,30 @@ async def api_agent_unregister(body: AgentToken):
 
 
 
+
+# ─────────────────────────────────────────────
+# Thread state management REST (for web console)
+# ─────────────────────────────────────────────
+
+class StateChange(BaseModel):
+    state: str
+
+class ThreadClose(BaseModel):
+    summary: str | None = None
+
+@app.post("/api/threads/{thread_id}/state")
+async def api_thread_state(thread_id: str, body: StateChange):
+    db = await get_db()
+    await crud.thread_set_state(db, thread_id, body.state)
+    return {"ok": True}
+
+@app.post("/api/threads/{thread_id}/close")
+async def api_thread_close(thread_id: str, body: ThreadClose):
+    db = await get_db()
+    await crud.thread_close(db, thread_id, body.summary)
+    return {"ok": True}
+
+
 # ─────────────────────────────────────────────
 # Health check
 # ─────────────────────────────────────────────
@@ -194,6 +218,7 @@ async def api_agent_unregister(body: AgentToken):
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "AgentChatBus"}
+
 
 
 # ─────────────────────────────────────────────

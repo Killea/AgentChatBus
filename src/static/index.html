@@ -4,244 +4,738 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>AgentChatBus Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link
+  href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+  rel="stylesheet" />
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: 'Segoe UI', system-ui, sans-serif;
-    background: #0d1117; color: #c9d1d9;
-    display: flex; height: 100vh; overflow: hidden;
-  }
-  /* ── Sidebar ── */
-  #sidebar {
-    width: 260px; background: #161b22; border-right: 1px solid #30363d;
-    display: flex; flex-direction: column; flex-shrink: 0;
-  }
-  #sidebar h2 { padding: 16px; font-size: 14px; color: #8b949e; text-transform: uppercase; letter-spacing: .06em; }
-  #thread-list { flex: 1; overflow-y: auto; }
-  .thread-item {
-    padding: 10px 16px; cursor: pointer; border-left: 3px solid transparent;
-    transition: background .15s;
-  }
-  .thread-item:hover { background: #1f2937; }
-  .thread-item.active { border-left-color: #58a6ff; background: #1f2937; }
-  .thread-item .topic { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .thread-item .status { font-size: 11px; color: #8b949e; margin-top: 2px; }
-  .badge {
-    display: inline-block; padding: 1px 6px; border-radius: 10px; font-size: 10px; font-weight: 600;
-  }
-  .badge-discuss   { background:#174291; color:#58a6ff; }
-  .badge-implement { background:#1d3d1e; color:#3fb950; }
-  .badge-review    { background:#3d2b00; color:#d29922; }
-  .badge-done      { background:#1f2937; color:#8b949e; }
-  .badge-closed    { background:#1f2937; color:#484f58; }
-  #agents-panel { padding: 12px 16px; border-top: 1px solid #30363d; }
-  #agents-panel h3 { font-size: 12px; color: #8b949e; margin-bottom: 8px; }
-  .agent-row { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-bottom: 4px; }
-  .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-  .dot-online { background: #3fb950; }
-  .dot-offline { background: #484f58; }
+/* ══════════════════════════════════════════
+   Reset & Base
+══════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  /* ── Main area ── */
-  #main {
-    flex: 1; display: flex; flex-direction: column; overflow: hidden;
-  }
-  #header {
-    padding: 14px 20px; border-bottom: 1px solid #30363d;
-    display: flex; align-items: center; justify-content: space-between;
-  }
-  #header h1 { font-size: 16px; font-weight: 600; }
-  #header span { font-size: 12px; color: #8b949e; }
-  #messages {
-    flex: 1; overflow-y: auto; padding: 16px 20px;
-    display: flex; flex-direction: column; gap: 12px;
-  }
-  .msg-bubble {
-    max-width: 75%; padding: 10px 14px; border-radius: 10px; font-size: 13px; line-height: 1.5;
-    word-break: break-word;
-  }
-  .msg-user      { background: #1f2937; align-self: flex-start; }
-  .msg-assistant { background: #0d419d; align-self: flex-end; }
-  .msg-system    { background: #2d1a00; align-self: center; font-style: italic; color: #d29922; font-size: 12px; }
-  .msg-meta { font-size: 10px; color: #8b949e; margin-top: 4px; }
-  #compose {
-    padding: 12px 20px; border-top: 1px solid #30363d;
-    display: flex; gap: 8px; align-items: flex-end;
-  }
-  #compose textarea {
-    flex: 1; background: #161b22; border: 1px solid #30363d; border-radius: 8px;
-    color: #c9d1d9; padding: 8px 12px; font-size: 13px; resize: none; min-height: 40px; max-height: 120px;
-    font-family: inherit;
-  }
-  #compose textarea:focus { outline: none; border-color: #58a6ff; }
-  button {
-    background: #1f6feb; color: #fff; border: none; border-radius: 8px;
-    padding: 8px 16px; font-size: 13px; cursor: pointer; white-space: nowrap;
-    transition: background .15s;
-  }
-  button:hover { background: #388bfd; }
-  button.secondary { background: #21262d; color: #c9d1d9; }
-  button.secondary:hover { background: #30363d; }
-  #empty-state {
-    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    color: #484f58; gap: 8px;
-  }
-  #empty-state .icon { font-size: 40px; }
-  #new-thread-btn { margin: 12px 16px; width: calc(100% - 32px); }
+:root {
+  --bg-base:      #0a0d12;
+  --bg-panel:     #0f1318;
+  --bg-card:      #151a22;
+  --bg-hover:     #1a2030;
+  --bg-input:     #111620;
+  --border:       #1e2635;
+  --border-light: #253040;
+  --accent:       #3b82f6;
+  --accent-dim:   #1d4ed8;
+  --accent-glow:  rgba(59,130,246,.18);
+  --green:        #22c55e;
+  --amber:        #f59e0b;
+  --purple:       #a855f7;
+  --red:          #ef4444;
+  --text-1:       #e2e8f0;
+  --text-2:       #94a3b8;
+  --text-3:       #4b5563;
+  --radius:       10px;
+  --shadow:       0 4px 24px rgba(0,0,0,.5);
+}
+
+html, body { height: 100%; overflow: hidden; }
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg-base);
+  color: var(--text-1);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ══════════════════════════════════════════
+   Top bar
+══════════════════════════════════════════ */
+#topbar {
+  height: 52px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 12px;
+  flex-shrink: 0;
+  z-index: 10;
+}
+#topbar .logo {
+  font-size: 16px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #3b82f6, #a855f7);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -.3px;
+}
+#topbar .sep { flex: 1; }
+#status-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green);
+  animation: pulse-dot 2s infinite;
+}
+@keyframes pulse-dot {
+  0%,100% { opacity: 1; }
+  50%      { opacity: .4; }
+}
+#topbar .status-label { font-size: 12px; color: var(--text-2); }
+#btn-new-thread {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex; align-items: center; gap: 6px;
+  transition: background .15s, transform .1s;
+}
+#btn-new-thread:hover { background: #2563eb; }
+#btn-new-thread:active { transform: scale(.97); }
+
+/* ══════════════════════════════════════════
+   Layout: sidebar + main
+══════════════════════════════════════════ */
+#layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── Sidebar ── */
+#sidebar {
+  width: 260px;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+#sidebar-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+.stab {
+  flex: 1; padding: 10px; font-size: 12px; font-weight: 600;
+  text-align: center; cursor: pointer; color: var(--text-3);
+  transition: color .15s, border-color .15s;
+  border-bottom: 2px solid transparent;
+  letter-spacing: .04em; text-transform: uppercase;
+}
+.stab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+#thread-pane, #agent-pane { flex: 1; overflow-y: auto; display: none; }
+#thread-pane.visible, #agent-pane.visible { display: block; }
+
+/* Thread list */
+.thread-item {
+  padding: 12px 16px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: background .15s, border-color .15s;
+  position: relative;
+}
+.thread-item:hover { background: var(--bg-hover); }
+.thread-item.active {
+  background: var(--bg-hover);
+  border-left-color: var(--accent);
+}
+.thread-item .ti-topic {
+  font-size: 13px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: var(--text-1);
+}
+.thread-item .ti-meta {
+  font-size: 11px; color: var(--text-3); margin-top: 4px;
+  display: flex; align-items: center; gap: 6px;
+}
+.badge {
+  display: inline-flex; align-items: center;
+  padding: 2px 7px; border-radius: 20px; font-size: 10px; font-weight: 600;
+  letter-spacing: .04em; text-transform: uppercase;
+}
+.badge-discuss   { background: rgba(59,130,246,.15);  color: #60a5fa; }
+.badge-implement { background: rgba(34,197,94,.12);   color: #4ade80; }
+.badge-review    { background: rgba(245,158,11,.12);  color: #fbbf24; }
+.badge-done      { background: rgba(168,85,247,.12);  color: #c084fc; }
+.badge-closed    { background: rgba(75,85,99,.15);    color: var(--text-3); }
+
+/* Agent list */
+.agent-item {
+  padding: 10px 16px;
+  display: flex; align-items: center; gap: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.agent-avatar {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: linear-gradient(135deg, #1d4ed8, #7c3aed);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0;
+}
+.agent-name { font-size: 13px; font-weight: 500; }
+.agent-desc { font-size: 11px; color: var(--text-3); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+.online-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-left: auto;
+}
+.online-dot.on  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.online-dot.off { background: var(--text-3); }
+
+/* ── Main area ── */
+#main {
+  flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0;
+}
+
+/* Thread header */
+#thread-header {
+  padding: 0 20px;
+  height: 52px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px;
+  flex-shrink: 0;
+}
+#thread-header h2 { font-size: 15px; font-weight: 600; flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#state-select {
+  background: var(--bg-card); color: var(--text-2); border: 1px solid var(--border-light);
+  border-radius: 8px; padding: 4px 10px; font-size: 12px; cursor: pointer;
+  font-family: inherit;
+}
+#state-select:focus { outline: none; border-color: var(--accent); }
+#btn-close-thread {
+  background: transparent; border: 1px solid var(--border-light);
+  color: var(--text-2); border-radius: 8px; padding: 4px 12px;
+  font-size: 12px; cursor: pointer; font-family: inherit;
+  transition: background .15s, color .15s;
+}
+#btn-close-thread:hover { background: rgba(239,68,68,.12); color: var(--red); border-color: var(--red); }
+
+/* Messages */
+#messages {
+  flex: 1; overflow-y: auto; padding: 20px;
+  display: flex; flex-direction: column; gap: 14px;
+  scroll-behavior: smooth;
+}
+#messages::-webkit-scrollbar { width: 4px; }
+#messages::-webkit-scrollbar-track { background: transparent; }
+#messages::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
+
+.msg-group { display: flex; flex-direction: column; gap: 4px; }
+.msg-group.right { align-items: flex-end; }
+.msg-group.center { align-items: center; }
+
+.msg-author {
+  font-size: 11px; color: var(--text-3); margin: 0 4px;
+  font-weight: 500;
+}
+
+.bubble {
+  max-width: 72%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  word-break: break-word;
+  animation: bubble-in .2s ease;
+}
+@keyframes bubble-in {
+  from { opacity: 0; transform: translateY(6px) scale(.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.bubble.user      { background: var(--bg-card); border: 1px solid var(--border-light); border-radius: 14px 14px 14px 4px; }
+.bubble.assistant { background: linear-gradient(135deg, #1e3a8a, #312e81); border-radius: 14px 14px 4px 14px; }
+.bubble.system    {
+  background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.2);
+  color: #fbbf24; font-size: 12px; font-style: italic;
+  border-radius: 10px; max-width: 85%; text-align: center;
+}
+
+.bubble-meta { font-size: 10px; color: var(--text-3); margin: 0 4px; }
+
+.typing-bubble {
+  display: flex; align-items: center; gap: 4px;
+  padding: 10px 16px;
+  background: var(--bg-card); border: 1px solid var(--border-light);
+  border-radius: 14px 14px 14px 4px;
+  max-width: 80px;
+}
+.typing-bubble span {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--text-3); display: block;
+  animation: bouncing .9s infinite;
+}
+.typing-bubble span:nth-child(2) { animation-delay: .15s; }
+.typing-bubble span:nth-child(3) { animation-delay: .3s; }
+@keyframes bouncing {
+  0%,60%,100% { transform: translateY(0); }
+  30%         { transform: translateY(-5px); background: var(--accent); }
+}
+
+/* Empty state */
+#empty-state {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; color: var(--text-3); gap: 12px;
+}
+#empty-state .es-icon { font-size: 48px; opacity: .4; }
+#empty-state .es-title { font-size: 16px; font-weight: 600; color: var(--text-2); }
+#empty-state .es-sub { font-size: 13px; }
+
+/* Compose */
+#compose {
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  display: none; gap: 10px; align-items: flex-end;
+  background: var(--bg-panel);
+}
+#compose.visible { display: flex; }
+#compose-author {
+  background: var(--bg-input); border: 1px solid var(--border-light);
+  color: var(--text-2); border-radius: 8px;
+  padding: 8px 10px; font-size: 12px; font-family: inherit;
+  width: 100px; flex-shrink: 0;
+}
+#compose-author:focus { outline: none; border-color: var(--accent); }
+#compose-input {
+  flex: 1; background: var(--bg-input); border: 1px solid var(--border-light);
+  color: var(--text-1); border-radius: 10px; padding: 10px 14px;
+  font-size: 13.5px; resize: none; min-height: 42px; max-height: 140px;
+  font-family: inherit; line-height: 1.5;
+  transition: border-color .15s;
+}
+#compose-input:focus { outline: none; border-color: var(--accent); }
+#compose-input::placeholder { color: var(--text-3); }
+#btn-send {
+  background: var(--accent); color: #fff; border: none; border-radius: 10px;
+  width: 40px; height: 40px; cursor: pointer; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; transition: background .15s, transform .1s;
+}
+#btn-send:hover { background: #2563eb; }
+#btn-send:active { transform: scale(.93); }
+
+/* ══════════════════════════════════════════
+   Modal
+══════════════════════════════════════════ */
+#modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.7);
+  display: none; align-items: center; justify-content: center;
+  z-index: 100; animation: fade-in .15s ease;
+}
+#modal-overlay.visible { display: flex; }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+#modal {
+  background: var(--bg-card); border: 1px solid var(--border-light);
+  border-radius: 14px; padding: 28px; width: 440px; max-width: 90vw;
+  box-shadow: var(--shadow);
+  animation: modal-in .2s ease;
+}
+@keyframes modal-in {
+  from { opacity: 0; transform: scale(.95) translateY(-10px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+#modal h3 { font-size: 16px; font-weight: 600; margin-bottom: 18px; }
+#modal-topic {
+  width: 100%; background: var(--bg-input); border: 1px solid var(--border-light);
+  color: var(--text-1); border-radius: 10px; padding: 10px 14px;
+  font-size: 14px; font-family: inherit; margin-bottom: 16px;
+}
+#modal-topic:focus { outline: none; border-color: var(--accent); }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.btn-secondary {
+  background: var(--bg-hover); color: var(--text-2); border: 1px solid var(--border-light);
+  border-radius: 8px; padding: 8px 18px; font-size: 13px;
+  cursor: pointer; font-family: inherit; transition: background .15s;
+}
+.btn-secondary:hover { background: var(--border-light); }
+.btn-primary {
+  background: var(--accent); color: #fff; border: none;
+  border-radius: 8px; padding: 8px 18px; font-size: 13px;
+  cursor: pointer; font-family: inherit; transition: background .15s;
+}
+.btn-primary:hover { background: #2563eb; }
+
+/* Scrollbar */
+#thread-pane::-webkit-scrollbar,
+#agent-pane::-webkit-scrollbar  { width: 3px; }
+#thread-pane::-webkit-scrollbar-thumb,
+#agent-pane::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
 </style>
 </head>
 <body>
 
-<div id="sidebar">
-  <h2>🚌 AgentChatBus</h2>
-  <button id="new-thread-btn" onclick="promptNewThread()">+ New Thread</button>
-  <div id="thread-list"></div>
-  <div id="agents-panel">
-    <h3>Agents</h3>
-    <div id="agent-list"></div>
-  </div>
+<!-- ── Top bar ─────────────────────────────── -->
+<div id="topbar">
+  <div class="logo">🚌 AgentChatBus</div>
+  <div class="sep"></div>
+  <div id="status-dot"></div>
+  <div class="status-label" id="status-label">Connected</div>
+  <button id="btn-new-thread" onclick="openModal()">＋ New Thread</button>
 </div>
 
-<div id="main">
-  <div id="header">
-    <h1 id="thread-title">Select a thread</h1>
-    <span id="thread-status"></span>
-  </div>
-  <div id="messages">
-    <div id="empty-state">
-      <div class="icon">💬</div>
-      <div>Select or create a thread to begin</div>
+<!-- ── Layout ──────────────────────────────── -->
+<div id="layout">
+
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <div id="sidebar-tabs">
+      <div class="stab active" id="tab-threads" onclick="switchTab('threads')">Threads</div>
+      <div class="stab" id="tab-agents" onclick="switchTab('agents')">Agents</div>
     </div>
+    <div id="thread-pane" class="visible"></div>
+    <div id="agent-pane"></div>
   </div>
-  <div id="compose" style="display:none">
-    <textarea id="compose-input" rows="1" placeholder="Send a system message..." onkeydown="handleKey(event)"></textarea>
-    <button onclick="sendSystemMessage()">Send</button>
+
+  <!-- Main -->
+  <div id="main">
+    <div id="thread-header" style="display:none">
+      <h2 id="thread-title"></h2>
+      <select id="state-select" onchange="changeState(this.value)">
+        <option value="discuss">discuss</option>
+        <option value="implement">implement</option>
+        <option value="review">review</option>
+        <option value="done">done</option>
+      </select>
+      <button id="btn-close-thread" onclick="closeThread()">Close</button>
+    </div>
+
+    <div id="messages">
+      <div id="empty-state">
+        <div class="es-icon">💬</div>
+        <div class="es-title">No thread selected</div>
+        <div class="es-sub">Create or select a thread to start watching the conversation</div>
+        </div>
+        </div>
+        
+        <div id="compose">
+          <input id="compose-author" type="text" value="human" placeholder="author" />
+          <textarea id="compose-input" rows="1" placeholder="Send a system message… (Enter to send, Shift+Enter for newline)"
+            oninput="autoResize(this)" onkeydown="handleKey(event)"></textarea>
+          <button id="btn-send" onclick="sendMessage()" title="Send">➤</button>
+        </div>
+        </div>
+        </div>
+<!-- ── New thread modal ─────────────────────── -->
+<div id="modal-overlay" onclick="closeModal(event)">
+  <div id="modal">
+    <h3>✦ Create New Thread</h3>
+    <input id="modal-topic" type="text" placeholder="Thread topic…" onkeydown="if(event.key==='Enter') submitModal()" />
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="submitModal()">Create</button>
+    </div>
   </div>
 </div>
 
 <script>
+    // ═══════════════════════════════════════════════
+    // State
+    // ═══════════════════════════════════════════════
   let activeThreadId = null;
+    let activeThreadStatus = 'discuss';
   let lastSeq = 0;
-  let threads = [];
+    let typingTimers = {};   // agent_id -> timer
+    let isConnected = false;
 
-  // ── Bootstrap ──────────────────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════
+    // Bootstrap
+    // ═══════════════════════════════════════════════
+    (async function init() {
+      await refreshThreads();
+      await refreshAgents();
+      startSSE();
+      setInterval(refreshAgents, 12000);
+    })();
 
-  async function init() {
-    await refreshThreads();
-    await refreshAgents();
-    listenSSE();
-    setInterval(refreshAgents, 15000);
+    // ═══════════════════════════════════════════════
+    // SSE
+    // ═══════════════════════════════════════════════
+    function startSSE() {
+      const es = new EventSource('/events');
+      es.onopen = () => setConnected(true);
+      es.onerror = () => { setConnected(false); setTimeout(startSSE, 3000); es.close(); };
+
+    es.onmessage = async (e) => {
+      const ev = JSON.parse(e.data);
+      const p = ev.payload;
+
+    if (ev.type === 'msg.new') {
+      if (p.thread_id === activeThreadId) await loadNewMessages();
+      await refreshThreads();  // update sidebar counts
+    }
+    if (ev.type === 'thread.new' || ev.type === 'thread.state' || ev.type === 'thread.closed') {
+      await refreshThreads();
+    }
+    if (ev.type === 'agent.online' || ev.type === 'agent.offline') {
+      await refreshAgents();
+      }
+      if (ev.type === 'agent.typing' && p.thread_id === activeThreadId) {
+        if (p.is_typing) showTyping(p.agent_id);
+        else hideTyping(p.agent_id);
+      }
+    };
   }
 
-  // ── API helpers ────────────────────────────────────────────────────────────
+    function setConnected(v) {
+      isConnected = v;
+      const dot = document.getElementById('status-dot');
+      const label = document.getElementById('status-label');
+      dot.style.background = v ? 'var(--green)' : 'var(--red)';
+      dot.style.boxShadow = v ? '0 0 8px var(--green)' : '0 0 8px var(--red)';
+      label.textContent = v ? 'Connected' : 'Reconnecting…';
+    }
 
-  async function api(path, opts={}) {
+    // ═══════════════════════════════════════════════
+    // API
+    // ═══════════════════════════════════════════════
+    async function api(path, opts = {}) {
+      try {
     const r = await fetch(path, { headers: {'Content-Type':'application/json'}, ...opts });
     return r.json();
+    } catch { return null; }
   }
 
-  // ── Threads ────────────────────────────────────────────────────────────────
-
+    // ═══════════════════════════════════════════════
+    // Threads
+    // ═══════════════════════════════════════════════
   async function refreshThreads() {
-    threads = await api('/api/threads');
-    const list = document.getElementById('thread-list');
-    list.innerHTML = threads.map(t => `
-      <div class="thread-item ${t.id === activeThreadId ? 'active' : ''}" onclick="selectThread('${t.id}','${escHtml(t.topic)}','${t.status}')">
-        <div class="topic">${escHtml(t.topic)}</div>
-        <div class="status"><span class="badge badge-${t.status}">${t.status}</span></div>
-      </div>
-    `).join('');
-  }
-
-  async function selectThread(id, topic, status) {
-    activeThreadId = id; lastSeq = 0;
-    document.getElementById('thread-title').textContent = topic;
-    document.getElementById('thread-status').innerHTML = `<span class="badge badge-${status}">${status}</span>`;
-    document.getElementById('messages').innerHTML = '';
-    document.getElementById('empty-state') && document.getElementById('empty-state').remove();
-    document.getElementById('compose').style.display = 'flex';
-    await refreshThreads();
-    await loadMessages();
-  }
-
-  async function loadMessages() {
-    if (!activeThreadId) return;
-    const msgs = await api(`/api/threads/${activeThreadId}/messages?after_seq=${lastSeq}&limit=200`);
-    msgs.forEach(appendMessage);
-    if (msgs.length) lastSeq = msgs[msgs.length-1].seq;
-  }
-
-  function appendMessage(m) {
-    const box = document.getElementById('messages');
-    const div = document.createElement('div');
-    div.className = `msg-bubble msg-${m.role}`;
-    div.innerHTML = `<div>${escHtml(m.content)}</div><div class="msg-meta">${m.author} · seq ${m.seq}</div>`;
-    box.appendChild(div);
-    box.scrollTop = box.scrollHeight;
-  }
-
-  async function promptNewThread() {
-    const topic = prompt('Thread topic:');
-    if (!topic) return;
-    // Call REST to create thread (via MCP tool is also fine, simplified here)
-    const r = await api('/api/threads', { method: 'POST', body: JSON.stringify({topic}) });
-    await refreshThreads();
-  }
-
-  // ── Compose ────────────────────────────────────────────────────────────────
-
-  async function sendSystemMessage() {
-    const input = document.getElementById('compose-input');
-    const content = input.value.trim();
-    if (!content || !activeThreadId) return;
-    input.value = '';
-    await api(`/api/threads/${activeThreadId}/messages`, {
-      method: 'POST',
-      body: JSON.stringify({ author: 'human', role: 'system', content }),
+    const threads = await api('/api/threads') || [];
+    const pane = document.getElementById('thread-pane');
+    pane.innerHTML = threads.length ? '' : `
+    <div style="padding:24px 16px;color:var(--text-3);font-size:13px;text-align:center">
+      No threads yet.<br/>Click <strong>+ New Thread</strong> to start.
+    </div>`;
+    threads.forEach(t => {
+      const div = document.createElement('div');
+      div.className = `thread-item${t.id === activeThreadId ? ' active' : ''}`;
+      div.id = `ti-${t.id}`;
+      div.onclick = () => selectThread(t.id, t.topic, t.status);
+      div.innerHTML = `
+      <div class="ti-topic">${esc(t.topic)}</div>
+      <div class="ti-meta">
+        <span class="badge badge-${t.status}">${t.status}</span>
+        <span>${timeAgo(t.created_at)}</span>
+      </div>`;
+      pane.appendChild(div);
     });
   }
 
+  async function selectThread(id, topic, status) {
+    activeThreadId = id;
+    activeThreadStatus = status;
+    lastSeq = 0;
+
+    // Sidebar highlight
+    document.querySelectorAll('.thread-item').forEach(el => el.classList.remove('active'));
+    const ti = document.getElementById(`ti-${id}`);
+    if (ti) ti.classList.add('active');
+
+    // Header
+    document.getElementById('thread-header').style.display = 'flex';
+    document.getElementById('thread-title').textContent = topic;
+          document.getElementById('state-select').value = status;
+          document.getElementById('compose').classList.add('visible');
+
+          // Clear messages
+          const box = document.getElementById('messages');
+          box.innerHTML = '';
+
+          // Load history
+          const msgs = await api(`/api/threads/${id}/messages?after_seq=0&limit=300`) || [];
+          msgs.forEach(appendBubble);
+          if (msgs.length) lastSeq = msgs[msgs.length - 1].seq;
+          scrollBottom();
+        }
+
+        async function loadNewMessages() {
+          if (!activeThreadId) return;
+          const msgs = await api(`/api/threads/${activeThreadId}/messages?after_seq=${lastSeq}&limit=100`) || [];
+          msgs.forEach(appendBubble);
+          if (msgs.length) LastSeq = msgs[msgs.length - 1].seq; // keep updating
+          msgs.forEach(m => { lastSeq = Math.max(lastSeq, m.seq); });
+          if (msgs.length) scrollBottom();
+        }
+
+        async function changeState(state) {
+          if (!activeThreadId) return;
+          await api(`/api/threads/${activeThreadId}/state`, {
+            method: 'POST', body: JSON.stringify({ state })
+          });
+        }
+
+    async function closeThread() {
+    if (!activeThreadId) return;
+    const summary = prompt('Optional summary for this thread (leave blank to skip):');
+    await api(`/api/threads/${activeThreadId}/close`, {
+      method: 'POST', body: JSON.stringify({ summary: summary || null })
+    });
+    await refreshThreads();
+  }
+
+    // ═══════════════════════════════════════════════
+    // Messages
+    // ═══════════════════════════════════════════════
+    function appendBubble(m) {
+    const box = document.getElementById('messages');
+    const group = document.createElement('div');
+    const align = m.role === 'assistant' ? 'right' : m.role === 'system' ? 'center' : 'left';
+    group.className = `msg-group ${align}`;
+
+    const authorLabel = m.role !== 'system'
+      ? `<div class="msg-author">${esc(m.author)}</div>` : '';
+
+    const time = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const meta = `<div class="bubble-meta">seq ${m.seq} · ${time}</div>`;
+
+    group.innerHTML = `
+    ${authorLabel}
+    <div class="bubble ${m.role}">${esc(m.content).replace(/\n/g, '<br/>')}</div>
+    ${m.role !== 'system' ? meta : ''}`;
+    box.appendChild(group);
+  }
+
+    // ── Typing indicator ────────────────────────────
+    function showTyping(agentId) {
+      const box = document.getElementById('messages');
+      let el = document.getElementById(`typing-${agentId}`);
+      if (!el) {
+        const group = document.createElement('div');
+        group.className = 'msg-group left';
+        group.id = `typing-${agentId}`;
+        group.innerHTML = `<div class="msg-author">${esc(agentId.slice(0, 8))}… is typing</div>
+      <div class="typing-bubble"><span></span><span></span><span></span></div>`;
+        box.appendChild(group);
+        scrollBottom();
+      }
+      clearTimeout(typingTimers[agentId]);
+      typingTimers[agentId] = setTimeout(() => hideTyping(agentId), 8000);
+  }
+
+    function hideTyping(agentId) {
+      const el = document.getElementById(`typing-${agentId}`);
+      if (el) el.remove();
+    }
+
+    // ═══════════════════════════════════════════════
+    // Compose
+    // ═══════════════════════════════════════════════
+    async function sendMessage() {
+    const input = document.getElementById('compose-input');
+    const author = document.getElementById('compose-author').value.trim() || 'human';
+    const content = input.value.trim();
+    if (!content || !activeThreadId) return;
+    input.value = '';
+    autoResize(input);
+
+    const m = await api(`/api/threads/${activeThreadId}/messages`, {
+      method: 'POST',
+    body: JSON.stringify({ author, role: 'system', content }),
+  });
+    if (m) { lastSeq = Math.max(lastSeq, m.seq); appendBubble({ ...m, created_at: new Date().toISOString() }); scrollBottom(); }
+  }
+
   function handleKey(e) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendSystemMessage(); }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   }
 
-  // ── Agents ─────────────────────────────────────────────────────────────────
+    function autoResize(el) {
+      el.style.height = 'auto';
+      el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+    }
 
+    // ═══════════════════════════════════════════════
+    // Agents
+    // ═══════════════════════════════════════════════
   async function refreshAgents() {
-    const agents = await api('/api/agents');
-    document.getElementById('agent-list').innerHTML = agents.map(a => `
-      <div class="agent-row">
-        <div class="dot ${a.is_online ? 'dot-online' : 'dot-offline'}"></div>
-        <span>${escHtml(a.name)}</span>
+    const agents = await api('/api/agents') || [];
+    const pane = document.getElementById('agent-pane');
+    pane.innerHTML = agents.length ? '' : `
+    <div style="padding:24px 16px;color:var(--text-3);font-size:13px;text-align:center">
+      No agents registered yet.
+    </div>`;
+    agents.forEach(a => {
+      const div = document.createElement('div');
+      div.className = 'agent-item';
+      div.innerHTML = `
+      <div class="agent-avatar">${esc(a.name[0].toUpperCase())}</div>
+      <div style="min-width:0">
+        <div class="agent-name">${esc(a.name)}</div>
+        <div class="agent-desc">${esc(a.description || '—')}</div>
       </div>
-    `).join('') || '<div style="color:#484f58;font-size:12px;">No agents registered</div>';
+      <div class="online-dot ${a.is_online ? 'on' : 'off'}" title="${a.is_online ? 'Online' : 'Offline'}"></div>`;
+    pane.appendChild(div);
+  });
+
+          // Update tab label
+          const online = agents.filter(a => a.is_online).length;
+          document.getElementById('tab-agents').textContent =
+            `Agents${online ? ' (' + online + ')' : ''}`;
+        }
+
+        // ═══════════════════════════════════════════════
+        // Sidebar tabs
+        // ═══════════════════════════════════════════════
+        function switchTab(tab) {
+          document.getElementById('thread-pane').classList.toggle('visible', tab === 'threads');
+          document.getElementById('agent-pane').classList.toggle('visible', tab === 'agents');
+          document.getElementById('tab-threads').classList.toggle('active', tab === 'threads');
+          document.getElementById('tab-agents').classList.toggle('active', tab === 'agents');
+        }
+
+    // ═══════════════════════════════════════════════
+    // Modal
+    // ═══════════════════════════════════════════════
+    function openModal() {
+      document.getElementById('modal-overlay').classList.add('visible');
+      setTimeout(() => document.getElementById('modal-topic').focus(), 100);
+    }
+
+    function closeModal(e) {
+      if (!e || e.target === document.getElementById('modal-overlay'))
+        document.getElementById('modal-overlay').classList.remove('visible');
+    }
+
+  async function submitModal() {
+    const topic = document.getElementById('modal-topic').value.trim();
+    if (!topic) return;
+    document.getElementById('modal-topic').value = '';
+    closeModal();
+    const t = await api('/api/threads', { method: 'POST', body: JSON.stringify({ topic }) });
+    if (t) {
+      await refreshThreads();
+      selectThread(t.id, t.topic, t.status);
+    }
   }
 
-  // ── SSE ────────────────────────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════
+    // Extras: thread state & close (REST shims)
+    // ═══════════════════════════════════════════════
+    // Extend the REST API with two extra POST endpoints that main.py may serve later.
+    // If they 404, we silently ignore — the MCP tool path is the canonical way.
 
-  function listenSSE() {
-    const es = new EventSource('/events');
-    es.onmessage = async (e) => {
-      const ev = JSON.parse(e.data);
-      if (ev.type === 'msg.new' && ev.payload.thread_id === activeThreadId) {
-        await loadMessages();
-      }
-      if (ev.type === 'thread.new' || ev.type === 'thread.state' || ev.type === 'thread.closed') {
-        await refreshThreads();
-      }
-      if (ev.type === 'agent.online' || ev.type === 'agent.offline') {
-        await refreshAgents();
-      }
-    };
-    es.onerror = () => setTimeout(listenSSE, 3000);
+    // ═══════════════════════════════════════════════
+    // Utilities
+    // ═══════════════════════════════════════════════
+    function esc(s) {
+      return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function scrollBottom() {
+      const box = document.getElementById('messages');
+      requestAnimationFrame(() => box.scrollTop = box.scrollHeight);
   }
 
-  // ── Util ───────────────────────────────────────────────────────────────────
-
-  function escHtml(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  }
-
-  init();
+    function timeAgo(iso) {
+      if (!iso) return '';
+      const diff = (Date.now() - new Date(iso)) / 1000;
+      if (diff < 60) return 'just now';
+      if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+      if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+      return new Date(iso).toLocaleDateString();
+    }
 </script>
 </body>
 </html>
