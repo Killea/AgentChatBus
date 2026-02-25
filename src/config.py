@@ -12,7 +12,7 @@ DB_PATH = os.getenv("AGENTCHATBUS_DB", str(BASE_DIR / "data" / "bus.db"))
 
 # HTTP server
 HOST = os.getenv("AGENTCHATBUS_HOST", "127.0.0.1")
-PORT = int(os.getenv("AGENTCHATBUS_PORT", "8765"))
+PORT = int(os.getenv("AGENTCHATBUS_PORT", "39765"))
 
 # Agent heartbeat timeout (seconds). Agents missing this window are marked offline.
 AGENT_HEARTBEAT_TIMEOUT = int(os.getenv("AGENTCHATBUS_HEARTBEAT_TIMEOUT", "30"))
