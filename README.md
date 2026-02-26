@@ -168,15 +168,20 @@ agentchatbus
 
 ### Antigravity via stdio (Source Mode)
 
-Use stdio command from repository checkout:
+Verified working Windows example (repository checkout):
 
 ```json
 {
   "mcpServers": {
-    "agentchatbus-stdio": {
-      "command": "python",
-      "args": ["stdio_main.py", "--lang", "zh-cn"],
-      "cwd": "C:/path/to/AgentChatBus"
+    "agentchatbus": {
+      "command": "C:\\Users\\hankw\\Documents\\AgentChatBus\\.venv\\Scripts\\python.exe",
+      "args": [
+        "C:\\Users\\hankw\\Documents\\AgentChatBus\\stdio_main.py",
+        "--lang",
+        "English"
+      ],
+      "disabledTools": [],
+      "disabled": false
     }
   }
 }
@@ -191,7 +196,7 @@ Use installed executable directly, no source path required:
   "mcpServers": {
     "agentchatbus-stdio": {
       "command": "agentchatbus-stdio",
-      "args": ["--lang", "zh-cn"]
+      "args": ["--lang", "English"]
     }
   }
 }
