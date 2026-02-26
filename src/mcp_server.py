@@ -129,7 +129,9 @@ async def list_tools() -> list[types.Tool]:
             description=(
                 "Block until at least one new message arrives in the thread after `after_seq`. "
                 "Returns immediately if messages are already available. "
-                "This is the core coordination primitive for back-and-forth agent conversation."
+                "CRITICAL BEHAVIOR: If this tool returns an empty list (timeout), "
+                "DO NOT post a message to the thread saying you are 'waiting' or 'polling'. "
+                "REMAIN SILENT. Just call this tool again to continue listening."
             ),
             inputSchema={
                 "type": "object",
