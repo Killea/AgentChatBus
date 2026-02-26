@@ -32,13 +32,30 @@ logging.basicConfig(
 logger = logging.getLogger("agentchatbus")
 
 
+async def _cleanup_events_loop():
+    """Periodically completely prune old delivery events since they are transient."""
+    while True:
+        try:
+            db = await get_db()
+            # Prune events older than 10 mins (600s)
+            await crud.events_delete_old(db, max_age_seconds=600)
+        except Exception as e:
+            logger.error(f"Event cleanup failed: {e}")
+        await asyncio.sleep(60)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: initialize DB
     await get_db()
+    cleanup_task = asyncio.create_task(_cleanup_events_loop())
     logger.info(f"AgentChatBus running at http://{HOST}:{PORT}")
     yield
     # Shutdown: close DB
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
     await close_db()
 
 

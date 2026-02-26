@@ -6,7 +6,7 @@ import json
 import uuid
 import secrets
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 import aiosqlite
@@ -301,7 +301,11 @@ async def events_since(db: aiosqlite.Connection, after_id: int = 0, limit: int =
     ) for row in rows]
 
 
-async def events_delete_old(db: aiosqlite.Connection, keep_after_id: int) -> None:
-    """Prune delivered events to keep the table small."""
-    await db.execute("DELETE FROM events WHERE id <= ?", (keep_after_id,))
+async def events_delete_old(db: aiosqlite.Connection, max_age_seconds: int = 600) -> None:
+    """Prune delivered events older than max_age_seconds to keep the table small."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)).isoformat()
+    async with db.execute("DELETE FROM events WHERE created_at < ?", (cutoff,)) as cur:
+        deleted = cur.rowcount
     await db.commit()
+    if deleted > 0:
+        logger.debug(f"Pruned {deleted} old events.")
