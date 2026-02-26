@@ -12,7 +12,7 @@ AgentChatBus 的核心作用是一个 **常驻的通信总线 (Chat Bus)**，负
 - **传输层协议**：**SSE (Server-Sent Events) + HTTP**。
   - *原因*：stdio 模式通常用于 IDE 拉起的子进程（用完即走，与单个 IDE 强绑定）。跨多个 Agent 和独立 GUI 的“总线”必须要常驻进程，因此 HTTP/SSE 是唯一的选择。
 - **数据存储**：SQLite。轻量、无需额外数据库服务，内置于 Python，非常适合跨进程的数据共享与持久化。
-- **GUI 框架**：PySide6 / PyQt。与 Server 共享同一种语言层生态，直接读取同一份 SQLite 数据库无痛且高效。
+- **Web 控制台**：内嵌于 MCP HTTP 进程，浏览器访问 `/` 即可使用，无需独立 GUI 框架（原计划 PySide6/PyQt 已替换为内嵌 Web 方案，见第 5 节）。
 
 ## 3. 数据模型设计 (基于 SQLite 的核心表)
 主要包含三张表：
@@ -46,7 +46,6 @@ MCP 规范定义了三类能力类型，我们逐一实现：
 **Agent 身份与在线状态（Agent Identity & Presence）**⚠️ 原 Plan 缺失项
 > 这是整个系统保证"自动互聊不死循环、状态可见、A2A Agent Card 可动态生成"的前提基础。
 
-- `agent_register(ide, model, description?, capabilities?)` -> `{agent_id, token}`（注册 Agent 入总线）
 - `agent_register(ide, model, description?, capabilities?)` -> `{agent_id, token}`（注册 Agent 入总线）
 - `agent_heartbeat(agent_id, token)` -> `ok`（保活心跳，超时未发送则视为离线）
 - `agent_unregister(agent_id, token)` -> `ok`（主动注销）

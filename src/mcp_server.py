@@ -282,11 +282,15 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
         }))]
 
     if name == "thread_set_state":
-        await crud.thread_set_state(db, arguments["thread_id"], arguments["state"])
+        ok = await crud.thread_set_state(db, arguments["thread_id"], arguments["state"])
+        if not ok:
+            return [types.TextContent(type="text", text=json.dumps({"error": "Thread not found", "ok": False}))]
         return [types.TextContent(type="text", text=json.dumps({"ok": True}))]
 
     if name == "thread_close":
-        await crud.thread_close(db, arguments["thread_id"], arguments.get("summary"))
+        ok = await crud.thread_close(db, arguments["thread_id"], arguments.get("summary"))
+        if not ok:
+            return [types.TextContent(type="text", text=json.dumps({"error": "Thread not found", "ok": False}))]
         return [types.TextContent(type="text", text=json.dumps({"ok": True}))]
 
     # ── Message tools ──────────────────────────────────────────────────────────
@@ -435,6 +439,12 @@ async def list_resources() -> list[types.Resource]:
                 description=f"Closed-thread summary for '{t.topic}'",
                 mimeType="text/plain",
             ))
+        resources.append(types.Resource(
+            uri=f"chat://threads/{t.id}/state",
+            name=f"State: {t.topic[:40]}",
+            description=f"Current state snapshot for thread '{t.topic}' (status, latest_seq).",
+            mimeType="application/json",
+        ))
     return resources
 
 
@@ -494,6 +504,21 @@ async def read_resource(uri: types.AnyUrl) -> str:
         if t is None:
             return "Thread not found."
         return t.summary or "(No summary recorded for this thread.)"
+
+    # chat://threads/{id}/state
+    if "/state" in uri_str:
+        thread_id = uri_str.split("/")[3]
+        t = await crud.thread_get(db, thread_id)
+        if t is None:
+            return "Thread not found."
+        latest_seq = await crud.thread_latest_seq(db, thread_id)
+        return json.dumps({
+            "thread_id": t.id,
+            "topic": t.topic,
+            "status": t.status,
+            "latest_seq": latest_seq,
+            "created_at": t.created_at.isoformat(),
+        }, indent=2)
 
     return f"Unknown resource URI: {uri_str}"
 

@@ -97,7 +97,7 @@ python -m examples.agent_a --topic "异步 Python 最佳实践" --rounds 3
 | `AGENTCHATBUS_PORT` | `39765` | HTTP 端口。与其他服务冲突时修改。 |
 | `AGENTCHATBUS_DB` | `data/bus.db` | SQLite 数据库文件路径。 |
 | `AGENTCHATBUS_HEARTBEAT_TIMEOUT` | `30` | Agent 心跳超时秒数，超时后标记为离线。 |
-| `AGENTCHATBUS_WAIT_TIMEOUT` | `60` | `msg_wait` 最长阻塞秒数，超时返回空列表。 |
+| `AGENTCHATBUS_WAIT_TIMEOUT` | `300` | `msg_wait` 最长阻塞秒数，超时返回空列表。 |
 
 ### 示例：自定义端口与公网地址
 
@@ -184,17 +184,24 @@ MCP POST 端点： http://127.0.0.1:39765/mcp/messages
 | `agent_list` | — | 列出所有 Agent 及在线状态。 |
 | `agent_set_typing` | `thread_id`, `agent_id`, `is_typing` | 广播"正在输入"信号（反映在 Web 控制台）。 |
 
+### 总线配置
+
+| Tool | 必填参数 | 说明 |
+|---|---|---|
+| `bus_get_config` | — | 获取总线级配置，包括 `preferred_language`、版本号与端点地址。Agent 应在启动时调用一次。 |
+
 ---
 
 ## 📚 MCP Resources 参考
 
 | URI | 说明 |
 |---|---|
+| `chat://bus/config` | 总线级配置，包括 `preferred_language`、版本号与端点地址。Agent 应在启动时读取，以遵守语言偏好设置。 |
 | `chat://agents/active` | 所有已注册 Agent 及能力声明。 |
 | `chat://threads/active` | 所有线程的摘要列表（topic、state、created_at）。 |
 | `chat://threads/{id}/transcript` | 完整对话历史（纯文本）。用于为新加入的 Agent 补全上下文。 |
 | `chat://threads/{id}/summary` | `thread_close` 时写入的结束摘要，Token 节省版。 |
-| `chat://threads/{id}/state` | 当前状态快照：最新 seq、参与者列表、状态机节点。 |
+| `chat://threads/{id}/state` | 当前状态快照：`status`、`latest_seq`、`topic` 和 `created_at`。比拉取完整记录更轻量。 |
 
 ---
 

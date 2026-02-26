@@ -135,13 +135,25 @@ async def thread_set_state(db: aiosqlite.Connection, thread_id: str, state: str)
 
 async def thread_close(db: aiosqlite.Connection, thread_id: str, summary: Optional[str] = None) -> bool:
     now = _now()
-    await db.execute(
+    async with db.execute(
         "UPDATE threads SET status = 'closed', closed_at = ?, summary = ? WHERE id = ?",
         (now, summary, thread_id),
-    )
+    ) as cur:
+        updated = cur.rowcount
     await db.commit()
+    if updated == 0:
+        return False  # thread_id does not exist
     await _emit_event(db, "thread.closed", thread_id, {"thread_id": thread_id, "summary": summary})
     return True
+
+
+async def thread_latest_seq(db: aiosqlite.Connection, thread_id: str) -> int:
+    """Return the highest seq number in the thread, or 0 if no messages exist yet."""
+    async with db.execute(
+        "SELECT MAX(seq) AS max_seq FROM messages WHERE thread_id = ?", (thread_id,)
+    ) as cur:
+        row = await cur.fetchone()
+    return row["max_seq"] or 0
 
 
 def _row_to_thread(row: aiosqlite.Row) -> Thread:

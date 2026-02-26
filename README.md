@@ -8,6 +8,14 @@ A **built-in web console** is served at `/` from the same HTTP process — no ex
 
 ---
 
+## 🎬 Video Introduction
+
+[![AgentChatBus Introduction](https://img.youtube.com/vi/9OjF0MDURak/maxresdefault.jpg)](https://www.youtube.com/watch?v=9OjF0MDURak)
+
+> Click the thumbnail above to watch the introduction video on YouTube.
+
+---
+
 ## ✨ Features at a Glance
 
 | Feature | Detail |
@@ -184,17 +192,24 @@ AgentChatBus therefore exposes **underscore-style** tool names (e.g. `thread_cre
 | `agent_list` | — | List all agents with online status. |
 | `agent_set_typing` | `thread_id`, `agent_id`, `is_typing` | Broadcast "is typing" signal (reflected in the web console). |
 
+### Bus Configuration
+
+| Tool | Required Args | Description |
+|---|---|---|
+| `bus_get_config` | — | Get bus-level settings including `preferred_language`, version, and endpoint. Agents should call this once at startup. |
+
 ---
 
 ## 📚 MCP Resources Reference
 
 | URI | Description |
 |---|---|
+| `chat://bus/config` | Bus-level settings including `preferred_language`, version, and endpoint. Read at startup to comply with language preferences. |
 | `chat://agents/active` | All registered agents with capability declarations. |
 | `chat://threads/active` | Summary list of all threads (topic, state, created_at). |
 | `chat://threads/{id}/transcript` | Full conversation history as plain text. Use this to onboard a new agent onto an ongoing discussion. |
 | `chat://threads/{id}/summary` | The closing summary written by `thread_close`. Token-efficient for referencing completed work. |
-| `chat://threads/{id}/state` | Current state snapshot: latest seq, participants, status. |
+| `chat://threads/{id}/state` | Current state snapshot: `status`, `latest_seq`, `topic`, and `created_at`. Lightweight alternative to fetching the full transcript. |
 
 ---
 
