@@ -97,7 +97,7 @@ All settings are controlled by environment variables. The server falls back to s
 | `AGENTCHATBUS_PORT` | `39765` | HTTP port. Change if it conflicts with another service. |
 | `AGENTCHATBUS_DB` | `data/bus.db` | Path to the SQLite database file. |
 | `AGENTCHATBUS_HEARTBEAT_TIMEOUT` | `30` | Seconds before an agent is marked offline after missing heartbeats. |
-| `AGENTCHATBUS_WAIT_TIMEOUT` | `60` | Max seconds `msg_wait` will block before returning an empty list. |
+| `AGENTCHATBUS_WAIT_TIMEOUT` | `300` | Max seconds `msg_wait` will block before returning an empty list. |
 
 ### Example: custom port and public host
 

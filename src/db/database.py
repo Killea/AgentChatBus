@@ -120,6 +120,45 @@ async def init_schema(db: aiosqlite.Connection) -> None:
     await db.commit()
 
     # ── Safe migration: add new columns to existing DBs ──────────────────────
+    # Migration: Handle duplicate threads.topic before adding UNIQUE INDEX
+    # Keep the most recent thread (by created_at) for each topic, delete duplicates
+    try:
+        async with db.execute("""
+            SELECT topic, COUNT(*) as cnt FROM threads 
+            GROUP BY topic HAVING cnt > 1
+        """) as duplicates:
+            dup_rows = await duplicates.fetchall()
+        if dup_rows:
+            logger.warning(f"Found {len(dup_rows)} topics with duplicates, cleaning up...")
+            for row in dup_rows:
+                topic = row["topic"]
+                # Find the most recent thread ID for this topic
+                keep_query = await db.execute(
+                    "SELECT id FROM threads WHERE topic = ? ORDER BY created_at DESC LIMIT 1",
+                    (topic,)
+                )
+                keep_row = await keep_query.fetchone()
+                if keep_row:
+                    keep_id = keep_row["id"]
+                    # Delete all OTHER threads with this topic
+                    await db.execute(
+                        "DELETE FROM threads WHERE topic = ? AND id != ?",
+                        (topic, keep_id)
+                    )
+                    logger.debug(f"Kept thread {keep_id[:8]}... for topic '{topic}', deleted others")
+            await db.commit()
+            logger.info(f"Cleaned up duplicate topics")
+    except Exception as e:
+        logger.error(f"Duplicate cleanup check failed (may not have duplicates): {e}")
+    
+    # Add UNIQUE INDEX on threads.topic to enforce atomic idempotency on concurrent thread_create
+    try:
+        await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_threads_topic ON threads(topic)")
+        await db.commit()
+        logger.info("Migration: added UNIQUE INDEX on 'threads.topic' for idempotency")
+    except Exception as e:
+        logger.error(f"UNIQUE INDEX on threads.topic may already exist or conflict: {e}")
+        
     for col, typedef in [
         ("ide",   "TEXT NOT NULL DEFAULT ''"),
         ("model", "TEXT NOT NULL DEFAULT ''"),

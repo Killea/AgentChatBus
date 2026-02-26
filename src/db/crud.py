@@ -6,6 +6,7 @@ import json
 import uuid
 import secrets
 import logging
+import sqlite3
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
@@ -15,6 +16,20 @@ from src.db.models import Thread, Message, AgentInfo, Event
 from src.config import AGENT_HEARTBEAT_TIMEOUT
 
 logger = logging.getLogger(__name__)
+
+GLOBAL_SYSTEM_PROMPT = """**SYSTEM DIRECTIVE: ACTIVE AGENT COLLABORATION WORKSPACE**
+
+Welcome to this Thread. You are participating in a multi-agent workspace sharing the same underlying codebase and execution environment. You MUST collaborate proactively and keep progress moving.
+
+1. Shared Context: All agents are using the same repository, file system, memory state, and runtime environment.
+2. Active Execution: Do not stay passive. Propose concrete next steps, claim work, and execute non-destructive changes promptly.
+3. Safe Coordination: Before destructive commands or broad refactors, briefly announce intent and wait for feedback. For normal scoped edits, coordinate quickly and continue.
+4. Conflict Avoidance: Announce target files/modules before editing. Avoid simultaneous edits to the same file.
+5. Discussion Cadence: Keep the thread active with meaningful updates. If waiting too long, send a short structured update (`status`, `blocker`, `next action`) and optionally `@` a relevant online agent.
+6. msg_wait Behavior: Use `msg_wait` for listening, but do not remain silent forever. If repeated timeouts occur, post a useful progress message instead of idle chatter.
+7. Message Quality: Avoid noise like "still waiting". Every message should include new information, a decision, or a concrete action request.
+
+Operate like a delivery-focused engineering team: communicate clearly, move work forward, and resolve blockers quickly."""
 
 
 def _now() -> str:
@@ -30,7 +45,16 @@ def _parse_dt(s: str) -> datetime:
 # ─────────────────────────────────────────────
 
 async def next_seq(db: aiosqlite.Connection) -> int:
-    """Atomically increment and return the next global sequence number."""
+    """Atomically increment and return the next global sequence number.
+
+    NOTE: This function commits internally. In the current single-process,
+    single-connection SQLite setup this is safe. If the system is ever
+    expanded to multi-connection or multi-process mode, callers (e.g.
+    msg_post) should manage transaction boundaries themselves to prevent
+    seq leaks (allocated seq with no corresponding message insertion).
+    TODO: Consider removing internal commit and delegating transaction
+    management to callers if connection model changes.
+    """
     async with db.execute(
         "UPDATE seq_counter SET val = val + 1 WHERE id = 1 RETURNING val"
     ) as cur:
@@ -44,25 +68,38 @@ async def next_seq(db: aiosqlite.Connection) -> int:
 # ─────────────────────────────────────────────
 
 async def thread_create(db: aiosqlite.Connection, topic: str, metadata: Optional[dict] = None, system_prompt: Optional[str] = None) -> Thread:
-    # Optional idempotency: if a thread with this exact topic already exists, return it instead of creating a duplicate
-    async with db.execute("SELECT * FROM threads WHERE topic = ? ORDER BY created_at DESC LIMIT 1", (topic,)) as cur:
-        row = await cur.fetchone()
-        if row:
-            logger.info(f"Thread '{topic}' already exists, returning existing thread: {row['id']}")
-            return _row_to_thread(row)
-
+    # Atomic idempotency: use transaction to prevent race condition on concurrent creates with same topic
+    # Strategy: try INSERT first, if UNIQUE constraint fails then SELECT the existing one
     tid = str(uuid.uuid4())
     now = _now()
     meta_json = json.dumps(metadata) if metadata else None
-    await db.execute(
-        "INSERT INTO threads (id, topic, status, created_at, metadata, system_prompt) VALUES (?, ?, 'discuss', ?, ?, ?)",
-        (tid, topic, now, meta_json, system_prompt),
-    )
-    await db.commit()
-    await _emit_event(db, "thread.new", tid, {"thread_id": tid, "topic": topic})
-    logger.info(f"Thread created: {tid} '{topic}'")
-    return Thread(id=tid, topic=topic, status="discuss", created_at=_parse_dt(now),
-                  closed_at=None, summary=None, metadata=meta_json, system_prompt=system_prompt)
+    
+    try:
+        await db.execute(
+            "INSERT INTO threads (id, topic, status, created_at, metadata, system_prompt) VALUES (?, ?, 'discuss', ?, ?, ?)",
+            (tid, topic, now, meta_json, system_prompt),
+        )
+        await db.commit()
+        await _emit_event(db, "thread.new", tid, {"thread_id": tid, "topic": topic})
+        logger.info(f"Thread created: {tid} '{topic}'")
+        return Thread(id=tid, topic=topic, status="discuss", created_at=_parse_dt(now),
+                      closed_at=None, summary=None, metadata=meta_json, system_prompt=system_prompt)
+    except sqlite3.IntegrityError as e:
+        # UNIQUE constraint violation on threads.topic — another thread was created concurrently
+        # Fetch and return the existing thread for idempotency
+        logger.info(f"Thread '{topic}' creation raced (UNIQUE constraint), fetching existing: {e}")
+        async with db.execute("SELECT * FROM threads WHERE topic = ? ORDER BY created_at DESC LIMIT 1", (topic,)) as cur:
+            row = await cur.fetchone()
+            if row:
+                logger.info(f"Thread '{topic}' already exists (from race), returning existing thread: {row['id']}")
+                return _row_to_thread(row)
+        # Fallback if SELECT fails (shouldn't happen, but defensive)
+        logger.error(f"UNIQUE constraint failed but couldn't fetch existing thread for topic '{topic}'")
+        raise
+    except Exception as e:
+        # Other unexpected errors should be re-raised
+        logger.error(f"Unexpected error creating thread '{topic}': {type(e).__name__}: {e}")
+        raise
 
 
 async def thread_get(db: aiosqlite.Connection, thread_id: str) -> Optional[Thread]:
@@ -87,8 +124,11 @@ async def thread_set_state(db: aiosqlite.Connection, thread_id: str, state: str)
     valid = {"discuss", "implement", "review", "done", "closed"}
     if state not in valid:
         raise ValueError(f"Invalid state '{state}'. Must be one of {valid}")
-    await db.execute("UPDATE threads SET status = ? WHERE id = ?", (state, thread_id))
+    async with db.execute("UPDATE threads SET status = ? WHERE id = ?", (state, thread_id)) as cur:
+        updated = cur.rowcount
     await db.commit()
+    if updated == 0:
+        return False  # thread_id does not exist
     await _emit_event(db, "thread.state", thread_id, {"thread_id": thread_id, "state": state})
     return True
 
@@ -160,19 +200,7 @@ async def msg_post(
         content=content, seq=seq, created_at=_parse_dt(now), metadata=meta_json,
         author_id=author_id, author_name=author_name
     )
-GLOBAL_SYSTEM_PROMPT = """**SYSTEM DIRECTIVE: ACTIVE AGENT COLLABORATION WORKSPACE**
 
-Welcome to this Thread. You are participating in a multi-agent workspace sharing the same underlying codebase and execution environment. You MUST collaborate proactively and keep progress moving.
-
-1. Shared Context: All agents are using the same repository, file system, memory state, and runtime environment.
-2. Active Execution: Do not stay passive. Propose concrete next steps, claim work, and execute non-destructive changes promptly.
-3. Safe Coordination: Before destructive commands or broad refactors, briefly announce intent and wait for feedback. For normal scoped edits, coordinate quickly and continue.
-4. Conflict Avoidance: Announce target files/modules before editing. Avoid simultaneous edits to the same file.
-5. Discussion Cadence: Keep the thread active with meaningful updates. If waiting too long, send a short structured update (`status`, `blocker`, `next action`) and optionally `@` a relevant online agent.
-6. msg_wait Behavior: Use `msg_wait` for listening, but do not remain silent forever. If repeated timeouts occur, post a useful progress message instead of idle chatter.
-7. Message Quality: Avoid noise like "still waiting". Every message should include new information, a decision, or a concrete action request.
-
-Operate like a delivery-focused engineering team: communicate clearly, move work forward, and resolve blockers quickly."""
 
 async def msg_list(
     db: aiosqlite.Connection,

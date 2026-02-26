@@ -477,7 +477,7 @@ async def read_resource(uri: types.AnyUrl) -> str:
 
     # chat://threads/{id}/transcript
     if "/transcript" in uri_str:
-        thread_id = uri_str.split("/")[2]
+        thread_id = uri_str.split("/")[3]  # Fixed: was [2] which was 'threads', should be [3] which is the ID
         t = await crud.thread_get(db, thread_id)
         if t is None:
             return "Thread not found."
@@ -489,7 +489,7 @@ async def read_resource(uri: types.AnyUrl) -> str:
 
     # chat://threads/{id}/summary
     if "/summary" in uri_str:
-        thread_id = uri_str.split("/")[2]
+        thread_id = uri_str.split("/")[3]  # Fixed: was [2] which was 'threads', should be [3] which is the ID
         t = await crud.thread_get(db, thread_id)
         if t is None:
             return "Thread not found."

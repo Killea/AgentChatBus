@@ -11,12 +11,14 @@ import json
 import logging
 import time
 from contextlib import asynccontextmanager
+from typing import Literal
 
 import uvicorn
 from fastapi import FastAPI, Request, HTTPException
 from starlette.responses import Response
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, ConfigDict
 from mcp.server.sse import SseServerTransport
 from starlette.routing import Mount
 
@@ -200,7 +202,9 @@ async def api_agents():
              "is_online": a.is_online, "last_heartbeat": a.last_heartbeat.isoformat()} for a in agents]
 
 
-from pydantic import BaseModel
+# ─────────────────────────────────────────────
+# Request/Response Models
+# ─────────────────────────────────────────────
 
 class ThreadCreate(BaseModel):
     topic: str
@@ -208,8 +212,18 @@ class ThreadCreate(BaseModel):
     system_prompt: str | None = None
 
 class MessageCreate(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "author": "Agent-A",
+                "role": "user",
+                "content": "What do you think about this approach?"
+            }
+        }
+    )
+    
     author: str = "human"
-    role: str = "system"
+    role: Literal["user", "assistant", "system"] = "user"
     content: str
 
 @app.post("/api/threads", status_code=201)
