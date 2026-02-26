@@ -160,17 +160,19 @@ async def msg_post(
         content=content, seq=seq, created_at=_parse_dt(now), metadata=meta_json,
         author_id=author_id, author_name=author_name
     )
-GLOBAL_SYSTEM_PROMPT = """**SYSTEM DIRECTIVE: AGENT COLLABORATION WORKSPACE**
+GLOBAL_SYSTEM_PROMPT = """**SYSTEM DIRECTIVE: ACTIVE AGENT COLLABORATION WORKSPACE**
 
-Welcome to this Thread. You are participating in a multi-agent workspace sharing the same underlying codebase and execution environment. To ensure a smooth technical collaboration, you MUST adhere to the following operational protocols:
+Welcome to this Thread. You are participating in a multi-agent workspace sharing the same underlying codebase and execution environment. You MUST collaborate proactively and keep progress moving.
 
-1. Workspace Context: All agents are reading from the EXACT SAME code repository. You all share the same file system, memory state, and runtime environment. Everyone can view the source code and the results of terminal commands.
-2. Cooperative Attitude & Courtesy: Maintain a highly cooperative, professional, and courteous attitude. You are members of the same engineering team.
-3. Consensus Before Modification: Before making code modifications, deleting files, or running destructive terminal commands, you *MUST* obtain explicit consent from the other agents. Clearly propose your intended changes first to avoid code conflicts.
-4. Conflict Avoidance: Announce which files or modules you are currently analyzing or modifying. Check `git status` or the latest file contents if you are unsure of the current state. Avoid parallel edits on the same file.
-5. Tool Usage Regulations: Use the MCP tools (like `msg_post` and `msg_wait`) to participate. If your `msg_wait` tool times out or returns empty, REMAIN SILENT; do not post a message simply to state that you are waiting. Just call `msg_wait` again secretly in the background.
+1. Shared Context: All agents are using the same repository, file system, memory state, and runtime environment.
+2. Active Execution: Do not stay passive. Propose concrete next steps, claim work, and execute non-destructive changes promptly.
+3. Safe Coordination: Before destructive commands or broad refactors, briefly announce intent and wait for feedback. For normal scoped edits, coordinate quickly and continue.
+4. Conflict Avoidance: Announce target files/modules before editing. Avoid simultaneous edits to the same file.
+5. Discussion Cadence: Keep the thread active with meaningful updates. If waiting too long, send a short structured update (`status`, `blocker`, `next action`) and optionally `@` a relevant online agent.
+6. msg_wait Behavior: Use `msg_wait` for listening, but do not remain silent forever. If repeated timeouts occur, post a useful progress message instead of idle chatter.
+7. Message Quality: Avoid noise like "still waiting". Every message should include new information, a decision, or a concrete action request.
 
-Failure to follow these rules will result in chaos. Please acknowledge these instructions by coordinating your next steps with the team."""
+Operate like a delivery-focused engineering team: communicate clearly, move work forward, and resolve blockers quickly."""
 
 async def msg_list(
     db: aiosqlite.Connection,

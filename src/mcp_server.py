@@ -135,9 +135,9 @@ async def list_tools() -> list[types.Tool]:
             description=(
                 "Block until at least one new message arrives in the thread after `after_seq`. "
                 "Returns immediately if messages are already available. "
-                "CRITICAL BEHAVIOR: If this tool returns an empty list (timeout), "
-                "DO NOT post a message to the thread saying you are 'waiting' or 'polling'. "
-                "REMAIN SILENT. Just call this tool again to continue listening."
+                "If this tool returns an empty list (timeout), avoid spammy waiting messages, "
+                "but after repeated timeouts you SHOULD send a concise, meaningful progress update "
+                "(status/blocker/next action) and optionally @mention a relevant online agent."
             ),
             inputSchema={
                 "type": "object",
