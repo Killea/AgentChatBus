@@ -121,21 +121,28 @@ async def msg_post(
     role: str = "user",
     metadata: Optional[dict] = None,
 ) -> Message:
+    # Resolve author: if it's an agent_id (UUID), convert it to the agent's display name
+    actual_author = author
+    async with db.execute("SELECT name FROM agents WHERE id = ?", (author,)) as cur:
+        row = await cur.fetchone()
+        if row:
+            actual_author = row["name"]
+
     mid = str(uuid.uuid4())
     now = _now()
     seq = await next_seq(db)
     meta_json = json.dumps(metadata) if metadata else None
     await db.execute(
         "INSERT INTO messages (id, thread_id, author, role, content, seq, created_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (mid, thread_id, author, role, content, seq, now, meta_json),
+        (mid, thread_id, actual_author, role, content, seq, now, meta_json),
     )
     await db.commit()
     await _emit_event(db, "msg.new", thread_id, {
-        "msg_id": mid, "thread_id": thread_id, "author": author,
+        "msg_id": mid, "thread_id": thread_id, "author": actual_author,
         "role": role, "seq": seq, "content": content[:200],  # truncate for event payload
     })
-    logger.debug(f"Message posted: seq={seq} author={author} thread={thread_id}")
-    return Message(id=mid, thread_id=thread_id, author=author, role=role,
+    logger.debug(f"Message posted: seq={seq} author={actual_author} thread={thread_id}")
+    return Message(id=mid, thread_id=thread_id, author=actual_author, role=role,
                    content=content, seq=seq, created_at=_parse_dt(now), metadata=meta_json)
 
 

@@ -659,7 +659,11 @@ body {
 
       const color = authorColor(m.author);
       const isHuman = m.author === 'human';
-      const initials = m.author.slice(0, 2).toUpperCase();
+      let initials = m.author.slice(0, 2).toUpperCase();
+      if (!isHuman && m.author !== 'system') {
+        const base = m.author.split('(')[0].trim().toUpperCase();
+        initials = base.substring(0, 3);
+      }
       const bgAlpha = `${color}22`;  // ~13% alpha tint for avatar bg
 
       const row = document.createElement('div');
@@ -684,7 +688,8 @@ body {
       let el = document.getElementById(`typing-${agentId}`);
       if (!el) {
         const color = authorColor(agentId);
-        const initials = agentId.slice(0, 2).toUpperCase();
+        const base = agentId.split('(')[0].trim().toUpperCase();
+        const initials = base.substring(0, 3);
         const row = document.createElement('div');
         row.className = 'msg-row msg-row-left';
         row.id = `typing-${agentId}`;

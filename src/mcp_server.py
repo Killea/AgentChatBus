@@ -365,8 +365,14 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
 
     if name == "agent.set_typing":
         db2 = await get_db()
+        actual_author = arguments["agent_id"]
+        async with db2.execute("SELECT name FROM agents WHERE id = ?", (actual_author,)) as cur:
+            row = await cur.fetchone()
+            if row:
+                actual_author = row["name"]
+
         await crud._emit_event(db2, "agent.typing", arguments["thread_id"], {
-            "agent_id": arguments["agent_id"],
+            "agent_id": actual_author,   # Overwrite with resolved name for UI
             "is_typing": arguments["is_typing"],
         })
         return [types.TextContent(type="text", text=json.dumps({"ok": True}))]
