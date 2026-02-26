@@ -573,7 +573,7 @@ body {
           box.innerHTML = '';
 
           // Load history
-          const msgs = await api(`/api/threads/${id}/messages?after_seq=0&limit=300`) || [];
+          const msgs = await api(`/api/threads/${id}/messages?after_seq=0&limit=300&include_system_prompt=1`) || [];
           msgs.forEach(appendBubble);
           if (msgs.length) lastSeq = msgs[msgs.length - 1].seq;
           scrollBottom();
@@ -727,7 +727,7 @@ body {
 
     const m = await api(`/api/threads/${activeThreadId}/messages`, {
       method: 'POST',
-    body: JSON.stringify({ author, role: 'system', content }),
+    body: JSON.stringify({ author, role: 'user', content }),
   });
     if (m) { lastSeq = Math.max(lastSeq, m.seq); appendBubble({ ...m, created_at: new Date().toISOString() }); scrollBottom(); }
   }

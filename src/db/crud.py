@@ -177,6 +177,7 @@ async def msg_list(
     thread_id: str,
     after_seq: int = 0,
     limit: int = 100,
+    include_system_prompt: bool = True,
 ) -> list[Message]:
     async with db.execute(
         "SELECT * FROM messages WHERE thread_id = ? AND seq > ? ORDER BY seq ASC LIMIT ?",
@@ -186,7 +187,7 @@ async def msg_list(
         
     msgs = [_row_to_message(r) for r in rows]
     
-    if after_seq == 0:
+    if include_system_prompt and after_seq == 0:
         # Check if the thread has a custom system_prompt, else use global fallback
         async with db.execute("SELECT system_prompt, created_at FROM threads WHERE id = ?", (thread_id,)) as cur:
             t_row = await cur.fetchone()

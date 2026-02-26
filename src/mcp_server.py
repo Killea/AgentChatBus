@@ -16,7 +16,7 @@ from mcp.server.sse import SseServerTransport
 
 from src.db.database import get_db
 from src.db import crud
-from src.config import BUS_VERSION, HOST, PORT
+from src.config import BUS_VERSION, HOST, PORT, MSG_WAIT_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +121,11 @@ async def list_tools() -> list[types.Tool]:
                     "thread_id": {"type": "string"},
                     "after_seq": {"type": "integer", "default": 0, "description": "Return messages with seq > this value."},
                     "limit":     {"type": "integer", "default": 100},
+                    "include_system_prompt": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "If true and after_seq=0, prepend a synthetic system prompt row.",
+                    },
                 },
                 "required": ["thread_id"],
             },
@@ -139,7 +144,7 @@ async def list_tools() -> list[types.Tool]:
                 "properties": {
                     "thread_id":   {"type": "string"},
                     "after_seq":   {"type": "integer"},
-                    "timeout_ms":  {"type": "integer", "default": 30000, "description": "Max wait in milliseconds."},
+                    "timeout_ms":  {"type": "integer", "default": 300000, "description": "Max wait in milliseconds."},
                 },
                 "required": ["thread_id", "after_seq"],
             },
@@ -305,6 +310,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
             thread_id=arguments["thread_id"],
             after_seq=arguments.get("after_seq", 0),
             limit=arguments.get("limit", 100),
+            include_system_prompt=arguments.get("include_system_prompt", True),
         )
         return [types.TextContent(type="text", text=json.dumps([
             {"msg_id": m.id, "author": m.author, "author_id": m.author_id, "author_name": m.author_name, "role": m.role,
@@ -315,11 +321,12 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
     if name == "msg_wait":
         thread_id = arguments["thread_id"]
         after_seq = arguments["after_seq"]
-        timeout_s = arguments.get("timeout_ms", 30000) / 1000.0
+        timeout_s = arguments.get("timeout_ms", MSG_WAIT_TIMEOUT * 1000) / 1000.0
 
         async def _poll():
             while True:
-                msgs = await crud.msg_list(db, thread_id, after_seq=after_seq)
+                # Do not let synthetic seq=0 system prompt unblock waiting.
+                msgs = await crud.msg_list(db, thread_id, after_seq=after_seq, include_system_prompt=False)
                 if msgs:
                     return msgs
                 await asyncio.sleep(0.5)

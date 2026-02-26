@@ -176,12 +176,18 @@ async def api_threads(status: str | None = None):
 
 
 @app.get("/api/threads/{thread_id}/messages")
-async def api_messages(thread_id: str, after_seq: int = 0, limit: int = 200):
+async def api_messages(thread_id: str, after_seq: int = 0, limit: int = 200, include_system_prompt: bool = False):
     db = await get_db()
     t = await crud.thread_get(db, thread_id)
     if t is None:
         raise HTTPException(status_code=404, detail="Thread not found")
-    msgs = await crud.msg_list(db, thread_id, after_seq=after_seq, limit=limit)
+    msgs = await crud.msg_list(
+        db,
+        thread_id,
+        after_seq=after_seq,
+        limit=limit,
+        include_system_prompt=include_system_prompt,
+    )
     return [{"id": m.id, "author": m.author, "author_id": m.author_id, "author_name": m.author_name, "role": m.role, "content": m.content,
              "seq": m.seq, "created_at": m.created_at.isoformat()} for m in msgs]
 

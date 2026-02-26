@@ -18,5 +18,5 @@ PORT = int(os.getenv("AGENTCHATBUS_PORT", "39765"))
 AGENT_HEARTBEAT_TIMEOUT = int(os.getenv("AGENTCHATBUS_HEARTBEAT_TIMEOUT", "30"))
 
 # SSE long-poll timeout for msg.wait (seconds)
-MSG_WAIT_TIMEOUT = int(os.getenv("AGENTCHATBUS_WAIT_TIMEOUT", "60"))
+MSG_WAIT_TIMEOUT = int(os.getenv("AGENTCHATBUS_WAIT_TIMEOUT", "300"))
 BUS_VERSION = "0.1.0"
