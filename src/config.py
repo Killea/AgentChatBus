@@ -19,11 +19,4 @@ AGENT_HEARTBEAT_TIMEOUT = int(os.getenv("AGENTCHATBUS_HEARTBEAT_TIMEOUT", "30"))
 
 # SSE long-poll timeout for msg.wait (seconds)
 MSG_WAIT_TIMEOUT = int(os.getenv("AGENTCHATBUS_WAIT_TIMEOUT", "60"))
-
-# Preferred language for agent communication.
-# This is a SOFT RECOMMENDATION — agents should try to reply in this language
-# but are never forced to. Accepts any natural-language name understood by the
-# model, e.g. "English", "Chinese", "Japanese", "French".
-PREFERRED_LANGUAGE = os.getenv("AGENTCHATBUS_LANGUAGE", "English")
-
 BUS_VERSION = "0.1.0"

@@ -16,7 +16,7 @@ from mcp.server.sse import SseServerTransport
 
 from src.db.database import get_db
 from src.db import crud
-from src.config import PREFERRED_LANGUAGE, BUS_VERSION, HOST, PORT
+from src.config import BUS_VERSION, HOST, PORT
 
 logger = logging.getLogger(__name__)
 
@@ -231,13 +231,13 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
     # ── Bus config tool ─────────────────────────────────────────────────────────
 
     if name == "bus.get_config":
-        # Priority: ?lang= query param (per-connection) > AGENTCHATBUS_LANGUAGE env var > "English"
-        session_lang   = _session_language.get()          # set from URL ?lang=…
-        effective_lang = session_lang or PREFERRED_LANGUAGE
-        source = "url_param" if session_lang else "server_config"
+        # Priority: ?lang= query param (per-connection) > "English"
+        session_lang   = _session_language.get()
+        effective_lang = session_lang or "English"
+        source = "url_param" if session_lang else "default"
         return [types.TextContent(type="text", text=json.dumps({
             "preferred_language": effective_lang,
-            "language_source":    source,   # "url_param" | "server_config"
+            "language_source":    source,   # "url_param" | "default"
             "language_note": (
                 f"Please respond in {effective_lang} whenever possible. "
                 "This is a soft preference — use your best judgement."
@@ -429,10 +429,10 @@ async def read_resource(uri: types.AnyUrl) -> str:
 
     if uri_str == "chat://bus/config":
         session_lang   = _session_language.get()
-        effective_lang = session_lang or PREFERRED_LANGUAGE
+        effective_lang = session_lang or "English"
         return json.dumps({
             "preferred_language": effective_lang,
-            "language_source":    "url_param" if session_lang else "server_config",
+            "language_source":    "url_param" if session_lang else "default",
             "language_note": (
                 f"Please respond in {effective_lang} whenever possible. "
                 "This is a soft preference — use your best judgement."
