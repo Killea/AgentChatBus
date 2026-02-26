@@ -306,7 +306,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
             limit=arguments.get("limit", 100),
         )
         return [types.TextContent(type="text", text=json.dumps([
-            {"msg_id": m.id, "author": m.author, "role": m.role,
+            {"msg_id": m.id, "author": m.author, "author_id": m.author_id, "author_name": m.author_name, "role": m.role,
              "content": m.content, "seq": m.seq, "created_at": m.created_at.isoformat()}
             for m in msgs
         ]))]
@@ -329,7 +329,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
             msgs = []
 
         return [types.TextContent(type="text", text=json.dumps([
-            {"msg_id": m.id, "author": m.author, "role": m.role,
+            {"msg_id": m.id, "author": m.author, "author_id": m.author_id, "author_name": m.author_name, "role": m.role,
              "content": m.content, "seq": m.seq, "created_at": m.created_at.isoformat()}
             for m in msgs
         ]))]

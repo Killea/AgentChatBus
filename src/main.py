@@ -179,7 +179,7 @@ async def api_threads(status: str | None = None):
 async def api_messages(thread_id: str, after_seq: int = 0, limit: int = 200):
     db = await get_db()
     msgs = await crud.msg_list(db, thread_id, after_seq=after_seq, limit=limit)
-    return [{"id": m.id, "author": m.author, "role": m.role, "content": m.content,
+    return [{"id": m.id, "author": m.author, "author_id": m.author_id, "author_name": m.author_name, "role": m.role, "content": m.content,
              "seq": m.seq, "created_at": m.created_at.isoformat()} for m in msgs]
 
 

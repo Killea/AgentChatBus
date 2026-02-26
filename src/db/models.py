@@ -22,12 +22,14 @@ class Thread:
 class Message:
     id: str
     thread_id: str
-    author: str          # agent_id or "system" or "human"
+    author: str          # legacy fallback field
     role: str            # user | assistant | system
     content: str
     seq: int             # monotonically increasing per-bus sequence number
     created_at: datetime
     metadata: Optional[str]  # JSON string
+    author_id: Optional[str] = None
+    author_name: Optional[str] = None
 
 
 @dataclass

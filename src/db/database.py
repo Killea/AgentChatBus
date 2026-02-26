@@ -72,7 +72,9 @@ async def init_schema(db: aiosqlite.Connection) -> None:
             content     TEXT NOT NULL,
             seq         INTEGER NOT NULL,
             created_at  TEXT NOT NULL,
-            metadata    TEXT
+            metadata    TEXT,
+            author_id   TEXT,
+            author_name TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_messages_thread_seq
@@ -127,5 +129,16 @@ async def init_schema(db: aiosqlite.Connection) -> None:
             logger.info(f"Migration: added column 'agents.{col}'")
         except Exception:
             pass  # Column already exists — safe to ignore
+            
+    for col, typedef in [
+        ("author_id", "TEXT"),
+        ("author_name", "TEXT"),
+    ]:
+        try:
+            await db.execute(f"ALTER TABLE messages ADD COLUMN {col} {typedef}")
+            await db.commit()
+            logger.info(f"Migration: added column 'messages.{col}'")
+        except Exception:
+            pass
 
     logger.info("Schema initialized.")
