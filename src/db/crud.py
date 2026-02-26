@@ -110,12 +110,19 @@ async def thread_get(db: aiosqlite.Connection, thread_id: str) -> Optional[Threa
     return _row_to_thread(row)
 
 
-async def thread_list(db: aiosqlite.Connection, status: Optional[str] = None) -> list[Thread]:
+async def thread_list(
+    db: aiosqlite.Connection,
+    status: Optional[str] = None,
+    include_archived: bool = False,
+) -> list[Thread]:
     if status:
         async with db.execute("SELECT * FROM threads WHERE status = ? ORDER BY created_at DESC", (status,)) as cur:
             rows = await cur.fetchall()
-    else:
+    elif include_archived:
         async with db.execute("SELECT * FROM threads ORDER BY created_at DESC") as cur:
+            rows = await cur.fetchall()
+    else:
+        async with db.execute("SELECT * FROM threads WHERE status != 'archived' ORDER BY created_at DESC") as cur:
             rows = await cur.fetchall()
     return [_row_to_thread(r) for r in rows]
 
@@ -130,6 +137,29 @@ async def thread_set_state(db: aiosqlite.Connection, thread_id: str, state: str)
     if updated == 0:
         return False  # thread_id does not exist
     await _emit_event(db, "thread.state", thread_id, {"thread_id": thread_id, "state": state})
+    return True
+
+
+async def thread_archive(db: aiosqlite.Connection, thread_id: str) -> bool:
+    async with db.execute("SELECT status FROM threads WHERE id = ?", (thread_id,)) as cur:
+        row = await cur.fetchone()
+    if row is None:
+        return False
+
+    current_state = row["status"]
+
+    async with db.execute("UPDATE threads SET status = 'archived' WHERE id = ?", (thread_id,)) as cur:
+        updated = cur.rowcount
+    await db.commit()
+    if updated == 0:
+        return False
+
+    await _emit_event(
+        db,
+        "thread.archived",
+        thread_id,
+        {"thread_id": thread_id, "previous_state": current_state, "state": "archived"},
+    )
     return True
 
 

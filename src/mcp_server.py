@@ -57,8 +57,13 @@ async def list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "status": {"type": "string", "enum": ["discuss", "implement", "review", "done", "closed"],
+                    "status": {"type": "string", "enum": ["discuss", "implement", "review", "done", "closed", "archived"],
                                "description": "Filter by lifecycle state. Omit for all threads."},
+                    "include_archived": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true and no status filter is provided, include archived threads.",
+                    },
                 },
             },
         ),
@@ -91,6 +96,17 @@ async def list_tools() -> list[types.Tool]:
                 "properties": {
                     "thread_id": {"type": "string"},
                     "summary":   {"type": "string", "description": "Summary of conclusions reached in this thread."},
+                },
+                "required": ["thread_id"],
+            },
+        ),
+        types.Tool(
+            name="thread_archive",
+            description="Archive a thread from any current lifecycle state.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string"},
                 },
                 "required": ["thread_id"],
             },
@@ -264,7 +280,11 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
         }))]
 
     if name == "thread_list":
-        threads = await crud.thread_list(db, status=arguments.get("status"))
+        threads = await crud.thread_list(
+            db,
+            status=arguments.get("status"),
+            include_archived=arguments.get("include_archived", False),
+        )
         return [types.TextContent(type="text", text=json.dumps([
             {"thread_id": t.id, "topic": t.topic, "status": t.status,
              "created_at": t.created_at.isoformat()} for t in threads
@@ -289,6 +309,15 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
 
     if name == "thread_close":
         ok = await crud.thread_close(db, arguments["thread_id"], arguments.get("summary"))
+        if not ok:
+            return [types.TextContent(type="text", text=json.dumps({"error": "Thread not found", "ok": False}))]
+        return [types.TextContent(type="text", text=json.dumps({"ok": True}))]
+
+    if name == "thread_archive":
+        try:
+            ok = await crud.thread_archive(db, arguments["thread_id"])
+        except ValueError as e:
+            return [types.TextContent(type="text", text=json.dumps({"error": str(e), "ok": False}))]
         if not ok:
             return [types.TextContent(type="text", text=json.dumps({"error": "Thread not found", "ok": False}))]
         return [types.TextContent(type="text", text=json.dumps({"ok": True}))]

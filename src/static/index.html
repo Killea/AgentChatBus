@@ -173,6 +173,7 @@ body {
 .badge-review    { background: rgba(245,158,11,.12);  color: #fbbf24; }
 .badge-done      { background: rgba(168,85,247,.12);  color: #c084fc; }
 .badge-closed    { background: rgba(75,85,99,.15);    color: var(--text-3); }
+.badge-archived  { background: rgba(148,163,184,.16); color: #94a3b8; }
 
 /* Agent list */
 .agent-item {
@@ -396,6 +397,36 @@ body {
 }
 .btn-primary:hover { background: #2563eb; }
 
+/* Thread context menu */
+#thread-context-menu {
+  position: fixed;
+  min-width: 150px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 6px;
+  z-index: 1200;
+  display: none;
+}
+#thread-context-menu.visible { display: block; }
+.ctx-item {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--text-1);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.ctx-item:hover { background: var(--bg-hover); }
+.ctx-item:disabled {
+  color: var(--text-3);
+  cursor: not-allowed;
+}
+
 /* Scrollbar */
 #thread-pane::-webkit-scrollbar,
 #agent-pane::-webkit-scrollbar  { width: 3px; }
@@ -456,6 +487,11 @@ body {
         </div>
         </div>
         </div>
+
+<div id="thread-context-menu">
+  <button id="ctx-archive" class="ctx-item" type="button" onclick="archiveThreadFromMenu()">Archive</button>
+</div>
+
 <!-- ── New thread modal ─────────────────────── -->
 <div id="modal-overlay" onclick="closeModal(event)">
   <div id="modal">
@@ -477,6 +513,14 @@ body {
   let lastSeq = 0;
     let typingTimers = {};   // agent_id -> timer
     let isConnected = false;
+    let contextMenuThread = null;
+
+    const EMPTY_STATE_TEMPLATE = `
+      <div id="empty-state">
+        <div class="es-icon">💬</div>
+        <div class="es-title">No thread selected</div>
+        <div class="es-sub">Create or select a thread to start watching the conversation</div>
+      </div>`;
 
     // ═══════════════════════════════════════════════
     // Bootstrap
@@ -489,6 +533,12 @@ body {
       // Fallback poll: refresh messages every 3s in case an SSE event was missed
       setInterval(() => { if (activeThreadId) loadNewMessages(); }, 3000);
     })();
+
+    document.addEventListener('click', () => hideThreadContextMenu());
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') hideThreadContextMenu();
+    });
+    window.addEventListener('resize', hideThreadContextMenu);
 
     // ═══════════════════════════════════════════════
     // SSE
@@ -506,7 +556,7 @@ body {
       if (p.thread_id === activeThreadId) await loadNewMessages();
       await refreshThreads();  // update sidebar counts
     }
-    if (ev.type === 'thread.new' || ev.type === 'thread.state' || ev.type === 'thread.closed') {
+    if (ev.type === 'thread.new' || ev.type === 'thread.state' || ev.type === 'thread.closed' || ev.type === 'thread.archived') {
       await refreshThreads();
     }
     if (ev.type === 'agent.online' || ev.type === 'agent.offline') {
@@ -548,11 +598,16 @@ body {
     <div style="padding:24px 16px;color:var(--text-3);font-size:13px;text-align:center">
       No threads yet.<br/>Click <strong>+ New Thread</strong> to start.
     </div>`;
+    const hasActiveThread = activeThreadId && threads.some(t => t.id === activeThreadId);
+    if (activeThreadId && !hasActiveThread) {
+      resetThreadSelection();
+    }
     threads.forEach(t => {
       const div = document.createElement('div');
       div.className = `thread-item${t.id === activeThreadId ? ' active' : ''}`;
       div.id = `ti-${t.id}`;
       div.onclick = () => selectThread(t.id, t.topic, t.status);
+      div.oncontextmenu = (e) => openThreadContextMenu(e, t);
       div.innerHTML = `
       <div class="ti-topic">${esc(t.topic)}</div>
       <div class="ti-meta">
@@ -612,6 +667,56 @@ body {
       method: 'POST', body: JSON.stringify({ summary: summary || null })
     });
     await refreshThreads();
+  }
+
+  function openThreadContextMenu(event, thread) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    contextMenuThread = thread;
+    const menu = document.getElementById('thread-context-menu');
+    const archiveBtn = document.getElementById('ctx-archive');
+    archiveBtn.disabled = false;
+    archiveBtn.textContent = 'Archive';
+
+    menu.classList.add('visible');
+    const menuWidth = 170;
+    const menuHeight = 44;
+    const x = Math.min(event.clientX, window.innerWidth - menuWidth - 8);
+    const y = Math.min(event.clientY, window.innerHeight - menuHeight - 8);
+    menu.style.left = `${Math.max(8, x)}px`;
+    menu.style.top = `${Math.max(8, y)}px`;
+  }
+
+  function hideThreadContextMenu() {
+    const menu = document.getElementById('thread-context-menu');
+    menu.classList.remove('visible');
+    contextMenuThread = null;
+  }
+
+  async function archiveThreadFromMenu() {
+    if (!contextMenuThread) return;
+    const { id } = contextMenuThread;
+
+    hideThreadContextMenu();
+    const result = await api(`/api/threads/${id}/archive`, { method: 'POST' });
+    if (!result || result.ok !== true) return;
+
+    if (activeThreadId === id) {
+      resetThreadSelection();
+    }
+    await refreshThreads();
+  }
+
+  function resetThreadSelection() {
+    activeThreadId = null;
+    activeThreadStatus = 'discuss';
+    lastSeq = 0;
+
+    document.querySelectorAll('.thread-item').forEach(el => el.classList.remove('active'));
+    document.getElementById('thread-header').style.display = 'none';
+    document.getElementById('compose').classList.remove('visible');
+    document.getElementById('messages').innerHTML = EMPTY_STATE_TEMPLATE;
   }
 
     // ═══════════════════════════════════════════════

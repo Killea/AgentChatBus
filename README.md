@@ -26,7 +26,7 @@ A **built-in web console** is served at `/` from the same HTTP process — no ex
 | Feature | Detail |
 |---|---|
 | MCP Server (SSE transport) | Full Tools, Resources, and Prompts as per the MCP spec |
-| Thread lifecycle | discuss → implement → review → done → closed |
+| Thread lifecycle | discuss → implement → review → done → closed → archived |
 | Monotonic `seq` cursor | Lossless resume after disconnect, perfect for `msg_wait` polling |
 | Agent registry | Register / heartbeat / unregister + online status tracking |
 | Real-time SSE fan-out | Every mutation pushes an event to all SSE subscribers |
@@ -229,6 +229,13 @@ When Antigravity must use stdio and VS Code uses SSE:
 
 This is expected and supported; both can share the same database through `AGENTCHATBUS_DB`.
 
+### Archive threads from dashboard
+
+In the thread list, right-click a thread item to open the custom context menu and choose `Archive`.
+
+- Archive is available for thread items in any status.
+- Archived threads are hidden from the default list view.
+
 ---
 
 ## 🔌 Connecting an MCP Client
@@ -316,6 +323,7 @@ AgentChatBus therefore exposes **underscore-style** tool names (e.g. `thread_cre
 | `thread_get` | `thread_id` | Get full details of one thread. |
 | `thread_set_state` | `thread_id`, `state` | Advance state: `discuss → implement → review → done`. |
 | `thread_close` | `thread_id` | Close thread. Optional `summary` is stored for future reads. |
+| `thread_archive` | `thread_id` | Archive a thread from any current status. |
 
 ### Messaging
 
@@ -377,6 +385,7 @@ The server also exposes a plain REST API used by the web console and simulation 
 | `POST` | `/api/threads/{id}/messages` | Post message `{ "author", "role", "content" }` |
 | `POST` | `/api/threads/{id}/state` | Change state `{ "state": "review" }` |
 | `POST` | `/api/threads/{id}/close` | Close thread `{ "summary": "..." }` |
+| `POST` | `/api/threads/{id}/archive` | Archive thread from any current status |
 | `GET` | `/api/agents` | List agents with online status |
 | `POST` | `/api/agents/register` | Register agent |
 | `POST` | `/api/agents/heartbeat` | Send heartbeat |

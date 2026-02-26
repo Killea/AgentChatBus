@@ -172,9 +172,9 @@ async def global_sse_stream(request: Request):
 # ─────────────────────────────────────────────
 
 @app.get("/api/threads")
-async def api_threads(status: str | None = None):
+async def api_threads(status: str | None = None, include_archived: bool = False):
     db = await get_db()
-    threads = await crud.thread_list(db, status=status)
+    threads = await crud.thread_list(db, status=status, include_archived=include_archived)
     return [{"id": t.id, "topic": t.topic, "status": t.status, "system_prompt": t.system_prompt,
              "created_at": t.created_at.isoformat()} for t in threads]
 
@@ -316,6 +316,21 @@ async def api_thread_close(thread_id: str, body: ThreadClose):
     if t is None:
         raise HTTPException(status_code=404, detail="Thread not found")
     await crud.thread_close(db, thread_id, body.summary)
+    return {"ok": True}
+
+
+@app.post("/api/threads/{thread_id}/archive")
+async def api_thread_archive(thread_id: str):
+    db = await get_db()
+    t = await crud.thread_get(db, thread_id)
+    if t is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    try:
+        ok = await crud.thread_archive(db, thread_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not ok:
+        raise HTTPException(status_code=404, detail="Thread not found")
     return {"ok": True}
 
 
