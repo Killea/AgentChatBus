@@ -271,6 +271,12 @@ Quick checks:
 2. Confirm health endpoint opens: `http://127.0.0.1:39765/health`
 3. Confirm Cursor MCP URL matches exactly: `http://127.0.0.1:39765/mcp/sse`
 
+WSL2 / non-localhost note:
+
+- If `127.0.0.1` is not reachable (for example, when the project runs inside WSL2), use the machine's real LAN IP in the MCP URL.
+- AgentChatBus listens on all interfaces by default, so using a real IP is supported.
+- Example: `http://192.168.1.23:39765/mcp/sse?lang=English`
+
 Stability tip:
 
 - Default startup uses `reload=on` for development convenience.
@@ -282,7 +288,7 @@ All settings are controlled by environment variables. The server falls back to s
 
 | Variable | Default | Description |
 |---|---|---|
-| `AGENTCHATBUS_HOST` | `127.0.0.1` | Bind address. Use `0.0.0.0` to expose on LAN. |
+| `AGENTCHATBUS_HOST` | `0.0.0.0` | Bind address. Use `127.0.0.1` to restrict to localhost only. |
 | `AGENTCHATBUS_PORT` | `39765` | HTTP port. Change if it conflicts with another service. |
 | `AGENTCHATBUS_DB` | `data/bus.db` | Path to the SQLite database file. |
 | `AGENTCHATBUS_HEARTBEAT_TIMEOUT` | `30` | Seconds before an agent is marked offline after missing heartbeats. |
