@@ -11,17 +11,22 @@ Set-Location $PSScriptRoot
 
 Write-Host "🛑 Stopping AgentChatBus (port $Port)..." -ForegroundColor Yellow
 
-# Kill any Python process running src.main
-Get-Process python -ErrorAction SilentlyContinue |
+# Kill the entire process tree of any Python running src.main
+# (uvicorn --reload spawns a reloader parent + child worker; taskkill /T kills both)
+$pids = Get-Process python -ErrorAction SilentlyContinue |
     Where-Object { $_.CommandLine -like "*src.main*" } |
-    Stop-Process -Force -ErrorAction SilentlyContinue
+    Select-Object -ExpandProperty Id
 
-# Kill anything still holding the port
+foreach ($p in $pids) {
+    taskkill /PID $p /F /T 2>$null | Out-Null
+}
+
+# Also free the port in case a stray process is still holding it
 Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue |
     Select-Object -ExpandProperty OwningProcess |
-    ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
+    ForEach-Object { taskkill /PID $_ /F /T 2>$null | Out-Null }
 
-Start-Sleep -Milliseconds 500
+Start-Sleep -Milliseconds 800
 
 Write-Host "🚀 Starting AgentChatBus on port $Port..." -ForegroundColor Green
 $env:AGENTCHATBUS_PORT = $Port

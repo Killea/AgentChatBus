@@ -285,4 +285,14 @@ app.mount("/static", StaticFiles(directory="src/static"), name="static")
 # ─────────────────────────────────────────────
 
 if __name__ == "__main__":
-    uvicorn.run("src.main:app", host=HOST, port=PORT, reload=True)
+    uvicorn.run(
+        "src.main:app",
+        host=HOST,
+        port=PORT,
+        reload=True,
+        log_level="info",
+        # Force-close lingering SSE / long-poll connections after 3 s when
+        # Ctrl+C (SIGINT) is received. Without this, uvicorn waits forever
+        # for the MCP SSE stream to disconnect naturally.
+        timeout_graceful_shutdown=3,
+    )
