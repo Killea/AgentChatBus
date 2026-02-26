@@ -141,6 +141,63 @@ body {
 #thread-pane, #agent-pane { flex: 1; overflow-y: auto; display: none; }
 #thread-pane.visible, #agent-pane.visible { display: block; }
 
+#thread-filter-wrap {
+  border-bottom: 1px solid var(--border);
+  padding: 8px 10px;
+  position: relative;
+}
+#btn-thread-filter {
+  width: 100%;
+  background: var(--bg-card);
+  color: var(--text-2);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+#btn-thread-filter:hover { background: var(--bg-hover); }
+#thread-filter-panel {
+  display: none;
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: 44px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  z-index: 20;
+  padding: 8px;
+}
+#thread-filter-panel.visible { display: block; }
+.filter-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.filter-actions button {
+  flex: 1;
+  background: var(--bg-hover);
+  color: var(--text-2);
+  border: 1px solid var(--border-light);
+  border-radius: 7px;
+  font-size: 11px;
+  padding: 5px 6px;
+  cursor: pointer;
+}
+.filter-actions button:hover { background: #233047; }
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text-1);
+  padding: 4px 2px;
+}
+.filter-row input { accent-color: var(--accent); }
+
 /* Thread list */
 .thread-item {
   padding: 12px 16px;
@@ -454,6 +511,21 @@ body {
       <div class="stab active" id="tab-threads" onclick="switchTab('threads')">Threads</div>
       <div class="stab" id="tab-agents" onclick="switchTab('agents')">Agents</div>
     </div>
+    <div id="thread-filter-wrap">
+      <button id="btn-thread-filter" type="button" onclick="toggleThreadFilterPanel(event)">Filter: normal (5)</button>
+      <div id="thread-filter-panel" onclick="event.stopPropagation()">
+        <div class="filter-actions">
+          <button type="button" onclick="selectAllThreadStatuses()">Select all</button>
+          <button type="button" onclick="selectNormalThreadStatuses()">Normal only</button>
+        </div>
+        <label class="filter-row"><input type="checkbox" data-status="discuss" checked onchange="onThreadFilterChange()"/>discuss</label>
+        <label class="filter-row"><input type="checkbox" data-status="implement" checked onchange="onThreadFilterChange()"/>implement</label>
+        <label class="filter-row"><input type="checkbox" data-status="review" checked onchange="onThreadFilterChange()"/>review</label>
+        <label class="filter-row"><input type="checkbox" data-status="done" checked onchange="onThreadFilterChange()"/>done</label>
+        <label class="filter-row"><input type="checkbox" data-status="closed" checked onchange="onThreadFilterChange()"/>closed</label>
+        <label class="filter-row"><input type="checkbox" data-status="archived" onchange="onThreadFilterChange()"/>archived</label>
+      </div>
+    </div>
     <div id="thread-pane" class="visible"></div>
     <div id="agent-pane"></div>
   </div>
@@ -514,6 +586,9 @@ body {
     let typingTimers = {};   // agent_id -> timer
     let isConnected = false;
     let contextMenuThread = null;
+    const ALL_THREAD_STATUSES = ['discuss', 'implement', 'review', 'done', 'closed', 'archived'];
+    const NORMAL_THREAD_STATUSES = ['discuss', 'implement', 'review', 'done', 'closed'];
+    let selectedThreadStatuses = new Set(NORMAL_THREAD_STATUSES);
 
     const EMPTY_STATE_TEMPLATE = `
       <div id="empty-state">
@@ -534,7 +609,10 @@ body {
       setInterval(() => { if (activeThreadId) loadNewMessages(); }, 3000);
     })();
 
-    document.addEventListener('click', () => hideThreadContextMenu());
+    document.addEventListener('click', () => {
+      hideThreadContextMenu();
+      hideThreadFilterPanel();
+    });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') hideThreadContextMenu();
     });
@@ -592,11 +670,12 @@ body {
     // Threads
     // ═══════════════════════════════════════════════
   async function refreshThreads() {
-    const threads = await api('/api/threads') || [];
+    const allThreads = await api('/api/threads?include_archived=1') || [];
+    const threads = allThreads.filter(t => selectedThreadStatuses.has(t.status));
     const pane = document.getElementById('thread-pane');
     pane.innerHTML = threads.length ? '' : `
     <div style="padding:24px 16px;color:var(--text-3);font-size:13px;text-align:center">
-      No threads yet.<br/>Click <strong>+ New Thread</strong> to start.
+      No threads match current filter.
     </div>`;
     const hasActiveThread = activeThreadId && threads.some(t => t.id === activeThreadId);
     if (activeThreadId && !hasActiveThread) {
@@ -616,6 +695,69 @@ body {
       </div>`;
       pane.appendChild(div);
     });
+
+    updateThreadFilterButton();
+  }
+
+  function toggleThreadFilterPanel(event) {
+    event.stopPropagation();
+    const panel = document.getElementById('thread-filter-panel');
+    panel.classList.toggle('visible');
+  }
+
+  function hideThreadFilterPanel() {
+    document.getElementById('thread-filter-panel').classList.remove('visible');
+  }
+
+  function selectedStatusListFromUI() {
+    const checkboxes = document.querySelectorAll('#thread-filter-panel input[data-status]');
+    return Array.from(checkboxes)
+      .filter(cb => cb.checked)
+      .map(cb => cb.getAttribute('data-status'));
+  }
+
+  function onThreadFilterChange() {
+    const selected = selectedStatusListFromUI();
+    if (!selected.length) {
+      document.querySelectorAll('#thread-filter-panel input[data-status]').forEach((cb) => {
+        const status = cb.getAttribute('data-status');
+        cb.checked = NORMAL_THREAD_STATUSES.includes(status);
+      });
+      selectedThreadStatuses = new Set(NORMAL_THREAD_STATUSES);
+    } else {
+      selectedThreadStatuses = new Set(selected);
+    }
+    refreshThreads();
+  }
+
+  function selectAllThreadStatuses() {
+    document.querySelectorAll('#thread-filter-panel input[data-status]').forEach(cb => cb.checked = true);
+    onThreadFilterChange();
+  }
+
+  function selectNormalThreadStatuses() {
+    document.querySelectorAll('#thread-filter-panel input[data-status]').forEach((cb) => {
+      const status = cb.getAttribute('data-status');
+      cb.checked = NORMAL_THREAD_STATUSES.includes(status);
+    });
+    onThreadFilterChange();
+  }
+
+  function updateThreadFilterButton() {
+    const btn = document.getElementById('btn-thread-filter');
+    const selected = ALL_THREAD_STATUSES.filter(s => selectedThreadStatuses.has(s));
+    const normalOnly = selected.length === NORMAL_THREAD_STATUSES.length &&
+      NORMAL_THREAD_STATUSES.every(s => selectedThreadStatuses.has(s)) &&
+      !selectedThreadStatuses.has('archived');
+    if (normalOnly) {
+      btn.textContent = 'Filter: normal (5)';
+      return;
+    }
+    if (selected.length === ALL_THREAD_STATUSES.length) {
+      btn.textContent = 'Filter: all (6)';
+      return;
+    }
+    btn.textContent = `Filter: ${selected.join(', ')}`;
   }
 
   async function selectThread(id, topic, status) {
