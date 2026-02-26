@@ -39,7 +39,7 @@ async def list_tools() -> list[types.Tool]:
     return [
         # ── Thread Management ──────────────────
         types.Tool(
-            name="thread.create",
+            name="thread_create",
             description="Create a new conversation thread (topic / task context) on the bus.",
             inputSchema={
                 "type": "object",
@@ -51,7 +51,7 @@ async def list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
-            name="thread.list",
+            name="thread_list",
             description="List threads, optionally filtered by status.",
             inputSchema={
                 "type": "object",
@@ -62,7 +62,7 @@ async def list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
-            name="thread.get",
+            name="thread_get",
             description="Get details of a single thread by ID.",
             inputSchema={
                 "type": "object",
@@ -71,7 +71,7 @@ async def list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
-            name="thread.set_state",
+            name="thread_set_state",
             description="Advance the thread state machine: discuss → implement → review → done.",
             inputSchema={
                 "type": "object",
@@ -83,7 +83,7 @@ async def list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
-            name="thread.close",
+            name="thread_close",
             description="Close a thread and optionally write a final summary for future checkpoint reads.",
             inputSchema={
                 "type": "object",
@@ -97,7 +97,7 @@ async def list_tools() -> list[types.Tool]:
 
         # ── Messaging ─────────────────────────
         types.Tool(
-            name="msg.post",
+            name="msg_post",
             description="Post a message to a thread. Returns the new message ID and global seq number.",
             inputSchema={
                 "type": "object",
@@ -112,7 +112,7 @@ async def list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
-            name="msg.list",
+            name="msg_list",
             description="Fetch messages in a thread after a given seq cursor.",
             inputSchema={
                 "type": "object",
@@ -125,7 +125,7 @@ async def list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
-            name="msg.wait",
+            name="msg_wait",
             description=(
                 "Block until at least one new message arrives in the thread after `after_seq`. "
                 "Returns immediately if messages are already available. "
@@ -144,7 +144,7 @@ async def list_tools() -> list[types.Tool]:
 
         # ── Agent Identity & Presence ──────────
         types.Tool(
-            name="agent.register",
+            name="agent_register",
             description=(
                 "Register an agent onto the bus. The display name is auto-generated as "
                 "'IDE (Model)' — e.g. 'Cursor (GPT-4)'. If the same IDE+Model pair is already "
@@ -166,7 +166,7 @@ async def list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
-            name="agent.heartbeat",
+            name="agent_heartbeat",
             description="Send a keep-alive ping. Agents that miss the heartbeat window are marked offline.",
             inputSchema={
                 "type": "object",
@@ -178,7 +178,7 @@ async def list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
-            name="agent.unregister",
+            name="agent_unregister",
             description="Gracefully deregister an agent from the bus.",
             inputSchema={
                 "type": "object",
@@ -190,12 +190,12 @@ async def list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
-            name="agent.list",
+            name="agent_list",
             description="List all registered agents and their online status.",
             inputSchema={"type": "object", "properties": {}},
         ),
         types.Tool(
-            name="agent.set_typing",
+            name="agent_set_typing",
             description="Broadcast an 'is typing' signal for a thread (optional, for UI feedback).",
             inputSchema={
                 "type": "object",
@@ -210,7 +210,7 @@ async def list_tools() -> list[types.Tool]:
 
         # ── Bus config ────────────────────────────
         types.Tool(
-            name="bus.get_config",
+            name="bus_get_config",
             description=(
                 "Get the bus-level configuration. "
                 "Agents SHOULD call this once at startup. "
@@ -230,7 +230,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
 
     # ── Bus config tool ─────────────────────────────────────────────────────────
 
-    if name == "bus.get_config":
+    if name == "bus_get_config":
         # Priority: ?lang= query param (per-connection) > "English"
         session_lang   = _session_language.get()
         effective_lang = session_lang or "English"
@@ -249,20 +249,20 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
 
     # ── Thread tools ───────────────────────────────────────────────────────────
 
-    if name == "thread.create":
+    if name == "thread_create":
         result = await crud.thread_create(db, arguments["topic"], arguments.get("metadata"))
         return [types.TextContent(type="text", text=json.dumps({
             "thread_id": result.id, "topic": result.topic, "status": result.status,
         }))]
 
-    if name == "thread.list":
+    if name == "thread_list":
         threads = await crud.thread_list(db, status=arguments.get("status"))
         return [types.TextContent(type="text", text=json.dumps([
             {"thread_id": t.id, "topic": t.topic, "status": t.status,
              "created_at": t.created_at.isoformat()} for t in threads
         ]))]
 
-    if name == "thread.get":
+    if name == "thread_get":
         t = await crud.thread_get(db, arguments["thread_id"])
         if t is None:
             return [types.TextContent(type="text", text=json.dumps({"error": "Thread not found"}))]
@@ -273,17 +273,17 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
             "summary": t.summary,
         }))]
 
-    if name == "thread.set_state":
+    if name == "thread_set_state":
         await crud.thread_set_state(db, arguments["thread_id"], arguments["state"])
         return [types.TextContent(type="text", text=json.dumps({"ok": True}))]
 
-    if name == "thread.close":
+    if name == "thread_close":
         await crud.thread_close(db, arguments["thread_id"], arguments.get("summary"))
         return [types.TextContent(type="text", text=json.dumps({"ok": True}))]
 
     # ── Message tools ──────────────────────────────────────────────────────────
 
-    if name == "msg.post":
+    if name == "msg_post":
         msg = await crud.msg_post(
             db,
             thread_id=arguments["thread_id"],
@@ -296,7 +296,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
             "msg_id": msg.id, "seq": msg.seq,
         }))]
 
-    if name == "msg.list":
+    if name == "msg_list":
         msgs = await crud.msg_list(
             db,
             thread_id=arguments["thread_id"],
@@ -309,7 +309,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
             for m in msgs
         ]))]
 
-    if name == "msg.wait":
+    if name == "msg_wait":
         thread_id = arguments["thread_id"]
         after_seq = arguments["after_seq"]
         timeout_s = arguments.get("timeout_ms", 30000) / 1000.0
@@ -334,7 +334,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
 
     # ── Agent tools ────────────────────────────────────────────────────────────
 
-    if name == "agent.register":
+    if name == "agent_register":
         agent = await crud.agent_register(
             db,
             ide=arguments["ide"],
@@ -346,15 +346,15 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
             "agent_id": agent.id, "name": agent.name, "token": agent.token,
         }))]
 
-    if name == "agent.heartbeat":
+    if name == "agent_heartbeat":
         ok = await crud.agent_heartbeat(db, arguments["agent_id"], arguments["token"])
         return [types.TextContent(type="text", text=json.dumps({"ok": ok}))]
 
-    if name == "agent.unregister":
+    if name == "agent_unregister":
         ok = await crud.agent_unregister(db, arguments["agent_id"], arguments["token"])
         return [types.TextContent(type="text", text=json.dumps({"ok": ok}))]
 
-    if name == "agent.list":
+    if name == "agent_list":
         agents = await crud.agent_list(db)
         return [types.TextContent(type="text", text=json.dumps([
             {"agent_id": a.id, "name": a.name, "ide": a.ide, "model": a.model,
@@ -363,7 +363,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
             for a in agents
         ]))]
 
-    if name == "agent.set_typing":
+    if name == "agent_set_typing":
         db2 = await get_db()
         actual_author = arguments["agent_id"]
         async with db2.execute("SELECT name FROM agents WHERE id = ?", (actual_author,)) as cur:
