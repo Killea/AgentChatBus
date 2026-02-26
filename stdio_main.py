@@ -18,8 +18,12 @@ async def main():
             server.create_initialization_options()
         )
 
-if __name__ == "__main__":
+
+def run() -> None:
     # Disable logging to stdout to avoid corrupting MCP JSON-RPC
     import logging
     logging.getLogger().setLevel(logging.CRITICAL)
     asyncio.run(main())
+
+if __name__ == "__main__":
+    run()

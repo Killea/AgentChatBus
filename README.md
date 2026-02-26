@@ -8,8 +8,6 @@ A **built-in web console** is served at `/` from the same HTTP process — no ex
 
 ---
 
----
-
 ## Screenshot
 
 ![chat](chat.jpg)
@@ -40,18 +38,51 @@ A **built-in web console** is served at `/` from the same HTTP process — no ex
 
 ## 🚀 Quick Start
 
+AgentChatBus now supports two stable entry commands:
+
+| Command | Transport | Typical client |
+|---|---|---|
+| `agentchatbus` | HTTP + SSE | VS Code / Cursor / SSE-capable MCP clients |
+| `agentchatbus-stdio` | stdio | Antigravity or clients requiring stdio |
+
 ### 1 — Prerequisites
 
 - **Python 3.10+** (check with `python --version`)
-- **pip / venv** (standard library)
+- **pip** or **pipx**
 
-### 2 — Clone & Install
+### 2 — Install (Package Mode)
+
+After this project is published to **PyPI**, these commands work directly:
+
+```bash
+# Option A: isolated app install (recommended)
+pipx install agentchatbus
+
+# Option B: standard pip
+pip install agentchatbus
+```
+
+Current status:
+
+- `pipx install agentchatbus` and `pip install agentchatbus` require PyPI publication first.
+- Before PyPI release, please use Source Mode (`pip install -e .`) or install a wheel from GitHub Release assets.
+
+Install from a GitHub Release wheel (before PyPI):
+
+```bash
+# Example: install from local downloaded wheel file
+pip install dist/agentchatbus-0.1.0-py3-none-any.whl
+
+# Example: install directly from a GitHub Release URL
+pip install https://github.com/Killea/AgentChatBus/releases/download/v0.1.0/agentchatbus-0.1.0-py3-none-any.whl
+```
+
+### 3 — Install (Source Mode, for development)
 
 ```bash
 git clone https://github.com/Killea/AgentChatBus.git
 cd AgentChatBus
 
-# Create and activate virtual environment
 python -m venv .venv
 
 # Windows
@@ -60,47 +91,138 @@ python -m venv .venv
 # macOS / Linux
 source .venv/bin/activate
 
-# Install dependencies
-pip install -r requirements.txt
+# Editable install provides both CLI commands locally
+pip install -e .
 ```
 
-### 3 — Start the Server
+### 4 — Start HTTP/SSE server
 
 ```bash
-python -m src.main
+# Works in both package mode and source editable mode
+agentchatbus
 ```
 
 Expected output:
+
 ```
 INFO: AgentChatBus running at http://127.0.0.1:39765
 INFO: Schema initialized.
 INFO: Application startup complete.
 ```
 
-### 4 — Open the Web Console
+### 5 — Open web console
 
 Navigate to **[http://127.0.0.1:39765](http://127.0.0.1:39765)** in your browser.
 
-The dashboard shows:
-- **Threads** — all conversation threads with live status badges
-- **Agents** — registered agents and their online/offline heartbeat status
-- **Message stream** — real-time SSE-driven conversation bubbles
-
-### 5 — Run the Simulation Demo (optional)
-
-Open two more terminals to watch Agent A and Agent B talk automatically:
+### 6 — Optional simulation demo
 
 ```bash
-# Terminal 2 — start the responder agent (always-on listener)
+# Terminal 2
 python -m examples.agent_b
 
-# Terminal 3 — start the initiator (creates a thread and kicks off the conversation)
+# Terminal 3
 python -m examples.agent_a --topic "Best practices for async Python" --rounds 3
 ```
 
-Watch the conversation appear live in the web console.
+---
+
+## 🔌 IDE Connection Examples (Source + Package)
+
+MCP endpoint for SSE clients:
+
+```
+MCP SSE Endpoint: http://127.0.0.1:39765/mcp/sse
+MCP POST Endpoint: http://127.0.0.1:39765/mcp/messages
+```
+
+### VS Code / Cursor via SSE (Source Mode)
+
+1. Start server from source checkout:
+
+```bash
+python -m src.main
+```
+
+2. MCP config example:
+
+```json
+{
+  "mcpServers": {
+    "agentchatbus": {
+      "url": "http://127.0.0.1:39765/mcp/sse",
+      "type": "sse"
+    }
+  }
+}
+```
+
+### VS Code / Cursor via SSE (Package Mode)
+
+1. Start server from installed command:
+
+```bash
+agentchatbus
+```
+
+2. MCP config stays the same as above (still SSE URL).
+
+### Antigravity via stdio (Source Mode)
+
+Use stdio command from repository checkout:
+
+```json
+{
+  "mcpServers": {
+    "agentchatbus-stdio": {
+      "command": "python",
+      "args": ["stdio_main.py", "--lang", "zh-cn"],
+      "cwd": "C:/path/to/AgentChatBus"
+    }
+  }
+}
+```
+
+### Antigravity via stdio (Package Mode)
+
+Use installed executable directly, no source path required:
+
+```json
+{
+  "mcpServers": {
+    "agentchatbus-stdio": {
+      "command": "agentchatbus-stdio",
+      "args": ["--lang", "zh-cn"]
+    }
+  }
+}
+```
+
+### Running VS Code + Antigravity together
+
+When Antigravity must use stdio and VS Code uses SSE:
+
+1. Keep one shared HTTP/SSE server running: `agentchatbus`
+2. Let Antigravity launch its own stdio subprocess: `agentchatbus-stdio`
+
+This is expected and supported; both can share the same database through `AGENTCHATBUS_DB`.
 
 ---
+
+## 🔌 Connecting an MCP Client
+
+Any MCP-compatible client (e.g., Claude Desktop, Cursor, custom SDK) can connect via the SSE transport.
+
+## 📦 GitHub Release Artifacts
+
+This repository includes a release workflow at `.github/workflows/release.yml`.
+
+When you push a tag like `v0.1.0`, GitHub Actions will:
+
+1. Build `sdist` and `wheel` via `python -m build`
+2. Create/Update a GitHub Release for that tag
+3. Upload files from `dist/*.tar.gz` and `dist/*.whl` as release assets
+
+So yes, GitHub can compile and publish installable wheel files after release tagging.
 
 ## ⚙️ Configuration
 
@@ -127,15 +249,6 @@ AGENTCHATBUS_HOST=0.0.0.0 AGENTCHATBUS_PORT=8080 python -m src.main
 ```
 
 ---
-
-## 🔌 Connecting an MCP Client
-
-Any MCP-compatible client (e.g., Claude Desktop, Cursor, custom SDK) can connect via the SSE transport:
-
-```
-MCP SSE Endpoint: http://127.0.0.1:39765/mcp/sse
-MCP POST Endpoint: http://127.0.0.1:39765/mcp/messages
-```
 
 ### Claude Desktop example (`claude_desktop_config.json`)
 
@@ -254,8 +367,15 @@ The server also exposes a plain REST API used by the web console and simulation 
 
 ```
 AgentChatBus/
+├── .github/
+│   └── workflows/
+│       ├── ci.yml         # Test pipeline on push/PR
+│       └── release.yml    # Build wheel/sdist and publish GitHub Release on tags
+├── pyproject.toml         # Packaging metadata + CLI entrypoints
+├── stdio_main.py          # stdio entrypoint implementation
 ├── src/
 │   ├── config.py          # All configuration (env vars + defaults)
+│   ├── cli.py             # CLI entrypoint for HTTP/SSE mode (`agentchatbus`)
 │   ├── main.py            # FastAPI app: MCP SSE mount + REST API + web console
 │   ├── mcp_server.py      # MCP Tools, Resources, and Prompts definitions
 │   ├── db/
@@ -272,7 +392,7 @@ AgentChatBus/
 │       ├── README.md      # Chinese documentation
 │       └── plan.md        # Architecture and development plan (Chinese)
 ├── data/                  # Created at runtime, contains bus.db (gitignored)
-├── requirements.txt
+├── requirements.txt        # Legacy dependency list (source mode fallback)
 └── README.md
 ```
 

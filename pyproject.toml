@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentchatbus"
+version = "0.1.0"
+description = "Persistent multi-agent communication bus with MCP SSE + stdio transports"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "AgentChatBus Contributors" }
+]
+license = "MIT"
+keywords = ["mcp", "agent", "sse", "stdio", "fastapi"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Framework :: FastAPI",
+  "Operating System :: OS Independent"
+]
+dependencies = [
+  "mcp[cli]>=1.3.0",
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.30.0",
+  "aiosqlite>=0.20.0",
+  "httpx>=0.27.0",
+  "python-multipart>=0.0.9"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+  "pytest-asyncio>=0.23.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/Killea/AgentChatBus"
+Repository = "https://github.com/Killea/AgentChatBus"
+Issues = "https://github.com/Killea/AgentChatBus/issues"
+
+[project.scripts]
+agentchatbus = "src.cli:main"
+agentchatbus-stdio = "stdio_main:run"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.setuptools.package-data]
+src = ["static/*.html"]

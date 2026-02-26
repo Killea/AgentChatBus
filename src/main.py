@@ -11,6 +11,7 @@ import json
 import logging
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Literal
 
 import uvicorn
@@ -32,6 +33,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("agentchatbus")
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 async def _cleanup_events_loop():
@@ -334,11 +336,11 @@ async def health():
 @app.get("/", response_class=HTMLResponse)
 async def web_console():
     """Serve the built-in web console."""
-    with open("src/static/index.html", "r", encoding="utf-8") as f:
+    with open(STATIC_DIR / "index.html", "r", encoding="utf-8") as f:
         return f.read()
 
 
-app.mount("/static", StaticFiles(directory="src/static"), name="static")
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # ─────────────────────────────────────────────

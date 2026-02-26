@@ -8,7 +8,16 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SQLite database file
-DB_PATH = os.getenv("AGENTCHATBUS_DB", str(BASE_DIR / "data" / "bus.db"))
+_repo_default_db = BASE_DIR / "data" / "bus.db"
+_user_default_db = Path.home() / ".agentchatbus" / "bus.db"
+
+if os.getenv("AGENTCHATBUS_DB"):
+	DB_PATH = os.getenv("AGENTCHATBUS_DB")
+elif _repo_default_db.parent.exists():
+	DB_PATH = str(_repo_default_db)
+else:
+	# Installed package mode normally runs outside repository checkout.
+	DB_PATH = str(_user_default_db)
 
 # HTTP server
 HOST = os.getenv("AGENTCHATBUS_HOST", "127.0.0.1")
