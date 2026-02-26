@@ -257,6 +257,25 @@ When you push a tag like `v0.1.0`, GitHub Actions will:
 
 So yes, GitHub can compile and publish installable wheel files after release tagging.
 
+## 🧯 Troubleshooting Cursor SSE Connection
+
+If Cursor shows:
+
+`SSE error: TypeError: fetch failed: connect ECONNREFUSED 127.0.0.1:39765`
+
+it means nothing is currently listening on that host/port (or the server is in a brief restart window).
+
+Quick checks:
+
+1. Start or restart AgentChatBus server first.
+2. Confirm health endpoint opens: `http://127.0.0.1:39765/health`
+3. Confirm Cursor MCP URL matches exactly: `http://127.0.0.1:39765/mcp/sse`
+
+Stability tip:
+
+- Default startup now uses `reload=off` to reduce transient disconnects for SSE clients.
+- Enable hot reload only in local development with env var `AGENTCHATBUS_RELOAD=1`.
+
 ## ⚙️ Configuration
 
 All settings are controlled by environment variables. The server falls back to sensible defaults if none are set.

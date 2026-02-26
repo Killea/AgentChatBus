@@ -47,6 +47,79 @@ body {
   flex-direction: column;
 }
 
+body[data-theme="light"] {
+  --bg-base:      #f3f6fb;
+  --bg-panel:     #ffffff;
+  --bg-card:      #f9fbff;
+  --bg-hover:     #edf3ff;
+  --bg-input:     #ffffff;
+  --border:       #d9e2ef;
+  --border-light: #c8d4e5;
+  --accent:       #2563eb;
+  --accent-dim:   #1d4ed8;
+  --accent-glow:  rgba(37,99,235,.18);
+  --green:        #16a34a;
+  --amber:        #d97706;
+  --purple:       #7c3aed;
+  --red:          #dc2626;
+  --text-1:       #0f172a;
+  --text-2:       #334155;
+  --text-3:       #64748b;
+  --shadow:       0 4px 20px rgba(15,23,42,.12);
+}
+
+body[data-theme="light"] #topbar .logo {
+  background: linear-gradient(135deg, #1d4ed8, #7c3aed);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+body[data-theme="light"] .thread-item:hover,
+body[data-theme="light"] .thread-item.active {
+  background: #e8f0ff;
+}
+body[data-theme="light"] .badge-discuss {
+  background: rgba(37,99,235,.14);
+  color: #1d4ed8;
+}
+body[data-theme="light"] .badge-implement {
+  background: rgba(22,163,74,.14);
+  color: #15803d;
+}
+body[data-theme="light"] .badge-review {
+  background: rgba(217,119,6,.14);
+  color: #b45309;
+}
+body[data-theme="light"] .badge-done {
+  background: rgba(124,58,237,.14);
+  color: #6d28d9;
+}
+body[data-theme="light"] .badge-closed {
+  background: rgba(100,116,139,.16);
+  color: #475569;
+}
+body[data-theme="light"] .badge-archived {
+  background: rgba(148,163,184,.2);
+  color: #475569;
+}
+body[data-theme="light"] #online-presence {
+  background: rgba(22,163,74,.14);
+  border-color: rgba(22,163,74,.35);
+  color: #166534;
+}
+body[data-theme="light"] #online-presence:hover {
+  background: rgba(22,163,74,.2);
+  border-color: rgba(22,163,74,.45);
+}
+body[data-theme="light"] .msg-sys-event {
+  background: rgba(217,119,6,.1);
+  border-color: rgba(217,119,6,.24);
+  color: #92400e;
+}
+body[data-theme="light"] .ctx-item:hover {
+  background: #e8f0ff;
+}
+
 /* ══════════════════════════════════════════
    Top bar
 ══════════════════════════════════════════ */
@@ -106,6 +179,20 @@ body {
 }
 #btn-new-thread:hover { background: #2563eb; }
 #btn-new-thread:active { transform: scale(.97); }
+#btn-theme-toggle {
+  background: transparent;
+  color: var(--text-2);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+#btn-theme-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-1);
+}
 
 /* ══════════════════════════════════════════
    Layout: sidebar + main
@@ -268,6 +355,31 @@ body {
 }
 #thread-header h2 { font-size: 15px; font-weight: 600; flex: 1; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#online-presence {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 56px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-light);
+  background: rgba(34,197,94,.12);
+  color: #86efac;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  cursor: default;
+  transition: background .15s, border-color .15s;
+}
+#online-presence:hover {
+  background: rgba(34,197,94,.18);
+  border-color: rgba(34,197,94,.45);
+}
+#online-count {
+  white-space: nowrap;
+}
 
 /* Messages */
 #messages {
@@ -486,6 +598,7 @@ body {
   <div class="sep"></div>
   <div id="status-dot"></div>
   <div class="status-label" id="status-label">Connected</div>
+  <button id="btn-theme-toggle" type="button" onclick="toggleTheme()">Light</button>
   <button id="btn-new-thread" onclick="openModal()">＋ New Thread</button>
 </div>
 
@@ -521,6 +634,9 @@ body {
   <div id="main">
     <div id="thread-header" style="display:none">
       <h2 id="thread-title"></h2>
+      <div id="online-presence" title="">
+        <span id="online-count">1</span>
+      </div>
     </div>
 
     <div id="messages">
@@ -567,6 +683,7 @@ body {
     let typingTimers = {};   // agent_id -> timer
     let isConnected = false;
     let contextMenuThread = null;
+    const onlineAgentNames = new Set();
     const ALL_THREAD_STATUSES = ['discuss', 'implement', 'review', 'done', 'closed', 'archived'];
     const NORMAL_THREAD_STATUSES = ['discuss', 'implement', 'review', 'done', 'closed'];
     let selectedThreadStatuses = new Set(NORMAL_THREAD_STATUSES);
@@ -582,8 +699,10 @@ body {
     // Bootstrap
     // ═══════════════════════════════════════════════
     (async function init() {
+      applySavedTheme();
       await refreshThreads();
       await refreshAgents();
+      updateOnlinePresence();
       startSSE();
       setInterval(refreshAgents, 12000);
       // Fallback poll: refresh messages every 3s in case an SSE event was missed
@@ -598,6 +717,42 @@ body {
       if (e.key === 'Escape') hideThreadContextMenu();
     });
     window.addEventListener('resize', hideThreadContextMenu);
+
+    function applySavedTheme() {
+      const savedTheme = localStorage.getItem('agentchatbus-theme') || 'dark';
+      setTheme(savedTheme);
+    }
+
+    function setTheme(theme) {
+      const effectiveTheme = theme === 'light' ? 'light' : 'dark';
+      document.body.setAttribute('data-theme', effectiveTheme);
+      const btn = document.getElementById('btn-theme-toggle');
+      if (btn) {
+        btn.textContent = effectiveTheme === 'light' ? 'Dark' : 'Light';
+        btn.title = effectiveTheme === 'light' ? 'Switch to dark theme' : 'Switch to light theme';
+      }
+      localStorage.setItem('agentchatbus-theme', effectiveTheme);
+    }
+
+    function toggleTheme() {
+      const current = document.body.getAttribute('data-theme') || 'dark';
+      setTheme(current === 'light' ? 'dark' : 'light');
+    }
+
+    function updateOnlinePresence() {
+      const countEl = document.getElementById('online-count');
+      const badgeEl = document.getElementById('online-presence');
+      if (!countEl || !badgeEl) return;
+
+      const onlineAgents = Array.from(onlineAgentNames).sort((a, b) => a.localeCompare(b));
+      const total = onlineAgents.length;
+
+      countEl.textContent = `Online agents ${total}`;
+
+      const tooltip = `Agents: ${onlineAgents.length ? onlineAgents.join(', ') : '(none)'}`;
+      badgeEl.title = tooltip;
+      countEl.title = tooltip;
+    }
 
     // ═══════════════════════════════════════════════
     // SSE
@@ -763,6 +918,7 @@ body {
           // Load history
           const msgs = await api(`/api/threads/${id}/messages?after_seq=0&limit=300&include_system_prompt=1`) || [];
           msgs.forEach(appendBubble);
+          updateOnlinePresence();
           if (msgs.length) lastSeq = msgs[msgs.length - 1].seq;
           scrollBottom();
         }
@@ -771,6 +927,7 @@ body {
           if (!activeThreadId) return;
           const msgs = await api(`/api/threads/${activeThreadId}/messages?after_seq=${lastSeq}&limit=100`) || [];
           msgs.forEach(appendBubble);
+          updateOnlinePresence();
           msgs.forEach(m => { lastSeq = Math.max(lastSeq, m.seq); });  // always advance cursor
           if (msgs.length) scrollBottom();
         }
@@ -963,6 +1120,7 @@ body {
     const author = document.getElementById('compose-author').value.trim() || 'human';
     const content = input.value.trim();
     if (!content || !activeThreadId) return;
+    updateOnlinePresence();
     input.value = '';
     autoResize(input);
 
@@ -987,6 +1145,13 @@ body {
     // ═══════════════════════════════════════════════
   async function refreshAgents() {
     const allAgents = await api('/api/agents') || [];
+    onlineAgentNames.clear();
+    allAgents.forEach(a => {
+      const name = String(a.name ?? '').trim();
+      if (a.is_online && name) onlineAgentNames.add(name);
+    });
+    updateOnlinePresence();
+
     const agents = allAgents.filter(a => a.is_online);
     const pane = document.getElementById('agent-pane');
     pane.innerHTML = agents.length ? '' : `

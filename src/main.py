@@ -9,6 +9,7 @@ Starts a FastAPI HTTP server that:
 import asyncio
 import json
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -363,11 +364,14 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 # ─────────────────────────────────────────────
 
 if __name__ == "__main__":
+    reload_enabled = os.getenv("AGENTCHATBUS_RELOAD", "0") in {"1", "true", "True"}
     uvicorn.run(
         "src.main:app",
         host=HOST,
         port=PORT,
-        reload=True,
+        # Keep reload OFF by default to avoid brief restart windows that can
+        # cause MCP clients (e.g. Cursor SSE) to hit ECONNREFUSED.
+        reload=reload_enabled,
         log_level="info",
         # Force-close lingering SSE / long-poll connections after 3 s when
         # Ctrl+C (SIGINT) is received. Without this, uvicorn waits forever
