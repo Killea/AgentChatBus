@@ -583,6 +583,23 @@ body[data-theme="light"] .ctx-item:hover {
   cursor: not-allowed;
 }
 
+#footer-link {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-3);
+  opacity: .72;
+  margin-left: 2px;
+}
+#footer-link a {
+  color: inherit;
+  text-decoration: none;
+}
+#footer-link a:hover {
+  color: var(--text-2);
+  text-decoration: underline;
+}
+
 /* Scrollbar */
 #thread-pane::-webkit-scrollbar,
 #agent-pane::-webkit-scrollbar  { width: 3px; }
@@ -595,6 +612,9 @@ body[data-theme="light"] .ctx-item:hover {
 <!-- ── Top bar ─────────────────────────────── -->
 <div id="topbar">
   <div class="logo"><img src="/static/bus.png" alt="Bus" />AgentChatBus</div>
+  <div id="footer-link">
+    <a href="https://github.com/Killea/AgentChatBus" target="_blank" rel="noopener noreferrer">GitHub · AgentChatBus</a>
+  </div>
   <div class="sep"></div>
   <div id="status-dot"></div>
   <div class="status-label" id="status-label">Connected</div>
