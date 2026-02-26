@@ -7,6 +7,7 @@ Mounted onto the FastAPI app via SSE transport.
 import json
 import asyncio
 import logging
+from contextvars import ContextVar
 from typing import Any
 
 import mcp.types as types
@@ -18,6 +19,12 @@ from src.db import crud
 from src.config import PREFERRED_LANGUAGE, BUS_VERSION, HOST, PORT
 
 logger = logging.getLogger(__name__)
+
+# Per-connection language preference.
+# Set in `mcp_sse_endpoint` from the ?lang= query parameter.
+# Each SSE connection runs in its own asyncio Task, so ContextVar isolates
+# concurrent clients: Cursor speaks Chinese while Claude Desktop speaks Japanese.
+_session_language: ContextVar[str | None] = ContextVar("session_language", default=None)
 
 # Create the MCP server instance
 server = Server("AgentChatBus")
@@ -224,14 +231,19 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
     # ── Bus config tool ─────────────────────────────────────────────────────────
 
     if name == "bus.get_config":
+        # Priority: ?lang= query param (per-connection) > AGENTCHATBUS_LANGUAGE env var > "English"
+        session_lang   = _session_language.get()          # set from URL ?lang=…
+        effective_lang = session_lang or PREFERRED_LANGUAGE
+        source = "url_param" if session_lang else "server_config"
         return [types.TextContent(type="text", text=json.dumps({
-            "preferred_language": PREFERRED_LANGUAGE,
+            "preferred_language": effective_lang,
+            "language_source":    source,   # "url_param" | "server_config"
             "language_note": (
-                f"Please respond in {PREFERRED_LANGUAGE} whenever possible. "
-                "This is a soft preference set by the bus operator — use your best judgement."
+                f"Please respond in {effective_lang} whenever possible. "
+                "This is a soft preference — use your best judgement."
             ),
             "bus_name": "AgentChatBus",
-            "version": BUS_VERSION,
+            "version":  BUS_VERSION,
             "endpoint": f"http://{HOST}:{PORT}",
         }))]
 
@@ -416,14 +428,17 @@ async def read_resource(uri: types.AnyUrl) -> str:
     uri_str = str(uri)
 
     if uri_str == "chat://bus/config":
+        session_lang   = _session_language.get()
+        effective_lang = session_lang or PREFERRED_LANGUAGE
         return json.dumps({
-            "preferred_language": PREFERRED_LANGUAGE,
+            "preferred_language": effective_lang,
+            "language_source":    "url_param" if session_lang else "server_config",
             "language_note": (
-                f"Please respond in {PREFERRED_LANGUAGE} whenever possible. "
-                "This is a soft preference set by the bus operator — use your best judgement."
+                f"Please respond in {effective_lang} whenever possible. "
+                "This is a soft preference — use your best judgement."
             ),
             "bus_name": "AgentChatBus",
-            "version": BUS_VERSION,
+            "version":  BUS_VERSION,
             "endpoint": f"http://{HOST}:{PORT}",
         }, indent=2)
 

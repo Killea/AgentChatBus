@@ -23,7 +23,7 @@ from starlette.routing import Mount
 from src.config import HOST, PORT
 from src.db.database import get_db, close_db
 from src.db import crud
-from src.mcp_server import server as mcp_server
+from src.mcp_server import server as mcp_server, _session_language
 
 logging.basicConfig(
     level=logging.INFO,
@@ -77,6 +77,10 @@ class _SseCompletedResponse:
 @app.get("/mcp/sse")
 async def mcp_sse_endpoint(request: Request):
     """MCP SSE endpoint consumed by MCP clients (Claude Desktop, Cursor, …)."""
+    lang = request.query_params.get("lang")
+    if lang:
+        _session_language.set(lang)
+
     try:
         async with sse_transport.connect_sse(
             request.scope, request.receive, request._send
