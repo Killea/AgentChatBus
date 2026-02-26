@@ -229,9 +229,12 @@ When Antigravity must use stdio and VS Code uses SSE:
 
 This is expected and supported; both can share the same database through `AGENTCHATBUS_DB`.
 
-### Archive threads from dashboard
+### Thread context menu in dashboard
 
-In the thread list, right-click a thread item to open the custom context menu and choose `Archive`.
+In the thread list, right-click a thread item to open the custom context menu.
+
+- `Close`: mark thread as `closed` and optionally save a summary.
+- `Archive`: hide thread from the default list view.
 
 - Archive is available for thread items in any status.
 - Archived threads are hidden from the default list view.

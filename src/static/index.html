@@ -268,19 +268,6 @@ body {
 }
 #thread-header h2 { font-size: 15px; font-weight: 600; flex: 1; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#state-select {
-  background: var(--bg-card); color: var(--text-2); border: 1px solid var(--border-light);
-  border-radius: 8px; padding: 4px 10px; font-size: 12px; cursor: pointer;
-  font-family: inherit;
-}
-#state-select:focus { outline: none; border-color: var(--accent); }
-#btn-close-thread {
-  background: transparent; border: 1px solid var(--border-light);
-  color: var(--text-2); border-radius: 8px; padding: 4px 12px;
-  font-size: 12px; cursor: pointer; font-family: inherit;
-  transition: background .15s, color .15s;
-}
-#btn-close-thread:hover { background: rgba(239,68,68,.12); color: var(--red); border-color: var(--red); }
 
 /* Messages */
 #messages {
@@ -534,13 +521,6 @@ body {
   <div id="main">
     <div id="thread-header" style="display:none">
       <h2 id="thread-title"></h2>
-      <select id="state-select" onchange="changeState(this.value)">
-        <option value="discuss">discuss</option>
-        <option value="implement">implement</option>
-        <option value="review">review</option>
-        <option value="done">done</option>
-      </select>
-      <button id="btn-close-thread" onclick="closeThread()">Close</button>
     </div>
 
     <div id="messages">
@@ -561,6 +541,7 @@ body {
         </div>
 
 <div id="thread-context-menu">
+  <button id="ctx-close" class="ctx-item" type="button" onclick="closeThreadFromMenu()">Close</button>
   <button id="ctx-archive" class="ctx-item" type="button" onclick="archiveThreadFromMenu()">Archive</button>
 </div>
 
@@ -773,7 +754,6 @@ body {
     // Header
     document.getElementById('thread-header').style.display = 'flex';
     document.getElementById('thread-title').textContent = topic;
-          document.getElementById('state-select').value = status;
           document.getElementById('compose').classList.add('visible');
 
           // Clear messages
@@ -795,17 +775,10 @@ body {
           if (msgs.length) scrollBottom();
         }
 
-        async function changeState(state) {
-          if (!activeThreadId) return;
-          await api(`/api/threads/${activeThreadId}/state`, {
-            method: 'POST', body: JSON.stringify({ state })
-          });
-        }
-
-    async function closeThread() {
-    if (!activeThreadId) return;
+    async function closeThread(threadId = activeThreadId) {
+    if (!threadId) return;
     const summary = prompt('Optional summary for this thread (leave blank to skip):');
-    await api(`/api/threads/${activeThreadId}/close`, {
+    await api(`/api/threads/${threadId}/close`, {
       method: 'POST', body: JSON.stringify({ summary: summary || null })
     });
     await refreshThreads();
@@ -818,12 +791,15 @@ body {
     contextMenuThread = thread;
     const menu = document.getElementById('thread-context-menu');
     const archiveBtn = document.getElementById('ctx-archive');
+    const closeBtn = document.getElementById('ctx-close');
+    closeBtn.disabled = false;
+    closeBtn.textContent = 'Close';
     archiveBtn.disabled = false;
     archiveBtn.textContent = 'Archive';
 
     menu.classList.add('visible');
     const menuWidth = 170;
-    const menuHeight = 44;
+    const menuHeight = 84;
     const x = Math.min(event.clientX, window.innerWidth - menuWidth - 8);
     const y = Math.min(event.clientY, window.innerHeight - menuHeight - 8);
     menu.style.left = `${Math.max(8, x)}px`;
@@ -848,6 +824,13 @@ body {
       resetThreadSelection();
     }
     await refreshThreads();
+  }
+
+  async function closeThreadFromMenu() {
+    if (!contextMenuThread) return;
+    const { id } = contextMenuThread;
+    hideThreadContextMenu();
+    await closeThread(id);
   }
 
   function resetThreadSelection() {
