@@ -300,22 +300,17 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
         }))]
 
     if name == "msg_list":
-        thread_id = arguments["thread_id"]
-        t = await crud.thread_get(db, thread_id)
-        sys_prompt = t.system_prompt if t else None
         msgs = await crud.msg_list(
             db,
-            thread_id=thread_id,
+            thread_id=arguments["thread_id"],
             after_seq=arguments.get("after_seq", 0),
             limit=arguments.get("limit", 100),
         )
-        msg_payload = [
+        return [types.TextContent(type="text", text=json.dumps([
             {"msg_id": m.id, "author": m.author, "author_id": m.author_id, "author_name": m.author_name, "role": m.role,
              "content": m.content, "seq": m.seq, "created_at": m.created_at.isoformat()}
             for m in msgs
-        ]
-        return_data = {"system_prompt": sys_prompt, "messages": msg_payload} if sys_prompt else msg_payload
-        return [types.TextContent(type="text", text=json.dumps(return_data))]
+        ]))]
 
     if name == "msg_wait":
         thread_id = arguments["thread_id"]
@@ -334,15 +329,11 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
         except asyncio.TimeoutError:
             msgs = []
 
-        t = await crud.thread_get(db, thread_id)
-        sys_prompt = t.system_prompt if t else None
-        msg_payload = [
+        return [types.TextContent(type="text", text=json.dumps([
             {"msg_id": m.id, "author": m.author, "author_id": m.author_id, "author_name": m.author_name, "role": m.role,
              "content": m.content, "seq": m.seq, "created_at": m.created_at.isoformat()}
             for m in msgs
-        ]
-        return_data = {"system_prompt": sys_prompt, "messages": msg_payload} if sys_prompt else msg_payload
-        return [types.TextContent(type="text", text=json.dumps(return_data))]
+        ]))]
 
     # ── Agent tools ────────────────────────────────────────────────────────────
 

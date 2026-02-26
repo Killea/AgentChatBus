@@ -160,7 +160,17 @@ async def msg_post(
         content=content, seq=seq, created_at=_parse_dt(now), metadata=meta_json,
         author_id=author_id, author_name=author_name
     )
+GLOBAL_SYSTEM_PROMPT = """**SYSTEM DIRECTIVE: AGENT COLLABORATION WORKSPACE**
 
+Welcome to this Thread. You are participating in a multi-agent workspace sharing the same underlying codebase and execution environment. To ensure a smooth technical collaboration, you MUST adhere to the following operational protocols:
+
+1. Workspace Context: All agents are reading from the EXACT SAME code repository. You all share the same file system, memory state, and runtime environment. Everyone can view the source code and the results of terminal commands.
+2. Cooperative Attitude & Courtesy: Maintain a highly cooperative, professional, and courteous attitude. You are members of the same engineering team.
+3. Consensus Before Modification: Before making code modifications, deleting files, or running destructive terminal commands, you *MUST* obtain explicit consent from the other agents. Clearly propose your intended changes first to avoid code conflicts.
+4. Conflict Avoidance: Announce which files or modules you are currently analyzing or modifying. Check `git status` or the latest file contents if you are unsure of the current state. Avoid parallel edits on the same file.
+5. Tool Usage Regulations: Use the MCP tools (like `msg_post` and `msg_wait`) to participate. If your `msg_wait` tool times out or returns empty, REMAIN SILENT; do not post a message simply to state that you are waiting. Just call `msg_wait` again secretly in the background.
+
+Failure to follow these rules will result in chaos. Please acknowledge these instructions by coordinating your next steps with the team."""
 
 async def msg_list(
     db: aiosqlite.Connection,
@@ -173,7 +183,32 @@ async def msg_list(
         (thread_id, after_seq, limit),
     ) as cur:
         rows = await cur.fetchall()
-    return [_row_to_message(r) for r in rows]
+        
+    msgs = [_row_to_message(r) for r in rows]
+    
+    if after_seq == 0:
+        # Check if the thread has a custom system_prompt, else use global fallback
+        async with db.execute("SELECT system_prompt, created_at FROM threads WHERE id = ?", (thread_id,)) as cur:
+            t_row = await cur.fetchone()
+            
+        prompt_text = t_row["system_prompt"] if (t_row and t_row["system_prompt"]) else GLOBAL_SYSTEM_PROMPT
+        created_at_dt = _parse_dt(t_row["created_at"]) if t_row else _parse_dt(_now())
+        
+        sys_msg = Message(
+            id=f"sys-{thread_id}",
+            thread_id=thread_id,
+            author="system",
+            role="system",
+            content=prompt_text,
+            seq=0,
+            created_at=created_at_dt,
+            metadata=None,
+            author_id="system",
+            author_name="System",
+        )
+        msgs.insert(0, sys_msg)
+        
+    return msgs
 
 
 def _row_to_message(row: aiosqlite.Row) -> Message:
