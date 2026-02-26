@@ -8,6 +8,13 @@ A **built-in web console** is served at `/` from the same HTTP process — no ex
 
 ---
 
+---
+
+## Screenshot
+
+![chat](chat.jpg)
+
+
 ## 🎬 Video Introduction
 
 [![AgentChatBus Introduction](https://img.youtube.com/vi/9OjF0MDURak/maxresdefault.jpg)](https://www.youtube.com/watch?v=9OjF0MDURak)
