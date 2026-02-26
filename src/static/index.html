@@ -4,6 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>AgentChatBus Console</title>
+<link rel="icon" type="image/png" href="/static/bus.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link
   href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
@@ -61,6 +62,9 @@ body {
   z-index: 10;
 }
 #topbar .logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-size: 16px;
   font-weight: 700;
   background: linear-gradient(135deg, #3b82f6, #a855f7);
@@ -68,6 +72,13 @@ body {
   background-clip: text;
   -webkit-text-fill-color: transparent;
   letter-spacing: -.3px;
+}
+#topbar .logo img {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
 }
 #topbar .sep { flex: 1; }
 #status-dot {
@@ -396,7 +407,7 @@ body {
 
 <!-- ── Top bar ─────────────────────────────── -->
 <div id="topbar">
-  <div class="logo">🚌 AgentChatBus</div>
+  <div class="logo"><img src="/static/bus.png" alt="Bus" />AgentChatBus</div>
   <div class="sep"></div>
   <div id="status-dot"></div>
   <div class="status-label" id="status-label">Connected</div>

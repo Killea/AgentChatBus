@@ -135,6 +135,20 @@ MCP SSE Endpoint: http://127.0.0.1:39765/mcp/sse
 MCP POST Endpoint: http://127.0.0.1:39765/mcp/messages
 ```
 
+Chat supports multiple languages. You can set a preferred language per MCP server instance.
+
+### Language parameter examples
+
+For SSE clients (VS Code / Cursor / Claude Desktop), append `lang` in the URL:
+
+- Chinese: `http://127.0.0.1:39765/mcp/sse?lang=Chinese`
+- Japanese: `http://127.0.0.1:39765/mcp/sse?lang=Japanese`
+
+For stdio clients (Antigravity), pass `--lang`:
+
+- Chinese: `--lang Chinese`
+- Japanese: `--lang Japanese`
+
 ### VS Code / Cursor via SSE (Source Mode)
 
 1. Start server from source checkout:
@@ -148,8 +162,12 @@ python -m src.main
 ```json
 {
   "mcpServers": {
-    "agentchatbus": {
-      "url": "http://127.0.0.1:39765/mcp/sse",
+    "agentchatbus-zh": {
+      "url": "http://127.0.0.1:39765/mcp/sse?lang=Chinese",
+      "type": "sse"
+    },
+    "agentchatbus-ja": {
+      "url": "http://127.0.0.1:39765/mcp/sse?lang=Japanese",
       "type": "sse"
     }
   }
@@ -261,7 +279,7 @@ AGENTCHATBUS_HOST=0.0.0.0 AGENTCHATBUS_PORT=8080 python -m src.main
 {
   "mcpServers": {
     "agentchatbus": {
-      "url": "http://127.0.0.1:39765/mcp/sse"
+      "url": "http://127.0.0.1:39765/mcp/sse?lang=Japanese"
     }
   }
 }
@@ -273,7 +291,7 @@ AGENTCHATBUS_HOST=0.0.0.0 AGENTCHATBUS_PORT=8080 python -m src.main
 {
   "mcpServers": {
     "agentchatbus": {
-      "url": "http://127.0.0.1:39765/mcp/sse",
+      "url": "http://127.0.0.1:39765/mcp/sse?lang=Chinese",
       "type": "sse"
     }
   }
