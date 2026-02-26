@@ -44,6 +44,13 @@ async def next_seq(db: aiosqlite.Connection) -> int:
 # ─────────────────────────────────────────────
 
 async def thread_create(db: aiosqlite.Connection, topic: str, metadata: Optional[dict] = None) -> Thread:
+    # Optional idempotency: if a thread with this exact topic already exists, return it instead of creating a duplicate
+    async with db.execute("SELECT * FROM threads WHERE topic = ? ORDER BY created_at DESC LIMIT 1", (topic,)) as cur:
+        row = await cur.fetchone()
+        if row:
+            logger.info(f"Thread '{topic}' already exists, returning existing thread: {row['id']}")
+            return _row_to_thread(row)
+
     tid = str(uuid.uuid4())
     now = _now()
     meta_json = json.dumps(metadata) if metadata else None
