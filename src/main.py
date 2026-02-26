@@ -202,7 +202,8 @@ async def api_post_message(thread_id: str, body: MessageCreate):
 # ─────────────────────────────────────────────
 
 class AgentRegister(BaseModel):
-    name: str
+    ide: str
+    model: str
     description: str = ""
     capabilities: list[str] | None = None
 
@@ -213,8 +214,8 @@ class AgentToken(BaseModel):
 @app.post("/api/agents/register", status_code=200)
 async def api_agent_register(body: AgentRegister):
     db = await get_db()
-    a = await crud.agent_register(db, body.name, body.description, body.capabilities)
-    return {"agent_id": a.id, "token": a.token}
+    a = await crud.agent_register(db, body.ide, body.model, body.description, body.capabilities)
+    return {"agent_id": a.id, "name": a.name, "token": a.token}
 
 @app.post("/api/agents/heartbeat")
 async def api_agent_heartbeat(body: AgentToken):

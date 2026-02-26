@@ -60,7 +60,7 @@ async def heartbeat_loop(client: httpx.AsyncClient, agent_id: str, token: str):
         await asyncio.sleep(10)
 
 
-async def watch_thread(client: httpx.AsyncClient, thread_id: str, agent_id: str):
+async def watch_thread(client: httpx.AsyncClient, thread_id: str, my_name: str):
     """Monitor a single thread and reply to messages from other agents."""
     last_seq = 0
     reply_index = 0
@@ -77,7 +77,7 @@ async def watch_thread(client: httpx.AsyncClient, thread_id: str, agent_id: str)
         for m in msgs:
             if m["seq"] > last_seq:
                 last_seq = m["seq"]
-            if m["author"] == agent_id:
+            if m["author"] == my_name:
                 continue  # skip own messages
             if m["role"] == "system" and "✅" in m["content"]:
                 print(f"[AgentB] Thread {thread_id[:8]} closed. Stopping watcher.")
@@ -91,7 +91,7 @@ async def watch_thread(client: httpx.AsyncClient, thread_id: str, agent_id: str)
             reply = EXPERT_REPLIES[reply_index % len(EXPERT_REPLIES)]
             reply_index += 1
             await client.post(f"/api/threads/{thread_id}/messages",
-                              json={"author": agent_id, "role": "assistant", "content": reply})
+                              json={"author": my_name, "role": "assistant", "content": reply})
             print(f"[AgentB] → [{thread_id[:8]}] {reply[:80]}…")
 
         await asyncio.sleep(1)
@@ -102,15 +102,18 @@ async def main():
 
         # 1. Register
         r = await client.post("/api/agents/register", json={
-            "name": "AgentB-Responder",
+            "ide": "CLI",
+            "model": "AgentB-Responder",
             "description": "I listen to threads and respond with expert knowledge.",
             "capabilities": ["async-python", "expert-replies"],
         })
         if r.status_code != 200:
             print(f"[AgentB] Register failed: {r.status_code} {r.text}"); return
-        agent = r.json()
-        agent_id, token = agent["agent_id"], agent["token"]
-        print(f"[AgentB] Registered as {agent_id}")
+        agent    = r.json()
+        agent_id = agent["agent_id"]
+        token    = agent["token"]
+        my_name  = agent["name"]   # e.g. "CLI (AgentB-Responder)" or "CLI (AgentB-Responder) 2"
+        print(f"[AgentB] Registered as '{my_name}' ({agent_id})")
         print(f"[AgentB] Polling for threads… (Ctrl+C to stop)")
 
         # 2. Start heartbeat in the background
@@ -125,7 +128,7 @@ async def main():
                     for t in r.json():
                         if t["id"] not in watched:
                             watched.add(t["id"])
-                            asyncio.create_task(watch_thread(client, t["id"], agent_id))
+                            asyncio.create_task(watch_thread(client, t["id"], my_name))
                 await asyncio.sleep(2)
 
         except (KeyboardInterrupt, asyncio.CancelledError):

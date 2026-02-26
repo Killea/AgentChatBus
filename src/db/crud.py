@@ -172,25 +172,53 @@ def _row_to_message(row: aiosqlite.Row) -> Message:
 
 async def agent_register(
     db: aiosqlite.Connection,
-    name: str,
+    ide: str,
+    model: str,
     description: str = "",
     capabilities: Optional[list] = None,
 ) -> AgentInfo:
+    """
+    Register a new agent on the bus.
+
+    The display `name` is auto-generated as ``ide (model)`` — e.g. "Cursor (GPT-4)".
+    If another agent with that exact base name is already registered, a numeric
+    suffix is appended: "Cursor (GPT-4) 2", "Cursor (GPT-4) 3", …
+    This lets identical IDE+model pairs co-exist without confusion.
+    """
+    ide   = ide.strip()   or "Unknown IDE"
+    model = model.strip() or "Unknown Model"
+    base_name = f"{ide} ({model})"
+
+    # Find next available suffix
+    async with db.execute(
+        "SELECT name FROM agents WHERE name = ? OR name LIKE ?",
+        (base_name, f"{base_name} %"),
+    ) as cur:
+        existing = {r["name"] for r in await cur.fetchall()}
+
+    if base_name not in existing:
+        name = base_name
+    else:
+        n = 2
+        while f"{base_name} {n}" in existing:
+            n += 1
+        name = f"{base_name} {n}"
+
     aid = str(uuid.uuid4())
     token = secrets.token_hex(32)
     now = _now()
     caps_json = json.dumps(capabilities) if capabilities else None
     await db.execute(
-        "INSERT INTO agents (id, name, description, capabilities, registered_at, last_heartbeat, token) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (aid, name, description, caps_json, now, now, token),
+        "INSERT INTO agents (id, name, ide, model, description, capabilities, registered_at, last_heartbeat, token) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (aid, name, ide, model, description, caps_json, now, now, token),
     )
     await db.commit()
-    await _emit_event(db, "agent.online", None, {"agent_id": aid, "name": name})
+    await _emit_event(db, "agent.online", None, {"agent_id": aid, "name": name, "ide": ide, "model": model})
     logger.info(f"Agent registered: {aid} '{name}'")
-    return AgentInfo(id=aid, name=name, description=description, capabilities=caps_json,
-                     registered_at=_parse_dt(now), last_heartbeat=_parse_dt(now),
-                     is_online=True, token=token)
+    return AgentInfo(id=aid, name=name, ide=ide, model=model, description=description,
+                     capabilities=caps_json, registered_at=_parse_dt(now),
+                     last_heartbeat=_parse_dt(now), is_online=True, token=token)
 
 
 async def agent_heartbeat(db: aiosqlite.Connection, agent_id: str, token: str) -> bool:
@@ -227,7 +255,9 @@ def _row_to_agent(row: aiosqlite.Row) -> AgentInfo:
     return AgentInfo(
         id=row["id"],
         name=row["name"],
-        description=row["description"],
+        ide=row["ide"] if "ide" in row.keys() else "",
+        model=row["model"] if "model" in row.keys() else "",
+        description=row["description"] or "",
         capabilities=row["capabilities"],
         registered_at=_parse_dt(row["registered_at"]),
         last_heartbeat=last_hb,

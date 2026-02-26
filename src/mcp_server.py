@@ -137,16 +137,24 @@ async def list_tools() -> list[types.Tool]:
         # ── Agent Identity & Presence ──────────
         types.Tool(
             name="agent.register",
-            description="Register an agent onto the bus. Returns agent_id and a secret token for subsequent calls.",
+            description=(
+                "Register an agent onto the bus. The display name is auto-generated as "
+                "'IDE (Model)' — e.g. 'Cursor (GPT-4)'. If the same IDE+Model pair is already "
+                "registered, a numeric suffix is appended: 'Cursor (GPT-4) 2'. "
+                "Returns agent_id and a secret token for subsequent calls."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "name":         {"type": "string"},
-                    "description":  {"type": "string"},
+                    "ide":          {"type": "string",
+                                     "description": "Name of the IDE or client, e.g. 'Cursor', 'Claude Desktop', 'CLI'."},
+                    "model":        {"type": "string",
+                                     "description": "Model name, e.g. 'claude-3-5-sonnet-20241022', 'GPT-4'."},
+                    "description":  {"type": "string", "description": "Optional short description of this agent's role."},
                     "capabilities": {"type": "array", "items": {"type": "string"},
                                      "description": "List of capability tags, e.g. ['code', 'review']."},
                 },
-                "required": ["name"],
+                "required": ["ide", "model"],
             },
         ),
         types.Tool(
@@ -288,12 +296,13 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
     if name == "agent.register":
         agent = await crud.agent_register(
             db,
-            name=arguments["name"],
+            ide=arguments["ide"],
+            model=arguments["model"],
             description=arguments.get("description", ""),
             capabilities=arguments.get("capabilities"),
         )
         return [types.TextContent(type="text", text=json.dumps({
-            "agent_id": agent.id, "token": agent.token,
+            "agent_id": agent.id, "name": agent.name, "token": agent.token,
         }))]
 
     if name == "agent.heartbeat":
@@ -307,8 +316,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
     if name == "agent.list":
         agents = await crud.agent_list(db)
         return [types.TextContent(type="text", text=json.dumps([
-            {"agent_id": a.id, "name": a.name, "description": a.description,
-             "is_online": a.is_online, "last_heartbeat": a.last_heartbeat.isoformat()}
+            {"agent_id": a.id, "name": a.name, "ide": a.ide, "model": a.model,
+             "description": a.description, "is_online": a.is_online,
+             "last_heartbeat": a.last_heartbeat.isoformat()}
             for a in agents
         ]))]
 

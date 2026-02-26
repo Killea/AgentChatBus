@@ -33,7 +33,9 @@ class Message:
 @dataclass
 class AgentInfo:
     id: str
-    name: str
+    name: str              # auto-generated: "IDE (Model)" or "IDE (Model) 2"
+    ide: str               # e.g. "Cursor", "Claude Desktop", "CLI"
+    model: str             # e.g. "GPT-4", "claude-3-5-sonnet-20241022"
     description: str
     capabilities: Optional[str]   # JSON list of capability tags
     registered_at: datetime

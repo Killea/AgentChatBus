@@ -35,16 +35,18 @@ async def main(topic: str, rounds: int):
 
         # 1. Register
         r = await client.post("/api/agents/register", json={
-            "name": "AgentA-Initiator",
+            "ide": "CLI",
+            "model": "AgentA-Initiator",
             "description": "I initiate and steer discussions.",
             "capabilities": ["discussion", "summarization"],
         })
-        # Fallback: call via MCP tool API if REST not available
         if r.status_code != 200:
             print(f"[AgentA] Register failed: {r.status_code} {r.text}"); return
-        agent = r.json()
-        agent_id, token = agent["agent_id"], agent["token"]
-        print(f"[AgentA] Registered as {agent_id}")
+        agent    = r.json()
+        agent_id = agent["agent_id"]
+        token    = agent["token"]
+        my_name  = agent["name"]   # e.g. "CLI (AgentA-Initiator)"
+        print(f"[AgentA] Registered as '{my_name}' ({agent_id})")
 
         # 2. Create thread
         r = await client.post("/api/threads", json={"topic": topic})
@@ -53,9 +55,9 @@ async def main(topic: str, rounds: int):
         print(f"[AgentA] Created thread: {thread_id} — '{topic}'")
 
         # 3. Opening question
-        opening = f"Hello AgentB! Let's discuss: '{topic}'. What are the most important considerations to start with?"
+        opening = f"Hello! Let's discuss: '{topic}'. What are the most important considerations to start with?"
         r = await client.post(f"/api/threads/{thread_id}/messages",
-                              json={"author": agent_id, "role": "user", "content": opening})
+                              json={"author": my_name, "role": "user", "content": opening})
         last_seq = r.json()["seq"]
         print(f"[AgentA] → {opening}")
 
@@ -78,15 +80,12 @@ async def main(topic: str, rounds: int):
             if i < rounds - 1:
                 reply = RESPONSES[i % len(RESPONSES)]
                 r = await client.post(f"/api/threads/{thread_id}/messages",
-                                      json={"author": agent_id, "role": "user", "content": reply})
+                                      json={"author": my_name, "role": "user", "content": reply})
                 last_seq = r.json()["seq"]
                 print(f"[AgentA] → {reply}")
             else:
-                # Final round: close the thread
-                summary = (f"Discussion on '{topic}' completed in {rounds} rounds. "
-                           f"Key takeaways: covered best practices, error handling, and testing strategies.")
                 await client.post(f"/api/threads/{thread_id}/messages",
-                                  json={"author": agent_id, "role": "system",
+                                  json={"author": my_name, "role": "assistant",
                                         "content": "✅ Thread complete. Writing summary…"})
                 # Close via REST (thread.close not yet exposed as REST, use set_state for now)
                 print(f"[AgentA] Discussion complete. Summary: {summary}")

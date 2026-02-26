@@ -93,6 +93,8 @@ async def init_schema(db: aiosqlite.Connection) -> None:
         CREATE TABLE IF NOT EXISTS agents (
             id              TEXT PRIMARY KEY,
             name            TEXT NOT NULL,
+            ide             TEXT NOT NULL DEFAULT '',
+            model           TEXT NOT NULL DEFAULT '',
             description     TEXT,
             capabilities    TEXT,
             registered_at   TEXT NOT NULL,
@@ -113,4 +115,17 @@ async def init_schema(db: aiosqlite.Connection) -> None:
         );
     """)
     await db.commit()
+
+    # ── Safe migration: add new columns to existing DBs ──────────────────────
+    for col, typedef in [
+        ("ide",   "TEXT NOT NULL DEFAULT ''"),
+        ("model", "TEXT NOT NULL DEFAULT ''"),
+    ]:
+        try:
+            await db.execute(f"ALTER TABLE agents ADD COLUMN {col} {typedef}")
+            await db.commit()
+            logger.info(f"Migration: added column 'agents.{col}'")
+        except Exception:
+            pass  # Column already exists — safe to ignore
+
     logger.info("Schema initialized.")
