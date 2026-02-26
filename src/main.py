@@ -13,7 +13,7 @@ import time
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from starlette.responses import Response
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -171,13 +171,16 @@ async def global_sse_stream(request: Request):
 async def api_threads(status: str | None = None):
     db = await get_db()
     threads = await crud.thread_list(db, status=status)
-    return [{"id": t.id, "topic": t.topic, "status": t.status,
+    return [{"id": t.id, "topic": t.topic, "status": t.status, "system_prompt": t.system_prompt,
              "created_at": t.created_at.isoformat()} for t in threads]
 
 
 @app.get("/api/threads/{thread_id}/messages")
 async def api_messages(thread_id: str, after_seq: int = 0, limit: int = 200):
     db = await get_db()
+    t = await crud.thread_get(db, thread_id)
+    if t is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
     msgs = await crud.msg_list(db, thread_id, after_seq=after_seq, limit=limit)
     return [{"id": m.id, "author": m.author, "author_id": m.author_id, "author_name": m.author_name, "role": m.role, "content": m.content,
              "seq": m.seq, "created_at": m.created_at.isoformat()} for m in msgs]
@@ -196,6 +199,7 @@ from pydantic import BaseModel
 class ThreadCreate(BaseModel):
     topic: str
     metadata: dict | None = None
+    system_prompt: str | None = None
 
 class MessageCreate(BaseModel):
     author: str = "human"
@@ -205,13 +209,16 @@ class MessageCreate(BaseModel):
 @app.post("/api/threads", status_code=201)
 async def api_create_thread(body: ThreadCreate):
     db = await get_db()
-    t = await crud.thread_create(db, body.topic, body.metadata)
-    return {"id": t.id, "topic": t.topic, "status": t.status,
+    t = await crud.thread_create(db, body.topic, body.metadata, body.system_prompt)
+    return {"id": t.id, "topic": t.topic, "status": t.status, "system_prompt": t.system_prompt,
             "created_at": t.created_at.isoformat()}
 
 @app.post("/api/threads/{thread_id}/messages", status_code=201)
 async def api_post_message(thread_id: str, body: MessageCreate):
     db = await get_db()
+    t = await crud.thread_get(db, thread_id)
+    if t is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
     m = await crud.msg_post(db, thread_id=thread_id, author=body.author,
                             content=body.content, role=body.role)
     return {"id": m.id, "seq": m.seq, "author": m.author,
@@ -242,12 +249,16 @@ async def api_agent_register(body: AgentRegister):
 async def api_agent_heartbeat(body: AgentToken):
     db = await get_db()
     ok = await crud.agent_heartbeat(db, body.agent_id, body.token)
+    if not ok:
+        raise HTTPException(status_code=401, detail="Invalid agent_id/token")
     return {"ok": ok}
 
 @app.post("/api/agents/unregister")
 async def api_agent_unregister(body: AgentToken):
     db = await get_db()
     ok = await crud.agent_unregister(db, body.agent_id, body.token)
+    if not ok:
+        raise HTTPException(status_code=401, detail="Invalid agent_id/token")
     return {"ok": ok}
 
 
@@ -267,12 +278,21 @@ class ThreadClose(BaseModel):
 @app.post("/api/threads/{thread_id}/state")
 async def api_thread_state(thread_id: str, body: StateChange):
     db = await get_db()
-    await crud.thread_set_state(db, thread_id, body.state)
+    t = await crud.thread_get(db, thread_id)
+    if t is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    try:
+        await crud.thread_set_state(db, thread_id, body.state)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return {"ok": True}
 
 @app.post("/api/threads/{thread_id}/close")
 async def api_thread_close(thread_id: str, body: ThreadClose):
     db = await get_db()
+    t = await crud.thread_get(db, thread_id)
+    if t is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
     await crud.thread_close(db, thread_id, body.summary)
     return {"ok": True}
 

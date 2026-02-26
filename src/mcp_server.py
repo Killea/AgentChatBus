@@ -44,8 +44,9 @@ async def list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "topic":    {"type": "string", "description": "Short description of the thread's purpose."},
-                    "metadata": {"type": "object", "description": "Optional arbitrary key-value metadata."},
+                    "topic":         {"type": "string", "description": "Short description of the thread's purpose."},
+                    "metadata":      {"type": "object", "description": "Optional arbitrary key-value metadata."},
+                    "system_prompt": {"type": "string", "description": "Optional system prompt defining collaboration rules for this thread."},
                 },
                 "required": ["topic"],
             },
@@ -252,9 +253,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
     # ── Thread tools ───────────────────────────────────────────────────────────
 
     if name == "thread_create":
-        result = await crud.thread_create(db, arguments["topic"], arguments.get("metadata"))
+        result = await crud.thread_create(db, arguments["topic"], arguments.get("metadata"), arguments.get("system_prompt"))
         return [types.TextContent(type="text", text=json.dumps({
-            "thread_id": result.id, "topic": result.topic, "status": result.status,
+            "thread_id": result.id, "topic": result.topic, "status": result.status, "system_prompt": result.system_prompt,
         }))]
 
     if name == "thread_list":
@@ -299,17 +300,22 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
         }))]
 
     if name == "msg_list":
+        thread_id = arguments["thread_id"]
+        t = await crud.thread_get(db, thread_id)
+        sys_prompt = t.system_prompt if t else None
         msgs = await crud.msg_list(
             db,
-            thread_id=arguments["thread_id"],
+            thread_id=thread_id,
             after_seq=arguments.get("after_seq", 0),
             limit=arguments.get("limit", 100),
         )
-        return [types.TextContent(type="text", text=json.dumps([
+        msg_payload = [
             {"msg_id": m.id, "author": m.author, "author_id": m.author_id, "author_name": m.author_name, "role": m.role,
              "content": m.content, "seq": m.seq, "created_at": m.created_at.isoformat()}
             for m in msgs
-        ]))]
+        ]
+        return_data = {"system_prompt": sys_prompt, "messages": msg_payload} if sys_prompt else msg_payload
+        return [types.TextContent(type="text", text=json.dumps(return_data))]
 
     if name == "msg_wait":
         thread_id = arguments["thread_id"]
@@ -328,11 +334,15 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
         except asyncio.TimeoutError:
             msgs = []
 
-        return [types.TextContent(type="text", text=json.dumps([
+        t = await crud.thread_get(db, thread_id)
+        sys_prompt = t.system_prompt if t else None
+        msg_payload = [
             {"msg_id": m.id, "author": m.author, "author_id": m.author_id, "author_name": m.author_name, "role": m.role,
              "content": m.content, "seq": m.seq, "created_at": m.created_at.isoformat()}
             for m in msgs
-        ]))]
+        ]
+        return_data = {"system_prompt": sys_prompt, "messages": msg_payload} if sys_prompt else msg_payload
+        return [types.TextContent(type="text", text=json.dumps(return_data))]
 
     # ── Agent tools ────────────────────────────────────────────────────────────
 

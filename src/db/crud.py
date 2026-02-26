@@ -43,7 +43,7 @@ async def next_seq(db: aiosqlite.Connection) -> int:
 # Thread CRUD
 # ─────────────────────────────────────────────
 
-async def thread_create(db: aiosqlite.Connection, topic: str, metadata: Optional[dict] = None) -> Thread:
+async def thread_create(db: aiosqlite.Connection, topic: str, metadata: Optional[dict] = None, system_prompt: Optional[str] = None) -> Thread:
     # Optional idempotency: if a thread with this exact topic already exists, return it instead of creating a duplicate
     async with db.execute("SELECT * FROM threads WHERE topic = ? ORDER BY created_at DESC LIMIT 1", (topic,)) as cur:
         row = await cur.fetchone()
@@ -55,14 +55,14 @@ async def thread_create(db: aiosqlite.Connection, topic: str, metadata: Optional
     now = _now()
     meta_json = json.dumps(metadata) if metadata else None
     await db.execute(
-        "INSERT INTO threads (id, topic, status, created_at, metadata) VALUES (?, ?, 'discuss', ?, ?)",
-        (tid, topic, now, meta_json),
+        "INSERT INTO threads (id, topic, status, created_at, metadata, system_prompt) VALUES (?, ?, 'discuss', ?, ?, ?)",
+        (tid, topic, now, meta_json, system_prompt),
     )
     await db.commit()
     await _emit_event(db, "thread.new", tid, {"thread_id": tid, "topic": topic})
     logger.info(f"Thread created: {tid} '{topic}'")
     return Thread(id=tid, topic=topic, status="discuss", created_at=_parse_dt(now),
-                  closed_at=None, summary=None, metadata=meta_json)
+                  closed_at=None, summary=None, metadata=meta_json, system_prompt=system_prompt)
 
 
 async def thread_get(db: aiosqlite.Connection, thread_id: str) -> Optional[Thread]:
@@ -105,6 +105,7 @@ async def thread_close(db: aiosqlite.Connection, thread_id: str, summary: Option
 
 
 def _row_to_thread(row: aiosqlite.Row) -> Thread:
+    system_prompt = row["system_prompt"] if "system_prompt" in row.keys() else None
     return Thread(
         id=row["id"],
         topic=row["topic"],
@@ -113,6 +114,7 @@ def _row_to_thread(row: aiosqlite.Row) -> Thread:
         closed_at=_parse_dt(row["closed_at"]) if row["closed_at"] else None,
         summary=row["summary"],
         metadata=row["metadata"],
+        system_prompt=system_prompt,
     )
 
 

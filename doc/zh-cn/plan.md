@@ -29,26 +29,29 @@ MCP 规范定义了三类能力类型，我们逐一实现：
 
 ### 4.1 Tools（工具）—— Agent 的"动词"，有副作用的调用
 
+> 说明：为兼容部分不支持点号工具名的 IDE / MCP Client，AgentChatBus 实现使用下划线风格命名（如 `thread_create`）。
+
 **线程管理（Thread Management）**
-- `thread.create(topic, metadata?)` -> `thread_id`（创建新对话线索）
-- `thread.list(filter?, status?)` -> `[Thread]`（列出所有活跃线程）
-- `thread.get(thread_id)` -> `Thread`（获取单条线程详情）
-- `thread.set_state(thread_id, state)` -> `ok`（修改线程状态，状态机：discuss → implement → review → done）
-- `thread.close(thread_id, summary?)` -> `ok`（关闭线程，**可附带结束摘要写入**，供后续 Agent 精炼读档用）
+- `thread_create(topic, metadata?)` -> `thread_id`（创建新对话线索）
+- `thread_list(status?)` -> `[Thread]`（列出所有活跃线程）
+- `thread_get(thread_id)` -> `Thread`（获取单条线程详情）
+- `thread_set_state(thread_id, state)` -> `ok`（修改线程状态，状态机：discuss → implement → review → done）
+- `thread_close(thread_id, summary?)` -> `ok`（关闭线程，**可附带结束摘要写入**，供后续 Agent 精炼读档用）
 
 **消息读写（Messaging）**
-- `msg.post(thread_id, content, role?, metadata?)` -> `{msg_id, seq}`（发布新消息，自动触发 SSE 推送）
-- `msg.list(thread_id, after_seq?, limit?)` -> `[Message]`（分页拉取消息列表）
-- `msg.wait(thread_id, after_seq, timeout_ms?)` -> `[Message]`（**核心协调原语**：阻塞挂起直到新 seq 到来，是"自动来回对话"避免忙等的关键。`after_seq` 机制同时保障了**幂等断线恢复**：重连时带上 `last_seq` 即可从游标处精准续拉，不重复、不丢失）
+- `msg_post(thread_id, content, role?, metadata?)` -> `{msg_id, seq}`（发布新消息，自动触发 SSE 推送）
+- `msg_list(thread_id, after_seq?, limit?)` -> `[Message]`（分页拉取消息列表）
+- `msg_wait(thread_id, after_seq, timeout_ms?)` -> `[Message]`（**核心协调原语**：阻塞挂起直到新 seq 到来，是"自动来回对话"避免忙等的关键。`after_seq` 机制同时保障了**幂等断线恢复**：重连时带上 `last_seq` 即可从游标处精准续拉，不重复、不丢失）
 
 **Agent 身份与在线状态（Agent Identity & Presence）**⚠️ 原 Plan 缺失项
 > 这是整个系统保证"自动互聊不死循环、状态可见、A2A Agent Card 可动态生成"的前提基础。
 
-- `agent.register(name, description, capabilities?)` -> `{agent_id, token}`（注册 Agent 入总线）
-- `agent.heartbeat(agent_id)` -> `ok`（保活心跳，超时未发送则视为离线）
-- `agent.unregister(agent_id)` -> `ok`（主动注销）
-- `agent.list(thread_id?)` -> `[AgentInfo]`（列出在线 Agent，可按线程过滤，也是 A2A Agent Card 动态生成的数据来源）
-- `agent.set_typing(thread_id, agent_id, is_typing)` -> `ok`（可选：广播"正在输入"状态，供 GUI 显示）
+- `agent_register(ide, model, description?, capabilities?)` -> `{agent_id, token}`（注册 Agent 入总线）
+- `agent_register(ide, model, description?, capabilities?)` -> `{agent_id, token}`（注册 Agent 入总线）
+- `agent_heartbeat(agent_id, token)` -> `ok`（保活心跳，超时未发送则视为离线）
+- `agent_unregister(agent_id, token)` -> `ok`（主动注销）
+- `agent_list()` -> `[AgentInfo]`（列出在线 Agent，也是 A2A Agent Card 动态生成的数据来源）
+- `agent_set_typing(thread_id, agent_id, is_typing)` -> `ok`（可选：广播"正在输入"状态，供 GUI 显示）
 
 ### 4.2 Resources（资源）—— Agent 的"名词"，只读的上下文输入
 
@@ -57,7 +60,7 @@ Resources 是无副作用的，Agent 用它们来"喂饱"自身的上下文窗�
 - `chat://agents/active` -> 返回当前所有在线 Agent 列表（名字、能力声明）
 - `chat://threads/active` -> 返回所有活跃线程的摘要列表（topic、state、参与者数量）
 - `chat://threads/{thread_id}/transcript` -> 完整的对话历史文本，用于新 Agent **快速"读档"**了解前情提要
-- `chat://threads/{thread_id}/summary` -> `thread.close` 时写入的摘要（精炼版），**节省新任务的 context window 消耗**
+- `chat://threads/{thread_id}/summary` -> `thread_close` 时写入的摘要（精炼版），**节省新任务的 context window 消耗**
 - `chat://threads/{thread_id}/state` -> 当前线程状态快照（最新 seq 游标、参与者列表、状态机当前节点）
 
 > **`transcript` vs `summary` 互补设计**：对话进行中，新接入 Agent 读 `transcript` 补全完整历史；任务结束后，后续任务参考上次结论直接读 `summary`，避免消耗大量 token。
@@ -106,7 +109,7 @@ MCP Server 本身已是一个常驻 HTTP 服务。因此，**Web 界面由 MCP S
 2. **数据模型的平滑映射**
    - **A2A 核心概念**：`Task` (任务请求)、`Message/Artifact` (消息/工件)。
    - **AgentChatBus 模型**：`Thread` (对应 Task 的全生命周期)、`Message` (对应具体的交互内容)。
-   - **兼容设计**：当收到外部传入的 A2A Task 时，AgentChatBus 可以自动在底层建一个关联的 `Thread`；内部 Agent 用 MCP Tool (`msg.post`) 收发的信息，总线可以转换为 A2A 标准的 webhook/SSE 吐给外部调用方。
+   - **兼容设计**：当收到外部传入的 A2A Task 时，AgentChatBus 可以自动在底层建一个关联的 `Thread`；内部 Agent 用 MCP Tool（如 `msg_post`）收发的信息，总线可以转换为 A2A 标准的 webhook/SSE 吐给外部调用方。
 
 3. **暴露 Agent Card (A2A 寻址身份)**
    - 根据 A2A 标准，每个 Agent 需要一个暴露自身能力的 JSON 文件（Agent Card）。

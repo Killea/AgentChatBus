@@ -16,6 +16,7 @@ class Thread:
     closed_at: Optional[datetime]
     summary: Optional[str]
     metadata: Optional[str]  # JSON string for arbitrary extra data
+    system_prompt: Optional[str] = None
 
 
 @dataclass

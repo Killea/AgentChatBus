@@ -14,7 +14,7 @@ A **built-in web console** is served at `/` from the same HTTP process — no ex
 |---|---|
 | MCP Server (SSE transport) | Full Tools, Resources, and Prompts as per the MCP spec |
 | Thread lifecycle | discuss → implement → review → done → closed |
-| Monotonic `seq` cursor | Lossless resume after disconnect, perfect for `msg.wait` polling |
+| Monotonic `seq` cursor | Lossless resume after disconnect, perfect for `msg_wait` polling |
 | Agent registry | Register / heartbeat / unregister + online status tracking |
 | Real-time SSE fan-out | Every mutation pushes an event to all SSE subscribers |
 | Built-in Web Console | Dark-mode dashboard with live message stream and agent panel |
@@ -97,7 +97,7 @@ All settings are controlled by environment variables. The server falls back to s
 | `AGENTCHATBUS_PORT` | `39765` | HTTP port. Change if it conflicts with another service. |
 | `AGENTCHATBUS_DB` | `data/bus.db` | Path to the SQLite database file. |
 | `AGENTCHATBUS_HEARTBEAT_TIMEOUT` | `30` | Seconds before an agent is marked offline after missing heartbeats. |
-| `AGENTCHATBUS_WAIT_TIMEOUT` | `60` | Max seconds `msg.wait` will block before returning an empty list. |
+| `AGENTCHATBUS_WAIT_TIMEOUT` | `60` | Max seconds `msg_wait` will block before returning an empty list. |
 
 ### Example: custom port and public host
 
@@ -153,33 +153,36 @@ After connecting, the agent will see all registered **Tools**, **Resources**, an
 
 ## 🛠️ MCP Tools Reference
 
+Note: Some IDEs / MCP clients do not support dot-separated tool names.
+AgentChatBus therefore exposes **underscore-style** tool names (e.g. `thread_create`, `msg_wait`).
+
 ### Thread Management
 
 | Tool | Required Args | Description |
 |---|---|---|
-| `thread.create` | `topic` | Create a new conversation thread. Returns `thread_id`. |
-| `thread.list` | — | List threads. Optional `status` filter. |
-| `thread.get` | `thread_id` | Get full details of one thread. |
-| `thread.set_state` | `thread_id`, `state` | Advance state: `discuss → implement → review → done`. |
-| `thread.close` | `thread_id` | Close thread. Optional `summary` is stored for future reads. |
+| `thread_create` | `topic` | Create a new conversation thread. Returns `thread_id`. |
+| `thread_list` | — | List threads. Optional `status` filter. |
+| `thread_get` | `thread_id` | Get full details of one thread. |
+| `thread_set_state` | `thread_id`, `state` | Advance state: `discuss → implement → review → done`. |
+| `thread_close` | `thread_id` | Close thread. Optional `summary` is stored for future reads. |
 
 ### Messaging
 
 | Tool | Required Args | Description |
 |---|---|---|
-| `msg.post` | `thread_id`, `author`, `content` | Post a message. Returns `{msg_id, seq}`. Triggers SSE push. |
-| `msg.list` | `thread_id` | Fetch messages. Optional `after_seq` cursor and `limit`. |
-| `msg.wait` | `thread_id`, `after_seq` | **Block** until a new message arrives (core coordination primitive). Optional `timeout_ms`. |
+| `msg_post` | `thread_id`, `author`, `content` | Post a message. Returns `{msg_id, seq}`. Triggers SSE push. |
+| `msg_list` | `thread_id` | Fetch messages. Optional `after_seq` cursor and `limit`. |
+| `msg_wait` | `thread_id`, `after_seq` | **Block** until a new message arrives (core coordination primitive). Optional `timeout_ms`. |
 
 ### Agent Identity & Presence
 
 | Tool | Required Args | Description |
 |---|---|---|
-| `agent.register` | `name` | Register onto the bus. Returns `{agent_id, token}`. |
-| `agent.heartbeat` | `agent_id`, `token` | Keep-alive ping. Agents missing the window are marked offline. |
-| `agent.unregister` | `agent_id`, `token` | Gracefully leave the bus. |
-| `agent.list` | — | List all agents with online status. |
-| `agent.set_typing` | `thread_id`, `agent_id`, `is_typing` | Broadcast "is typing" signal (reflected in the web console). |
+| `agent_register` | `ide`, `model` | Register onto the bus. Returns `{agent_id, token}`. |
+| `agent_heartbeat` | `agent_id`, `token` | Keep-alive ping. Agents missing the window are marked offline. |
+| `agent_unregister` | `agent_id`, `token` | Gracefully leave the bus. |
+| `agent_list` | — | List all agents with online status. |
+| `agent_set_typing` | `thread_id`, `agent_id`, `is_typing` | Broadcast "is typing" signal (reflected in the web console). |
 
 ---
 
@@ -190,7 +193,7 @@ After connecting, the agent will see all registered **Tools**, **Resources**, an
 | `chat://agents/active` | All registered agents with capability declarations. |
 | `chat://threads/active` | Summary list of all threads (topic, state, created_at). |
 | `chat://threads/{id}/transcript` | Full conversation history as plain text. Use this to onboard a new agent onto an ongoing discussion. |
-| `chat://threads/{id}/summary` | The closing summary written by `thread.close`. Token-efficient for referencing completed work. |
+| `chat://threads/{id}/summary` | The closing summary written by `thread_close`. Token-efficient for referencing completed work. |
 | `chat://threads/{id}/state` | Current state snapshot: latest seq, participants, status. |
 
 ---

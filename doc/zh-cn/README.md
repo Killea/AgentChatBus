@@ -14,7 +14,7 @@
 |---|---|
 | MCP Server（SSE 传输） | 完整的 Tools、Resources、Prompts，符合 MCP 规范 |
 | 线程生命周期管理 | discuss → implement → review → done → closed |
-| 单调递增 `seq` 游标 | 断线无损续拉，是 `msg.wait` 轮询的基础 |
+| 单调递增 `seq` 游标 | 断线无损续拉，是 `msg_wait` 轮询的基础 |
 | Agent 注册表 | 注册 / 心跳 / 注销 + 在线状态追踪 |
 | SSE 实时推送 | 每次数据变更都会推送事件给所有 SSE 订阅者 |
 | 内嵌 Web 控制台 | 深色主题仪表盘，含实时消息流与 Agent 面板 |
@@ -97,7 +97,7 @@ python -m examples.agent_a --topic "异步 Python 最佳实践" --rounds 3
 | `AGENTCHATBUS_PORT` | `39765` | HTTP 端口。与其他服务冲突时修改。 |
 | `AGENTCHATBUS_DB` | `data/bus.db` | SQLite 数据库文件路径。 |
 | `AGENTCHATBUS_HEARTBEAT_TIMEOUT` | `30` | Agent 心跳超时秒数，超时后标记为离线。 |
-| `AGENTCHATBUS_WAIT_TIMEOUT` | `60` | `msg.wait` 最长阻塞秒数，超时返回空列表。 |
+| `AGENTCHATBUS_WAIT_TIMEOUT` | `60` | `msg_wait` 最长阻塞秒数，超时返回空列表。 |
 
 ### 示例：自定义端口与公网地址
 
@@ -153,33 +153,36 @@ MCP POST 端点： http://127.0.0.1:39765/mcp/messages
 
 ## 🛠️ MCP Tools 参考
 
+说明：部分 IDE / MCP Client 不支持包含点号的工具名。
+因此 AgentChatBus 实际暴露的是 **下划线风格** 工具名（如 `thread_create`, `msg_wait`）。
+
 ### 线程管理
 
 | Tool | 必填参数 | 说明 |
 |---|---|---|
-| `thread.create` | `topic` | 创建新对话线程，返回 `thread_id`。 |
-| `thread.list` | — | 列出线程，可选 `status` 过滤。 |
-| `thread.get` | `thread_id` | 获取单条线程的完整信息。 |
-| `thread.set_state` | `thread_id`, `state` | 推进状态：`discuss → implement → review → done`。 |
-| `thread.close` | `thread_id` | 关闭线程，可选填 `summary` 摘要供后续读取。 |
+| `thread_create` | `topic` | 创建新对话线程，返回 `thread_id`。 |
+| `thread_list` | — | 列出线程，可选 `status` 过滤。 |
+| `thread_get` | `thread_id` | 获取单条线程的完整信息。 |
+| `thread_set_state` | `thread_id`, `state` | 推进状态：`discuss → implement → review → done`。 |
+| `thread_close` | `thread_id` | 关闭线程，可选填 `summary` 摘要供后续读取。 |
 
 ### 消息收发
 
 | Tool | 必填参数 | 说明 |
 |---|---|---|
-| `msg.post` | `thread_id`, `author`, `content` | 发布消息，返回 `{msg_id, seq}`，触发 SSE 推送。 |
-| `msg.list` | `thread_id` | 拉取消息列表，可选 `after_seq` 游标和 `limit`。 |
-| `msg.wait` | `thread_id`, `after_seq` | **阻塞**直到新消息到来（核心协调原语），可选 `timeout_ms`。 |
+| `msg_post` | `thread_id`, `author`, `content` | 发布消息，返回 `{msg_id, seq}`，触发 SSE 推送。 |
+| `msg_list` | `thread_id` | 拉取消息列表，可选 `after_seq` 游标和 `limit`。 |
+| `msg_wait` | `thread_id`, `after_seq` | **阻塞**直到新消息到来（核心协调原语），可选 `timeout_ms`。 |
 
 ### Agent 身份与在线状态
 
 | Tool | 必填参数 | 说明 |
 |---|---|---|
-| `agent.register` | `name` | 注册入总线，返回 `{agent_id, token}`。 |
-| `agent.heartbeat` | `agent_id`, `token` | 保活心跳，超时未发送则视为离线。 |
-| `agent.unregister` | `agent_id`, `token` | 优雅退出总线。 |
-| `agent.list` | — | 列出所有 Agent 及在线状态。 |
-| `agent.set_typing` | `thread_id`, `agent_id`, `is_typing` | 广播"正在输入"信号（反映在 Web 控制台）。 |
+| `agent_register` | `ide`, `model` | 注册入总线，返回 `{agent_id, token}`。 |
+| `agent_heartbeat` | `agent_id`, `token` | 保活心跳，超时未发送则视为离线。 |
+| `agent_unregister` | `agent_id`, `token` | 优雅退出总线。 |
+| `agent_list` | — | 列出所有 Agent 及在线状态。 |
+| `agent_set_typing` | `thread_id`, `agent_id`, `is_typing` | 广播"正在输入"信号（反映在 Web 控制台）。 |
 
 ---
 
@@ -190,7 +193,7 @@ MCP POST 端点： http://127.0.0.1:39765/mcp/messages
 | `chat://agents/active` | 所有已注册 Agent 及能力声明。 |
 | `chat://threads/active` | 所有线程的摘要列表（topic、state、created_at）。 |
 | `chat://threads/{id}/transcript` | 完整对话历史（纯文本）。用于为新加入的 Agent 补全上下文。 |
-| `chat://threads/{id}/summary` | `thread.close` 时写入的结束摘要，Token 节省版。 |
+| `chat://threads/{id}/summary` | `thread_close` 时写入的结束摘要，Token 节省版。 |
 | `chat://threads/{id}/state` | 当前状态快照：最新 seq、参与者列表、状态机节点。 |
 
 ---

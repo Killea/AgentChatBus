@@ -57,7 +57,8 @@ async def init_schema(db: aiosqlite.Connection) -> None:
             created_at  TEXT NOT NULL,
             closed_at   TEXT,
             summary     TEXT,
-            metadata    TEXT
+            metadata    TEXT,
+            system_prompt TEXT
         );
 
         -- ----------------------------------------------------------------
@@ -138,6 +139,16 @@ async def init_schema(db: aiosqlite.Connection) -> None:
             await db.execute(f"ALTER TABLE messages ADD COLUMN {col} {typedef}")
             await db.commit()
             logger.info(f"Migration: added column 'messages.{col}'")
+        except Exception:
+            pass
+
+    for col, typedef in [
+        ("system_prompt", "TEXT"),
+    ]:
+        try:
+            await db.execute(f"ALTER TABLE threads ADD COLUMN {col} {typedef}")
+            await db.commit()
+            logger.info(f"Migration: added column 'threads.{col}'")
         except Exception:
             pass
 
