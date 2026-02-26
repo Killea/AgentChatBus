@@ -15,6 +15,7 @@ from mcp.server.sse import SseServerTransport
 
 from src.db.database import get_db
 from src.db import crud
+from src.config import PREFERRED_LANGUAGE, BUS_VERSION, HOST, PORT
 
 logger = logging.getLogger(__name__)
 
@@ -199,12 +200,40 @@ async def list_tools() -> list[types.Tool]:
                 "required": ["thread_id", "agent_id", "is_typing"],
             },
         ),
+
+        # ── Bus config ────────────────────────────
+        types.Tool(
+            name="bus.get_config",
+            description=(
+                "Get the bus-level configuration. "
+                "Agents SHOULD call this once at startup. "
+                "The most important field is `preferred_language`: agents are expected to "
+                "try to communicate in that language whenever possible. "
+                "This is a SOFT recommendation — no enforcement is done by the server. "
+                "If not configured by the operator, defaults to 'English'."
+            ),
+            inputSchema={"type": "object", "properties": {}},
+        ),
     ]
 
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
     db = await get_db()
+
+    # ── Bus config tool ─────────────────────────────────────────────────────────
+
+    if name == "bus.get_config":
+        return [types.TextContent(type="text", text=json.dumps({
+            "preferred_language": PREFERRED_LANGUAGE,
+            "language_note": (
+                f"Please respond in {PREFERRED_LANGUAGE} whenever possible. "
+                "This is a soft preference set by the bus operator — use your best judgement."
+            ),
+            "bus_name": "AgentChatBus",
+            "version": BUS_VERSION,
+            "endpoint": f"http://{HOST}:{PORT}",
+        }))]
 
     # ── Thread tools ───────────────────────────────────────────────────────────
 
@@ -343,6 +372,15 @@ async def list_resources() -> list[types.Resource]:
     threads = await crud.thread_list(db, status=None)
     resources = [
         types.Resource(
+            uri="chat://bus/config",
+            name="Bus Configuration",
+            description=(
+                "Bus-level settings including the preferred language. "
+                "Agents should read this at startup and try to comply with preferred_language."
+            ),
+            mimeType="application/json",
+        ),
+        types.Resource(
             uri="chat://agents/active",
             name="Active Agents",
             description="All currently registered agents and their online status.",
@@ -376,6 +414,18 @@ async def list_resources() -> list[types.Resource]:
 async def read_resource(uri: types.AnyUrl) -> str:
     db = await get_db()
     uri_str = str(uri)
+
+    if uri_str == "chat://bus/config":
+        return json.dumps({
+            "preferred_language": PREFERRED_LANGUAGE,
+            "language_note": (
+                f"Please respond in {PREFERRED_LANGUAGE} whenever possible. "
+                "This is a soft preference set by the bus operator — use your best judgement."
+            ),
+            "bus_name": "AgentChatBus",
+            "version": BUS_VERSION,
+            "endpoint": f"http://{HOST}:{PORT}",
+        }, indent=2)
 
     if uri_str == "chat://agents/active":
         agents = await crud.agent_list(db)
