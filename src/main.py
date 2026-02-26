@@ -140,7 +140,7 @@ async def global_sse_stream(request: Request):
             for ev in events:
                 last_id = ev.id
                 data = json.dumps({"type": ev.event_type, "payload": json.loads(ev.payload)})
-                yield f"id: {ev.id}\nevent: {ev.event_type}\ndata: {data}\n\n"
+                yield f"id: {ev.id}\nevent: message\ndata: {data}\n\n"
             await asyncio.sleep(0.5)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

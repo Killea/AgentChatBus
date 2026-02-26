@@ -745,7 +745,8 @@ body {
     // Agents
     // ═══════════════════════════════════════════════
   async function refreshAgents() {
-    const agents = await api('/api/agents') || [];
+    const allAgents = await api('/api/agents') || [];
+    const agents = allAgents.filter(a => a.is_online);
     const pane = document.getElementById('agent-pane');
     pane.innerHTML = agents.length ? '' : `
     <div style="padding:24px 16px;color:var(--text-3);font-size:13px;text-align:center">
@@ -760,14 +761,13 @@ body {
         <div class="agent-name">${esc(a.name)}</div>
         <div class="agent-desc">${esc(a.description || '—')}</div>
       </div>
-      <div class="online-dot ${a.is_online ? 'on' : 'off'}" title="${a.is_online ? 'Online' : 'Offline'}"></div>`;
+      <div class="online-dot on" title="Online"></div>`;
     pane.appendChild(div);
   });
 
-          // Update tab label
-          const online = agents.filter(a => a.is_online).length;
+    // Update tab label
           document.getElementById('tab-agents').textContent =
-            `Agents${online ? ' (' + online + ')' : ''}`;
+            `Agents${agents.length ? ' (' + agents.length + ')' : ''}`;
         }
 
         // ═══════════════════════════════════════════════
