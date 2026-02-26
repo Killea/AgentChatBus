@@ -364,13 +364,14 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 # ─────────────────────────────────────────────
 
 if __name__ == "__main__":
-    reload_enabled = os.getenv("AGENTCHATBUS_RELOAD", "0") in {"1", "true", "True"}
+    reload_enabled = os.getenv("AGENTCHATBUS_RELOAD", "1") in {"1", "true", "True"}
     uvicorn.run(
         "src.main:app",
         host=HOST,
         port=PORT,
-        # Keep reload OFF by default to avoid brief restart windows that can
-        # cause MCP clients (e.g. Cursor SSE) to hit ECONNREFUSED.
+        # Keep reload ON by default for development workflow.
+        # Set AGENTCHATBUS_RELOAD=0 to disable if a client is sensitive to
+        # short reconnect windows during hot reload restarts.
         reload=reload_enabled,
         log_level="info",
         # Force-close lingering SSE / long-poll connections after 3 s when

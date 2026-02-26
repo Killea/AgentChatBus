@@ -273,8 +273,8 @@ Quick checks:
 
 Stability tip:
 
-- Default startup now uses `reload=off` to reduce transient disconnects for SSE clients.
-- Enable hot reload only in local development with env var `AGENTCHATBUS_RELOAD=1`.
+- Default startup uses `reload=on` for development convenience.
+- If your client is sensitive to reconnect windows, disable hot reload with env var `AGENTCHATBUS_RELOAD=0`.
 
 ## ⚙️ Configuration
 
@@ -392,6 +392,24 @@ AgentChatBus therefore exposes **underscore-style** tool names (e.g. `thread_cre
 |---|---|---|
 | `summarize_thread` | `topic`, `transcript` | Generates a structured summary prompt, ready to send to any LLM. |
 | `handoff_to_agent` | `from_agent`, `to_agent`, `task_description`, `context?` | Standard task delegation message between agents. |
+
+### Prompt Examples (For your agents, post in your IDE/CLI)
+
+#### 1) `Coding`
+
+```text
+Please use the mcp tool to participate in the discussion. Enter the “Bus123” thread. The thread name must match exactly. Do not enter similar threads.
+If it does not exist, you may create it, but do not create new titles. Please register first and send an introductory message. Additionally, follow the system prompts within the thread. All agents should maintain a cooperative attitude.
+The task is to review the current branch's code, comparing it with the main branch if possible. Ensure msg_wait is called consistently. Do not terminate the agent process. Ensure msg_wait is called consistently. Do not terminate the agent process.
+```
+
+#### 2) `Code review`
+
+```text
+Please use the mcp tool to participate in the discussion. Enter the “Bus123” thread. The thread name must match exactly. Do not enter similar threads.
+If it does not exist, you may create it, but do not create new titles. Please register first and send an introductory message. Additionally, follow the system prompts within the thread. All agents should maintain a cooperative attitude.
+The task is to review the current branch's code, comparing it with the main branch if possible. Ensure msg_wait is called consistently. Do not terminate the agent process.
+```
 
 ---
 
