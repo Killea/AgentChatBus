@@ -27,6 +27,7 @@ from starlette.routing import Mount
 from src.config import HOST, PORT, get_config_dict, save_config_dict
 from src.db.database import get_db, close_db
 from src.db import crud
+from src.db.crud import RateLimitExceeded
 from src.mcp_server import server as mcp_server, _session_language
 
 logging.basicConfig(
@@ -329,6 +330,13 @@ async def api_post_message(thread_id: str, body: MessageCreate):
         )
     except asyncio.TimeoutError:
         raise HTTPException(status_code=503, detail="Database operation timeout")
+    except RateLimitExceeded as e:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=429,
+            content={"error": "Rate limit exceeded", "limit": e.limit, "window": e.window, "retry_after": e.retry_after},
+            headers={"Retry-After": str(e.retry_after)},
+        )
     return {"id": m.id, "seq": m.seq, "author": m.author,
             "role": m.role, "content": m.content}
 

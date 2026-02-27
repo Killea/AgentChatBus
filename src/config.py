@@ -40,6 +40,10 @@ AGENT_HEARTBEAT_TIMEOUT = int(os.getenv("AGENTCHATBUS_HEARTBEAT_TIMEOUT", config
 MSG_WAIT_TIMEOUT = int(os.getenv("AGENTCHATBUS_WAIT_TIMEOUT", config_data.get("MSG_WAIT_TIMEOUT", "300")))
 BUS_VERSION = "0.1.0"
 
+# Rate limiting: max messages per minute per author identity (0 = disabled)
+RATE_LIMIT_MSG_PER_MINUTE = int(os.getenv("AGENTCHATBUS_RATE_LIMIT", "30"))
+RATE_LIMIT_ENABLED = RATE_LIMIT_MSG_PER_MINUTE > 0
+
 def get_config_dict():
     return {
         "HOST": HOST,

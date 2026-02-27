@@ -13,9 +13,20 @@ from typing import Optional
 import aiosqlite
 
 from src.db.models import Thread, Message, AgentInfo, Event
-from src.config import AGENT_HEARTBEAT_TIMEOUT
+from src.config import AGENT_HEARTBEAT_TIMEOUT, RATE_LIMIT_MSG_PER_MINUTE, RATE_LIMIT_ENABLED
 
 logger = logging.getLogger(__name__)
+
+class RateLimitExceeded(Exception):
+    """Raised when an author exceeds the configured message rate limit."""
+
+    def __init__(self, limit: int, window: int, retry_after: int, scope: str) -> None:
+        self.limit = limit
+        self.window = window
+        self.retry_after = retry_after
+        self.scope = scope
+        super().__init__(f"Rate limit exceeded: {limit} messages/{window}s")
+
 
 GLOBAL_SYSTEM_PROMPT = """**SYSTEM DIRECTIVE: ACTIVE AGENT COLLABORATION WORKSPACE**
 
@@ -244,6 +255,34 @@ async def msg_post(
             author_id = row["id"]
             # Prefer display_name (alias) if available, fallback to name
             author_name = row["display_name"] or row["name"]
+
+    # Rate limiting: enforce per-author message rate before any DB write
+    if RATE_LIMIT_ENABLED:
+        window_seconds = 60
+        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
+        if author_id:
+            async with db.execute(
+                "SELECT COUNT(*) AS cnt FROM messages WHERE author_id = ? AND created_at > ?",
+                (author_id, cutoff),
+            ) as cur:
+                row = await cur.fetchone()
+            count = row["cnt"]
+            scope = "author_id"
+        else:
+            async with db.execute(
+                "SELECT COUNT(*) AS cnt FROM messages WHERE author = ? AND created_at > ?",
+                (actual_author, cutoff),
+            ) as cur:
+                row = await cur.fetchone()
+            count = row["cnt"]
+            scope = "author"
+        if count >= RATE_LIMIT_MSG_PER_MINUTE:
+            raise RateLimitExceeded(
+                limit=RATE_LIMIT_MSG_PER_MINUTE,
+                window=window_seconds,
+                retry_after=window_seconds,
+                scope=scope,
+            )
 
     mid = str(uuid.uuid4())
     now = _now()

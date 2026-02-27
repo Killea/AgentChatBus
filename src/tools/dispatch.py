@@ -12,6 +12,7 @@ import mcp.types as types
 
 from src.db.database import get_db
 from src.db import crud
+from src.db.crud import RateLimitExceeded
 import src.mcp_server
 from src.config import BUS_VERSION, HOST, PORT, MSG_WAIT_TIMEOUT
 
@@ -70,6 +71,13 @@ async def handle_msg_post(db, arguments: dict[str, Any]) -> list[types.TextConte
         role=arguments.get("role", "user"),
         metadata=arguments.get("metadata"),
     )
+    except RateLimitExceeded as e:
+        return [types.TextContent(type="text", text=json.dumps({
+            "error": "Rate limit exceeded",
+            "limit": e.limit,
+            "window": e.window,
+            "retry_after": e.retry_after,
+        }))]
     return [types.TextContent(type="text", text=json.dumps({
         "msg_id": msg.id, "seq": msg.seq,
     }))]
