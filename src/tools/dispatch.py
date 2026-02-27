@@ -12,10 +12,80 @@ import mcp.types as types
 
 from src.db.database import get_db
 from src.db import crud
+from src.db.models import Message
 import src.mcp_server
 from src.config import BUS_VERSION, HOST, PORT, MSG_WAIT_TIMEOUT
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_json_loads(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, (dict, list)):
+        return value
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    try:
+        return json.loads(value)
+    except Exception:
+        return None
+
+
+def _message_to_blocks(m: Message) -> list[types.Content]:
+    author = m.author_name or m.author
+    created = m.created_at.isoformat() if getattr(m, "created_at", None) else ""
+    blocks: list[types.Content] = [
+        types.TextContent(
+            type="text",
+            text=f"[{m.seq}] {author} ({m.role}) {created}",
+        )
+    ]
+
+    if m.content:
+        blocks.append(types.TextContent(type="text", text=m.content))
+
+    meta = _safe_json_loads(m.metadata)
+    if isinstance(meta, dict):
+        attachments = meta.get("attachments")
+        if attachments is None:
+            attachments = meta.get("images")
+        if attachments is None:
+            attachments = meta.get("image")
+
+        if isinstance(attachments, dict):
+            attachments = [attachments]
+
+        if isinstance(attachments, list):
+            for att in attachments:
+                if not isinstance(att, dict):
+                    continue
+                kind = (att.get("type") or att.get("kind") or "").lower()
+                mime_type = att.get("mimeType") or att.get("mime_type")
+                data = att.get("data") or att.get("base64") or att.get("b64")
+
+                if not mime_type and kind == "image":
+                    mime_type = "image/png"
+
+                if not data:
+                    continue
+                if kind and kind != "image" and not (mime_type and str(mime_type).startswith("image/")):
+                    continue
+                if mime_type and not str(mime_type).startswith("image/"):
+                    continue
+
+                blocks.append(
+                    types.ImageContent(
+                        type="image",
+                        data=str(data),
+                        mimeType=str(mime_type or "image/png"),
+                    )
+                )
+
+    return blocks
 
 async def handle_bus_get_config(db, arguments: dict[str, Any]) -> list[types.TextContent]:
     session_lang = src.mcp_server._session_language.get()
@@ -74,7 +144,7 @@ async def handle_msg_post(db, arguments: dict[str, Any]) -> list[types.TextConte
         "msg_id": msg.id, "seq": msg.seq,
     }))]
 
-async def handle_msg_list(db, arguments: dict[str, Any]) -> list[types.TextContent]:
+async def handle_msg_list(db, arguments: dict[str, Any]) -> list[types.Content]:
     msgs = await crud.msg_list(
         db,
         thread_id=arguments["thread_id"],
@@ -82,13 +152,21 @@ async def handle_msg_list(db, arguments: dict[str, Any]) -> list[types.TextConte
         limit=arguments.get("limit", 100),
         include_system_prompt=arguments.get("include_system_prompt", True),
     )
+
+    return_format = arguments.get("return_format", "blocks")
+    if return_format == "blocks":
+        blocks: list[types.Content] = []
+        for m in msgs:
+            blocks.extend(_message_to_blocks(m))
+        return blocks
+
     return [types.TextContent(type="text", text=json.dumps([
         {"msg_id": m.id, "author": m.author, "author_id": m.author_id, "author_name": m.author_name, "role": m.role,
          "content": m.content, "seq": m.seq, "created_at": m.created_at.isoformat()}
         for m in msgs
     ]))]
 
-async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.TextContent]:
+async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.Content]:
     thread_id = arguments["thread_id"]
     after_seq = arguments["after_seq"]
     timeout_s = arguments.get("timeout_ms", MSG_WAIT_TIMEOUT * 1000) / 1000.0
@@ -122,6 +200,13 @@ async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.TextConte
         msgs = await asyncio.wait_for(_poll(), timeout=timeout_s)
     except asyncio.TimeoutError:
         msgs = []
+
+    return_format = arguments.get("return_format", "blocks")
+    if return_format == "blocks":
+        blocks: list[types.Content] = []
+        for m in msgs:
+            blocks.extend(_message_to_blocks(m))
+        return blocks
 
     return [types.TextContent(type="text", text=json.dumps([
         {"msg_id": m.id, "author": m.author, "author_id": m.author_id, "author_name": m.author_name, "role": m.role,
@@ -227,7 +312,7 @@ TOOLS_DISPATCH = {
     "agent_set_typing": handle_agent_set_typing,
 }
 
-async def dispatch_tool(db, name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
+async def dispatch_tool(db, name: str, arguments: dict[str, Any]) -> list[types.Content]:
     handler = TOOLS_DISPATCH.get(name)
     if handler:
         return await handler(db, arguments)
