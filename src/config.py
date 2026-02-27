@@ -40,6 +40,9 @@ AGENT_HEARTBEAT_TIMEOUT = int(os.getenv("AGENTCHATBUS_HEARTBEAT_TIMEOUT", config
 MSG_WAIT_TIMEOUT = int(os.getenv("AGENTCHATBUS_WAIT_TIMEOUT", config_data.get("MSG_WAIT_TIMEOUT", "300")))
 BUS_VERSION = "0.1.0"
 
+# Content filter: block messages containing known secret patterns
+CONTENT_FILTER_ENABLED = os.getenv("AGENTCHATBUS_CONTENT_FILTER_ENABLED", "true").lower() in {"1", "true", "yes"}
+
 def get_config_dict():
     return {
         "HOST": HOST,

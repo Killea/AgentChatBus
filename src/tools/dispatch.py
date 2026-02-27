@@ -14,6 +14,7 @@ from src.db.database import get_db
 from src.db import crud
 import src.mcp_server
 from src.config import BUS_VERSION, HOST, PORT, MSG_WAIT_TIMEOUT
+from src.content_filter import ContentFilterError
 
 logger = logging.getLogger(__name__)
 
@@ -62,14 +63,20 @@ async def handle_thread_get(db, arguments: dict[str, Any]) -> list[types.TextCon
     }))]
 
 async def handle_msg_post(db, arguments: dict[str, Any]) -> list[types.TextContent]:
-    msg = await crud.msg_post(
-        db,
-        thread_id=arguments["thread_id"],
-        author=arguments["author"],
-        content=arguments["content"],
-        role=arguments.get("role", "user"),
-        metadata=arguments.get("metadata"),
-    )
+    try:
+        msg = await crud.msg_post(
+            db,
+            thread_id=arguments["thread_id"],
+            author=arguments["author"],
+            content=arguments["content"],
+            role=arguments.get("role", "user"),
+            metadata=arguments.get("metadata"),
+        )
+    except ContentFilterError as e:
+        return [types.TextContent(type="text", text=json.dumps({
+            "error": "Content blocked by filter",
+            "pattern": e.pattern_name,
+        }))]
     return [types.TextContent(type="text", text=json.dumps({
         "msg_id": msg.id, "seq": msg.seq,
     }))]
