@@ -193,6 +193,24 @@ body[data-theme="light"] .ctx-item:hover {
   background: var(--bg-hover);
   color: var(--text-1);
 }
+#btn-settings {
+  background: transparent;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  font-size: 16px;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-1);
+  margin-left: 8px;
+  transition: background 0.15s;
+}
+#btn-settings:hover {
+  background: var(--bg-hover);
+}
 
 /* ══════════════════════════════════════════
    Layout: sidebar + main
@@ -813,10 +831,9 @@ body[data-theme="light"] .ctx-item:hover {
   <div class="sep"></div>
   <div id="status-dot"></div>
   <div class="status-label" id="status-label">Connected</div>
-  <button id="btn-theme-toggle" type="button" onclick="toggleTheme()">Light</button>
+  <acb-icon-button button-id="btn-theme-toggle" label="Light" action="toggleTheme"></acb-icon-button>
   <button id="btn-new-thread" onclick="openModal()">＋ New Thread</button>
-  <button id="btn-settings" type="button" onclick="openSettingsModal()" title="MCP Server Settings"
-    style="background: transparent; border: 1px solid var(--border-light); border-radius: 8px; font-size: 16px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-1); margin-left: 8px; transition: background 0.15s;">⚙️</button>
+  <acb-icon-button button-id="btn-settings" label="⚙️" action="openSettingsModal" title="MCP Server Settings" aria-label="MCP Server Settings"></acb-icon-button>
 </div>
 
 <!-- ── Layout ──────────────────────────────── -->
@@ -830,16 +847,13 @@ body[data-theme="light"] .ctx-item:hover {
     <div id="thread-filter-wrap">
       <button id="btn-thread-filter" type="button" onclick="toggleThreadFilterPanel(event)">Filter: normal (5)</button>
       <div id="thread-filter-panel" onclick="event.stopPropagation()">
-        <div class="filter-actions">
-          <button type="button" onclick="selectAllThreadStatuses()">Select all</button>
-          <button type="button" onclick="selectNormalThreadStatuses()">Normal only</button>
-        </div>
-        <label class="filter-row"><input type="checkbox" data-status="discuss" checked onchange="onThreadFilterChange()"/>discuss</label>
-        <label class="filter-row"><input type="checkbox" data-status="implement" checked onchange="onThreadFilterChange()"/>implement</label>
-        <label class="filter-row"><input type="checkbox" data-status="review" checked onchange="onThreadFilterChange()"/>review</label>
-        <label class="filter-row"><input type="checkbox" data-status="done" checked onchange="onThreadFilterChange()"/>done</label>
-        <label class="filter-row"><input type="checkbox" data-status="closed" checked onchange="onThreadFilterChange()"/>closed</label>
-        <label class="filter-row"><input type="checkbox" data-status="archived" onchange="onThreadFilterChange()"/>archived</label>
+        <acb-filter-actions></acb-filter-actions>
+        <acb-filter-row status="discuss" checked></acb-filter-row>
+        <acb-filter-row status="implement" checked></acb-filter-row>
+        <acb-filter-row status="review" checked></acb-filter-row>
+        <acb-filter-row status="done" checked></acb-filter-row>
+        <acb-filter-row status="closed" checked></acb-filter-row>
+        <acb-filter-row status="archived"></acb-filter-row>
       </div>
     </div>
     <div id="thread-pane" class="visible"></div>
@@ -855,11 +869,7 @@ body[data-theme="light"] .ctx-item:hover {
     </div>
 
     <div id="messages">
-      <div id="empty-state">
-        <div class="es-icon">💬</div>
-        <div class="es-title">No thread selected</div>
-        <div class="es-sub">Create or select a thread to start watching the conversation</div>
-        </div>
+      <acb-empty-state></acb-empty-state>
         </div>
         
         <div id="compose">
@@ -934,6 +944,10 @@ body[data-theme="light"] .ctx-item:hover {
 <script src="/static/js/shared-message-renderer.js"></script>
 <script src="/static/js/shared-sse.js"></script>
 <script src="/static/js/shared-modals.js"></script>
+<script src="/static/js/components/acb-empty-state.js"></script>
+<script src="/static/js/components/acb-icon-button.js"></script>
+<script src="/static/js/components/acb-filter-actions.js"></script>
+<script src="/static/js/components/acb-filter-row.js"></script>
 <script src="/static/js/components/acb-thread-item.js"></script>
 <script src="/static/js/shared-threads.js"></script>
 <script src="/static/js/shared-agent-status.js"></script>
@@ -963,12 +977,7 @@ body[data-theme="light"] .ctx-item:hover {
     let activeAgentTooltipTarget = null;
     let currentAgents = []; // Cache of all agents for tooltip lookups
 
-    const EMPTY_STATE_TEMPLATE = `
-      <div id="empty-state">
-        <div class="es-icon">💬</div>
-        <div class="es-title">No thread selected</div>
-        <div class="es-sub">Create or select a thread to start watching the conversation</div>
-      </div>`;
+    const EMPTY_STATE_TEMPLATE = '<acb-empty-state></acb-empty-state>';
 
     // ═══════════════════════════════════════════════
     // Bootstrap

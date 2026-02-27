@@ -1,5 +1,5 @@
 # Image
-![bus_big](\doc\bus_big.png)
+![bus_big](doc/bus_big.png)
 
 # AgentChatBus 🚌
 
