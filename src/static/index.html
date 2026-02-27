@@ -412,6 +412,11 @@ body[data-theme="light"] .ctx-item:hover {
 #messages::-webkit-scrollbar { width: 16px; }
 #messages::-webkit-scrollbar-track { background: transparent; }
 #messages::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
+#messages > acb-empty-state {
+  display: flex;
+  flex: 1;
+  min-height: 100%;
+}
 
 /* ── Message rows (author-based coloring) ── */
 .msg-row {
@@ -850,78 +855,21 @@ body[data-theme="light"] .ctx-item:hover {
 
   <!-- Main -->
   <div id="main">
-    <div id="thread-header" style="display:none">
-      <h2 id="thread-title"></h2>
-      <div id="online-presence" title="">
-        <span id="online-count">1</span>
-      </div>
-    </div>
+    <acb-thread-header></acb-thread-header>
 
     <div id="messages">
       <acb-empty-state></acb-empty-state>
         </div>
         
-        <div id="compose">
-          <input id="compose-author" type="text" value="human" placeholder="author" />
-          <textarea id="compose-input" rows="1" placeholder="Send a system message… (Enter to send, Shift+Enter for newline)"
-            oninput="autoResize(this)" onkeydown="handleKey(event)"></textarea>
-          <button id="btn-send" onclick="sendMessage()" title="Send">➤</button>
-        </div>
+        <acb-compose-shell></acb-compose-shell>
         <!-- Agent Status Bar -->
-        <div id="agent-status-bar">
-          <div id="agent-status-list"></div>
-          <div id="agent-status-info">ℹ️</div>
-        </div>
+        <acb-agent-status-shell></acb-agent-status-shell>
         </div>
         </div>
 
 <acb-thread-context-menu></acb-thread-context-menu>
 
-<!-- ── New thread modal ─────────────────────── -->
-<div id="modal-overlay" onclick="closeModal(event)">
-  <div id="modal">
-    <h3>✦ Create New Thread</h3>
-    <input id="modal-topic" type="text" placeholder="Thread topic…" onkeydown="if(event.key==='Enter') submitModal()" />
-    <div class="modal-actions">
-      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn-primary" onclick="submitModal()">Create</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── Settings modal ───────────────────────── -->
-<div id="settings-modal-overlay" onclick="closeSettingsModal(event)"
-  style="display:none; position: fixed; inset: 0; background: rgba(0,0,0,.7); align-items: center; justify-content: center; z-index: 100; animation: fade-in .15s ease;">
-  <div id="settings-modal"
-    style="background: var(--bg-card); border: 1px solid var(--border-light); border-radius: 14px; padding: 28px; width: 440px; max-width: 90vw; box-shadow: var(--shadow); animation: modal-in .2s ease;"
-    onclick="event.stopPropagation()">
-    <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 18px; color: var(--text-1)">⚙️ MCP Server Settings</h3>
-
-    <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Host</label>
-    <input id="setting-host" type="text"
-      style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-1); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; margin-bottom: 16px;" />
-
-    <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Port</label>
-    <input id="setting-port" type="number"
-      style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-1); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; margin-bottom: 16px;" />
-
-    <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Agent Heartbeat Timeout
-      (s)</label>
-    <input id="setting-heartbeat" type="number"
-      style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-1); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; margin-bottom: 16px;" />
-
-    <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Wait Timeout (s)</label>
-    <input id="setting-wait" type="number"
-      style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-1); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; margin-bottom: 16px;" />
-
-    <div id="settings-message" style="font-size: 12px; color: var(--green); margin-bottom: 16px; display: none;"></div>
-
-    <div class="modal-actions">
-      <button class="btn-secondary" onclick="closeSettingsModal()">Cancel</button>
-      <button class="btn-primary" onclick="submitSettings()">Save (Requires Restart)</button>
-    </div>
-  </div>
-</div>
+<acb-modal-shell></acb-modal-shell>
 
 <script src="/static/js/shared-api.js"></script>
 <script src="/static/js/shared-theme.js"></script>
@@ -929,13 +877,17 @@ body[data-theme="light"] .ctx-item:hover {
 <script src="/static/js/shared-message-renderer.js"></script>
 <script src="/static/js/shared-sse.js"></script>
 <script src="/static/js/shared-modals.js"></script>
+<script src="/static/js/components/acb-modal-shell.js"></script>
 <script src="/static/js/components/acb-empty-state.js"></script>
 <script src="/static/js/components/acb-icon-button.js"></script>
 <script src="/static/js/components/acb-filter-actions.js"></script>
 <script src="/static/js/components/acb-filter-row.js"></script>
 <script src="/static/js/components/acb-thread-filter-shell.js"></script>
 <script src="/static/js/components/acb-thread-context-menu.js"></script>
+<script src="/static/js/components/acb-thread-header.js"></script>
 <script src="/static/js/components/acb-thread-item.js"></script>
+<script src="/static/js/components/acb-compose-shell.js"></script>
+<script src="/static/js/components/acb-agent-status-shell.js"></script>
 <script src="/static/js/shared-threads.js"></script>
 <script src="/static/js/shared-agent-status.js"></script>
 <script src="/static/js/components/acb-agent-status-item.js"></script>

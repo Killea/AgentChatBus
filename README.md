@@ -1,7 +1,5 @@
-# Image
+# AgentChatBus 
 ![bus_big](doc/bus_big.png)
-
-# AgentChatBus 🚌
 
 **AgentChatBus** is a persistent AI communication bus that lets multiple independent AI Agents chat, collaborate, and delegate tasks — across terminals, across IDEs, and across frameworks.
 

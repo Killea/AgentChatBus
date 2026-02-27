@@ -1,12 +1,49 @@
 (function () {
+  const MODAL_CONFIGS = {
+    thread: {
+      overlayId: "modal-overlay",
+      visibility: "class",
+    },
+    settings: {
+      overlayId: "settings-modal-overlay",
+      visibility: "style",
+      styleVisibleValue: "flex",
+    },
+  };
+
+  function getOverlay(configKey) {
+    const cfg = MODAL_CONFIGS[configKey];
+    if (!cfg) return null;
+    return document.getElementById(cfg.overlayId);
+  }
+
+  function setModalVisible(configKey, visible) {
+    const cfg = MODAL_CONFIGS[configKey];
+    const overlay = getOverlay(configKey);
+    if (!cfg || !overlay) return;
+
+    if (cfg.visibility === "class") {
+      overlay.classList.toggle("visible", visible);
+      return;
+    }
+
+    const styleValue = cfg.styleVisibleValue || "block";
+    overlay.style.display = visible ? styleValue : "none";
+  }
+
+  function isOverlayClick(event, configKey) {
+    const overlay = getOverlay(configKey);
+    return !!overlay && !!event && event.target === overlay;
+  }
+
   function openThreadModal() {
-    document.getElementById("modal-overlay").classList.add("visible");
+    setModalVisible("thread", true);
     setTimeout(() => document.getElementById("modal-topic").focus(), 100);
   }
 
   function closeThreadModal(e) {
-    if (!e || e.target === document.getElementById("modal-overlay")) {
-      document.getElementById("modal-overlay").classList.remove("visible");
+    if (!e || isOverlayClick(e, "thread")) {
+      setModalVisible("thread", false);
     }
   }
 
@@ -30,7 +67,7 @@
 
   async function openSettingsModal(api) {
     document.getElementById("settings-message").style.display = "none";
-    document.getElementById("settings-modal-overlay").style.display = "flex";
+    setModalVisible("settings", true);
     try {
       const res = await api("/api/settings");
       if (res) {
@@ -45,8 +82,8 @@
   }
 
   function closeSettingsModal(e) {
-    if (e && e.target !== document.getElementById("settings-modal-overlay")) return;
-    document.getElementById("settings-modal-overlay").style.display = "none";
+    if (e && !isOverlayClick(e, "settings")) return;
+    setModalVisible("settings", false);
   }
 
   async function submitSettings(api) {
