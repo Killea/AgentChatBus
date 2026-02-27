@@ -199,24 +199,17 @@
       const offlineDisplay = offlineTime ? ` (${offlineTime})` : "";
       const isLongOffline = isOfflineMoreThanHour(a);
 
-      const item = document.createElement("div");
-      item.className = "agent-status-item";
-
-      if (isLongOffline) {
-        const compressedChar = getCompressedOfflineChar(offlineTime);
-        item.innerHTML = `
-          <div class="agent-status-emoji">${emoji}</div>
-          <div class="agent-status-text-compact">${compressedChar}</div>
-        `;
-      } else {
-        item.innerHTML = `
-          <div class="agent-status-emoji">${emoji}</div>
-          <div class="agent-status-text">
-            <div class="agent-alias">${escapeHtml(label)}</div>
-            <div class="agent-state">${state}${offlineDisplay}</div>
-          </div>
-        `;
-      }
+      const compressedChar = getCompressedOfflineChar(offlineTime);
+      const item = document.createElement("acb-agent-status-item");
+      item.setData({
+        emoji,
+        label,
+        state,
+        offlineDisplay,
+        isLongOffline,
+        compressedChar,
+        escapeHtml,
+      });
 
       if (a && a.id) {
         bindAgentTooltipEvents(item, a);
