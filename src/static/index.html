@@ -1659,13 +1659,19 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       function scrollBottom(smooth = false) {
       const box = document.getElementById('messages');
       if (!box) return;
-      // Force synchronous layout so scrollHeight is accurate
-      void box.offsetHeight;
-      if (smooth) {
-        box.scrollTo({ top: box.scrollHeight, behavior: 'smooth' });
-      } else {
-        box.scrollTop = box.scrollHeight;
-      }
+
+        // Use setTimeout to ensure DOM updates and layout are fully applied
+        // before attempting to scroll to the bottom.
+        setTimeout(() => {
+        // Force synchronous layout so scrollHeight is accurate
+        void box.offsetHeight;
+        if (smooth) {
+          console.log('Scrolling to bottom',{ top: box.scrollHeight, behavior: 'smooth' });
+          box.scrollTo({ top: box.scrollHeight, behavior: 'smooth' });
+        } else {
+          box.scrollTop = box.scrollHeight;
+        }
+      }, 50);
     }
 
     function timeAgo(iso) {

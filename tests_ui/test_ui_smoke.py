@@ -130,3 +130,68 @@ def test_settings_modal_open_close(page: Page) -> None:
     # Overlay should become hidden by inline style when closed.
     style = page.locator("#settings-modal-overlay").get_attribute("style") or ""
     assert "display: none" in style
+
+
+def test_numeric_agent_and_author_does_not_crash_js(page: Page) -> None:
+    """Test that JS does not crash (e.g. localeCompare TypeError) when API returns numeric IDs."""
+    errors: list[str] = []
+
+    def catch_error(err) -> None:
+        errors.append(err.message)
+
+    page.on("pageerror", catch_error)
+
+    # We mock the agents API and thread messages API to return numbers instead of strings
+    # to test sorting crashes on "a.localeCompare(b)"
+    def handle_agents(route) -> None:
+        route.fulfill(
+            json=[
+                {
+                    "id": 111,
+                    "agent_id": 111,
+                    "name": 222,
+                    "display_name": 333,
+                    "is_online": True,
+                }
+            ]
+        )
+
+    def handle_messages(route) -> None:
+        route.fulfill(
+            json=[
+                {
+                    "seq": 1,
+                    "author": 444,
+                    "author_name": 555,
+                    "author_id": 666,
+                    "role": "user",
+                    "content": "test numeric author",
+                    "created_at": "2026-02-27T00:00:00Z",
+                }
+            ]
+        )
+
+    # Route these endpoints to return mocked numeric responses
+    page.route("**/api/agents*", handle_agents)
+    page.route("**/api/threads/*/messages*", handle_messages)
+
+    # Force the frontend to re-fetch agents
+    page.evaluate("window.refreshAgents()")
+    page.wait_for_timeout(500)
+
+    # Click a thread to trigger selectThread -> load messages -> updateOnlinePresence
+    topic = _topic("UI-Crash-Test")
+    page.click("#btn-new-thread")
+    page.wait_for_selector("#modal-overlay.visible")
+    page.fill("#modal-topic", topic)
+    page.click("#modal .btn-primary")
+    page.wait_for_timeout(1000)
+
+    # Unroute
+    page.unroute("**/api/agents*", handle_agents)
+    page.unroute("**/api/threads/*/messages*", handle_messages)
+
+    # Assert no page errors occurred
+    page.remove_listener("pageerror", catch_error)
+    assert not errors, f"Caught JS errors on page: {errors}"
+

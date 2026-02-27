@@ -16,7 +16,7 @@
       label: onlineAgentLabelsByKey.get(key) || key,
     }));
     const onlineAgents = onlineAgentEntries
-      .map((x) => x.label)
+      .map((x) => String(x.label))
       .sort((a, b) => a.localeCompare(b));
 
     const nowMs = Date.now();
@@ -28,7 +28,7 @@
       .map(([key]) => key);
 
     const threadOnlineAgents = threadOnlineKeys
-      .map((key) => activeThreadLabelsByKey.get(key) || onlineAgentLabelsByKey.get(key) || key)
+      .map((key) => String(activeThreadLabelsByKey.get(key) || onlineAgentLabelsByKey.get(key) || key))
       .sort((a, b) => a.localeCompare(b));
 
     const showingThreadScoped = Boolean(activeThreadId);
