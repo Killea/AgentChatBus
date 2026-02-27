@@ -875,11 +875,7 @@ body[data-theme="light"] .ctx-item:hover {
         </div>
         </div>
 
-<div id="thread-context-menu">
-  <button id="ctx-close" class="ctx-item" type="button" onclick="closeThreadFromMenu()">Close</button>
-  <button id="ctx-archive" class="ctx-item" type="button" onclick="archiveThreadFromMenu()">Archive</button>
-  <button id="ctx-unarchive" class="ctx-item" type="button" onclick="unarchiveThreadFromMenu()" style="display: none;">Unarchive</button>
-</div>
+<acb-thread-context-menu></acb-thread-context-menu>
 
 <!-- ── New thread modal ─────────────────────── -->
 <div id="modal-overlay" onclick="closeModal(event)">
@@ -938,6 +934,7 @@ body[data-theme="light"] .ctx-item:hover {
 <script src="/static/js/components/acb-filter-actions.js"></script>
 <script src="/static/js/components/acb-filter-row.js"></script>
 <script src="/static/js/components/acb-thread-filter-shell.js"></script>
+<script src="/static/js/components/acb-thread-context-menu.js"></script>
 <script src="/static/js/components/acb-thread-item.js"></script>
 <script src="/static/js/shared-threads.js"></script>
 <script src="/static/js/shared-agent-status.js"></script>
