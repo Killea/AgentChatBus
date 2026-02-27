@@ -30,6 +30,70 @@ except Exception:
     PLAYWRIGHT_AVAILABLE = False
 
 BASE_URL = os.getenv("AGENTCHATBUS_BASE_URL", "http://127.0.0.1:39765")
+CLEANUP_THREADS = os.getenv("AGENTCHATBUS_UI_CLEANUP", "1").strip().lower() not in {"0", "false", "no"}
+
+_CREATED_TOPICS: set[str] = set()
+_CREATED_THREAD_IDS: set[str] = set()
+
+
+def _find_thread_id_by_topic(topic: str) -> str | None:
+    try:
+        with httpx.Client(base_url=BASE_URL, timeout=5) as client:
+            resp = client.get("/api/threads", params={"include_archived": "true"})
+            if resp.status_code >= 400:
+                return None
+            threads = resp.json()
+    except Exception:
+        return None
+
+    for t in threads:
+        if t.get("topic") != topic:
+            continue
+        tid = t.get("id")
+        if isinstance(tid, str) and tid:
+            return tid
+    return None
+
+
+def _record_created_topic(topic: str) -> None:
+    _CREATED_TOPICS.add(topic)
+    # UI create is async; poll briefly until API reflects the new thread.
+    for _ in range(12):
+        tid = _find_thread_id_by_topic(topic)
+        if tid:
+            _CREATED_THREAD_IDS.add(tid)
+            return
+        time.sleep(0.2)
+
+
+def _cleanup_created_threads() -> None:
+    if not CLEANUP_THREADS:
+        return
+
+    # Resolve any topic that did not get mapped to id during test execution.
+    for topic in sorted(_CREATED_TOPICS):
+        tid = _find_thread_id_by_topic(topic)
+        if tid:
+            _CREATED_THREAD_IDS.add(tid)
+
+    if not _CREATED_THREAD_IDS:
+        return
+
+    with httpx.Client(base_url=BASE_URL, timeout=8) as client:
+        for tid in sorted(_CREATED_THREAD_IDS):
+            # Prefer hard delete; fallback to archive on older servers.
+            try:
+                delete_resp = client.delete(f"/api/threads/{tid}")
+            except Exception:
+                continue
+
+            if delete_resp.status_code in (200, 204, 404):
+                continue
+
+            try:
+                client.post(f"/api/threads/{tid}/archive")
+            except Exception:
+                pass
 
 
 def _require_server_or_skip() -> None:
@@ -55,6 +119,7 @@ def page() -> Generator[Page, None, None]:
         pg.goto(BASE_URL, wait_until="domcontentloaded")
         pg.wait_for_timeout(300)
         yield pg
+        _cleanup_created_threads()
         ctx.close()
         browser.close()
 
@@ -84,6 +149,7 @@ def test_create_thread_and_select(page: Page) -> None:
     page.wait_for_selector("#thread-header", state="visible")
     title = page.locator("#thread-title").inner_text().strip()
     assert title == topic
+    _record_created_topic(topic)
 
 
 def test_send_message_visible(page: Page) -> None:
@@ -186,6 +252,7 @@ def test_numeric_agent_and_author_does_not_crash_js(page: Page) -> None:
     page.fill("#modal-topic", topic)
     page.click("#modal .btn-primary")
     page.wait_for_timeout(1000)
+    _record_created_topic(topic)
 
     # Unroute
     page.unroute("**/api/agents*", handle_agents)

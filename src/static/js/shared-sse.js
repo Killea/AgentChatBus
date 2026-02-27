@@ -45,7 +45,9 @@
         ev.type === "thread.new" ||
         ev.type === "thread.state" ||
         ev.type === "thread.closed" ||
-        ev.type === "thread.archived"
+        ev.type === "thread.archived" ||
+        ev.type === "thread.unarchived" ||
+        ev.type === "thread.deleted"
       ) {
         if (onThreadEvent) {
           await onThreadEvent();

@@ -175,6 +175,23 @@ async def thread_close(db: aiosqlite.Connection, thread_id: str, summary: Option
     return True
 
 
+async def thread_delete(db: aiosqlite.Connection, thread_id: str) -> bool:
+    """Hard-delete a thread and its dependent rows used by the web console tests."""
+    async with db.execute("DELETE FROM messages WHERE thread_id = ?", (thread_id,)):
+        pass
+    async with db.execute("DELETE FROM events WHERE thread_id = ?", (thread_id,)):
+        pass
+    async with db.execute("DELETE FROM threads WHERE id = ?", (thread_id,)) as cur:
+        deleted = cur.rowcount
+
+    await db.commit()
+    if deleted == 0:
+        return False
+
+    await _emit_event(db, "thread.deleted", thread_id, {"thread_id": thread_id})
+    return True
+
+
 def _row_to_thread(row: aiosqlite.Row) -> Thread:
     system_prompt = row["system_prompt"] if "system_prompt" in row.keys() else None
     return Thread(

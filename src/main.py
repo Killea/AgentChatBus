@@ -522,6 +522,22 @@ async def api_thread_unarchive(thread_id: str):
     return {"ok": True}
 
 
+@app.delete("/api/threads/{thread_id}")
+async def api_thread_delete(thread_id: str):
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        ok = await asyncio.wait_for(
+            crud.thread_delete(db, thread_id),
+            timeout=DB_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+
+    if not ok:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return {"ok": True}
+
+
 # ─────────────────────────────────────────────
 # Health check
 # ─────────────────────────────────────────────
