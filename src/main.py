@@ -298,6 +298,8 @@ class MessageCreate(BaseModel):
     author: str = "human"
     role: Literal["user", "assistant", "system"] = "user"
     content: str
+    mentions: list[str] | None = None
+    metadata: dict | None = None
 
 @app.post("/api/threads", status_code=201)
 async def api_create_thread(body: ThreadCreate):
@@ -321,16 +323,22 @@ async def api_post_message(thread_id: str, body: MessageCreate):
         raise HTTPException(status_code=503, detail="Database operation timeout")
     if t is None:
         raise HTTPException(status_code=404, detail="Thread not found")
+        
+    msg_metadata = body.metadata or {}
+    if body.mentions:
+        msg_metadata["mentions"] = body.mentions
+
     try:
         m = await asyncio.wait_for(
             crud.msg_post(db, thread_id=thread_id, author=body.author,
-                         content=body.content, role=body.role),
+                         content=body.content, role=body.role,
+                         metadata=msg_metadata if msg_metadata else None),
             timeout=DB_TIMEOUT
         )
     except asyncio.TimeoutError:
         raise HTTPException(status_code=503, detail="Database operation timeout")
     return {"id": m.id, "seq": m.seq, "author": m.author,
-            "role": m.role, "content": m.content}
+            "role": m.role, "content": m.content, "mentions": body.mentions}
 
 
 # ─────────────────────────────────────────────

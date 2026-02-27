@@ -212,7 +212,10 @@
       });
 
       if (a && a.id) {
+        item.dataset.agentId = a.id;
         bindAgentTooltipEvents(item, a);
+      } else if (a && a.agent_id) {
+        item.dataset.agentId = a.agent_id;
       }
       container.appendChild(item);
     });

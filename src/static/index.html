@@ -119,6 +119,12 @@ body[data-theme="light"] .msg-sys-event {
 body[data-theme="light"] .ctx-item:hover {
   background: #e8f0ff;
 }
+body[data-theme="light"] .msg-row.message-has-mentions .bubble-v2 {
+  background: linear-gradient(135deg, rgba(255,235,130,.12) 0%, rgba(255,193,7,.08) 100%);
+  border-color: rgba(255,193,7,.4);
+  box-shadow: inset 0 0 12px rgba(255,193,7,.1),
+              0 0 20px rgba(255,193,7,.15);
+}
 
 /* ══════════════════════════════════════════
    Top bar
@@ -429,6 +435,29 @@ body[data-theme="light"] .ctx-item:hover {
 @keyframes bubble-in {
   from { opacity: 0; transform: translateY(6px) scale(.98); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── Messages with mentions (Phase 2 notification) ── */
+.msg-row.message-has-mentions .bubble-v2 {
+  background: linear-gradient(135deg, rgba(255,250,205,.08) 0%, rgba(255,193,7,.05) 100%);
+  border-color: rgba(255,193,7,.3);
+  box-shadow: inset 0 0 12px rgba(255,193,7,.08),
+              0 0 20px rgba(255,193,7,.12);
+}
+
+.msg-row.message-has-mentions {
+  position: relative;
+}
+
+.msg-row.message-has-mentions::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(to bottom, #ff9800, #ffc107);
+  border-radius: 2px;
 }
 
 .msg-avatar {
@@ -1407,6 +1436,11 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       row.className = `msg-row ${isHuman ? 'msg-row-right' : 'msg-row-left'}`;
       row.setAttribute('data-author-id', String(m.author_id ?? authorLabel));
       row.setAttribute('data-seq', String(m.seq));
+
+      // Check if this message has mentions (Phase 2: visual highlight)
+      if (m.mentions && Array.isArray(m.mentions) && m.mentions.length > 0) {
+        row.classList.add('message-has-mentions');
+      }
 
       row.innerHTML = `
         <div class="msg-avatar" style="background:${bgAlpha};color:${color};border:1px solid ${color}44">${initials}</div>

@@ -94,13 +94,23 @@
     const content = input.value.trim();
     if (!content || !activeThreadId) return;
 
+    const mentionPattern = /@agent-([a-f0-9\-]+)/g;
+    const mentions = [...content.matchAll(mentionPattern)].map(m => m[1]);
+
     updateOnlinePresence();
     input.value = "";
     autoResize(input);
+    const acb = document.querySelector('acb-compose-shell');
+    if (acb && acb.updateMentions) acb.updateMentions();
 
     const m = await api(`/api/threads/${activeThreadId}/messages`, {
       method: "POST",
-      body: JSON.stringify({ author, role: "user", content }),
+      body: JSON.stringify({
+        author,
+        role: "user",
+        content,
+        mentions: mentions.length > 0 ? mentions : undefined
+      }),
     });
 
     if (m) {

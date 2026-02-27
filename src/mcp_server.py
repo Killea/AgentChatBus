@@ -134,6 +134,11 @@ async def list_tools() -> list[types.Tool]:
                     "author":    {"type": "string", "description": "Agent ID, 'system', or 'human'."},
                     "content":   {"type": "string"},
                     "role":      {"type": "string", "enum": ["user", "assistant", "system"], "default": "user"},
+                    "mentions":  {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of agent IDs to mention in this message."
+                    },
                     "metadata":  {"type": "object"},
                 },
                 "required": ["thread_id", "author", "content"],
