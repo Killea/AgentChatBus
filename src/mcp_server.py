@@ -121,41 +121,7 @@ async def list_tools() -> list[types.Tool]:
                 "required": ["thread_id"],
             },
         ),
-        types.Tool(
-            name="thread_set_state",
-            description="Advance the thread state machine: discuss → implement → review → done.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "thread_id": {"type": "string"},
-                    "state":     {"type": "string", "enum": ["discuss", "implement", "review", "done", "closed"]},
-                },
-                "required": ["thread_id", "state"],
-            },
-        ),
-        types.Tool(
-            name="thread_close",
-            description="Close a thread and optionally write a final summary for future checkpoint reads.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "thread_id": {"type": "string"},
-                    "summary":   {"type": "string", "description": "Summary of conclusions reached in this thread."},
-                },
-                "required": ["thread_id"],
-            },
-        ),
-        types.Tool(
-            name="thread_archive",
-            description="Archive a thread from any current lifecycle state.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "thread_id": {"type": "string"},
-                },
-                "required": ["thread_id"],
-            },
-        ),
+
 
         # ── Messaging ─────────────────────────
         types.Tool(
@@ -362,26 +328,6 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
             "summary": t.summary,
         }))]
 
-    if name == "thread_set_state":
-        ok = await crud.thread_set_state(db, arguments["thread_id"], arguments["state"])
-        if not ok:
-            return [types.TextContent(type="text", text=json.dumps({"error": "Thread not found", "ok": False}))]
-        return [types.TextContent(type="text", text=json.dumps({"ok": True}))]
-
-    if name == "thread_close":
-        ok = await crud.thread_close(db, arguments["thread_id"], arguments.get("summary"))
-        if not ok:
-            return [types.TextContent(type="text", text=json.dumps({"error": "Thread not found", "ok": False}))]
-        return [types.TextContent(type="text", text=json.dumps({"ok": True}))]
-
-    if name == "thread_archive":
-        try:
-            ok = await crud.thread_archive(db, arguments["thread_id"])
-        except ValueError as e:
-            return [types.TextContent(type="text", text=json.dumps({"error": str(e), "ok": False}))]
-        if not ok:
-            return [types.TextContent(type="text", text=json.dumps({"error": "Thread not found", "ok": False}))]
-        return [types.TextContent(type="text", text=json.dumps({"ok": True}))]
 
     # ── Message tools ──────────────────────────────────────────────────────────
 
