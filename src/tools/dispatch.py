@@ -26,7 +26,7 @@ async def handle_bus_get_config(db, arguments: dict[str, Any]) -> list[types.Tex
         "language_source":    source,
         "language_note": (
             f"Please respond in {effective_lang} whenever possible. "
-            "This is a soft preference — use your best judgement."
+            "This is a soft preference ΓÇö use your best judgement."
         ),
         "bus_name": "AgentChatBus",
         "version":  BUS_VERSION,
@@ -49,6 +49,16 @@ async def handle_thread_list(db, arguments: dict[str, Any]) -> list[types.TextCo
         {"thread_id": t.id, "topic": t.topic, "status": t.status,
          "created_at": t.created_at.isoformat()} for t in threads
     ]))]
+
+async def handle_thread_delete(db, arguments: dict[str, Any]) -> list[types.TextContent]:
+    if not arguments.get("confirm"):
+        return [types.TextContent(type="text", text=json.dumps({
+            "error": "Deletion aborted: confirm must be true. This action is irreversible.",
+        }))]
+    result = await crud.thread_delete(db, arguments["thread_id"])
+    if result is None:
+        return [types.TextContent(type="text", text=json.dumps({"error": "Thread not found"}))]
+    return [types.TextContent(type="text", text=json.dumps({"ok": True, "deleted": result}))]
 
 async def handle_thread_get(db, arguments: dict[str, Any]) -> list[types.TextContent]:
     t = await crud.thread_get(db, arguments["thread_id"])
@@ -215,6 +225,7 @@ TOOLS_DISPATCH = {
     "bus_get_config": handle_bus_get_config,
     "thread_create": handle_thread_create,
     "thread_list": handle_thread_list,
+    "thread_delete": handle_thread_delete,
     "thread_get": handle_thread_get,
     "msg_post": handle_msg_post,
     "msg_list": handle_msg_list,
