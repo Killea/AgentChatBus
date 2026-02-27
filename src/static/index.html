@@ -331,6 +331,7 @@ body[data-theme="light"] .ctx-item:hover {
   display: flex; align-items: center; justify-content: center;
   font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0;
 }
+.agent-avatar-interactive { cursor: pointer; }
 .agent-name { font-size: 13px; font-weight: 500; }
 .agent-desc { font-size: 11px; color: var(--text-3); margin-top: 2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
@@ -410,6 +411,7 @@ body[data-theme="light"] .ctx-item:hover {
   font-size: 11px; font-weight: 700; letter-spacing: .02em;
   margin-top: 2px;
 }
+.msg-avatar-interactive { cursor: pointer; }
 
 .msg-col { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .msg-row-right .msg-col { align-items: flex-end; }
@@ -512,6 +514,105 @@ body[data-theme="light"] .ctx-item:hover {
 #btn-send:hover { background: #2563eb; }
 #btn-send:active { transform: scale(.93); }
 
+/** Agent Status Bar **/
+#agent-status-bar {
+  display: flex;
+  background: var(--bg-base);
+  border-top: 1px solid var(--border-light);
+  padding: 8px 12px;
+  height: 56px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 10px;
+  font-size: 12px;
+}
+#agent-status-list {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: nowrap;
+}
+.agent-status-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-1);
+}
+.agent-status-emoji {
+  font-size: 16px;
+  width: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.agent-status-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.agent-alias {
+  font-weight: 500;
+  color: var(--text-1);
+}
+.agent-state {
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+#agent-status-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  cursor: help;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  flex-shrink: 0;
+  position: relative;
+}
+#agent-status-info:hover {
+  background-color: var(--bg-input);
+}
+
+#agent-status-info-tooltip {
+  position: fixed;
+  z-index: 9999;
+  width: 280px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow);
+  padding: 12px;
+  display: none;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-1);
+}
+#agent-status-info-tooltip.visible {
+  display: block;
+}
+#agent-status-info-tooltip .state-item {
+  margin-bottom: 8px;
+}
+#agent-status-info-tooltip .state-item:last-child {
+  margin-bottom: 0;
+}
+#agent-status-info-tooltip .state-emoji {
+  font-weight: bold;
+  margin-right: 6px;
+}
+#agent-status-info-tooltip strong {
+  color: var(--text-1);
+}
+
 /* ══════════════════════════════════════════
    Modal
 ══════════════════════════════════════════ */
@@ -605,6 +706,69 @@ body[data-theme="light"] .ctx-item:hover {
 #agent-pane::-webkit-scrollbar  { width: 3px; }
 #thread-pane::-webkit-scrollbar-thumb,
 #agent-pane::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
+
+/* ── Agent tooltip (custom, copy-enabled) ─────────────────────────────── */
+#agent-tooltip {
+  position: fixed;
+  z-index: 9999;
+  width: min(380px, calc(100vw - 24px));
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow);
+  padding: 10px;
+  display: none;
+}
+#agent-tooltip.visible { display: block; }
+.agent-tip-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-1);
+  margin-bottom: 8px;
+}
+.agent-tip-meta {
+  font-size: 11px;
+  color: var(--text-2);
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+.agent-tip-meta code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-1);
+}
+.agent-tip-prompt {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-input);
+  color: var(--text-1);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  padding: 8px;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.agent-tip-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.agent-tip-actions button {
+  flex: 1;
+  border: 1px solid var(--border-light);
+  background: var(--bg-hover);
+  color: var(--text-1);
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+.agent-tip-actions button:hover { border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -673,6 +837,11 @@ body[data-theme="light"] .ctx-item:hover {
             oninput="autoResize(this)" onkeydown="handleKey(event)"></textarea>
           <button id="btn-send" onclick="sendMessage()" title="Send">➤</button>
         </div>
+        <!-- Agent Status Bar -->
+        <div id="agent-status-bar">
+          <div id="agent-status-list"></div>
+          <div id="agent-status-info">ℹ️</div>
+        </div>
         </div>
         </div>
 
@@ -693,6 +862,16 @@ body[data-theme="light"] .ctx-item:hover {
   </div>
 </div>
 
+<div id="agent-tooltip" aria-hidden="true"></div>
+
+<div id="agent-status-info-tooltip" class="">
+  <div class="state-item"><span class="state-emoji">🟢</span> <strong>Active:</strong> Agent has activity within 30 seconds</div>
+  <div class="state-item"><span class="state-emoji">🌙</span> <strong>Idle:</strong> Agent has activity within 5 minutes</div>
+  <div class="state-item"><span class="state-emoji">✏️</span> <strong>Typing:</strong> Agent is actively typing (within 8 seconds)</div>
+  <div class="state-item"><span class="state-emoji">⏳</span> <strong>Waiting:</strong> Agent is waiting for response (within 60 seconds)</div>
+  <div class="state-item"><span class="state-emoji">⚫</span> <strong>Offline:</strong> Agent has no recent activity and is not heartbeating</div>
+</div>
+
 <script>
     // ═══════════════════════════════════════════════
     // State
@@ -703,10 +882,16 @@ body[data-theme="light"] .ctx-item:hover {
     let typingTimers = {};   // agent_id -> timer
     let isConnected = false;
     let contextMenuThread = null;
-    const onlineAgentNames = new Set();
+    const onlineAgentKeys = new Set();
+    const onlineAgentLabelsByKey = new Map();
+    const activeThreadLastSeenMs = new Map();
+    const activeThreadLabelsByKey = new Map();
+    const THREAD_ACTIVITY_WINDOW_MS = 120000;
     const ALL_THREAD_STATUSES = ['discuss', 'implement', 'review', 'done', 'closed', 'archived'];
     const NORMAL_THREAD_STATUSES = ['discuss', 'implement', 'review', 'done', 'closed'];
     let selectedThreadStatuses = new Set(NORMAL_THREAD_STATUSES);
+    let agentTooltipHideTimer = null;
+    let activeAgentTooltipTarget = null;
 
     const EMPTY_STATE_TEMPLATE = `
       <div id="empty-state">
@@ -722,21 +907,208 @@ body[data-theme="light"] .ctx-item:hover {
       applySavedTheme();
       await refreshThreads();
       await refreshAgents();
+      await updateStatusBar();
       updateOnlinePresence();
       startSSE();
       setInterval(refreshAgents, 12000);
+      setInterval(updateStatusBar, 5000);  // Update status bar every 5 seconds
       // Fallback poll: refresh messages every 3s in case an SSE event was missed
       setInterval(() => { if (activeThreadId) loadNewMessages(); }, 3000);
+
+      const tip = getAgentTooltipEl();
+      if (tip) {
+        tip.addEventListener('mouseenter', () => clearAgentTooltipHideTimer());
+        tip.addEventListener('mouseleave', () => scheduleAgentTooltipHide());
+        tip.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const btn = e.target.closest('button[data-copy]');
+          if (!btn) return;
+          const value = btn.getAttribute('data-copy-value') || '';
+          const ok = await copyTextWithFallback(value);
+          const old = btn.textContent;
+          btn.textContent = ok ? 'Copied' : 'Copy failed';
+          setTimeout(() => { btn.textContent = old; }, 1200);
+        });
+      }
     })();
 
     document.addEventListener('click', () => {
       hideThreadContextMenu();
       hideThreadFilterPanel();
+      hideAgentTooltip();
+      const infoTooltip = document.getElementById('agent-status-info-tooltip');
+      if (infoTooltip) infoTooltip.classList.remove('visible');
     });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') hideThreadContextMenu();
     });
-    window.addEventListener('resize', hideThreadContextMenu);
+    window.addEventListener('resize', () => {
+      hideThreadContextMenu();
+      hideAgentTooltip();
+      const infoTooltip = document.getElementById('agent-status-info-tooltip');
+      if (infoTooltip) infoTooltip.classList.remove('visible');
+    });
+
+    // Agent Status Info tooltip
+    const infoEl = document.getElementById('agent-status-info');
+    const infoTooltip = document.getElementById('agent-status-info-tooltip');
+    let infoTooltipHideTimer = null;
+
+    function positionInfoTooltip() {
+      if (!infoEl || !infoTooltip) return;
+      const rect = infoEl.getBoundingClientRect();
+      const padding = 10;
+      const tipW = infoTooltip.offsetWidth || 280;
+      const tipH = infoTooltip.offsetHeight || 200;
+      
+      // Position tooltip above the icon, centered horizontally
+      let left = rect.left + rect.width / 2 - tipW / 2;
+      let top = rect.top - tipH - 8;
+      
+      // Ensure tooltip stays within viewport bounds
+      if (left < padding) {
+        left = padding;
+      }
+      if (left + tipW > window.innerWidth - padding) {
+        left = Math.max(padding, window.innerWidth - tipW - padding);
+      }
+      if (top < padding) {
+        top = rect.bottom + 8;
+      }
+      
+      infoTooltip.style.left = `${left}px`;
+      infoTooltip.style.top = `${top}px`;
+    }
+
+    if (infoEl && infoTooltip) {
+      infoEl.addEventListener('mouseenter', () => {
+        clearTimeout(infoTooltipHideTimer);
+        infoTooltip.classList.add('visible');
+        setTimeout(positionInfoTooltip, 0);
+      });
+      infoEl.addEventListener('mouseleave', () => {
+        infoTooltipHideTimer = setTimeout(() => infoTooltip.classList.remove('visible'), 200);
+      });
+      infoTooltip.addEventListener('mouseenter', () => clearTimeout(infoTooltipHideTimer));
+      infoTooltip.addEventListener('mouseleave', () => infoTooltip.classList.remove('visible'));
+    }
+
+    function getAgentTooltipEl() {
+      return document.getElementById('agent-tooltip');
+    }
+
+    function getResumePromptForAgent(agentId, displayName, token) {
+      const threadName = document.getElementById('thread-title')?.textContent?.trim() || '(current thread)';
+      const tokenLine = token ? `Token: ${token}\n` : '';
+      return `@${displayName}\nPlease rejoin this chat and resume with saved credentials.\n1) Try agent_resume(agent_id, token) first.\n2) If resume fails, then agent_register.\n3) Post confirmation and continue msg_wait loop.\nAgent ID: ${agentId}\n${tokenLine}Thread: ${threadName}`;
+    }
+
+    async function copyTextWithFallback(text) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', 'readonly');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch { ok = false; }
+        ta.remove();
+        return ok;
+      }
+    }
+
+    function positionAgentTooltip(anchorEl) {
+      const tip = getAgentTooltipEl();
+      if (!tip || !anchorEl) return;
+      
+      // Find the emoji element within the status item
+      const emojiEl = anchorEl.querySelector('.agent-status-emoji');
+      const emojiR = emojiEl ? emojiEl.getBoundingClientRect() : anchorEl.getBoundingClientRect();
+      
+      const padding = 10;
+      const tipW = tip.offsetWidth || 320;
+      const tipH = tip.offsetHeight || 220;
+      
+      // Position tooltip above the emoji, centered horizontally
+      let left = emojiR.left + emojiR.width / 2 - tipW / 2;
+      let top = emojiR.top - tipH - 8;
+      
+      // Ensure tooltip stays within viewport bounds
+      if (left < padding) {
+        left = padding;
+      }
+      if (left + tipW > window.innerWidth - padding) {
+        left = Math.max(padding, window.innerWidth - tipW - padding);
+      }
+      if (top < padding) {
+        top = emojiR.bottom + 8;
+      }
+      
+      tip.style.left = `${left}px`;
+      tip.style.top = `${top}px`;
+    }
+
+    function clearAgentTooltipHideTimer() {
+      if (agentTooltipHideTimer) {
+        clearTimeout(agentTooltipHideTimer);
+        agentTooltipHideTimer = null;
+      }
+    }
+
+    function scheduleAgentTooltipHide(delay = 120) {
+      clearAgentTooltipHideTimer();
+      agentTooltipHideTimer = setTimeout(() => hideAgentTooltip(), delay);
+    }
+
+    function hideAgentTooltip() {
+      clearAgentTooltipHideTimer();
+      const tip = getAgentTooltipEl();
+      if (!tip) return;
+      tip.classList.remove('visible');
+      tip.setAttribute('aria-hidden', 'true');
+      activeAgentTooltipTarget = null;
+    }
+
+    function showAgentTooltip(anchorEl, agent) {
+      const tip = getAgentTooltipEl();
+      if (!tip || !anchorEl || !agent) return;
+      clearAgentTooltipHideTimer();
+      const alias = String(agent.display_name ?? agent.name ?? 'Unknown').trim() || 'Unknown';
+      const agentId = String(agent.id ?? agent.agent_id ?? '').trim();
+      const token = String(agent.token ?? '').trim();
+      const prompt = getResumePromptForAgent(agentId, alias, token);
+      const tokenDisplay = token ? `<br/>Token: <code>${esc(token)}</code>` : '';
+      tip.innerHTML = `
+        <div class="agent-tip-title">Agent Quick Prompt</div>
+        <div class="agent-tip-meta">Alias: <code>${esc(alias)}</code><br/>Agent ID: <code>${esc(agentId || '(unknown)')}</code>${tokenDisplay}</div>
+        <pre class="agent-tip-prompt">${esc(prompt)}</pre>
+        <div class="agent-tip-actions">
+          <button type="button" data-copy="agent-id" data-copy-value="${esc(agentId)}">Copy Agent ID</button>
+          <button type="button" data-copy="resume" data-copy-value="${esc(prompt)}">Copy Resume Prompt</button>
+        </div>`;
+      tip.classList.add('visible');
+      tip.setAttribute('aria-hidden', 'false');
+      activeAgentTooltipTarget = anchorEl;
+      positionAgentTooltip(anchorEl);
+    }
+
+    function bindAgentTooltipEvents(avatarEl, agent) {
+      if (!avatarEl) return;
+      avatarEl.addEventListener('mouseenter', () => showAgentTooltip(avatarEl, agent));
+      avatarEl.addEventListener('mouseleave', () => scheduleAgentTooltipHide());
+      avatarEl.addEventListener('mousemove', () => {
+        if (activeAgentTooltipTarget === avatarEl) positionAgentTooltip(avatarEl);
+      });
+      avatarEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showAgentTooltip(avatarEl, agent);
+      });
+    }
 
     function applySavedTheme() {
       const savedTheme = localStorage.getItem('agentchatbus-theme') || 'dark';
@@ -764,14 +1136,66 @@ body[data-theme="light"] .ctx-item:hover {
       const badgeEl = document.getElementById('online-presence');
       if (!countEl || !badgeEl) return;
 
-      const onlineAgents = Array.from(onlineAgentNames).sort((a, b) => a.localeCompare(b));
-      const total = onlineAgents.length;
+      const onlineAgentEntries = Array.from(onlineAgentKeys)
+        .map((key) => ({ key, label: onlineAgentLabelsByKey.get(key) || key }));
+      const onlineAgents = onlineAgentEntries.map((x) => x.label).sort((a, b) => a.localeCompare(b));
+      const nowMs = Date.now();
+      const threadOnlineKeys = Array.from(activeThreadLastSeenMs.entries())
+        .filter(([key, lastSeenMs]) => onlineAgentKeys.has(key) || (nowMs - lastSeenMs) <= THREAD_ACTIVITY_WINDOW_MS)
+        .map(([key]) => key);
+      const threadOnlineAgents = threadOnlineKeys
+        .map((key) => activeThreadLabelsByKey.get(key) || onlineAgentLabelsByKey.get(key) || key)
+        .sort((a, b) => a.localeCompare(b));
+      const showingThreadScoped = Boolean(activeThreadId);
+      const total = showingThreadScoped ? threadOnlineKeys.length : onlineAgentEntries.length;
 
-      countEl.textContent = `Online agents ${total}`;
+      countEl.textContent = showingThreadScoped ? `Thread online ${total}` : `Online agents ${total}`;
 
-      const tooltip = `Agents: ${onlineAgents.length ? onlineAgents.join(', ') : '(none)'}`;
+      const tooltip = showingThreadScoped
+        ? `Thread online: ${threadOnlineAgents.length ? threadOnlineAgents.join(', ') : '(none)'} | Global online: ${onlineAgents.length ? onlineAgents.join(', ') : '(none)'}`
+        : `Agents: ${onlineAgents.length ? onlineAgents.join(', ') : '(none)'}`;
       badgeEl.title = tooltip;
       countEl.title = tooltip;
+    }
+
+    function getAgentDisplayName(msg) {
+      if (!msg) return null;
+      const role = String(msg.role ?? '').toLowerCase();
+      const author = String(msg.author_name ?? msg.author ?? '').trim();
+      if (!author) return null;
+      if (role === 'system') return null;
+      const lower = author.toLowerCase();
+      if (lower === 'human' || lower === 'system') return null;
+      return author;
+    }
+
+    function getAgentPresenceKey(msg) {
+      if (!msg) return null;
+      const role = String(msg.role ?? '').toLowerCase();
+      if (role === 'system') return null;
+      const label = String(msg.author_name ?? msg.author ?? '').trim().toLowerCase();
+      if (!label || label === 'human' || label === 'system') return null;
+      const key = String(msg.author_id ?? msg.author_name ?? msg.author ?? '').trim();
+      return key || null;
+    }
+
+    function recordThreadAgentActivity(key, label, createdAtIso) {
+      if (!key) return;
+      const parsed = createdAtIso ? Date.parse(createdAtIso) : NaN;
+      const seenMs = Number.isFinite(parsed) ? parsed : Date.now();
+      const prev = activeThreadLastSeenMs.get(key) || 0;
+      if (seenMs > prev) activeThreadLastSeenMs.set(key, seenMs);
+      if (label) activeThreadLabelsByKey.set(key, label);
+    }
+
+    function rebuildActiveThreadParticipants(messages) {
+      activeThreadLastSeenMs.clear();
+      activeThreadLabelsByKey.clear();
+      (messages || []).forEach((m) => {
+        const key = getAgentPresenceKey(m);
+        const label = getAgentDisplayName(m);
+        if (key) recordThreadAgentActivity(key, label, m.created_at);
+      });
     }
 
     // ═══════════════════════════════════════════════
@@ -920,6 +1344,7 @@ body[data-theme="light"] .ctx-item:hover {
     activeThreadId = id;
     activeThreadStatus = status;
     lastSeq = 0;
+    activeThreadLastSeenMs.clear();
 
     // Sidebar highlight
     document.querySelectorAll('.thread-item').forEach(el => el.classList.remove('active'));
@@ -937,8 +1362,10 @@ body[data-theme="light"] .ctx-item:hover {
 
           // Load history
           const msgs = await api(`/api/threads/${id}/messages?after_seq=0&limit=300&include_system_prompt=1`) || [];
+          rebuildActiveThreadParticipants(msgs);
           msgs.forEach(appendBubble);
           updateOnlinePresence();
+          await updateStatusBar();  // 更新状态栏显示该thread的所有agents
           if (msgs.length) lastSeq = msgs[msgs.length - 1].seq;
           scrollBottom();
         }
@@ -946,8 +1373,14 @@ body[data-theme="light"] .ctx-item:hover {
         async function loadNewMessages() {
           if (!activeThreadId) return;
           const msgs = await api(`/api/threads/${activeThreadId}/messages?after_seq=${lastSeq}&limit=100`) || [];
+              msgs.forEach((m) => {
+                const key = getAgentPresenceKey(m);
+                const label = getAgentDisplayName(m);
+                if (key) recordThreadAgentActivity(key, label, m.created_at);
+              });
           msgs.forEach(appendBubble);
           updateOnlinePresence();
+          await updateStatusBar();  // 新消息可能有新agents，更新状态栏
           msgs.forEach(m => { lastSeq = Math.max(lastSeq, m.seq); });  // always advance cursor
           if (msgs.length) scrollBottom();
         }
@@ -1014,11 +1447,13 @@ body[data-theme="light"] .ctx-item:hover {
     activeThreadId = null;
     activeThreadStatus = 'discuss';
     lastSeq = 0;
+    activeThreadLastSeenMs.clear();
 
     document.querySelectorAll('.thread-item').forEach(el => el.classList.remove('active'));
     document.getElementById('thread-header').style.display = 'none';
     document.getElementById('compose').classList.remove('visible');
     document.getElementById('messages').innerHTML = EMPTY_STATE_TEMPLATE;
+    updateOnlinePresence();
   }
 
     // ═══════════════════════════════════════════════
@@ -1075,27 +1510,45 @@ body[data-theme="light"] .ctx-item:hover {
         return;
       }
 
-      const color = authorColor(m.author);
-      const isHuman = m.author === 'human';
-      let initials = m.author.slice(0, 2).toUpperCase();
-      if (!isHuman && m.author !== 'system') {
-        const base = m.author.split('(')[0].trim().toUpperCase();
+      const authorLabel = String(m.author_name ?? m.author ?? '').trim() || 'unknown';
+      const isSystem = String(m.role ?? '').toLowerCase() === 'system' || authorLabel.toLowerCase() === 'system';
+      const isHuman = authorLabel.toLowerCase() === 'human';
+      const authorKey = isHuman ? 'human' : (isSystem ? 'system' : String(m.author_id ?? authorLabel));
+      const color = authorColor(authorKey);
+      let initials = authorLabel.slice(0, 2).toUpperCase();
+      if (!isHuman && !isSystem) {
+        const base = authorLabel.split('(')[0].trim().toUpperCase();
         initials = base.substring(0, 3);
       }
       const bgAlpha = `${color}22`;  // ~13% alpha tint for avatar bg
 
       const row = document.createElement('div');
       row.className = `msg-row ${isHuman ? 'msg-row-right' : 'msg-row-left'}`;
+      row.setAttribute('data-author-id', String(m.author_id ?? authorLabel));
+      row.setAttribute('data-seq', String(m.seq));
 
       row.innerHTML = `
         <div class="msg-avatar" style="background:${bgAlpha};color:${color};border:1px solid ${color}44">${initials}</div>
         <div class="msg-col">
           <div class="msg-header">
-            <span class="msg-author-label" style="color:${color}">${esc(m.author)}</span>
+            <span class="msg-author-label" style="color:${color}">${esc(authorLabel)}</span>
             <span class="msg-time-label">seq ${m.seq} · ${fmtTime(m.created_at)}</span>
           </div>
           <div class="bubble-v2" style="border-color:${color}55;${isHuman ? 'border-right-color' : 'border-left-color'}:${color}">${esc(m.content).replace(/\n/g, '<br/>')}</div>
         </div>`;
+
+      if (!isHuman && !isSystem) {
+        const avatarEl = row.querySelector('.msg-avatar');
+        if (avatarEl) {
+          avatarEl.classList.add('msg-avatar-interactive');
+          bindAgentTooltipEvents(avatarEl, {
+            id: String(m.author_id ?? authorLabel),
+            agent_id: String(m.author_id ?? authorLabel),
+            name: authorLabel,
+            display_name: authorLabel,
+          });
+        }
+      }
 
       box.appendChild(row);
     }
@@ -1164,11 +1617,17 @@ body[data-theme="light"] .ctx-item:hover {
     // Agents
     // ═══════════════════════════════════════════════
   async function refreshAgents() {
+    hideAgentTooltip();
     const allAgents = await api('/api/agents') || [];
-    onlineAgentNames.clear();
+    onlineAgentKeys.clear();
+    onlineAgentLabelsByKey.clear();
     allAgents.forEach(a => {
-      const name = String(a.name ?? '').trim();
-      if (a.is_online && name) onlineAgentNames.add(name);
+      const key = String(a.id ?? a.agent_id ?? a.name ?? '').trim();
+      const label = String(a.display_name ?? a.name ?? '').trim();
+      if (a.is_online && key) {
+        onlineAgentKeys.add(key);
+        onlineAgentLabelsByKey.set(key, label || key);
+      }
     });
     updateOnlinePresence();
 
@@ -1179,21 +1638,140 @@ body[data-theme="light"] .ctx-item:hover {
       No agents registered yet.
     </div>`;
     agents.forEach(a => {
+      const label = String(a.display_name ?? a.name ?? '').trim() || String(a.name ?? '').trim() || 'Unknown';
       const div = document.createElement('div');
       div.className = 'agent-item';
       div.innerHTML = `
-      <div class="agent-avatar">${esc(a.name[0].toUpperCase())}</div>
+      <div class="agent-avatar agent-avatar-interactive">${esc(label[0].toUpperCase())}</div>
       <div style="min-width:0">
-        <div class="agent-name">${esc(a.name)}</div>
+        <div class="agent-name">${esc(label)}</div>
         <div class="agent-desc">${esc(a.description || '—')}</div>
       </div>
       <div class="online-dot on" title="Online"></div>`;
-    pane.appendChild(div);
+      const avatarEl = div.querySelector('.agent-avatar');
+      bindAgentTooltipEvents(avatarEl, a);
+      pane.appendChild(div);
   });
 
     // Update tab label
           document.getElementById('tab-agents').textContent =
             `Agents${agents.length ? ' (' + agents.length + ')' : ''}`;
+        }
+
+        // ═══════════════════════════════════════════════
+        // Helper: Escape HTML
+        // ═══════════════════════════════════════════════
+        function escapeHtml(t) {
+          const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+          return String(t).replace(/[&<>"']/g, c => map[c]);
+        }
+
+        // ═══════════════════════════════════════════════
+        // Agent Status Bar Update
+        // ═══════════════════════════════════════════════
+        async function updateStatusBar() {
+          const allAgents = await api('/api/agents') || [];
+          const container = document.getElementById('agent-status-list');
+          if (!container || !activeThreadId) {
+            if (container) container.innerHTML = '';
+            return;
+          }
+          
+          // 从当前thread的消息中提取所有参与agents（按author_id）
+          const participantIdMap = new Map();  // id -> agent数据
+          const msgArea = document.getElementById('messages');
+          if (msgArea) {
+            const rows = msgArea.querySelectorAll('[data-author-id]');
+            rows.forEach(row => {
+              const authorId = row.getAttribute('data-author-id');
+              if (authorId && authorId !== 'system' && authorId !== 'human' && !participantIdMap.has(authorId)) {
+                // 查找该author_id对应的agent
+                const agent = allAgents.find(a => (a.id === authorId || a.agent_id === authorId));
+                if (agent) {
+                  participantIdMap.set(authorId, agent);
+                } else {
+                  // 即使agent不在allAgents中，也创建一个离线表示
+                  participantIdMap.set(authorId, {
+                    id: authorId,
+                    display_name: authorId,
+                    name: authorId,
+                    is_online: false,
+                  });
+                }
+              }
+            });
+          }
+          
+          // 获取参与者列表
+          const participants = Array.from(participantIdMap.values());
+          
+          // 排序：在线优先，然后按最后活动时间排序
+          participants.sort((a, b) => {
+            if (a.is_online !== b.is_online) {
+              return a.is_online ? -1 : 1;  // 在线优先
+            }
+            if (a.is_online && b.is_online) {
+              const timeA = a.last_activity_time ? new Date(a.last_activity_time) : new Date(0);
+              const timeB = b.last_activity_time ? new Date(b.last_activity_time) : new Date(0);
+              return timeB - timeA;  // 最近活动优先
+            }
+            return 0;
+          });
+          
+          container.innerHTML = '';
+          
+          if (participants.length === 0) {
+            container.innerHTML = '<div style="color:var(--text-3);font-size:11px;padding:4px 12px;">No agents in this thread</div>';
+            return;
+          }
+          
+          participants.forEach(a => {
+            const state = getAgentState(a);
+            const emoji = getStateEmoji(state);
+            const label = String(a.display_name ?? a.name ?? '').trim() || 'Unknown';
+            
+            const item = document.createElement('div');
+            item.className = 'agent-status-item';
+            item.innerHTML = `
+              <div class="agent-status-emoji">${emoji}</div>
+              <div class="agent-status-text">
+                <div class="agent-alias">${escapeHtml(label)}</div>
+                <div class="agent-state">${state}</div>
+              </div>
+            `;
+            // 绑定agent tooltip交互
+            if (a && a.id) {
+              bindAgentTooltipEvents(item, a);
+            }
+            container.appendChild(item);
+          });
+        }
+        
+        function getAgentState(agent) {
+          // 优先使用last_activity_time判断状态，而非is_online（后者基于heartbeat超时）
+          const activityTime = agent.last_activity_time ? new Date(agent.last_activity_time) : null;
+          const now = new Date();
+          
+          if (!activityTime) {
+            // 完全没有活动记录
+            return agent.is_online ? 'Waiting' : 'Offline';
+          }
+          
+          const secondsAgo = (now - activityTime) / 1000;
+          
+          // 根据活动类型和时间判断状态
+          if (agent.last_activity === 'agent.typing' && secondsAgo < 8) return 'Typing';
+          if (agent.last_activity === 'msg_wait' && secondsAgo < 60) return 'Waiting';
+          if (secondsAgo < 30) return 'Active';
+          if (secondsAgo < 300) return 'Idle';  // 5分钟内有活动算 Idle
+          
+          // 超过5分钟没活动且is_online=false才显示Offline
+          return agent.is_online ? 'Idle' : 'Offline';
+        }
+        
+        function getStateEmoji(state) {
+          const map = { 'Offline': '⚫', 'Typing': '✏️', 'Waiting': '⏳', 'Active': '🟢', 'Idle': '🌙' };
+          return map[state] || '❓';
         }
 
         // ═══════════════════════════════════════════════
@@ -1204,6 +1782,11 @@ body[data-theme="light"] .ctx-item:hover {
           document.getElementById('agent-pane').classList.toggle('visible', tab === 'agents');
           document.getElementById('tab-threads').classList.toggle('active', tab === 'threads');
           document.getElementById('tab-agents').classList.toggle('active', tab === 'agents');
+          // 动态控制Thread Filter区域显示/隐藏
+          const filterWrap = document.getElementById('thread-filter-wrap');
+          if (filterWrap) {
+            filterWrap.style.display = (tab === 'threads') ? '' : 'none';
+          }
         }
 
     // ═══════════════════════════════════════════════

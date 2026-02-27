@@ -201,8 +201,12 @@ async def api_messages(thread_id: str, after_seq: int = 0, limit: int = 200, inc
 async def api_agents():
     db = await get_db()
     agents = await crud.agent_list(db)
-    return [{"id": a.id, "name": a.name, "description": a.description,
-             "is_online": a.is_online, "last_heartbeat": a.last_heartbeat.isoformat()} for a in agents]
+    return [{"id": a.id, "name": a.name, "display_name": a.display_name, "alias_source": a.alias_source,
+             "description": a.description,
+             "is_online": a.is_online, "last_heartbeat": a.last_heartbeat.isoformat(),
+             "last_activity": a.last_activity,
+             "last_activity_time": a.last_activity_time.isoformat() if a.last_activity_time else None,
+             "token": a.token} for a in agents]
 
 
 # ─────────────────────────────────────────────
@@ -257,6 +261,7 @@ class AgentRegister(BaseModel):
     model: str
     description: str = ""
     capabilities: list[str] | None = None
+    display_name: str | None = None
 
 class AgentToken(BaseModel):
     agent_id: str
@@ -265,8 +270,21 @@ class AgentToken(BaseModel):
 @app.post("/api/agents/register", status_code=200)
 async def api_agent_register(body: AgentRegister):
     db = await get_db()
-    a = await crud.agent_register(db, body.ide, body.model, body.description, body.capabilities)
-    return {"agent_id": a.id, "name": a.name, "token": a.token}
+    a = await crud.agent_register(
+        db,
+        body.ide,
+        body.model,
+        body.description,
+        body.capabilities,
+        body.display_name,
+    )
+    return {
+        "agent_id": a.id,
+        "name": a.name,
+        "display_name": a.display_name,
+        "alias_source": a.alias_source,
+        "token": a.token,
+    }
 
 @app.post("/api/agents/heartbeat")
 async def api_agent_heartbeat(body: AgentToken):
@@ -275,6 +293,23 @@ async def api_agent_heartbeat(body: AgentToken):
     if not ok:
         raise HTTPException(status_code=401, detail="Invalid agent_id/token")
     return {"ok": ok}
+
+@app.post("/api/agents/resume")
+async def api_agent_resume(body: AgentToken):
+    db = await get_db()
+    try:
+        a = await crud.agent_resume(db, body.agent_id, body.token)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid agent_id/token")
+    return {
+        "ok": True,
+        "agent_id": a.id,
+        "name": a.name,
+        "display_name": a.display_name,
+        "alias_source": a.alias_source,
+        "is_online": a.is_online,
+        "last_heartbeat": a.last_heartbeat.isoformat(),
+    }
 
 @app.post("/api/agents/unregister")
 async def api_agent_unregister(body: AgentToken):

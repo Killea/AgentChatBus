@@ -173,6 +173,7 @@ async def list_tools() -> list[types.Tool]:
                 "Register an agent onto the bus. The display name is auto-generated as "
                 "'IDE (Model)' — e.g. 'Cursor (GPT-4)'. If the same IDE+Model pair is already "
                 "registered, a numeric suffix is appended: 'Cursor (GPT-4) 2'. "
+                "Optional `display_name` can be provided as a human-friendly alias. "
                 "Returns agent_id and a secret token for subsequent calls."
             ),
             inputSchema={
@@ -185,6 +186,7 @@ async def list_tools() -> list[types.Tool]:
                     "description":  {"type": "string", "description": "Optional short description of this agent's role."},
                     "capabilities": {"type": "array", "items": {"type": "string"},
                                      "description": "List of capability tags, e.g. ['code', 'review']."},
+                    "display_name": {"type": "string", "description": "Optional human-friendly alias shown in UI and message labels."},
                 },
                 "required": ["ide", "model"],
             },
@@ -192,6 +194,18 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="agent_heartbeat",
             description="Send a keep-alive ping. Agents that miss the heartbeat window are marked offline.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "agent_id": {"type": "string"},
+                    "token":    {"type": "string"},
+                },
+                "required": ["agent_id", "token"],
+            },
+        ),
+        types.Tool(
+            name="agent_resume",
+            description="Resume a previously registered agent using existing agent_id and token without changing alias.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -384,14 +398,38 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
             model=arguments["model"],
             description=arguments.get("description", ""),
             capabilities=arguments.get("capabilities"),
+            display_name=arguments.get("display_name"),
         )
         return [types.TextContent(type="text", text=json.dumps({
-            "agent_id": agent.id, "name": agent.name, "token": agent.token,
+            "agent_id": agent.id,
+            "name": agent.name,
+            "display_name": agent.display_name,
+            "alias_source": agent.alias_source,
+            "token": agent.token,
+            "last_activity": agent.last_activity,
+            "last_activity_time": agent.last_activity_time.isoformat() if agent.last_activity_time else None,
         }))]
 
     if name == "agent_heartbeat":
         ok = await crud.agent_heartbeat(db, arguments["agent_id"], arguments["token"])
         return [types.TextContent(type="text", text=json.dumps({"ok": ok}))]
+
+    if name == "agent_resume":
+        try:
+            agent = await crud.agent_resume(db, arguments["agent_id"], arguments["token"])
+        except ValueError as e:
+            return [types.TextContent(type="text", text=json.dumps({"ok": False, "error": str(e)}))]
+        return [types.TextContent(type="text", text=json.dumps({
+            "ok": True,
+            "agent_id": agent.id,
+            "name": agent.name,
+            "display_name": agent.display_name,
+            "alias_source": agent.alias_source,
+            "is_online": agent.is_online,
+            "last_heartbeat": agent.last_heartbeat.isoformat(),
+            "last_activity": agent.last_activity,
+            "last_activity_time": agent.last_activity_time.isoformat() if agent.last_activity_time else None,
+        }))]
 
     if name == "agent_unregister":
         ok = await crud.agent_unregister(db, arguments["agent_id"], arguments["token"])
@@ -401,8 +439,11 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
         agents = await crud.agent_list(db)
         return [types.TextContent(type="text", text=json.dumps([
             {"agent_id": a.id, "name": a.name, "ide": a.ide, "model": a.model,
+             "display_name": a.display_name, "alias_source": a.alias_source,
              "description": a.description, "is_online": a.is_online,
-             "last_heartbeat": a.last_heartbeat.isoformat()}
+             "last_heartbeat": a.last_heartbeat.isoformat(),
+             "last_activity": a.last_activity,
+             "last_activity_time": a.last_activity_time.isoformat() if a.last_activity_time else None}
             for a in agents
         ]))]
 

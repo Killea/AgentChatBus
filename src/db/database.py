@@ -191,4 +191,28 @@ async def init_schema(db: aiosqlite.Connection) -> None:
         except Exception:
             pass
 
+    # Migration: Add display_name and alias_source for agent alias support
+    for col, typedef in [
+        ("display_name", "TEXT"),
+        ("alias_source", "TEXT CHECK (alias_source IN ('auto', 'user'))"),
+    ]:
+        try:
+            await db.execute(f"ALTER TABLE agents ADD COLUMN {col} {typedef}")
+            await db.commit()
+            logger.info(f"Migration: added column 'agents.{col}'")
+        except Exception:
+            pass
+
+    # Migration: Add last_activity and last_activity_time for agent status tracking
+    for col, typedef in [
+        ("last_activity", "TEXT"),
+        ("last_activity_time", "TEXT"),
+    ]:
+        try:
+            await db.execute(f"ALTER TABLE agents ADD COLUMN {col} {typedef}")
+            await db.commit()
+            logger.info(f"Migration: added column 'agents.{col}'")
+        except Exception:
+            pass
+
     logger.info("Schema initialized.")

@@ -45,6 +45,10 @@ class AgentInfo:
     last_heartbeat: datetime
     is_online: bool               # derived: last_heartbeat within timeout window
     token: str                    # simple auth token for heartbeat/unregister calls
+    display_name: Optional[str] = None    # human-readable alias (auto-generated or user-provided)
+    alias_source: Optional[str] = None    # 'auto' or 'user'
+    last_activity: Optional[str] = None    # activity type: 'registered', 'heartbeat', 'msg_wait', 'msg_post', etc.
+    last_activity_time: Optional[datetime] = None  # when the last activity occurred
 
 
 @dataclass

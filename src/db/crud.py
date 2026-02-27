@@ -32,6 +32,27 @@ Welcome to this Thread. You are participating in a multi-agent workspace sharing
 Operate like a delivery-focused engineering team: communicate clearly, move work forward, and resolve blockers quickly."""
 
 
+def _compose_system_prompt(thread_prompt: Optional[str]) -> str:
+    """Return the synthetic seq=0 system prompt shown to agents.
+
+    Rules:
+    - Built-in global system prompt is always present.
+    - If thread creation provides a custom prompt, append it as a second section.
+    - Both sections are advisory so each agent can decide compliance.
+    """
+    custom = (thread_prompt or "").strip()
+    if not custom:
+        return GLOBAL_SYSTEM_PROMPT
+
+    return (
+        "## Section: System (Built-in)\n\n"
+        f"{GLOBAL_SYSTEM_PROMPT}\n\n"
+        "## Section: Thread Create (Provided By Creator)\n\n"
+        f"{custom}\n\n"
+        "Note: Both sections are guidance. Each agent can decide how to follow them."
+    )
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -216,12 +237,13 @@ async def msg_post(
     author_id = None
     author_name = author
 
-    async with db.execute("SELECT id, name FROM agents WHERE id = ?", (author,)) as cur:
+    async with db.execute("SELECT id, name, display_name FROM agents WHERE id = ?", (author,)) as cur:
         row = await cur.fetchone()
         if row:
             actual_author = row["name"]
             author_id = row["id"]
-            author_name = row["name"]
+            # Prefer display_name (alias) if available, fallback to name
+            author_name = row["display_name"] or row["name"]
 
     mid = str(uuid.uuid4())
     now = _now()
@@ -231,6 +253,10 @@ async def msg_post(
         "INSERT INTO messages (id, thread_id, author, role, content, seq, created_at, metadata, author_id, author_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (mid, thread_id, actual_author, role, content, seq, now, meta_json, author_id, author_name),
     )
+    # Update agent's last activity to 'msg_post'
+    if author_id:
+        await db.execute("UPDATE agents SET last_activity = ?, last_activity_time = ? WHERE id = ?",
+                         ('msg_post', now, author_id))
     await db.commit()
     await _emit_event(db, "msg.new", thread_id, {
         "msg_id": mid, "thread_id": thread_id, "author": author_name,
@@ -260,11 +286,11 @@ async def msg_list(
     msgs = [_row_to_message(r) for r in rows]
     
     if include_system_prompt and after_seq == 0:
-        # Check if the thread has a custom system_prompt, else use global fallback
+        # Always include built-in system prompt. If thread has custom prompt, append it.
         async with db.execute("SELECT system_prompt, created_at FROM threads WHERE id = ?", (thread_id,)) as cur:
             t_row = await cur.fetchone()
-            
-        prompt_text = t_row["system_prompt"] if (t_row and t_row["system_prompt"]) else GLOBAL_SYSTEM_PROMPT
+
+        prompt_text = _compose_system_prompt(t_row["system_prompt"] if t_row else None)
         created_at_dt = _parse_dt(t_row["created_at"]) if t_row else _parse_dt(_now())
         
         sys_msg = Message(
@@ -306,8 +332,22 @@ def _row_to_message(row: aiosqlite.Row) -> Message:
 
 
 # ─────────────────────────────────────────────
+# ─────────────────────────────────────────────
 # Agent registry
 # ─────────────────────────────────────────────
+
+def _generate_auto_alias(ide: str, model: str, uuid_short: str) -> str:
+    """
+    Generate a human-readable auto alias from IDE, model, and UUID suffix.
+    Format: {IDE-short}-{Model-short}-{UUID-4-chars}
+    Example: VSC-HAI-a1b2, Cur-GPT-d4a3
+    """
+    ide_short = ide.strip()[:3].upper() if ide.strip() else "UNK"
+    # Take first word of model, then first 3 chars
+    model_first = model.strip().split()[0] if model.strip() else "MOD"
+    model_short = model_first[:3].upper()
+    return f"{ide_short}-{model_short}-{uuid_short.lower()}"
+
 
 async def agent_register(
     db: aiosqlite.Connection,
@@ -315,6 +355,7 @@ async def agent_register(
     model: str,
     description: str = "",
     capabilities: Optional[list] = None,
+    display_name: Optional[str] = None,
 ) -> AgentInfo:
     """
     Register a new agent on the bus.
@@ -323,6 +364,9 @@ async def agent_register(
     If another agent with that exact base name is already registered, a numeric
     suffix is appended: "Cursor (GPT-4) 2", "Cursor (GPT-4) 3", …
     This lets identical IDE+model pairs co-exist without confusion.
+    
+    The optional `display_name` provides a human-readable alias. If not provided,
+    an auto-generated alias is created from IDE/model/UUID.
     """
     ide   = ide.strip()   or "Unknown IDE"
     model = model.strip() or "Unknown Model"
@@ -343,21 +387,29 @@ async def agent_register(
             n += 1
         name = f"{base_name} {n}"
 
+    # Generate or use provided display_name
     aid = str(uuid.uuid4())
+    alias_src = "user" if display_name else "auto"
+    if not display_name:
+        # Auto-generate: {IDE-short}-{Model-short}-{UUID-4-chars}
+        display_name = _generate_auto_alias(ide, model, aid[-4:])
+    
     token = secrets.token_hex(32)
     now = _now()
     caps_json = json.dumps(capabilities) if capabilities else None
     await db.execute(
-        "INSERT INTO agents (id, name, ide, model, description, capabilities, registered_at, last_heartbeat, token) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (aid, name, ide, model, description, caps_json, now, now, token),
+        "INSERT INTO agents (id, name, ide, model, description, capabilities, registered_at, last_heartbeat, token, display_name, alias_source, last_activity, last_activity_time) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (aid, name, ide, model, description, caps_json, now, now, token, display_name, alias_src, 'registered', now),
     )
     await db.commit()
-    await _emit_event(db, "agent.online", None, {"agent_id": aid, "name": name, "ide": ide, "model": model})
-    logger.info(f"Agent registered: {aid} '{name}'")
+    await _emit_event(db, "agent.online", None, {"agent_id": aid, "name": name, "ide": ide, "model": model, "display_name": display_name})
+    logger.info(f"Agent registered: {aid} '{name}' (alias: {display_name})")
     return AgentInfo(id=aid, name=name, ide=ide, model=model, description=description,
                      capabilities=caps_json, registered_at=_parse_dt(now),
-                     last_heartbeat=_parse_dt(now), is_online=True, token=token)
+                     last_heartbeat=_parse_dt(now), is_online=True, token=token,
+                     display_name=display_name, alias_source=alias_src,
+                     last_activity='registered', last_activity_time=_parse_dt(now))
 
 
 async def agent_heartbeat(db: aiosqlite.Connection, agent_id: str, token: str) -> bool:
@@ -366,18 +418,46 @@ async def agent_heartbeat(db: aiosqlite.Connection, agent_id: str, token: str) -
     if row is None or row["token"] != token:
         return False
     now = _now()
-    await db.execute("UPDATE agents SET last_heartbeat = ? WHERE id = ?", (now, agent_id))
+    await db.execute("UPDATE agents SET last_heartbeat = ?, last_activity = ?, last_activity_time = ? WHERE id = ?", 
+                     (now, 'heartbeat', now, agent_id))
     await db.commit()
     return True
 
 
+async def agent_resume(db: aiosqlite.Connection, agent_id: str, token: str) -> AgentInfo:
+    """
+    Resume an offline agent by verifying its ID and token, then updating last_heartbeat.
+    All identity fields (name, display_name, alias_source) remain unchanged.
+    
+    Raises ValueError if agent_id not found or token is invalid.
+    """
+    async with db.execute("SELECT * FROM agents WHERE id = ?", (agent_id,)) as cur:
+        row = await cur.fetchone()
+    
+    if row is None or row["token"] != token:
+        raise ValueError("Invalid agent_id or token for resume")
+    
+    now = _now()
+    await db.execute("UPDATE agents SET last_heartbeat = ?, last_activity = ?, last_activity_time = ? WHERE id = ?", 
+                     (now, 'resume', now, agent_id))
+    await db.commit()
+    display_name = row["display_name"] if "display_name" in row.keys() else None
+    await _emit_event(db, "agent.resume", None, {"agent_id": agent_id, "name": row["name"], "display_name": display_name})
+    logger.info(f"Agent resumed: {agent_id} '{row['name']}'")
+    return _row_to_agent(row)
+
+
 async def agent_unregister(db: aiosqlite.Connection, agent_id: str, token: str) -> bool:
+    """
+    Gracefully unregister an agent (verify token, emit offline event).
+    Does NOT delete the agent record - allows resume via agent_resume().
+    Agent will become naturally offline after heartbeat timeout.
+    """
     async with db.execute("SELECT token FROM agents WHERE id = ?", (agent_id,)) as cur:
         row = await cur.fetchone()
     if row is None or row["token"] != token:
         return False
-    await db.execute("DELETE FROM agents WHERE id = ?", (agent_id,))
-    await db.commit()
+    # Don't delete - just emit offline event. Agent will timeout naturally and become offline.
     await _emit_event(db, "agent.offline", None, {"agent_id": agent_id})
     return True
 
@@ -402,6 +482,10 @@ def _row_to_agent(row: aiosqlite.Row) -> AgentInfo:
         last_heartbeat=last_hb,
         is_online=elapsed < AGENT_HEARTBEAT_TIMEOUT,
         token=row["token"],
+        display_name=row["display_name"] if "display_name" in row.keys() else None,
+        alias_source=row["alias_source"] if "alias_source" in row.keys() else None,
+        last_activity=row["last_activity"] if "last_activity" in row.keys() else None,
+        last_activity_time=_parse_dt(row["last_activity_time"]) if "last_activity_time" in row.keys() and row["last_activity_time"] else None,
     )
 
 
