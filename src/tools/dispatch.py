@@ -35,6 +35,23 @@ def _safe_json_loads(value: Any) -> Any:
         return None
 
 
+def _strip_data_url(value: str) -> tuple[str | None, str | None]:
+    """Parse a data URL like 'data:image/png;base64,AAAA' and return (mime, data)."""
+    if not isinstance(value, str):
+        return None, None
+    if not value.startswith("data:"):
+        return None, None
+    header, sep, payload = value.partition(",")
+    if not sep:
+        return None, None
+    mime_part = header[5:]  # strip 'data:'
+    if ";" in mime_part:
+        mime_part = mime_part.split(";", 1)[0]
+    mime_part = mime_part.strip() or None
+    payload = payload.strip() or None
+    return mime_part, payload
+
+
 def _message_to_blocks(m: Message) -> list[types.Content]:
     author = m.author_name or m.author
     created = m.created_at.isoformat() if getattr(m, "created_at", None) else ""
@@ -65,7 +82,14 @@ def _message_to_blocks(m: Message) -> list[types.Content]:
                     continue
                 kind = (att.get("type") or att.get("kind") or "").lower()
                 mime_type = att.get("mimeType") or att.get("mime_type")
-                data = att.get("data") or att.get("base64") or att.get("b64")
+                data = att.get("data") or att.get("base64") or att.get("b64") or att.get("data_url")
+
+                if isinstance(data, str):
+                    inferred_mime, stripped = _strip_data_url(data)
+                    if stripped is not None:
+                        data = stripped
+                        if not mime_type and inferred_mime:
+                            mime_type = inferred_mime
 
                 if not mime_type and kind == "image":
                     mime_type = "image/png"

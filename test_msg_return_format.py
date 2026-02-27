@@ -90,3 +90,39 @@ async def test_msg_list_blocks_can_return_imagecontent():
         assert any(isinstance(x, types.TextContent) and "look" in x.text for x in out)
     finally:
         await db.close()
+
+
+@pytest.mark.asyncio
+async def test_msg_list_blocks_strips_data_url_prefix_and_inferrs_mime():
+    db = await _make_db()
+    try:
+        thread = await crud.thread_create(db, topic="fmt-blocks-dataurl")
+        await crud.msg_post(
+            db,
+            thread_id=thread.id,
+            author="human",
+            content="dataurl",
+            role="user",
+            metadata={
+                "attachments": [
+                    {"type": "image", "data": "data:image/png;base64,iVBORw0KGgo="}
+                ]
+            },
+        )
+
+        out = await handle_msg_list(
+            db,
+            {
+                "thread_id": thread.id,
+                "after_seq": 0,
+                "limit": 10,
+                "include_system_prompt": False,
+            },
+        )
+
+        imgs = [x for x in out if isinstance(x, types.ImageContent)]
+        assert imgs, "Expected at least one ImageContent"
+        assert imgs[0].mimeType == "image/png"
+        assert imgs[0].data == "iVBORw0KGgo="
+    finally:
+        await db.close()

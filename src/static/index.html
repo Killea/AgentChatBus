@@ -385,6 +385,11 @@ body[data-theme="light"] .ctx-item:hover {
 #messages {
   flex: 1; overflow-y: auto; padding: 20px;
   display: flex; flex-direction: column; gap: 14px;
+  min-height: 0;
+}
+#messages.loading-history .msg-row,
+#messages.loading-history .msg-sys-event {
+  animation: none !important;
 }
 #messages::-webkit-scrollbar { width: 16px; }
 #messages::-webkit-scrollbar-track { background: transparent; }
@@ -435,6 +440,54 @@ body[data-theme="light"] .ctx-item:hover {
 .msg-row-right .bubble-v2 {
   border-left-width: 1px;
   border-right-width: 3px;
+}
+
+.bubble-v2 pre {
+  margin: 8px 0;
+  padding: 10px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  overflow: auto;
+}
+.code-block {
+  position: relative;
+}
+.code-block pre {
+  padding-top: 34px;
+}
+.code-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-card);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.code-copy:active {
+  transform: translateY(1px);
+}
+.code-copy:disabled {
+  cursor: default;
+  opacity: .8;
+}
+.bubble-v2 pre code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre;
+}
+.bubble-v2 code.inline-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12.5px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 1px 6px;
 }
 
 /* System event row (centered) */
@@ -587,34 +640,17 @@ body[data-theme="light"] .ctx-item:hover {
   background-color: var(--bg-input);
 }
 
-#agent-status-info-tooltip {
-  position: fixed;
-  z-index: 9999;
-  width: 280px;
-  border: 1px solid var(--border-light);
-  border-radius: 10px;
-  background: var(--bg-card);
-  box-shadow: var(--shadow);
-  padding: 12px;
-  display: none;
-  font-size: 11px;
-  line-height: 1.6;
-  color: var(--text-1);
-}
-#agent-status-info-tooltip.visible {
-  display: block;
-}
-#agent-status-info-tooltip .state-item {
+.acb-tooltip-info .state-item {
   margin-bottom: 8px;
 }
-#agent-status-info-tooltip .state-item:last-child {
+.acb-tooltip-info .state-item:last-child {
   margin-bottom: 0;
 }
-#agent-status-info-tooltip .state-emoji {
+.acb-tooltip-info .state-emoji {
   font-weight: bold;
   margin-right: 6px;
 }
-#agent-status-info-tooltip strong {
+.acb-tooltip-info strong {
   color: var(--text-1);
 }
 
@@ -711,18 +747,10 @@ body[data-theme="light"] .ctx-item:hover {
 #thread-pane::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
 
 /* ── Agent tooltip (custom, copy-enabled) ─────────────────────────────── */
-#agent-tooltip {
-  position: fixed;
-  z-index: 9999;
+.acb-tooltip-agent {
   width: min(380px, calc(100vw - 24px));
-  border: 1px solid var(--border-light);
-  border-radius: 10px;
-  background: var(--bg-card);
-  box-shadow: var(--shadow);
   padding: 10px;
-  display: none;
 }
-#agent-tooltip.visible { display: block; }
 .agent-tip-title {
   font-size: 12px;
   font-weight: 700;
@@ -851,6 +879,7 @@ body[data-theme="light"] .ctx-item:hover {
 <div id="thread-context-menu">
   <button id="ctx-close" class="ctx-item" type="button" onclick="closeThreadFromMenu()">Close</button>
   <button id="ctx-archive" class="ctx-item" type="button" onclick="archiveThreadFromMenu()">Archive</button>
+  <button id="ctx-unarchive" class="ctx-item" type="button" onclick="unarchiveThreadFromMenu()" style="display: none;">Unarchive</button>
 </div>
 
 <!-- ── New thread modal ─────────────────────── -->
@@ -899,15 +928,18 @@ body[data-theme="light"] .ctx-item:hover {
   </div>
 </div>
 
-<div id="agent-tooltip" aria-hidden="true"></div>
-
-<div id="agent-status-info-tooltip" class="">
-  <div class="state-item"><span class="state-emoji">🟢</span> <strong>Active:</strong> Agent has activity within 30 seconds</div>
-  <div class="state-item"><span class="state-emoji">🌙</span> <strong>Idle:</strong> Agent has activity within 5 minutes</div>
-  <div class="state-item"><span class="state-emoji">⏳</span> <strong>Waiting:</strong> Agent is waiting for response (within 60 seconds)</div>
-  <div class="state-item"><span class="state-emoji">⚫</span> <strong>Offline:</strong> Agent has no recent activity and is not heartbeating</div>
-</div>
-
+<script src="/static/js/shared-api.js"></script>
+<script src="/static/js/shared-theme.js"></script>
+<script src="/static/js/shared-utils.js"></script>
+<script src="/static/js/shared-message-renderer.js"></script>
+<script src="/static/js/shared-sse.js"></script>
+<script src="/static/js/shared-modals.js"></script>
+<script src="/static/js/components/acb-thread-item.js"></script>
+<script src="/static/js/shared-threads.js"></script>
+<script src="/static/js/shared-agent-status.js"></script>
+<script src="/static/js/shared-agents.js"></script>
+<script src="/static/js/shared-chat.js"></script>
+<script src="/static/js/shared-tooltip.js"></script>
 <script>
     // ═══════════════════════════════════════════════
     // State
@@ -941,6 +973,7 @@ body[data-theme="light"] .ctx-item:hover {
     // Bootstrap
     // ═══════════════════════════════════════════════
     (async function init() {
+      window.AcbTooltip.init();
       applySavedTheme();
       await refreshThreads();
       await refreshAgents();
@@ -949,10 +982,8 @@ body[data-theme="light"] .ctx-item:hover {
       startSSE();
       setInterval(refreshAgents, 12000);
       setInterval(updateStatusBar, 5000);  // Update status bar every 5 seconds
-      // Fallback poll: refresh messages every 3s in case an SSE event was missed
-      setInterval(() => { if (activeThreadId) loadNewMessages(); }, 3000);
 
-      const tip = getAgentTooltipEl();
+      const tip = window.AcbTooltip.getTooltipElement();
       if (tip) {
         tip.addEventListener('mouseenter', () => clearAgentTooltipHideTimer());
         tip.addEventListener('mouseleave', () => scheduleAgentTooltipHide());
@@ -980,8 +1011,6 @@ body[data-theme="light"] .ctx-item:hover {
       hideThreadContextMenu();
       hideThreadFilterPanel();
       hideAgentTooltip();
-      const infoTooltip = document.getElementById('agent-status-info-tooltip');
-      if (infoTooltip) infoTooltip.classList.remove('visible');
     });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') hideThreadContextMenu();
@@ -989,69 +1018,31 @@ body[data-theme="light"] .ctx-item:hover {
     window.addEventListener('resize', () => {
       hideThreadContextMenu();
       hideAgentTooltip();
-      const infoTooltip = document.getElementById('agent-status-info-tooltip');
-      if (infoTooltip) infoTooltip.classList.remove('visible');
     });
 
-    // Agent Status Info tooltip
-    const infoEl = document.getElementById('agent-status-info');
-    const infoTooltip = document.getElementById('agent-status-info-tooltip');
-    let infoTooltipHideTimer = null;
+    (function setupUnifiedInfoTooltip() {
+      const infoEl = document.getElementById('agent-status-info');
+      if (!infoEl) return;
 
-    function positionInfoTooltip() {
-      if (!infoEl || !infoTooltip) return;
-      const rect = infoEl.getBoundingClientRect();
-      const padding = 10;
-      const tipW = infoTooltip.offsetWidth || 280;
-      const tipH = infoTooltip.offsetHeight || 200;
-      
-      // Position tooltip above the icon, centered horizontally
-      let left = rect.left + rect.width / 2 - tipW / 2;
-      let top = rect.top - tipH - 8;
-      
-      // Ensure tooltip stays within viewport bounds
-      if (left < padding) {
-        left = padding;
-      }
-      if (left + tipW > window.innerWidth - padding) {
-        left = Math.max(padding, window.innerWidth - tipW - padding);
-      }
-      if (top < padding) {
-        top = rect.bottom + 8;
-      }
-      
-      infoTooltip.style.left = `${left}px`;
-      infoTooltip.style.top = `${top}px`;
-    }
+      const tooltipHtml = `
+        <div style="padding:8px 12px;min-width:260px;">
+          <div style="font-size:12px;color:var(--text-2);margin-bottom:6px;">Status Legend:</div>
+          <div class="state-item"><span class="state-emoji">🟢</span> <strong>Active:</strong> Activity within 30s</div>
+          <div class="state-item"><span class="state-emoji">🌙</span> <strong>Idle:</strong> Activity within 5m</div>
+          <div class="state-item"><span class="state-emoji">⏳</span> <strong>Waiting:</strong> Waiting for response (&lt;60s)</div>
+          <div class="state-item"><span class="state-emoji">⚫</span> <strong>Offline:</strong> No recent activity</div>
+        </div>
+      `;
 
-    if (infoEl && infoTooltip) {
       infoEl.addEventListener('mouseenter', () => {
-        clearTimeout(infoTooltipHideTimer);
-        
-        // Update tooltip content
-        let tooltipHtml = `
-          <div style="padding:8px 12px;"><div style="font-size:12px;color:var(--text-2);margin-bottom:6px;">Status Legend:</div>
-            <div class="state-item"><span class="state-emoji">🟢</span> <strong>Active:</strong> Activity within 30s</div>
-            <div class="state-item"><span class="state-emoji">🌙</span> <strong>Idle:</strong> Activity within 5m</div>
-            <div class="state-item"><span class="state-emoji">⏳</span> <strong>Waiting:</strong> Waiting for response (&lt;60s)</div>
-            <div class="state-item"><span class="state-emoji">⚫</span> <strong>Offline:</strong> No recent activity</div>
-          </div>
-        `;
-        infoTooltip.innerHTML = tooltipHtml;
-        
-        infoTooltip.classList.add('visible');
-        setTimeout(positionInfoTooltip, 0);
+        window.AcbTooltip.showRich(infoEl, tooltipHtml, {
+          interactive: false,
+          maxWidth: '340px',
+          className: 'acb-tooltip-info',
+        });
       });
-      infoEl.addEventListener('mouseleave', () => {
-        infoTooltipHideTimer = setTimeout(() => infoTooltip.classList.remove('visible'), 200);
-      });
-      infoTooltip.addEventListener('mouseenter', () => clearTimeout(infoTooltipHideTimer));
-      infoTooltip.addEventListener('mouseleave', () => infoTooltip.classList.remove('visible'));
-    }
-
-    function getAgentTooltipEl() {
-      return document.getElementById('agent-tooltip');
-    }
+      infoEl.addEventListener('mouseleave', () => window.AcbTooltip.scheduleHide(120));
+    })();
 
     function getResumePromptForAgent(agentId, displayName, token) {
       const threadName = document.getElementById('thread-title')?.textContent?.trim() || '(current thread)';
@@ -1070,53 +1061,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     }
 
     async function copyTextWithFallback(text) {
-      try {
-        await navigator.clipboard.writeText(text);
-        return true;
-      } catch {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.setAttribute('readonly', 'readonly');
-        ta.style.position = 'fixed';
-        ta.style.left = '-9999px';
-        document.body.appendChild(ta);
-        ta.select();
-        let ok = false;
-        try { ok = document.execCommand('copy'); } catch { ok = false; }
-        ta.remove();
-        return ok;
-      }
-    }
-
-    function positionAgentTooltip(anchorEl) {
-      const tip = getAgentTooltipEl();
-      if (!tip || !anchorEl) return;
-      
-      // Find the emoji element within the status item
-      const emojiEl = anchorEl.querySelector('.agent-status-emoji');
-      const emojiR = emojiEl ? emojiEl.getBoundingClientRect() : anchorEl.getBoundingClientRect();
-      
-      const padding = 10;
-      const tipW = tip.offsetWidth || 320;
-      const tipH = tip.offsetHeight || 220;
-      
-      // Position tooltip above the emoji, centered horizontally
-      let left = emojiR.left + emojiR.width / 2 - tipW / 2;
-      let top = emojiR.top - tipH - 8;
-      
-      // Ensure tooltip stays within viewport bounds
-      if (left < padding) {
-        left = padding;
-      }
-      if (left + tipW > window.innerWidth - padding) {
-        left = Math.max(padding, window.innerWidth - tipW - padding);
-      }
-      if (top < padding) {
-        top = emojiR.bottom + 8;
-      }
-      
-      tip.style.left = `${left}px`;
-      tip.style.top = `${top}px`;
+      return window.AcbUtils.copyTextWithFallback(text);
     }
 
     function clearAgentTooltipHideTimer() {
@@ -1124,6 +1069,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         clearTimeout(agentTooltipHideTimer);
         agentTooltipHideTimer = null;
       }
+      window.AcbTooltip.clearHideTimer();
     }
 
     function scheduleAgentTooltipHide(delay = 120) {
@@ -1133,16 +1079,12 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
 
     function hideAgentTooltip() {
       clearAgentTooltipHideTimer();
-      const tip = getAgentTooltipEl();
-      if (!tip) return;
-      tip.classList.remove('visible');
-      tip.setAttribute('aria-hidden', 'true');
+      window.AcbTooltip.hideTooltip();
       activeAgentTooltipTarget = null;
     }
 
     function showAgentTooltip(anchorEl, agent) {
-      const tip = getAgentTooltipEl();
-      if (!tip || !anchorEl || !agent) return;
+      if (!anchorEl || !agent) return;
       clearAgentTooltipHideTimer();
       const alias = String(agent.display_name ?? agent.name ?? 'Unknown').trim() || 'Unknown';
       const agentId = String(agent.id ?? agent.agent_id ?? '').trim();
@@ -1154,8 +1096,8 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       // Disable resume button if no thread is selected
       const resumeButtonState = activeThreadId ? '' : 'disabled';
       const resumeButtonStyle = activeThreadId ? '' : 'style="opacity:0.5;cursor:not-allowed;"';
-      
-      tip.innerHTML = `
+
+      const html = `
         <div class="agent-tip-title">Agent Quick Prompt</div>
         <div class="agent-tip-meta">Alias: <code>${esc(alias)}</code><br/>Agent ID: <code>${esc(agentId || '(unknown)')}</code><br/>IDE: <code>${esc(ide)}</code><br/>Model: <code>${esc(model)}</code></div>
         <pre class="agent-tip-prompt">${esc(prompt)}</pre>
@@ -1163,19 +1105,20 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
           <button type="button" data-copy="agent-id" data-copy-value="${esc(agentId)}">Copy Agent ID</button>
           <button type="button" data-copy="resume" data-copy-value="${esc(prompt)}" ${resumeButtonState} ${resumeButtonStyle} title="${activeThreadId ? '' : 'Select a thread first'}">Copy Resume Prompt</button>
         </div>`;
-      tip.classList.add('visible');
-      tip.setAttribute('aria-hidden', 'false');
+
+      window.AcbTooltip.showRich(anchorEl, html, {
+        interactive: true,
+        width: 'min(380px, calc(100vw - 24px))',
+        maxWidth: '380px',
+        className: 'acb-tooltip-agent',
+      });
       activeAgentTooltipTarget = anchorEl;
-      positionAgentTooltip(anchorEl);
     }
 
     function bindAgentTooltipEvents(avatarEl, agent) {
       if (!avatarEl) return;
       avatarEl.addEventListener('mouseenter', () => showAgentTooltip(avatarEl, agent));
       avatarEl.addEventListener('mouseleave', () => scheduleAgentTooltipHide());
-      avatarEl.addEventListener('mousemove', () => {
-        if (activeAgentTooltipTarget === avatarEl) positionAgentTooltip(avatarEl);
-      });
       avatarEl.addEventListener('click', (e) => {
         e.stopPropagation();
         showAgentTooltip(avatarEl, agent);
@@ -1183,90 +1126,54 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     }
 
     function applySavedTheme() {
-      const savedTheme = localStorage.getItem('agentchatbus-theme') || 'dark';
-      setTheme(savedTheme);
+      return window.AcbTheme.applySavedTheme();
     }
 
     function setTheme(theme) {
-      const effectiveTheme = theme === 'light' ? 'light' : 'dark';
-      document.body.setAttribute('data-theme', effectiveTheme);
-      const btn = document.getElementById('btn-theme-toggle');
-      if (btn) {
-        btn.textContent = effectiveTheme === 'light' ? 'Dark' : 'Light';
-        btn.title = effectiveTheme === 'light' ? 'Switch to dark theme' : 'Switch to light theme';
-      }
-      localStorage.setItem('agentchatbus-theme', effectiveTheme);
+      return window.AcbTheme.setTheme(theme);
     }
 
     function toggleTheme() {
-      const current = document.body.getAttribute('data-theme') || 'dark';
-      setTheme(current === 'light' ? 'dark' : 'light');
+      return window.AcbTheme.toggleTheme();
     }
 
     function updateOnlinePresence() {
-      const countEl = document.getElementById('online-count');
-      const badgeEl = document.getElementById('online-presence');
-      if (!countEl || !badgeEl) return;
-
-      const onlineAgentEntries = Array.from(onlineAgentKeys)
-        .map((key) => ({ key, label: onlineAgentLabelsByKey.get(key) || key }));
-      const onlineAgents = onlineAgentEntries.map((x) => x.label).sort((a, b) => a.localeCompare(b));
-      const nowMs = Date.now();
-      const threadOnlineKeys = Array.from(activeThreadLastSeenMs.entries())
-        .filter(([key, lastSeenMs]) => onlineAgentKeys.has(key) || (nowMs - lastSeenMs) <= THREAD_ACTIVITY_WINDOW_MS)
-        .map(([key]) => key);
-      const threadOnlineAgents = threadOnlineKeys
-        .map((key) => activeThreadLabelsByKey.get(key) || onlineAgentLabelsByKey.get(key) || key)
-        .sort((a, b) => a.localeCompare(b));
-      const showingThreadScoped = Boolean(activeThreadId);
-      const total = showingThreadScoped ? threadOnlineKeys.length : onlineAgentEntries.length;
-
-      countEl.textContent = showingThreadScoped ? `Thread online ${total}` : `Online agents ${total}`;
-
-      const tooltip = showingThreadScoped
-        ? `Thread online: ${threadOnlineAgents.length ? threadOnlineAgents.join(', ') : '(none)'} | Global online: ${onlineAgents.length ? onlineAgents.join(', ') : '(none)'}`
-        : `Agents: ${onlineAgents.length ? onlineAgents.join(', ') : '(none)'}`;
-      badgeEl.title = tooltip;
-      countEl.title = tooltip;
+      return window.AcbAgents.updateOnlinePresence({
+        onlineAgentKeys,
+        onlineAgentLabelsByKey,
+        activeThreadLastSeenMs,
+        activeThreadLabelsByKey,
+        threadActivityWindowMs: THREAD_ACTIVITY_WINDOW_MS,
+        activeThreadId,
+      });
     }
 
     function getAgentDisplayName(msg) {
-      if (!msg) return null;
-      const role = String(msg.role ?? '').toLowerCase();
-      const author = String(msg.author_name ?? msg.author ?? '').trim();
-      if (!author) return null;
-      if (role === 'system') return null;
-      const lower = author.toLowerCase();
-      if (lower === 'human' || lower === 'system') return null;
-      return author;
+      return window.AcbAgents.getAgentDisplayName(msg);
     }
 
     function getAgentPresenceKey(msg) {
-      if (!msg) return null;
-      const role = String(msg.role ?? '').toLowerCase();
-      if (role === 'system') return null;
-      const label = String(msg.author_name ?? msg.author ?? '').trim().toLowerCase();
-      if (!label || label === 'human' || label === 'system') return null;
-      const key = String(msg.author_id ?? msg.author_name ?? msg.author ?? '').trim();
-      return key || null;
+      return window.AcbAgents.getAgentPresenceKey(msg);
     }
 
     function recordThreadAgentActivity(key, label, createdAtIso) {
-      if (!key) return;
-      const parsed = createdAtIso ? Date.parse(createdAtIso) : NaN;
-      const seenMs = Number.isFinite(parsed) ? parsed : Date.now();
-      const prev = activeThreadLastSeenMs.get(key) || 0;
-      if (seenMs > prev) activeThreadLastSeenMs.set(key, seenMs);
-      if (label) activeThreadLabelsByKey.set(key, label);
+      return window.AcbAgents.recordThreadAgentActivity({
+        key,
+        label,
+        createdAtIso,
+        activeThreadLastSeenMs,
+        activeThreadLabelsByKey,
+      });
     }
 
     function rebuildActiveThreadParticipants(messages) {
-      activeThreadLastSeenMs.clear();
-      activeThreadLabelsByKey.clear();
-      (messages || []).forEach((m) => {
-        const key = getAgentPresenceKey(m);
-        const label = getAgentDisplayName(m);
-        if (key) recordThreadAgentActivity(key, label, m.created_at);
+      return window.AcbAgents.rebuildActiveThreadParticipants({
+        messages,
+        getAgentPresenceKey,
+        getAgentDisplayName,
+        recordThreadAgentActivity,
+        activeThreadLastSeenMs,
+        activeThreadLabelsByKey,
       });
     }
 
@@ -1274,98 +1181,58 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     // SSE
     // ═══════════════════════════════════════════════
     function startSSE() {
-      const es = new EventSource('/events');
-      es.onopen = () => setConnected(true);
-      es.onerror = () => { setConnected(false); setTimeout(startSSE, 3000); es.close(); };
-
-    es.onmessage = async (e) => {
-      const ev = JSON.parse(e.data);
-      const p = ev.payload;
-
-    if (ev.type === 'msg.new') {
-      if (p.thread_id === activeThreadId) await loadNewMessages();
-      await refreshThreads();  // update sidebar counts
-    }
-    if (ev.type === 'thread.new' || ev.type === 'thread.state' || ev.type === 'thread.closed' || ev.type === 'thread.archived') {
-      await refreshThreads();
-    }
-    if (ev.type === 'agent.online' || ev.type === 'agent.offline') {
-      await refreshAgents();
-      }
-      if (ev.type === 'agent.typing' && p.thread_id === activeThreadId) {
-        if (p.is_typing) showTyping(p.agent_id);
-        else hideTyping(p.agent_id);
-      }
-    };
+      return window.AcbSSE.startSSE({
+        getActiveThreadId: () => activeThreadId,
+        onMsgNew: async () => loadNewMessages(),
+        onThreadEvent: async () => refreshThreads(),
+        onAgentPresence: async () => refreshAgents(),
+        onTyping: (agentId, isTyping) => {
+          if (isTyping) showTyping(agentId);
+          else hideTyping(agentId);
+        },
+        setConnected,
+      });
   }
 
     function setConnected(v) {
       isConnected = v;
-      const dot = document.getElementById('status-dot');
-      const label = document.getElementById('status-label');
-      dot.style.background = v ? 'var(--green)' : 'var(--red)';
-      dot.style.boxShadow = v ? '0 0 8px var(--green)' : '0 0 8px var(--red)';
-      label.textContent = v ? 'Connected' : 'Reconnecting…';
+      return window.AcbSSE.setConnectedUI(v);
     }
 
     // ═══════════════════════════════════════════════
     // API
     // ═══════════════════════════════════════════════
     async function api(path, opts = {}) {
-      try {
-    const r = await fetch(path, { headers: {'Content-Type':'application/json'}, ...opts });
-    return r.json();
-    } catch { return null; }
+      return window.AcbApi.api(path, opts);
   }
 
     // ═══════════════════════════════════════════════
     // Threads
     // ═══════════════════════════════════════════════
   async function refreshThreads() {
-    const allThreads = await api('/api/threads?include_archived=1') || [];
-    const threads = allThreads.filter(t => selectedThreadStatuses.has(t.status));
-    const pane = document.getElementById('thread-pane');
-    pane.innerHTML = threads.length ? '' : `
-    <div style="padding:24px 16px;color:var(--text-3);font-size:13px;text-align:center">
-      No threads match current filter.
-    </div>`;
-    const hasActiveThread = activeThreadId && threads.some(t => t.id === activeThreadId);
-    if (activeThreadId && !hasActiveThread) {
-      resetThreadSelection();
-    }
-    threads.forEach(t => {
-      const div = document.createElement('div');
-      div.className = `thread-item${t.id === activeThreadId ? ' active' : ''}`;
-      div.id = `ti-${t.id}`;
-      div.onclick = () => selectThread(t.id, t.topic, t.status);
-      div.oncontextmenu = (e) => openThreadContextMenu(e, t);
-      div.innerHTML = `
-      <div class="ti-topic">${esc(t.topic)}</div>
-      <div class="ti-meta">
-        <span class="badge badge-${t.status}">${t.status}</span>
-        <span>${timeAgo(t.created_at)}</span>
-      </div>`;
-      pane.appendChild(div);
+    return window.AcbThreads.refreshThreads({
+      api,
+      getSelectedStatuses: () => selectedThreadStatuses,
+      getActiveThreadId: () => activeThreadId,
+      resetThreadSelection,
+      onSelectThread: selectThread,
+      onOpenContextMenu: openThreadContextMenu,
+      esc,
+      timeAgo,
+      updateThreadFilterButton,
     });
-
-    updateThreadFilterButton();
   }
 
   function toggleThreadFilterPanel(event) {
-    event.stopPropagation();
-    const panel = document.getElementById('thread-filter-panel');
-    panel.classList.toggle('visible');
+    return window.AcbThreads.toggleThreadFilterPanel(event);
   }
 
   function hideThreadFilterPanel() {
-    document.getElementById('thread-filter-panel').classList.remove('visible');
+    return window.AcbThreads.hideThreadFilterPanel();
   }
 
   function selectedStatusListFromUI() {
-    const checkboxes = document.querySelectorAll('#thread-filter-panel input[data-status]');
-    return Array.from(checkboxes)
-      .filter(cb => cb.checked)
-      .map(cb => cb.getAttribute('data-status'));
+    return window.AcbThreads.selectedStatusListFromUI();
   }
 
   function onThreadFilterChange() {
@@ -1396,123 +1263,97 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
   }
 
   function updateThreadFilterButton() {
-    const btn = document.getElementById('btn-thread-filter');
-    const selected = ALL_THREAD_STATUSES.filter(s => selectedThreadStatuses.has(s));
-    const normalOnly = selected.length === NORMAL_THREAD_STATUSES.length &&
-      NORMAL_THREAD_STATUSES.every(s => selectedThreadStatuses.has(s)) &&
-      !selectedThreadStatuses.has('archived');
-    if (normalOnly) {
-      btn.textContent = 'Filter: normal (5)';
-      return;
-    }
-    if (selected.length === ALL_THREAD_STATUSES.length) {
-      btn.textContent = 'Filter: all (6)';
-      return;
-    }
-    btn.textContent = `Filter: ${selected.join(', ')}`;
+    return window.AcbThreads.updateThreadFilterButton(
+      ALL_THREAD_STATUSES,
+      NORMAL_THREAD_STATUSES,
+      selectedThreadStatuses
+    );
   }
 
   async function selectThread(id, topic, status) {
-    activeThreadId = id;
-    activeThreadStatus = status;
-    lastSeq = 0;
-    activeThreadLastSeenMs.clear();
+    return window.AcbChat.selectThread({
+      id,
+      topic,
+      status,
+      setActiveThread: (threadId, threadStatus) => {
+        activeThreadId = threadId;
+        activeThreadStatus = threadStatus;
+      },
+      clearThreadParticipants: () => activeThreadLastSeenMs.clear(),
+      api,
+      rebuildActiveThreadParticipants,
+      appendBubble,
+      updateOnlinePresence,
+      updateStatusBar,
+      setLastSeq: (next) => {
+        lastSeq = typeof next === 'function' ? next(lastSeq) : next;
+      },
+      scrollBottom,
+    });
+  }
 
-    // Sidebar highlight
-    document.querySelectorAll('.thread-item').forEach(el => el.classList.remove('active'));
-    const ti = document.getElementById(`ti-${id}`);
-    if (ti) ti.classList.add('active');
-
-    // Header
-    document.getElementById('thread-header').style.display = 'flex';
-    document.getElementById('thread-title').textContent = topic;
-          document.getElementById('compose').classList.add('visible');
-
-          // Clear messages
-          const box = document.getElementById('messages');
-          box.innerHTML = '';
-
-          // Load history
-          const msgs = await api(`/api/threads/${id}/messages?after_seq=0&limit=300&include_system_prompt=1`) || [];
-          rebuildActiveThreadParticipants(msgs);
-          msgs.forEach(appendBubble);
-          updateOnlinePresence();
-          await updateStatusBar();  // 更新状态栏显示该thread的所有agents
-          if (msgs.length) lastSeq = msgs[msgs.length - 1].seq;
-    scrollBottom(false);
-        }
-
-        async function loadNewMessages() {
-          if (!activeThreadId) return;
-          const msgs = await api(`/api/threads/${activeThreadId}/messages?after_seq=${lastSeq}&limit=100`) || [];
-              msgs.forEach((m) => {
-                const key = getAgentPresenceKey(m);
-                const label = getAgentDisplayName(m);
-                if (key) recordThreadAgentActivity(key, label, m.created_at);
-              });
-          msgs.forEach(appendBubble);
-          updateOnlinePresence();
-          await updateStatusBar();  // 新消息可能有新agents，更新状态栏
-          msgs.forEach(m => { lastSeq = Math.max(lastSeq, m.seq); });  // always advance cursor
-          if (msgs.length) scrollBottom(true);
-        }
+  async function loadNewMessages() {
+    return window.AcbChat.loadNewMessages({
+      getActiveThreadId: () => activeThreadId,
+      getLastSeq: () => lastSeq,
+      api,
+      getAgentPresenceKey,
+      getAgentDisplayName,
+      recordThreadAgentActivity,
+      appendBubble,
+      updateOnlinePresence,
+      updateStatusBar,
+      setLastSeq: (next) => {
+        lastSeq = typeof next === 'function' ? next(lastSeq) : next;
+      },
+      scrollBottom,
+    });
+  }
 
     async function closeThread(threadId = activeThreadId) {
-    if (!threadId) return;
-    const summary = prompt('Optional summary for this thread (leave blank to skip):');
-    await api(`/api/threads/${threadId}/close`, {
-      method: 'POST', body: JSON.stringify({ summary: summary || null })
+    return window.AcbThreads.closeThread({
+      threadId,
+      api,
+      refreshThreads,
     });
-    await refreshThreads();
   }
 
   function openThreadContextMenu(event, thread) {
-    event.preventDefault();
-    event.stopPropagation();
-
-    contextMenuThread = thread;
-    const menu = document.getElementById('thread-context-menu');
-    const archiveBtn = document.getElementById('ctx-archive');
-    const closeBtn = document.getElementById('ctx-close');
-    closeBtn.disabled = false;
-    closeBtn.textContent = 'Close';
-    archiveBtn.disabled = false;
-    archiveBtn.textContent = 'Archive';
-
-    menu.classList.add('visible');
-    const menuWidth = 170;
-    const menuHeight = 84;
-    const x = Math.min(event.clientX, window.innerWidth - menuWidth - 8);
-    const y = Math.min(event.clientY, window.innerHeight - menuHeight - 8);
-    menu.style.left = `${Math.max(8, x)}px`;
-    menu.style.top = `${Math.max(8, y)}px`;
+    contextMenuThread = window.AcbThreads.openThreadContextMenu(event, thread);
   }
 
   function hideThreadContextMenu() {
-    const menu = document.getElementById('thread-context-menu');
-    menu.classList.remove('visible');
-    contextMenuThread = null;
+    contextMenuThread = window.AcbThreads.hideThreadContextMenu();
   }
 
   async function archiveThreadFromMenu() {
-    if (!contextMenuThread) return;
-    const { id } = contextMenuThread;
+    return window.AcbThreads.archiveThreadFromMenu({
+      getContextMenuThread: () => contextMenuThread,
+      hideThreadContextMenu,
+      api,
+      getActiveThreadId: () => activeThreadId,
+      resetThreadSelection,
+      refreshThreads,
+    });
+  }
 
-    hideThreadContextMenu();
-    const result = await api(`/api/threads/${id}/archive`, { method: 'POST' });
-    if (!result || result.ok !== true) return;
-
-    if (activeThreadId === id) {
-      resetThreadSelection();
-    }
-    await refreshThreads();
+  async function unarchiveThreadFromMenu() {
+    return window.AcbThreads.unarchiveThreadFromMenu({
+      getContextMenuThread: () => contextMenuThread,
+      hideThreadContextMenu,
+      api,
+      getActiveThreadId: () => activeThreadId,
+      resetThreadSelection,
+      refreshThreads,
+    });
   }
 
   async function closeThreadFromMenu() {
-    if (!contextMenuThread) return;
-    const { id } = contextMenuThread;
-    hideThreadContextMenu();
-    await closeThread(id);
+    return window.AcbThreads.closeThreadFromMenu({
+      getContextMenuThread: () => contextMenuThread,
+      hideThreadContextMenu,
+      closeThread,
+    });
   }
 
   function resetThreadSelection() {
@@ -1566,8 +1407,27 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
   }
 
   function fmtTime(iso) {
-    if (!iso) return '';
-    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return window.AcbUtils.fmtTime(iso);
+  }
+
+  function normalizeMessageText(raw) {
+    return window.AcbMessageRenderer.normalizeMessageText(raw);
+  }
+
+  function tokenizeMessage(rawText) {
+    return window.AcbMessageRenderer.tokenizeMessage(rawText);
+  }
+
+  function parseInlineCodeSegments(line) {
+    return window.AcbMessageRenderer.parseInlineCodeSegments(line);
+  }
+
+  function renderTextWithInlineCode(containerEl, text) {
+    return window.AcbMessageRenderer.renderTextWithInlineCode(containerEl, text);
+  }
+
+  function renderMessageContent(containerEl, rawText) {
+    return window.AcbMessageRenderer.renderMessageContent(containerEl, rawText);
   }
 
     function appendBubble(m) {
@@ -1606,8 +1466,11 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
             <span class="msg-author-label" style="color:${color}">${esc(authorLabel)}</span>
             <span class="msg-time-label">seq ${m.seq} · ${fmtTime(m.created_at)}</span>
           </div>
-          <div class="bubble-v2" style="border-color:${color}55;${isHuman ? 'border-right-color' : 'border-left-color'}:${color}">${esc(m.content).replace(/\n/g, '<br/>')}</div>
+          <div class="bubble-v2" style="border-color:${color}55;${isHuman ? 'border-right-color' : 'border-left-color'}:${color}"></div>
         </div>`;
+
+      const bubbleEl = row.querySelector('.bubble-v2');
+      if (bubbleEl) renderMessageContent(bubbleEl, m.content);
 
       if (!isHuman && !isSystem) {
         const avatarEl = row.querySelector('.msg-avatar');
@@ -1667,254 +1530,89 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     // Compose
     // ═══════════════════════════════════════════════
     async function sendMessage() {
-    const input = document.getElementById('compose-input');
-    const author = document.getElementById('compose-author').value.trim() || 'human';
-    const content = input.value.trim();
-    if (!content || !activeThreadId) return;
-    updateOnlinePresence();
-    input.value = '';
-    autoResize(input);
-
-    const m = await api(`/api/threads/${activeThreadId}/messages`, {
-      method: 'POST',
-    body: JSON.stringify({ author, role: 'user', content }),
-  });
-      if (m) { lastSeq = Math.max(lastSeq, m.seq); appendBubble({ ...m, created_at: new Date().toISOString() }); scrollBottom(true); }
-  }
+    return window.AcbChat.sendMessage({
+      getActiveThreadId: () => activeThreadId,
+      updateOnlinePresence,
+      autoResize,
+      api,
+      setLastSeq: (next) => {
+        lastSeq = typeof next === 'function' ? next(lastSeq) : next;
+      },
+      appendBubble,
+      scrollBottom,
+    });
+    }
 
   function handleKey(e) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    return window.AcbChat.handleKey(e, sendMessage);
   }
 
     function autoResize(el) {
-      el.style.height = 'auto';
-      el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+      return window.AcbUtils.autoResize(el);
     }
 
     // ═══════════════════════════════════════════════
     // Agents
     // ═══════════════════════════════════════════════
   async function refreshAgents() {
-    hideAgentTooltip();
-    const allAgents = await api('/api/agents') || [];
-    currentAgents = allAgents; // Cache for tooltip lookups
-    onlineAgentKeys.clear();
-    onlineAgentLabelsByKey.clear();
-    allAgents.forEach(a => {
-      const key = String(a.id ?? a.agent_id ?? a.name ?? '').trim();
-      const label = String(a.display_name ?? a.name ?? '').trim();
-      if (a.is_online && key) {
-        onlineAgentKeys.add(key);
-        onlineAgentLabelsByKey.set(key, label || key);
-      }
+    return window.AcbAgents.refreshAgents({
+      api,
+      hideAgentTooltip,
+      setCurrentAgents: (agents) => {
+        currentAgents = agents;
+      },
+      onlineAgentKeys,
+      onlineAgentLabelsByKey,
+      updateOnlinePresence,
     });
-    updateOnlinePresence();
-    // Left sidebar agents panel removed - agents now displayed only in status bar
   }
 
         // ═══════════════════════════════════════════════
         // Helper: Escape HTML
         // ═══════════════════════════════════════════════
         function escapeHtml(t) {
-          const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-          return String(t).replace(/[&<>"']/g, c => map[c]);
+          return window.AcbUtils.escapeHtml(t);
         }
 
         // ═══════════════════════════════════════════════
         // Agent Status Bar Update
         // ═══════════════════════════════════════════════
         async function updateStatusBar() {
-          const allAgents = await api('/api/agents') || [];
-          currentAgents = allAgents; // Cache for tooltip lookups
-          const container = document.getElementById('agent-status-list');
-          if (!container) {
-            return;
-          }
-          
-          let participants = [];
-          let isThreadMode = false;  // Track if showing thread-specific agents
-          
-          // If a thread is selected, show agents in that thread
-          if (activeThreadId) {
-            // 从当前thread的消息中提取所有参与agents（按author_id）
-            const participantIdMap = new Map();  // id -> agent数据
-            const msgArea = document.getElementById('messages');
-            if (msgArea) {
-              const rows = msgArea.querySelectorAll('[data-author-id]');
-              rows.forEach(row => {
-                const authorId = row.getAttribute('data-author-id');
-                if (authorId && authorId !== 'system' && authorId !== 'human' && !participantIdMap.has(authorId)) {
-                  // 查找该author_id对应的agent
-                  const agent = allAgents.find(a => (a.id === authorId || a.agent_id === authorId));
-                  if (agent) {
-                    participantIdMap.set(authorId, agent);
-                  } else {
-                    // 即使agent不在allAgents中，也创建一个离线表示
-                    participantIdMap.set(authorId, {
-                      id: authorId,
-                      display_name: authorId,
-                      name: authorId,
-                      is_online: false,
-                    });
-                  }
-                }
-              });
-            }
-            participants = Array.from(participantIdMap.values());
-            isThreadMode = participants.length > 0;  // Only thread mode if we have participants
-          }
-          
-          // If no thread selected or no participants in thread, fall back to showing all non-offline agents
-          if (!isThreadMode) {
-            participants = allAgents.filter(a => {
-              const state = getAgentState(a);
-              return state !== 'Offline';
-            });
-            isThreadMode = false;  // Global mode - no thread context
-          }
-          
-          // 排序：在线优先，然后按最后活动时间排序
-          participants.sort((a, b) => {
-            if (a.is_online !== b.is_online) {
-              return a.is_online ? -1 : 1;  // 在线优先
-            }
-            if (a.is_online && b.is_online) {
-              const timeA = a.last_activity_time ? new Date(a.last_activity_time) : new Date(0);
-              const timeB = b.last_activity_time ? new Date(b.last_activity_time) : new Date(0);
-              return timeB - timeA;  // 最近活动优先
-            }
-            return 0;
-          });
-          
-          container.innerHTML = '';
-          
-          if (participants.length === 0) {
-            container.innerHTML = '<div style="color:var(--text-3);font-size:11px;padding:4px 12px;">No active agents</div>';
-            return;
-          }
-          
-          participants.forEach(a => {
-            const state = getAgentState(a);
-            const emoji = getStateEmoji(state);
-            const label = String(a.display_name ?? a.name ?? '').trim() || 'Unknown';
-            const offlineTime = getOfflineTime(a);
-            const offlineDisplay = offlineTime ? ` (${offlineTime})` : '';
-            const isLongOffline = isOfflineMoreThanHour(a);
-            
-            const item = document.createElement('div');
-            item.className = 'agent-status-item';
-            
-            // Compress display if offline > 1 hour: just emoji + single char
-            if (isLongOffline) {
-              const compressedChar = getCompressedOfflineChar(offlineTime);
-              item.innerHTML = `
-                <div class="agent-status-emoji">${emoji}</div>
-                <div class="agent-status-text-compact">${compressedChar}</div>
-              `;
-            } else {
-              // Remove thread info display to keep agent list clean
-              item.innerHTML = `
-                <div class="agent-status-emoji">${emoji}</div>
-                <div class="agent-status-text">
-                  <div class="agent-alias">${escapeHtml(label)}</div>
-                  <div class="agent-state">${state}${offlineDisplay}</div>
-                </div>
-              `;
-            }
-            
-            // 绑定agent tooltip交互
-            if (a && a.id) {
-              bindAgentTooltipEvents(item, a);
-            }
-            container.appendChild(item);
+          return window.AcbAgents.updateStatusBar({
+            api,
+            setCurrentAgents: (agents) => {
+              currentAgents = agents;
+            },
+            getActiveThreadId: () => activeThreadId,
+            getAgentState,
+            getStateEmoji,
+            getOfflineTime,
+            isOfflineMoreThanHour,
+            getCompressedOfflineChar,
+            escapeHtml,
+            bindAgentTooltipEvents,
           });
         }
         
         function getAgentState(agent) {
-          // 优先使用last_activity_time判断状态，而非is_online（后者基于heartbeat超时）
-          const activityTime = agent.last_activity_time ? new Date(agent.last_activity_time) : null;
-          const now = new Date();
-          
-          if (!activityTime) {
-            // 完全没有活动记录
-            return agent.is_online ? 'Waiting' : 'Offline';
-          }
-          
-          const secondsAgo = (now - activityTime) / 1000;
-          
-          // 根据活动类型和时间判断状态
-          if (agent.last_activity === 'msg_wait' && secondsAgo < 60) return 'Waiting';
-          if (secondsAgo < 30) return 'Active';
-          if (secondsAgo < 300) return 'Idle';  // 5分钟内有活动算 Idle
-          
-          // 超过5分钟没活动且is_online=false才显示Offline
-          return agent.is_online ? 'Idle' : 'Offline';
+          return window.AcbAgentStatus.getAgentState(agent);
         }
 
         function getOfflineTime(agent) {
-          // Calculate how long the agent has been offline
-          const lastActivityTime = agent.last_activity_time ? new Date(agent.last_activity_time) : null;
-          if (!lastActivityTime) return null;
-          
-          const now = new Date();
-          const secondsAgo = (now - lastActivityTime) / 1000;
-          
-          // Only show offline time for truly offline agents (not active, idle, or in other states)
-          const state = getAgentState(agent);
-          if (state !== 'Offline') return null;
-          
-          // Format time duration
-          if (secondsAgo < 60) {
-            return `${Math.round(secondsAgo)}s`;
-          } else if (secondsAgo < 3600) {
-            const mins = Math.round(secondsAgo / 60 * 10) / 10; // 1 decimal place
-            return `${mins}m`;
-          } else if (secondsAgo < 86400) {
-            const hours = Math.round(secondsAgo / 3600 * 10) / 10; // 1 decimal place
-            return `${hours}h`;
-          } else if (secondsAgo < 2592000) {  // 30 days
-            const days = Math.round(secondsAgo / 86400 * 10) / 10; // 1 decimal place
-            return `${days}d`;
-          } else if (secondsAgo < 31536000) {  // 365 days
-            const months = Math.round(secondsAgo / 2592000 * 10) / 10; // 1 decimal place
-            return `${months}mon`;
-          } else {
-            const years = Math.round(secondsAgo / 31536000 * 10) / 10; // 1 decimal place
-            return `${years}y`;
-          }
+          return window.AcbAgentStatus.getOfflineTime(agent);
         }
 
         function isOfflineMoreThanHour(agent) {
-          // Check if agent is offline for more than 1 hour, OR offline with no time info
-          const lastActivityTime = agent.last_activity_time ? new Date(agent.last_activity_time) : null;
-          const state = getAgentState(agent);
-          
-          // Only consider truly offline agents
-          if (state !== 'Offline') return false;
-          
-          // Compress if: no activity time info available, OR offline >= 1 hour
-          if (!lastActivityTime) return true;
-          
-          const now = new Date();
-          const secondsAgo = (now - lastActivityTime) / 1000;
-          return secondsAgo >= 3600;  // >= 1 hour
+          return window.AcbAgentStatus.isOfflineMoreThanHour(agent);
         }
 
         function getCompressedOfflineChar(offlineTimeStr) {
-          // Extract single character from time string for compact display: h, d, m, y, etc.
-          if (!offlineTimeStr) return '?';  // No time info available
-          
-          const match = offlineTimeStr.match(/([hdmony]+)/);
-          if (match) {
-            return match[1].substring(0, 1);  // First letter (h, d, m, y)
-          }
-          return '?';  // Default fallback for unknown time
+          return window.AcbAgentStatus.getCompressedOfflineChar(offlineTimeStr);
         }
         
         
         function getStateEmoji(state) {
-          const map = { 'Offline': '⚫', 'Waiting': '⏳', 'Active': '🟢', 'Idle': '🌙' };
-          return map[state] || '❓';
+          return window.AcbAgentStatus.getStateEmoji(state);
         }
 
         // ═══════════════════════════════════════════════
@@ -1934,25 +1632,15 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     // Modal
     // ═══════════════════════════════════════════════
     function openModal() {
-      document.getElementById('modal-overlay').classList.add('visible');
-      setTimeout(() => document.getElementById('modal-topic').focus(), 100);
+      return window.AcbModals.openThreadModal();
     }
 
     function closeModal(e) {
-      if (!e || e.target === document.getElementById('modal-overlay'))
-        document.getElementById('modal-overlay').classList.remove('visible');
+      return window.AcbModals.closeThreadModal(e);
     }
 
   async function submitModal() {
-    const topic = document.getElementById('modal-topic').value.trim();
-    if (!topic) return;
-    document.getElementById('modal-topic').value = '';
-    closeModal();
-    const t = await api('/api/threads', { method: 'POST', body: JSON.stringify({ topic }) });
-    if (t) {
-      await refreshThreads();
-      selectThread(t.id, t.topic, t.status);
-    }
+    return window.AcbModals.submitThreadModal({ api, refreshThreads, selectThread });
   }
 
     // ═══════════════════════════════════════════════
@@ -1965,78 +1653,38 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     // Utilities
     // ═══════════════════════════════════════════════
     function esc(s) {
-      return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return window.AcbUtils.esc(s);
     }
 
       function scrollBottom(smooth = false) {
       const box = document.getElementById('messages');
-      requestAnimationFrame(() => {
-        if (smooth) {
-          box.scrollTo({ top: box.scrollHeight, behavior: 'smooth' });
-        } else {
-          box.scrollTop = box.scrollHeight;
-        }
-      });
+      if (!box) return;
+      // Force synchronous layout so scrollHeight is accurate
+      void box.offsetHeight;
+      if (smooth) {
+        box.scrollTo({ top: box.scrollHeight, behavior: 'smooth' });
+      } else {
+        box.scrollTop = box.scrollHeight;
+      }
     }
 
     function timeAgo(iso) {
-      if (!iso) return '';
-      const diff = (Date.now() - new Date(iso)) / 1000;
-      if (diff < 60) return 'just now';
-      if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
-      if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
-      return new Date(iso).toLocaleDateString();
+      return window.AcbUtils.timeAgo(iso);
     }
 
   // ═══════════════════════════════════════════════
   // Settings Settings
   // ═══════════════════════════════════════════════
   async function openSettingsModal() {
-    document.getElementById('settings-message').style.display = 'none';
-    document.getElementById('settings-modal-overlay').style.display = 'flex';
-    try {
-      const res = await api('/api/settings');
-      if (res) {
-        document.getElementById('setting-host').value = res.HOST || '0.0.0.0';
-        document.getElementById('setting-port').value = res.PORT || 39765;
-        document.getElementById('setting-heartbeat').value = res.AGENT_HEARTBEAT_TIMEOUT || 30;
-        document.getElementById('setting-wait').value = res.MSG_WAIT_TIMEOUT || 300;
-      }
-    } catch (err) {
-      console.error(err);
-    }
+    return window.AcbModals.openSettingsModal(api);
   }
 
   function closeSettingsModal(e) {
-    if (e && e.target !== document.getElementById('settings-modal-overlay')) return;
-    document.getElementById('settings-modal-overlay').style.display = 'none';
+    return window.AcbModals.closeSettingsModal(e);
   }
 
   async function submitSettings() {
-    const pHost = document.getElementById('setting-host').value;
-    const pPort = parseInt(document.getElementById('setting-port').value);
-    const pHb = parseInt(document.getElementById('setting-heartbeat').value);
-    const pWait = parseInt(document.getElementById('setting-wait').value);
-
-    try {
-      const res = await api('/api/settings', {
-        method: 'PUT',
-        body: JSON.stringify({
-          HOST: pHost,
-          PORT: pPort,
-          AGENT_HEARTBEAT_TIMEOUT: pHb,
-          MSG_WAIT_TIMEOUT: pWait
-        })
-      });
-      if (res && res.ok) {
-        const msg = document.getElementById('settings-message');
-        msg.textContent = res.message || 'Saved! Restart server to apply.';
-        msg.style.display = 'block';
-        setTimeout(() => closeSettingsModal(), 2500);
-      }
-    } catch (err) {
-      console.error(err);
-    }
+    return window.AcbModals.submitSettings(api);
   }
 </script>
 </body>

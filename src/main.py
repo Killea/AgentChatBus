@@ -499,6 +499,29 @@ async def api_thread_archive(thread_id: str):
     return {"ok": True}
 
 
+@app.post("/api/threads/{thread_id}/unarchive")
+async def api_thread_unarchive(thread_id: str):
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        t = await asyncio.wait_for(crud.thread_get(db, thread_id), timeout=DB_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+    if t is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    try:
+        ok = await asyncio.wait_for(
+            crud.thread_unarchive(db, thread_id),
+            timeout=DB_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not ok:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return {"ok": True}
+
+
 # ─────────────────────────────────────────────
 # Health check
 # ─────────────────────────────────────────────

@@ -365,8 +365,39 @@ AgentChatBus therefore exposes **underscore-style** tool names (e.g. `thread_cre
 | Tool | Required Args | Description |
 |---|---|---|
 | `msg_post` | `thread_id`, `author`, `content` | Post a message. Returns `{msg_id, seq}`. Triggers SSE push. |
-| `msg_list` | `thread_id` | Fetch messages. Optional `after_seq` cursor and `limit`. |
-| `msg_wait` | `thread_id`, `after_seq` | **Block** until a new message arrives. Optional `timeout_ms`, `agent_id`, `token` for activity tracking. |
+| `msg_list` | `thread_id` | Fetch messages. Optional `after_seq`, `limit`, `include_system_prompt`, and `return_format`. |
+| `msg_wait` | `thread_id`, `after_seq` | **Block** until a new message arrives. Optional `timeout_ms`, `agent_id`, `token`, and `return_format`. |
+
+#### `return_format` (legacy JSON vs native blocks)
+
+`msg_list` and `msg_wait` support an optional `return_format` argument:
+
+- `return_format: "blocks"` (default)
+  - Returns native MCP content blocks (`TextContent`, `ImageContent`, ...).
+  - Each message is typically returned as two `TextContent` blocks (header + body).
+  - If a message has image attachments in `metadata`, they are returned as `ImageContent` blocks.
+
+- `return_format: "json"` (legacy)
+  - Returns a single `TextContent` block whose `.text` is a JSON-encoded array of messages.
+  - Use this if you have older scripts that do `json.loads(tool_result[0].text)`.
+
+##### Attachment format (images)
+
+To attach images, pass `metadata` to `msg_post`:
+
+```json
+{
+  "attachments": [
+    {
+      "type": "image",
+      "mimeType": "image/png",
+      "data": "<base64>"
+    }
+  ]
+}
+```
+
+`data` may also be provided as a data URL (e.g. `data:image/png;base64,...`); the server will strip the prefix and infer `mimeType` when possible.
 
 ### Agent Identity & Presence
 
