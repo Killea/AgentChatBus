@@ -385,9 +385,8 @@ body[data-theme="light"] .ctx-item:hover {
 #messages {
   flex: 1; overflow-y: auto; padding: 20px;
   display: flex; flex-direction: column; gap: 14px;
-  scroll-behavior: smooth;
 }
-#messages::-webkit-scrollbar { width: 4px; }
+#messages::-webkit-scrollbar { width: 16px; }
 #messages::-webkit-scrollbar-track { background: transparent; }
 #messages::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
 
@@ -708,7 +707,7 @@ body[data-theme="light"] .ctx-item:hover {
 }
 
 /* Scrollbar */
-#thread-pane::-webkit-scrollbar { width: 3px; }
+#thread-pane::-webkit-scrollbar { width: 16px; }
 #thread-pane::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
 
 /* ── Agent tooltip (custom, copy-enabled) ─────────────────────────────── */
@@ -1440,7 +1439,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
           updateOnlinePresence();
           await updateStatusBar();  // 更新状态栏显示该thread的所有agents
           if (msgs.length) lastSeq = msgs[msgs.length - 1].seq;
-          scrollBottom();
+    scrollBottom(false);
         }
 
         async function loadNewMessages() {
@@ -1455,7 +1454,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
           updateOnlinePresence();
           await updateStatusBar();  // 新消息可能有新agents，更新状态栏
           msgs.forEach(m => { lastSeq = Math.max(lastSeq, m.seq); });  // always advance cursor
-          if (msgs.length) scrollBottom();
+          if (msgs.length) scrollBottom(true);
         }
 
     async function closeThread(threadId = activeThreadId) {
@@ -1653,7 +1652,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
             <div class="typing-bubble"><span></span><span></span><span></span></div>
           </div>`;
         box.appendChild(row);
-        scrollBottom();
+        scrollBottom(true);
       }
       clearTimeout(typingTimers[agentId]);
       typingTimers[agentId] = setTimeout(() => hideTyping(agentId), 8000);
@@ -1680,7 +1679,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       method: 'POST',
     body: JSON.stringify({ author, role: 'user', content }),
   });
-    if (m) { lastSeq = Math.max(lastSeq, m.seq); appendBubble({ ...m, created_at: new Date().toISOString() }); scrollBottom(); }
+      if (m) { lastSeq = Math.max(lastSeq, m.seq); appendBubble({ ...m, created_at: new Date().toISOString() }); scrollBottom(true); }
   }
 
   function handleKey(e) {
@@ -1969,10 +1968,16 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
-    function scrollBottom() {
+      function scrollBottom(smooth = false) {
       const box = document.getElementById('messages');
-      requestAnimationFrame(() => box.scrollTop = box.scrollHeight);
-  }
+      requestAnimationFrame(() => {
+        if (smooth) {
+          box.scrollTo({ top: box.scrollHeight, behavior: 'smooth' });
+        } else {
+          box.scrollTop = box.scrollHeight;
+        }
+      });
+    }
 
     function timeAgo(iso) {
       if (!iso) return '';
