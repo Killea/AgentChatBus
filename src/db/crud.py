@@ -546,3 +546,60 @@ async def events_delete_old(db: aiosqlite.Connection, max_age_seconds: int = 600
     await db.commit()
     if deleted > 0:
         logger.debug(f"Pruned {deleted} old events.")
+
+
+async def thread_timeout_sweep(db: aiosqlite.Connection, timeout_minutes: int) -> list[str]:
+    """
+    Close open threads whose last message is older than timeout_minutes.
+    Returns the list of thread IDs that were closed.
+
+    A thread is considered inactive if:
+    - Its status is 'discuss' (not already closed/archived)
+    - Its most recent message (or its creation time if no messages) is older than timeout_minutes
+
+    Emits a 'thread.timeout' event for each closed thread.
+    """
+    if timeout_minutes <= 0:
+        return []
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)).isoformat()
+    now = _now()
+
+    # Find threads that are open and whose last activity is before the cutoff.
+    # We use a LEFT JOIN so threads with no messages are also considered
+    # (they time out from creation time).
+    async with db.execute("""
+        SELECT t.id, t.topic,
+               COALESCE(MAX(m.created_at), t.created_at) AS last_activity
+        FROM threads t
+        LEFT JOIN messages m ON m.thread_id = t.id
+        WHERE t.status = 'discuss'
+        GROUP BY t.id
+        HAVING last_activity < ?
+    """, (cutoff,)) as cur:
+        rows = await cur.fetchall()
+
+    closed_ids: list[str] = []
+    for row in rows:
+        thread_id = row["id"]
+        topic = row["topic"]
+        last_activity = row["last_activity"]
+        await db.execute(
+            "UPDATE threads SET status = 'closed', closed_at = ? WHERE id = ?",
+            (now, thread_id),
+        )
+        await _emit_event(db, "thread.timeout", thread_id, {
+            "thread_id": thread_id,
+            "topic": topic,
+            "last_activity": last_activity,
+            "timeout_minutes": timeout_minutes,
+            "closed_at": now,
+        })
+        closed_ids.append(thread_id)
+        logger.info(f"Thread {thread_id[:8]}... ('{topic}') auto-closed after {timeout_minutes}min inactivity.")
+
+    if closed_ids:
+        await db.commit()
+        logger.info(f"Timeout sweep closed {len(closed_ids)} thread(s).")
+
+    return closed_ids
