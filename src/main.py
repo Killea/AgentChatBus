@@ -99,6 +99,12 @@ class _SseCompletedResponse:
 @app.get("/mcp/sse")
 async def mcp_sse_endpoint(request: Request):
     """MCP SSE endpoint consumed by MCP clients (Claude Desktop, Cursor, …)."""
+    from src.mcp_server import init_session_id
+    
+    # Initialize unique session ID for this SSE connection
+    session_id = init_session_id()
+    logger.debug(f"New MCP SSE connection: session_id={session_id[:8]}")
+    
     lang = request.query_params.get("lang")
     if lang:
         _session_language.set(lang)
@@ -202,7 +208,7 @@ async def api_agents():
     db = await get_db()
     agents = await crud.agent_list(db)
     return [{"id": a.id, "name": a.name, "display_name": a.display_name, "alias_source": a.alias_source,
-             "description": a.description,
+             "description": a.description, "ide": a.ide, "model": a.model,
              "is_online": a.is_online, "last_heartbeat": a.last_heartbeat.isoformat(),
              "last_activity": a.last_activity,
              "last_activity_time": a.last_activity_time.isoformat() if a.last_activity_time else None,

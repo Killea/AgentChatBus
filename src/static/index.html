@@ -225,8 +225,7 @@ body[data-theme="light"] .ctx-item:hover {
 }
 .stab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
-#thread-pane, #agent-pane { flex: 1; overflow-y: auto; display: none; }
-#thread-pane.visible, #agent-pane.visible { display: block; }
+#thread-pane { flex: 1; overflow-y: auto; display: block; }
 
 #thread-filter-wrap {
   border-bottom: 1px solid var(--border);
@@ -565,6 +564,13 @@ body[data-theme="light"] .ctx-item:hover {
   font-size: 11px;
   color: var(--text-2);
 }
+.agent-status-text-compact {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-2);
+  min-width: 16px;
+  text-align: center;
+}
 
 #agent-status-info {
   display: flex;
@@ -702,10 +708,8 @@ body[data-theme="light"] .ctx-item:hover {
 }
 
 /* Scrollbar */
-#thread-pane::-webkit-scrollbar,
-#agent-pane::-webkit-scrollbar  { width: 3px; }
-#thread-pane::-webkit-scrollbar-thumb,
-#agent-pane::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
+#thread-pane::-webkit-scrollbar { width: 3px; }
+#thread-pane::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
 
 /* ── Agent tooltip (custom, copy-enabled) ─────────────────────────────── */
 #agent-tooltip {
@@ -793,7 +797,6 @@ body[data-theme="light"] .ctx-item:hover {
   <div id="sidebar">
     <div id="sidebar-tabs">
       <div class="stab active" id="tab-threads" onclick="switchTab('threads')">Threads</div>
-      <div class="stab" id="tab-agents" onclick="switchTab('agents')">Agents</div>
     </div>
     <div id="thread-filter-wrap">
       <button id="btn-thread-filter" type="button" onclick="toggleThreadFilterPanel(event)">Filter: normal (5)</button>
@@ -811,7 +814,6 @@ body[data-theme="light"] .ctx-item:hover {
       </div>
     </div>
     <div id="thread-pane" class="visible"></div>
-    <div id="agent-pane"></div>
   </div>
 
   <!-- Main -->
@@ -867,7 +869,6 @@ body[data-theme="light"] .ctx-item:hover {
 <div id="agent-status-info-tooltip" class="">
   <div class="state-item"><span class="state-emoji">🟢</span> <strong>Active:</strong> Agent has activity within 30 seconds</div>
   <div class="state-item"><span class="state-emoji">🌙</span> <strong>Idle:</strong> Agent has activity within 5 minutes</div>
-  <div class="state-item"><span class="state-emoji">✏️</span> <strong>Typing:</strong> Agent is actively typing (within 8 seconds)</div>
   <div class="state-item"><span class="state-emoji">⏳</span> <strong>Waiting:</strong> Agent is waiting for response (within 60 seconds)</div>
   <div class="state-item"><span class="state-emoji">⚫</span> <strong>Offline:</strong> Agent has no recent activity and is not heartbeating</div>
 </div>
@@ -892,6 +893,7 @@ body[data-theme="light"] .ctx-item:hover {
     let selectedThreadStatuses = new Set(NORMAL_THREAD_STATUSES);
     let agentTooltipHideTimer = null;
     let activeAgentTooltipTarget = null;
+    let currentAgents = []; // Cache of all agents for tooltip lookups
 
     const EMPTY_STATE_TEMPLATE = `
       <div id="empty-state">
@@ -923,6 +925,13 @@ body[data-theme="light"] .ctx-item:hover {
           e.stopPropagation();
           const btn = e.target.closest('button[data-copy]');
           if (!btn) return;
+          // Don't allow copy if button is disabled
+          if (btn.disabled) {
+            const old = btn.textContent;
+            btn.textContent = 'Select a thread first';
+            setTimeout(() => { btn.textContent = old; }, 1200);
+            return;
+          }
           const value = btn.getAttribute('data-copy-value') || '';
           const ok = await copyTextWithFallback(value);
           const old = btn.textContent;
@@ -983,6 +992,25 @@ body[data-theme="light"] .ctx-item:hover {
     if (infoEl && infoTooltip) {
       infoEl.addEventListener('mouseenter', () => {
         clearTimeout(infoTooltipHideTimer);
+        
+        // Update tooltip content - only show thread name if thread is selected
+        let tooltipHtml = '';
+        if (activeThreadId) {
+          const threadName = document.getElementById('thread-title')?.textContent?.trim() || '(unknown)';
+          tooltipHtml += `<div style="padding:8px 12px;border-bottom:1px solid var(--border-light);margin-bottom:4px;">
+            <strong style="color:var(--text-1);">Thread:</strong> ${escapeHtml(threadName)}
+          </div>`;
+        }
+        tooltipHtml += `
+          <div style="padding:8px 12px;"><div style="font-size:12px;color:var(--text-2);margin-bottom:6px;">Status Legend:</div>
+            <div class="state-item"><span class="state-emoji">🟢</span> <strong>Active:</strong> Activity within 30s</div>
+            <div class="state-item"><span class="state-emoji">🌙</span> <strong>Idle:</strong> Activity within 5m</div>
+            <div class="state-item"><span class="state-emoji">⏳</span> <strong>Waiting:</strong> Waiting for response (&lt;60s)</div>
+            <div class="state-item"><span class="state-emoji">⚫</span> <strong>Offline:</strong> No recent activity</div>
+          </div>
+        `;
+        infoTooltip.innerHTML = tooltipHtml;
+        
         infoTooltip.classList.add('visible');
         setTimeout(positionInfoTooltip, 0);
       });
@@ -1000,7 +1028,17 @@ body[data-theme="light"] .ctx-item:hover {
     function getResumePromptForAgent(agentId, displayName, token) {
       const threadName = document.getElementById('thread-title')?.textContent?.trim() || '(current thread)';
       const tokenLine = token ? `Token: ${token}\n` : '';
-      return `@${displayName}\nPlease rejoin this chat and resume with saved credentials.\n1) Try agent_resume(agent_id, token) first.\n2) If resume fails, then agent_register.\n3) Post confirmation and continue msg_wait loop.\nAgent ID: ${agentId}\n${tokenLine}Thread: ${threadName}`;
+      return `@${displayName}
+Please resume this agent session with saved credentials.
+1) Call agent_resume(agent_id, token) with your credentials.
+2) If resume fails → check token validity and retry.
+3) On success → post confirmation message.
+4) Begin msg_wait loop to listen for incoming messages.
+
+Agent ID: ${agentId}
+${tokenLine}Thread: ${threadName}
+
+Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     }
 
     async function copyTextWithFallback(text) {
@@ -1080,16 +1118,22 @@ body[data-theme="light"] .ctx-item:hover {
       clearAgentTooltipHideTimer();
       const alias = String(agent.display_name ?? agent.name ?? 'Unknown').trim() || 'Unknown';
       const agentId = String(agent.id ?? agent.agent_id ?? '').trim();
+      const ide = String(agent.ide ?? 'Unknown').trim() || 'Unknown';
+      const model = String(agent.model ?? 'Unknown').trim() || 'Unknown';
       const token = String(agent.token ?? '').trim();
       const prompt = getResumePromptForAgent(agentId, alias, token);
-      const tokenDisplay = token ? `<br/>Token: <code>${esc(token)}</code>` : '';
+      
+      // Disable resume button if no thread is selected
+      const resumeButtonState = activeThreadId ? '' : 'disabled';
+      const resumeButtonStyle = activeThreadId ? '' : 'style="opacity:0.5;cursor:not-allowed;"';
+      
       tip.innerHTML = `
         <div class="agent-tip-title">Agent Quick Prompt</div>
-        <div class="agent-tip-meta">Alias: <code>${esc(alias)}</code><br/>Agent ID: <code>${esc(agentId || '(unknown)')}</code>${tokenDisplay}</div>
+        <div class="agent-tip-meta">Alias: <code>${esc(alias)}</code><br/>Agent ID: <code>${esc(agentId || '(unknown)')}</code><br/>IDE: <code>${esc(ide)}</code><br/>Model: <code>${esc(model)}</code></div>
         <pre class="agent-tip-prompt">${esc(prompt)}</pre>
         <div class="agent-tip-actions">
           <button type="button" data-copy="agent-id" data-copy-value="${esc(agentId)}">Copy Agent ID</button>
-          <button type="button" data-copy="resume" data-copy-value="${esc(prompt)}">Copy Resume Prompt</button>
+          <button type="button" data-copy="resume" data-copy-value="${esc(prompt)}" ${resumeButtonState} ${resumeButtonStyle} title="${activeThreadId ? '' : 'Select a thread first'}">Copy Resume Prompt</button>
         </div>`;
       tip.classList.add('visible');
       tip.setAttribute('aria-hidden', 'false');
@@ -1541,12 +1585,18 @@ body[data-theme="light"] .ctx-item:hover {
         const avatarEl = row.querySelector('.msg-avatar');
         if (avatarEl) {
           avatarEl.classList.add('msg-avatar-interactive');
-          bindAgentTooltipEvents(avatarEl, {
-            id: String(m.author_id ?? authorLabel),
-            agent_id: String(m.author_id ?? authorLabel),
+          // Get full agent details from current agents list
+          const authorId = String(m.author_id ?? authorLabel);
+          const agentData = currentAgents?.find(a => a.id === authorId) || {
+            id: authorId,
+            agent_id: authorId,
             name: authorLabel,
             display_name: authorLabel,
-          });
+            ide: 'Unknown',
+            model: 'Unknown',
+            token: ''
+          };
+          bindAgentTooltipEvents(avatarEl, agentData);
         }
       }
 
@@ -1619,6 +1669,7 @@ body[data-theme="light"] .ctx-item:hover {
   async function refreshAgents() {
     hideAgentTooltip();
     const allAgents = await api('/api/agents') || [];
+    currentAgents = allAgents; // Cache for tooltip lookups
     onlineAgentKeys.clear();
     onlineAgentLabelsByKey.clear();
     allAgents.forEach(a => {
@@ -1630,33 +1681,8 @@ body[data-theme="light"] .ctx-item:hover {
       }
     });
     updateOnlinePresence();
-
-    const agents = allAgents.filter(a => a.is_online);
-    const pane = document.getElementById('agent-pane');
-    pane.innerHTML = agents.length ? '' : `
-    <div style="padding:24px 16px;color:var(--text-3);font-size:13px;text-align:center">
-      No agents registered yet.
-    </div>`;
-    agents.forEach(a => {
-      const label = String(a.display_name ?? a.name ?? '').trim() || String(a.name ?? '').trim() || 'Unknown';
-      const div = document.createElement('div');
-      div.className = 'agent-item';
-      div.innerHTML = `
-      <div class="agent-avatar agent-avatar-interactive">${esc(label[0].toUpperCase())}</div>
-      <div style="min-width:0">
-        <div class="agent-name">${esc(label)}</div>
-        <div class="agent-desc">${esc(a.description || '—')}</div>
-      </div>
-      <div class="online-dot on" title="Online"></div>`;
-      const avatarEl = div.querySelector('.agent-avatar');
-      bindAgentTooltipEvents(avatarEl, a);
-      pane.appendChild(div);
-  });
-
-    // Update tab label
-          document.getElementById('tab-agents').textContent =
-            `Agents${agents.length ? ' (' + agents.length + ')' : ''}`;
-        }
+    // Left sidebar agents panel removed - agents now displayed only in status bar
+  }
 
         // ═══════════════════════════════════════════════
         // Helper: Escape HTML
@@ -1671,39 +1697,53 @@ body[data-theme="light"] .ctx-item:hover {
         // ═══════════════════════════════════════════════
         async function updateStatusBar() {
           const allAgents = await api('/api/agents') || [];
+          currentAgents = allAgents; // Cache for tooltip lookups
           const container = document.getElementById('agent-status-list');
-          if (!container || !activeThreadId) {
-            if (container) container.innerHTML = '';
+          if (!container) {
             return;
           }
           
-          // 从当前thread的消息中提取所有参与agents（按author_id）
-          const participantIdMap = new Map();  // id -> agent数据
-          const msgArea = document.getElementById('messages');
-          if (msgArea) {
-            const rows = msgArea.querySelectorAll('[data-author-id]');
-            rows.forEach(row => {
-              const authorId = row.getAttribute('data-author-id');
-              if (authorId && authorId !== 'system' && authorId !== 'human' && !participantIdMap.has(authorId)) {
-                // 查找该author_id对应的agent
-                const agent = allAgents.find(a => (a.id === authorId || a.agent_id === authorId));
-                if (agent) {
-                  participantIdMap.set(authorId, agent);
-                } else {
-                  // 即使agent不在allAgents中，也创建一个离线表示
-                  participantIdMap.set(authorId, {
-                    id: authorId,
-                    display_name: authorId,
-                    name: authorId,
-                    is_online: false,
-                  });
+          let participants = [];
+          let isThreadMode = false;  // Track if showing thread-specific agents
+          
+          // If a thread is selected, show agents in that thread
+          if (activeThreadId) {
+            // 从当前thread的消息中提取所有参与agents（按author_id）
+            const participantIdMap = new Map();  // id -> agent数据
+            const msgArea = document.getElementById('messages');
+            if (msgArea) {
+              const rows = msgArea.querySelectorAll('[data-author-id]');
+              rows.forEach(row => {
+                const authorId = row.getAttribute('data-author-id');
+                if (authorId && authorId !== 'system' && authorId !== 'human' && !participantIdMap.has(authorId)) {
+                  // 查找该author_id对应的agent
+                  const agent = allAgents.find(a => (a.id === authorId || a.agent_id === authorId));
+                  if (agent) {
+                    participantIdMap.set(authorId, agent);
+                  } else {
+                    // 即使agent不在allAgents中，也创建一个离线表示
+                    participantIdMap.set(authorId, {
+                      id: authorId,
+                      display_name: authorId,
+                      name: authorId,
+                      is_online: false,
+                    });
+                  }
                 }
-              }
-            });
+              });
+            }
+            participants = Array.from(participantIdMap.values());
+            isThreadMode = participants.length > 0;  // Only thread mode if we have participants
           }
           
-          // 获取参与者列表
-          const participants = Array.from(participantIdMap.values());
+          // If no thread selected or no participants in thread, fall back to showing all non-offline agents
+          if (!isThreadMode) {
+            participants = allAgents.filter(a => {
+              const state = getAgentState(a);
+              return state !== 'Offline';
+            });
+            isThreadMode = false;  // Global mode - no thread context
+          }
           
           // 排序：在线优先，然后按最后活动时间排序
           participants.sort((a, b) => {
@@ -1721,7 +1761,7 @@ body[data-theme="light"] .ctx-item:hover {
           container.innerHTML = '';
           
           if (participants.length === 0) {
-            container.innerHTML = '<div style="color:var(--text-3);font-size:11px;padding:4px 12px;">No agents in this thread</div>';
+            container.innerHTML = '<div style="color:var(--text-3);font-size:11px;padding:4px 12px;">No active agents</div>';
             return;
           }
           
@@ -1729,16 +1769,33 @@ body[data-theme="light"] .ctx-item:hover {
             const state = getAgentState(a);
             const emoji = getStateEmoji(state);
             const label = String(a.display_name ?? a.name ?? '').trim() || 'Unknown';
+            const offlineTime = getOfflineTime(a);
+            const offlineDisplay = offlineTime ? ` (${offlineTime})` : '';
+            const isLongOffline = isOfflineMoreThanHour(a);
             
             const item = document.createElement('div');
             item.className = 'agent-status-item';
-            item.innerHTML = `
-              <div class="agent-status-emoji">${emoji}</div>
-              <div class="agent-status-text">
-                <div class="agent-alias">${escapeHtml(label)}</div>
-                <div class="agent-state">${state}</div>
-              </div>
-            `;
+            
+            // Compress display if offline > 1 hour: just emoji + single char
+            if (isLongOffline) {
+              const compressedChar = getCompressedOfflineChar(offlineTime);
+              item.innerHTML = `
+                <div class="agent-status-emoji">${emoji}</div>
+                <div class="agent-status-text-compact">${compressedChar}</div>
+              `;
+            } else {
+              // Only show thread info in thread mode
+              const threadInfo = isThreadMode ? `<div class="agent-thread" style="font-size:10px;color:var(--text-3);">${escapeHtml(document.getElementById('thread-title')?.textContent?.trim() || '')}</div>` : '';
+              item.innerHTML = `
+                <div class="agent-status-emoji">${emoji}</div>
+                <div class="agent-status-text">
+                  ${threadInfo}
+                  <div class="agent-alias">${escapeHtml(label)}</div>
+                  <div class="agent-state">${state}${offlineDisplay}</div>
+                </div>
+              `;
+            }
+            
             // 绑定agent tooltip交互
             if (a && a.id) {
               bindAgentTooltipEvents(item, a);
@@ -1760,7 +1817,6 @@ body[data-theme="light"] .ctx-item:hover {
           const secondsAgo = (now - activityTime) / 1000;
           
           // 根据活动类型和时间判断状态
-          if (agent.last_activity === 'agent.typing' && secondsAgo < 8) return 'Typing';
           if (agent.last_activity === 'msg_wait' && secondsAgo < 60) return 'Waiting';
           if (secondsAgo < 30) return 'Active';
           if (secondsAgo < 300) return 'Idle';  // 5分钟内有活动算 Idle
@@ -1768,9 +1824,70 @@ body[data-theme="light"] .ctx-item:hover {
           // 超过5分钟没活动且is_online=false才显示Offline
           return agent.is_online ? 'Idle' : 'Offline';
         }
+
+        function getOfflineTime(agent) {
+          // Calculate how long the agent has been offline
+          const lastActivityTime = agent.last_activity_time ? new Date(agent.last_activity_time) : null;
+          if (!lastActivityTime) return null;
+          
+          const now = new Date();
+          const secondsAgo = (now - lastActivityTime) / 1000;
+          
+          // Only show offline time for truly offline agents (not active, idle, or in other states)
+          const state = getAgentState(agent);
+          if (state !== 'Offline') return null;
+          
+          // Format time duration
+          if (secondsAgo < 60) {
+            return `${Math.round(secondsAgo)}s`;
+          } else if (secondsAgo < 3600) {
+            const mins = Math.round(secondsAgo / 60 * 10) / 10; // 1 decimal place
+            return `${mins}m`;
+          } else if (secondsAgo < 86400) {
+            const hours = Math.round(secondsAgo / 3600 * 10) / 10; // 1 decimal place
+            return `${hours}h`;
+          } else if (secondsAgo < 2592000) {  // 30 days
+            const days = Math.round(secondsAgo / 86400 * 10) / 10; // 1 decimal place
+            return `${days}d`;
+          } else if (secondsAgo < 31536000) {  // 365 days
+            const months = Math.round(secondsAgo / 2592000 * 10) / 10; // 1 decimal place
+            return `${months}mon`;
+          } else {
+            const years = Math.round(secondsAgo / 31536000 * 10) / 10; // 1 decimal place
+            return `${years}y`;
+          }
+        }
+
+        function isOfflineMoreThanHour(agent) {
+          // Check if agent is offline for more than 1 hour, OR offline with no time info
+          const lastActivityTime = agent.last_activity_time ? new Date(agent.last_activity_time) : null;
+          const state = getAgentState(agent);
+          
+          // Only consider truly offline agents
+          if (state !== 'Offline') return false;
+          
+          // Compress if: no activity time info available, OR offline >= 1 hour
+          if (!lastActivityTime) return true;
+          
+          const now = new Date();
+          const secondsAgo = (now - lastActivityTime) / 1000;
+          return secondsAgo >= 3600;  // >= 1 hour
+        }
+
+        function getCompressedOfflineChar(offlineTimeStr) {
+          // Extract single character from time string for compact display: h, d, m, y, etc.
+          if (!offlineTimeStr) return '?';  // No time info available
+          
+          const match = offlineTimeStr.match(/([hdmony]+)/);
+          if (match) {
+            return match[1].substring(0, 1);  // First letter (h, d, m, y)
+          }
+          return '?';  // Default fallback for unknown time
+        }
+        
         
         function getStateEmoji(state) {
-          const map = { 'Offline': '⚫', 'Typing': '✏️', 'Waiting': '⏳', 'Active': '🟢', 'Idle': '🌙' };
+          const map = { 'Offline': '⚫', 'Waiting': '⏳', 'Active': '🟢', 'Idle': '🌙' };
           return map[state] || '❓';
         }
 
@@ -1778,14 +1895,12 @@ body[data-theme="light"] .ctx-item:hover {
         // Sidebar tabs
         // ═══════════════════════════════════════════════
         function switchTab(tab) {
-          document.getElementById('thread-pane').classList.toggle('visible', tab === 'threads');
-          document.getElementById('agent-pane').classList.toggle('visible', tab === 'agents');
-          document.getElementById('tab-threads').classList.toggle('active', tab === 'threads');
-          document.getElementById('tab-agents').classList.toggle('active', tab === 'agents');
-          // 动态控制Thread Filter区域显示/隐藏
+          // Only threads tab is available now
+          if (tab !== 'threads') return;
+          // Control filter visibility
           const filterWrap = document.getElementById('thread-filter-wrap');
           if (filterWrap) {
-            filterWrap.style.display = (tab === 'threads') ? '' : 'none';
+            filterWrap.style.display = '';
           }
         }
 

@@ -7,6 +7,7 @@ Mounted onto the FastAPI app via SSE transport.
 import json
 import asyncio
 import logging
+import uuid
 from contextvars import ContextVar
 from typing import Any
 
@@ -25,6 +26,50 @@ logger = logging.getLogger(__name__)
 # Each SSE connection runs in its own asyncio Task, so ContextVar isolates
 # concurrent clients: Cursor speaks Chinese while Claude Desktop speaks Japanese.
 _session_language: ContextVar[str | None] = ContextVar("session_language", default=None)
+
+# Per-connection session ID (UUID-like identifier for the SSE connection).
+# Set in `mcp_sse_endpoint` to uniquely identify each SSE connection.
+_session_id: ContextVar[str | None] = ContextVar("session_id", default=None)
+
+def init_session_id() -> str:
+    """Initialize a new session ID for this SSE connection."""
+    session_id = str(uuid.uuid4())
+    _session_id.set(session_id)
+    return session_id
+
+# Per-connection agent identity.
+# Set when agent registers, heartbeats, or resumes. Used for auto-tracking activity.
+_current_agent_id: ContextVar[str | None] = ContextVar("current_agent_id", default=None)
+_current_agent_token: ContextVar[str | None] = ContextVar("current_agent_token", default=None)
+
+# Connection-level agent registry.
+# Maps session_id → {"agent_id": ..., "token": ...}
+# Populated when agent_register/resume is called, used by msg_wait for auto-tracking.
+_connection_agents: dict[str, dict[str, str]] = {}
+
+def get_session_id() -> str | None:
+    """Get session ID for this SSE connection."""
+    return _session_id.get()
+
+def set_connection_agent(agent_id: str, token: str) -> None:
+    """Store agent identity for this connection."""
+    session_id = get_session_id()
+    if not session_id:
+        logger.warning("[set_connection_agent] No session ID available, skipping")
+        return
+    _connection_agents[session_id] = {"agent_id": agent_id, "token": token}
+    logger.info(f"[connection_agent] stored for session {session_id[:8]}: agent_id={agent_id}")
+
+def get_connection_agent() -> tuple[str | None, str | None]:
+    """Retrieve stored agent identity for this connection."""
+    session_id = get_session_id()
+    if not session_id:
+        return None, None
+    agent_info = _connection_agents.get(session_id)
+    if agent_info:
+        logger.info(f"[get_connection_agent] retrieved from session {session_id[:8]}: agent_id={agent_info['agent_id']}")
+        return agent_info["agent_id"], agent_info["token"]
+    return None, None
 
 # Create the MCP server instance
 server = Server("AgentChatBus")
@@ -161,6 +206,8 @@ async def list_tools() -> list[types.Tool]:
                     "thread_id":   {"type": "string"},
                     "after_seq":   {"type": "integer"},
                     "timeout_ms":  {"type": "integer", "default": 300000, "description": "Max wait in milliseconds."},
+                    "agent_id":    {"type": "string", "description": "Optional: your agent ID for activity tracking."},
+                    "token":       {"type": "string", "description": "Optional: your agent token for verification."},
                 },
                 "required": ["thread_id", "after_seq"],
             },
@@ -205,7 +252,7 @@ async def list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="agent_resume",
-            description="Resume a previously registered agent using existing agent_id and token without changing alias.",
+            description="Resume a previously registered agent session using saved agent_id and token. Preserves all identity fields (name, alias, etc.). Returns agent details with online status. Fails if agent_id not found or token invalid—provide correct credentials and retry.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -369,6 +416,26 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
         thread_id = arguments["thread_id"]
         after_seq = arguments["after_seq"]
         timeout_s = arguments.get("timeout_ms", MSG_WAIT_TIMEOUT * 1000) / 1000.0
+        
+        # Get agent identity: from arguments, OR from connection registry (auto-set by agent_register/heartbeat/resume)
+        explicit_agent_id = arguments.get("agent_id")
+        explicit_token = arguments.get("token")
+        connection_agent_id, connection_token = get_connection_agent()
+        
+        agent_id = explicit_agent_id or connection_agent_id
+        token = explicit_token or connection_token
+        
+        logger.info(f"[msg_wait] explicit: agent_id={explicit_agent_id}, connection: agent_id={connection_agent_id}, final_agent_id={agent_id}")
+
+        # Record msg_wait activity if agent_id and token available
+        if agent_id and token:
+            try:
+                result = await crud.agent_msg_wait(db, agent_id, token)
+                logger.info(f"[msg_wait] activity recorded: agent_id={agent_id}, result={result}")
+            except Exception as e:
+                logger.warning(f"[msg_wait] Failed to record activity for {agent_id}: {e}")
+        else:
+            logger.warning(f"[msg_wait] No credentials available: agent_id={agent_id}, token={'***' if token else None}")
 
         async def _poll():
             while True:
@@ -400,6 +467,12 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
             capabilities=arguments.get("capabilities"),
             display_name=arguments.get("display_name"),
         )
+        # Set context for subsequent tool calls in this SSE session
+        _current_agent_id.set(agent.id)
+        _current_agent_token.set(agent.token)
+        # Store in connection registry for msg_wait auto-tracking
+        set_connection_agent(agent.id, agent.token)
+        logger.info(f"[agent_register] Set context and connection registry: agent_id={agent.id}")
         return [types.TextContent(type="text", text=json.dumps({
             "agent_id": agent.id,
             "name": agent.name,
@@ -412,6 +485,11 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
 
     if name == "agent_heartbeat":
         ok = await crud.agent_heartbeat(db, arguments["agent_id"], arguments["token"])
+        # Update context and connection registry
+        if ok:
+            _current_agent_id.set(arguments["agent_id"])
+            _current_agent_token.set(arguments["token"])
+            set_connection_agent(arguments["agent_id"], arguments["token"])
         return [types.TextContent(type="text", text=json.dumps({"ok": ok}))]
 
     if name == "agent_resume":
@@ -419,6 +497,12 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
             agent = await crud.agent_resume(db, arguments["agent_id"], arguments["token"])
         except ValueError as e:
             return [types.TextContent(type="text", text=json.dumps({"ok": False, "error": str(e)}))]
+        # Set context for subsequent tool calls
+        _current_agent_id.set(agent.id)
+        _current_agent_token.set(agent.token)
+        # Store in connection registry for msg_wait auto-tracking
+        set_connection_agent(agent.id, agent.token)
+        logger.info(f"[agent_resume] Set context and connection registry for agent_id={agent.id}")
         return [types.TextContent(type="text", text=json.dumps({
             "ok": True,
             "agent_id": agent.id,

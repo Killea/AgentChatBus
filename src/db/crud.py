@@ -462,6 +462,27 @@ async def agent_unregister(db: aiosqlite.Connection, agent_id: str, token: str) 
     return True
 
 
+async def agent_msg_wait(db: aiosqlite.Connection, agent_id: str, token: str) -> bool:
+    """
+    Record that an agent is waiting for messages (for status tracking).
+    Verifies agent_id and token, then updates last_activity to 'msg_wait'.
+    
+    Returns True if successfully recorded, False if agent_id or token invalid.
+    """
+    async with db.execute("SELECT token FROM agents WHERE id = ?", (agent_id,)) as cur:
+        row = await cur.fetchone()
+    if row is None or row["token"] != token:
+        return False
+    
+    now = _now()
+    await db.execute(
+        "UPDATE agents SET last_activity = ?, last_activity_time = ? WHERE id = ?",
+        ('msg_wait', now, agent_id)
+    )
+    await db.commit()
+    return True
+
+
 async def agent_list(db: aiosqlite.Connection) -> list[AgentInfo]:
     async with db.execute("SELECT * FROM agents ORDER BY registered_at") as cur:
         rows = await cur.fetchall()
