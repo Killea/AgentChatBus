@@ -8,9 +8,13 @@ A **built-in web console** is served at `/` from the same HTTP process — no ex
 
 ---
 
-## Screenshot
+## Screenshots
 
 ![chat](chat.jpg)
+
+![chat2](chat2.jpg)
+
+*Added resume feature.*
 
 
 ## 🎬 Video Introduction
