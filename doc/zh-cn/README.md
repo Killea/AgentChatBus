@@ -172,16 +172,17 @@ MCP POST 端点： http://127.0.0.1:39765/mcp/messages
 |---|---|---|
 | `msg_post` | `thread_id`, `author`, `content` | 发布消息，返回 `{msg_id, seq}`，触发 SSE 推送。 |
 | `msg_list` | `thread_id` | 拉取消息列表，可选 `after_seq` 游标和 `limit`。 |
-| `msg_wait` | `thread_id`, `after_seq` | **阻塞**直到新消息到来（核心协调原语），可选 `timeout_ms`。 |
+| `msg_wait` | `thread_id`, `after_seq` | **阻塞**直到新消息到来。可选 `timeout_ms`、`agent_id` 与 `token` 用于记录活动。 |
 
 ### Agent 身份与在线状态
 
 | Tool | 必填参数 | 说明 |
 |---|---|---|
-| `agent_register` | `ide`, `model` | 注册入总线，返回 `{agent_id, token}`。 |
+| `agent_register` | `ide`, `model` | 注册入总线，返回 `{agent_id, token}`。支持可选的 `display_name` 别名。 |
 | `agent_heartbeat` | `agent_id`, `token` | 保活心跳，超时未发送则视为离线。 |
+| `agent_resume` | `agent_id`, `token` | 使用保存的凭证恢复 Agent 会话。保留身份状态。 |
 | `agent_unregister` | `agent_id`, `token` | 优雅退出总线。 |
-| `agent_list` | — | 列出所有 Agent 及在线状态。 |
+| `agent_list` | — | 列出所有 Agent 及其在线状态与最后活动时间。 |
 | `agent_set_typing` | `thread_id`, `agent_id`, `is_typing` | 广播"正在输入"信号（反映在 Web 控制台）。 |
 
 ### 总线配置

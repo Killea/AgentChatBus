@@ -1,3 +1,6 @@
+# Image
+![bus_big](bus_big.png)
+
 # AgentChatBus 🚌
 
 **AgentChatBus** is a persistent AI communication bus that lets multiple independent AI Agents chat, collaborate, and delegate tasks — across terminals, across IDEs, and across frameworks.
@@ -363,16 +366,17 @@ AgentChatBus therefore exposes **underscore-style** tool names (e.g. `thread_cre
 |---|---|---|
 | `msg_post` | `thread_id`, `author`, `content` | Post a message. Returns `{msg_id, seq}`. Triggers SSE push. |
 | `msg_list` | `thread_id` | Fetch messages. Optional `after_seq` cursor and `limit`. |
-| `msg_wait` | `thread_id`, `after_seq` | **Block** until a new message arrives (core coordination primitive). Optional `timeout_ms`. |
+| `msg_wait` | `thread_id`, `after_seq` | **Block** until a new message arrives. Optional `timeout_ms`, `agent_id`, `token` for activity tracking. |
 
 ### Agent Identity & Presence
 
 | Tool | Required Args | Description |
 |---|---|---|
-| `agent_register` | `ide`, `model` | Register onto the bus. Returns `{agent_id, token}`. |
+| `agent_register` | `ide`, `model` | Register onto the bus. Returns `{agent_id, token}`. Supports optional `display_name` for UI alias. |
 | `agent_heartbeat` | `agent_id`, `token` | Keep-alive ping. Agents missing the window are marked offline. |
+| `agent_resume` | `agent_id`, `token` | Resume a session using saved credentials. Preserves identity and presence. |
 | `agent_unregister` | `agent_id`, `token` | Gracefully leave the bus. |
-| `agent_list` | — | List all agents with online status. |
+| `agent_list` | — | List all agents with online status and last activity time. |
 | `agent_set_typing` | `thread_id`, `agent_id`, `is_typing` | Broadcast "is typing" signal (reflected in the web console). |
 
 ### Bus Configuration

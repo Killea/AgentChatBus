@@ -1,20 +1,19 @@
 """
-examples/agent_b.py — Simulated "Responder" Agent
+examples/agent_b.py — Simulated "Responder" Agent [DEMONSTRATION ONLY]
 
-Agent B:
-1. Registers itself onto the bus
-2. Watches ALL active threads for new messages not authored by itself
-3. When a new message arrives, waits a short "thinking" delay, then posts a reply
-4. Sends a heartbeat every 10 seconds to stay online
-5. Runs until interrupted (Ctrl+C)
+NOTE: This script is for demonstration purposes only and should NOT be run
+in production or shared collaboration environments like Bus11x threads. 
+It has been disabled to prevent unsolicited automated responses.
 
-Usage:
+To enable this demo agent, restore the auto_reply_enabled flag below.
+
+Original Usage:
     python -m examples.agent_b
 
 Run this AFTER starting the server AND agent_a (or any message-producing agent):
     python -m src.main          # terminal 1
     python -m examples.agent_a # terminal 2
-    python -m examples.agent_b # terminal 3
+    python -m examples.agent_b # terminal 3 (DISABLED)
 """
 import asyncio
 import random
@@ -22,7 +21,11 @@ import httpx
 
 BASE_URL = "http://127.0.0.1:39765"
 
+# OVERRIDE: Disable auto-replies to prevent unwanted messages in shared threads
+AUTO_REPLY_ENABLED = False
+
 # Pre-canned expert replies (no LLM needed for the demo)
+# These are DISABLED by AUTO_REPLY_ENABLED flag
 EXPERT_REPLIES = [
     (
         "Great question! The most important consideration is separating I/O-bound vs CPU-bound work. "
@@ -61,7 +64,7 @@ async def heartbeat_loop(client: httpx.AsyncClient, agent_id: str, token: str):
 
 
 async def watch_thread(client: httpx.AsyncClient, thread_id: str, my_name: str):
-    """Monitor a single thread and reply to messages from other agents."""
+    """Monitor a single thread (and optionally reply to messages from other agents)."""
     last_seq = 0
     reply_index = 0
     print(f"[AgentB] 👀 Watching thread {thread_id[:8]}…")
@@ -85,26 +88,34 @@ async def watch_thread(client: httpx.AsyncClient, thread_id: str, my_name: str):
 
             print(f"[AgentB] ← [{thread_id[:8]}] {m['author']}: {m['content'][:80]}…")
 
-            # "Thinking" delay (simulates LLM processing time)
-            await asyncio.sleep(random.uniform(1.5, 3.0))
+            # AUTO-REPLY DISABLED (see AUTO_REPLY_ENABLED flag at top)
+            if AUTO_REPLY_ENABLED:
+                # "Thinking" delay (simulates LLM processing time)
+                await asyncio.sleep(random.uniform(1.5, 3.0))
 
-            reply = EXPERT_REPLIES[reply_index % len(EXPERT_REPLIES)]
-            reply_index += 1
-            await client.post(f"/api/threads/{thread_id}/messages",
-                              json={"author": my_name, "role": "assistant", "content": reply})
-            print(f"[AgentB] → [{thread_id[:8]}] {reply[:80]}…")
+                reply = EXPERT_REPLIES[reply_index % len(EXPERT_REPLIES)]
+                reply_index += 1
+                await client.post(f"/api/threads/{thread_id}/messages",
+                                  json={"author": my_name, "role": "assistant", "content": reply})
+                print(f"[AgentB] → [{thread_id[:8]}] {reply[:80]}…")
 
         await asyncio.sleep(1)
 
 
 async def main():
+    if not AUTO_REPLY_ENABLED:
+        print("[AgentB] ⚠️  AUTO-REPLY IS DISABLED (intended for production/collaboration threads)")
+        print("[AgentB] This agent will register and monitor threads, but NOT send automated responses.")
+        print("[AgentB] To enable replies, set AUTO_REPLY_ENABLED = True at the top of this file.")
+        print()
+    
     async with httpx.AsyncClient(base_url=BASE_URL, timeout=30) as client:
 
         # 1. Register
         r = await client.post("/api/agents/register", json={
             "ide": "CLI",
             "model": "AgentB-Responder",
-            "description": "I listen to threads and respond with expert knowledge.",
+            "description": "Monitor agent (auto-reply currently disabled)." if not AUTO_REPLY_ENABLED else "I listen to threads and respond with expert knowledge.",
             "capabilities": ["async-python", "expert-replies"],
         })
         if r.status_code != 200:

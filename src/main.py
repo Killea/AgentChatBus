@@ -24,7 +24,7 @@ from pydantic import BaseModel, ConfigDict
 from mcp.server.sse import SseServerTransport
 from starlette.routing import Mount
 
-from src.config import HOST, PORT
+from src.config import HOST, PORT, get_config_dict, save_config_dict
 from src.db.database import get_db, close_db
 from src.db import crud
 from src.mcp_server import server as mcp_server, _session_language
@@ -36,14 +36,19 @@ logging.basicConfig(
 logger = logging.getLogger("agentchatbus")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
+# Database operation timeout (seconds)
+DB_TIMEOUT = 5
+
 
 async def _cleanup_events_loop():
     """Periodically completely prune old delivery events since they are transient."""
     while True:
         try:
-            db = await get_db()
+            db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
             # Prune events older than 10 mins (600s)
-            await crud.events_delete_old(db, max_age_seconds=600)
+            await asyncio.wait_for(crud.events_delete_old(db, max_age_seconds=600), timeout=DB_TIMEOUT)
+        except asyncio.TimeoutError:
+            logger.error("Event cleanup timeout: database operation took too long")
         except Exception as e:
             logger.error(f"Event cleanup failed: {e}")
         await asyncio.sleep(60)
@@ -51,7 +56,11 @@ async def _cleanup_events_loop():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: initialize DB
-    await get_db()
+    try:
+        await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+    except asyncio.TimeoutError:
+        logger.error("Startup timeout: Unable to connect to database")
+        raise
     cleanup_task = asyncio.create_task(_cleanup_events_loop())
     logger.info(f"AgentChatBus running at http://{HOST}:{PORT}")
     yield
@@ -61,7 +70,12 @@ async def lifespan(app: FastAPI):
         await cleanup_task
     except asyncio.CancelledError:
         pass
-    await close_db()
+    try:
+        await asyncio.wait_for(close_db(), timeout=DB_TIMEOUT)
+    except asyncio.TimeoutError:
+        logger.warning("Shutdown timeout: Unable to close database connection")
+    except Exception as e:
+        logger.warning(f"Shutdown database close failed: {e}")
 
 
 app = FastAPI(
@@ -159,16 +173,26 @@ async def global_sse_stream(request: Request):
     Polls the `events` table and fans out new rows as SSE messages.
     """
     async def event_generator():
-        db = await get_db()
+        try:
+            db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        except asyncio.TimeoutError:
+            logger.error("Event stream timeout: Unable to connect to database")
+            return
         last_id = 0
         while True:
-            if await request.is_disconnected():
+            try:
+                if await request.is_disconnected():
+                    break
+                events = await asyncio.wait_for(crud.events_since(db, after_id=last_id), timeout=DB_TIMEOUT)
+                for ev in events:
+                    last_id = ev.id
+                    data = json.dumps({"type": ev.event_type, "payload": json.loads(ev.payload)})
+                    yield f"id: {ev.id}\nevent: message\ndata: {data}\n\n"
+            except asyncio.TimeoutError:
+                logger.warning("Event polling timeout for an event_since query")
+            except Exception as e:
+                logger.error(f"Event stream error: {e}")
                 break
-            events = await crud.events_since(db, after_id=last_id)
-            for ev in events:
-                last_id = ev.id
-                data = json.dumps({"type": ev.event_type, "payload": json.loads(ev.payload)})
-                yield f"id: {ev.id}\nevent: message\ndata: {data}\n\n"
             await asyncio.sleep(0.5)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -180,33 +204,51 @@ async def global_sse_stream(request: Request):
 
 @app.get("/api/threads")
 async def api_threads(status: str | None = None, include_archived: bool = False):
-    db = await get_db()
-    threads = await crud.thread_list(db, status=status, include_archived=include_archived)
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        threads = await asyncio.wait_for(
+            crud.thread_list(db, status=status, include_archived=include_archived),
+            timeout=DB_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
     return [{"id": t.id, "topic": t.topic, "status": t.status, "system_prompt": t.system_prompt,
              "created_at": t.created_at.isoformat()} for t in threads]
 
 
 @app.get("/api/threads/{thread_id}/messages")
 async def api_messages(thread_id: str, after_seq: int = 0, limit: int = 200, include_system_prompt: bool = False):
-    db = await get_db()
-    t = await crud.thread_get(db, thread_id)
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        t = await asyncio.wait_for(crud.thread_get(db, thread_id), timeout=DB_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
     if t is None:
         raise HTTPException(status_code=404, detail="Thread not found")
-    msgs = await crud.msg_list(
-        db,
-        thread_id,
-        after_seq=after_seq,
-        limit=limit,
-        include_system_prompt=include_system_prompt,
-    )
+    try:
+        msgs = await asyncio.wait_for(
+            crud.msg_list(
+                db,
+                thread_id,
+                after_seq=after_seq,
+                limit=limit,
+                include_system_prompt=include_system_prompt,
+            ),
+            timeout=DB_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
     return [{"id": m.id, "author": m.author, "author_id": m.author_id, "author_name": m.author_name, "role": m.role, "content": m.content,
              "seq": m.seq, "created_at": m.created_at.isoformat()} for m in msgs]
 
 
 @app.get("/api/agents")
 async def api_agents():
-    db = await get_db()
-    agents = await crud.agent_list(db)
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        agents = await asyncio.wait_for(crud.agent_list(db), timeout=DB_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
     return [{"id": a.id, "name": a.name, "display_name": a.display_name, "alias_source": a.alias_source,
              "description": a.description, "ide": a.ide, "model": a.model,
              "is_online": a.is_online, "last_heartbeat": a.last_heartbeat.isoformat(),
@@ -214,6 +256,24 @@ async def api_agents():
              "last_activity_time": a.last_activity_time.isoformat() if a.last_activity_time else None,
              "token": a.token} for a in agents]
 
+
+@app.get("/api/settings")
+async def api_get_settings():
+    return get_config_dict()
+
+class SettingsUpdate(BaseModel):
+    HOST: str | None = None
+    PORT: int | None = None
+    AGENT_HEARTBEAT_TIMEOUT: int | None = None
+    MSG_WAIT_TIMEOUT: int | None = None
+
+@app.put("/api/settings")
+async def api_update_settings(body: SettingsUpdate):
+    update_data = {k: v for k, v in body.model_dump().items() if v is not None}
+    if update_data:
+        save_config_dict(update_data)
+    # The user should be notified that a restart is required for some settings
+    return {"ok": True, "message": "Settings saved. Restart the server to apply changes."}
 
 # ─────────────────────────────────────────────
 # Request/Response Models
@@ -241,19 +301,34 @@ class MessageCreate(BaseModel):
 
 @app.post("/api/threads", status_code=201)
 async def api_create_thread(body: ThreadCreate):
-    db = await get_db()
-    t = await crud.thread_create(db, body.topic, body.metadata, body.system_prompt)
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        t = await asyncio.wait_for(
+            crud.thread_create(db, body.topic, body.metadata, body.system_prompt),
+            timeout=DB_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
     return {"id": t.id, "topic": t.topic, "status": t.status, "system_prompt": t.system_prompt,
             "created_at": t.created_at.isoformat()}
 
 @app.post("/api/threads/{thread_id}/messages", status_code=201)
 async def api_post_message(thread_id: str, body: MessageCreate):
-    db = await get_db()
-    t = await crud.thread_get(db, thread_id)
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        t = await asyncio.wait_for(crud.thread_get(db, thread_id), timeout=DB_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
     if t is None:
         raise HTTPException(status_code=404, detail="Thread not found")
-    m = await crud.msg_post(db, thread_id=thread_id, author=body.author,
-                            content=body.content, role=body.role)
+    try:
+        m = await asyncio.wait_for(
+            crud.msg_post(db, thread_id=thread_id, author=body.author,
+                         content=body.content, role=body.role),
+            timeout=DB_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
     return {"id": m.id, "seq": m.seq, "author": m.author,
             "role": m.role, "content": m.content}
 
@@ -275,15 +350,21 @@ class AgentToken(BaseModel):
 
 @app.post("/api/agents/register", status_code=200)
 async def api_agent_register(body: AgentRegister):
-    db = await get_db()
-    a = await crud.agent_register(
-        db,
-        body.ide,
-        body.model,
-        body.description,
-        body.capabilities,
-        body.display_name,
-    )
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        a = await asyncio.wait_for(
+            crud.agent_register(
+                db,
+                body.ide,
+                body.model,
+                body.description,
+                body.capabilities,
+                body.display_name,
+            ),
+            timeout=DB_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
     return {
         "agent_id": a.id,
         "name": a.name,
@@ -294,17 +375,28 @@ async def api_agent_register(body: AgentRegister):
 
 @app.post("/api/agents/heartbeat")
 async def api_agent_heartbeat(body: AgentToken):
-    db = await get_db()
-    ok = await crud.agent_heartbeat(db, body.agent_id, body.token)
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        ok = await asyncio.wait_for(
+            crud.agent_heartbeat(db, body.agent_id, body.token),
+            timeout=DB_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
     if not ok:
         raise HTTPException(status_code=401, detail="Invalid agent_id/token")
     return {"ok": ok}
 
 @app.post("/api/agents/resume")
 async def api_agent_resume(body: AgentToken):
-    db = await get_db()
     try:
-        a = await crud.agent_resume(db, body.agent_id, body.token)
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        a = await asyncio.wait_for(
+            crud.agent_resume(db, body.agent_id, body.token),
+            timeout=DB_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
     except ValueError:
         raise HTTPException(status_code=401, detail="Invalid agent_id/token")
     return {
@@ -319,8 +411,14 @@ async def api_agent_resume(body: AgentToken):
 
 @app.post("/api/agents/unregister")
 async def api_agent_unregister(body: AgentToken):
-    db = await get_db()
-    ok = await crud.agent_unregister(db, body.agent_id, body.token)
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        ok = await asyncio.wait_for(
+            crud.agent_unregister(db, body.agent_id, body.token),
+            timeout=DB_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
     if not ok:
         raise HTTPException(status_code=401, detail="Invalid agent_id/token")
     return {"ok": ok}
@@ -341,34 +439,59 @@ class ThreadClose(BaseModel):
 
 @app.post("/api/threads/{thread_id}/state")
 async def api_thread_state(thread_id: str, body: StateChange):
-    db = await get_db()
-    t = await crud.thread_get(db, thread_id)
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        t = await asyncio.wait_for(crud.thread_get(db, thread_id), timeout=DB_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
     if t is None:
         raise HTTPException(status_code=404, detail="Thread not found")
     try:
-        await crud.thread_set_state(db, thread_id, body.state)
+        await asyncio.wait_for(
+            crud.thread_set_state(db, thread_id, body.state),
+            timeout=DB_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"ok": True}
 
 @app.post("/api/threads/{thread_id}/close")
 async def api_thread_close(thread_id: str, body: ThreadClose):
-    db = await get_db()
-    t = await crud.thread_get(db, thread_id)
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        t = await asyncio.wait_for(crud.thread_get(db, thread_id), timeout=DB_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
     if t is None:
         raise HTTPException(status_code=404, detail="Thread not found")
-    await crud.thread_close(db, thread_id, body.summary)
+    try:
+        await asyncio.wait_for(
+            crud.thread_close(db, thread_id, body.summary),
+            timeout=DB_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
     return {"ok": True}
 
 
 @app.post("/api/threads/{thread_id}/archive")
 async def api_thread_archive(thread_id: str):
-    db = await get_db()
-    t = await crud.thread_get(db, thread_id)
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        t = await asyncio.wait_for(crud.thread_get(db, thread_id), timeout=DB_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
     if t is None:
         raise HTTPException(status_code=404, detail="Thread not found")
     try:
-        ok = await crud.thread_archive(db, thread_id)
+        ok = await asyncio.wait_for(
+            crud.thread_archive(db, thread_id),
+            timeout=DB_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     if not ok:
@@ -414,6 +537,8 @@ if __name__ == "__main__":
         # Set AGENTCHATBUS_RELOAD=0 to disable if a client is sensitive to
         # short reconnect windows during hot reload restarts.
         reload=reload_enabled,
+        reload_includes=["src/*.py", "src/db/*.py"],
+        reload_excludes=["src/tools/*.py"],
         log_level="info",
         # Force-close lingering SSE / long-poll connections after 3 s when
         # Ctrl+C (SIGINT) is received. Without this, uvicorn waits forever

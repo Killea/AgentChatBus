@@ -788,6 +788,8 @@ body[data-theme="light"] .ctx-item:hover {
   <div class="status-label" id="status-label">Connected</div>
   <button id="btn-theme-toggle" type="button" onclick="toggleTheme()">Light</button>
   <button id="btn-new-thread" onclick="openModal()">＋ New Thread</button>
+  <button id="btn-settings" type="button" onclick="openSettingsModal()" title="MCP Server Settings"
+    style="background: transparent; border: 1px solid var(--border-light); border-radius: 8px; font-size: 16px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-1); margin-left: 8px; transition: background 0.15s;">⚙️</button>
 </div>
 
 <!-- ── Layout ──────────────────────────────── -->
@@ -860,6 +862,40 @@ body[data-theme="light"] .ctx-item:hover {
     <div class="modal-actions">
       <button class="btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn-primary" onclick="submitModal()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Settings modal ───────────────────────── -->
+<div id="settings-modal-overlay" onclick="closeSettingsModal(event)"
+  style="display:none; position: fixed; inset: 0; background: rgba(0,0,0,.7); align-items: center; justify-content: center; z-index: 100; animation: fade-in .15s ease;">
+  <div id="settings-modal"
+    style="background: var(--bg-card); border: 1px solid var(--border-light); border-radius: 14px; padding: 28px; width: 440px; max-width: 90vw; box-shadow: var(--shadow); animation: modal-in .2s ease;"
+    onclick="event.stopPropagation()">
+    <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 18px; color: var(--text-1)">⚙️ MCP Server Settings</h3>
+
+    <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Host</label>
+    <input id="setting-host" type="text"
+      style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-1); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; margin-bottom: 16px;" />
+
+    <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Port</label>
+    <input id="setting-port" type="number"
+      style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-1); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; margin-bottom: 16px;" />
+
+    <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Agent Heartbeat Timeout
+      (s)</label>
+    <input id="setting-heartbeat" type="number"
+      style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-1); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; margin-bottom: 16px;" />
+
+    <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Wait Timeout (s)</label>
+    <input id="setting-wait" type="number"
+      style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-1); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; margin-bottom: 16px;" />
+
+    <div id="settings-message" style="font-size: 12px; color: var(--green); margin-bottom: 16px; display: none;"></div>
+
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeSettingsModal()">Cancel</button>
+      <button class="btn-primary" onclick="submitSettings()">Save (Requires Restart)</button>
     </div>
   </div>
 </div>
@@ -993,15 +1029,8 @@ body[data-theme="light"] .ctx-item:hover {
       infoEl.addEventListener('mouseenter', () => {
         clearTimeout(infoTooltipHideTimer);
         
-        // Update tooltip content - only show thread name if thread is selected
-        let tooltipHtml = '';
-        if (activeThreadId) {
-          const threadName = document.getElementById('thread-title')?.textContent?.trim() || '(unknown)';
-          tooltipHtml += `<div style="padding:8px 12px;border-bottom:1px solid var(--border-light);margin-bottom:4px;">
-            <strong style="color:var(--text-1);">Thread:</strong> ${escapeHtml(threadName)}
-          </div>`;
-        }
-        tooltipHtml += `
+        // Update tooltip content
+        let tooltipHtml = `
           <div style="padding:8px 12px;"><div style="font-size:12px;color:var(--text-2);margin-bottom:6px;">Status Legend:</div>
             <div class="state-item"><span class="state-emoji">🟢</span> <strong>Active:</strong> Activity within 30s</div>
             <div class="state-item"><span class="state-emoji">🌙</span> <strong>Idle:</strong> Activity within 5m</div>
@@ -1784,12 +1813,10 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
                 <div class="agent-status-text-compact">${compressedChar}</div>
               `;
             } else {
-              // Only show thread info in thread mode
-              const threadInfo = isThreadMode ? `<div class="agent-thread" style="font-size:10px;color:var(--text-3);">${escapeHtml(document.getElementById('thread-title')?.textContent?.trim() || '')}</div>` : '';
+              // Remove thread info display to keep agent list clean
               item.innerHTML = `
                 <div class="agent-status-emoji">${emoji}</div>
                 <div class="agent-status-text">
-                  ${threadInfo}
                   <div class="agent-alias">${escapeHtml(label)}</div>
                   <div class="agent-state">${state}${offlineDisplay}</div>
                 </div>
@@ -1955,6 +1982,57 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
       return new Date(iso).toLocaleDateString();
     }
+
+  // ═══════════════════════════════════════════════
+  // Settings Settings
+  // ═══════════════════════════════════════════════
+  async function openSettingsModal() {
+    document.getElementById('settings-message').style.display = 'none';
+    document.getElementById('settings-modal-overlay').style.display = 'flex';
+    try {
+      const res = await api('/api/settings');
+      if (res) {
+        document.getElementById('setting-host').value = res.HOST || '0.0.0.0';
+        document.getElementById('setting-port').value = res.PORT || 39765;
+        document.getElementById('setting-heartbeat').value = res.AGENT_HEARTBEAT_TIMEOUT || 30;
+        document.getElementById('setting-wait').value = res.MSG_WAIT_TIMEOUT || 300;
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  function closeSettingsModal(e) {
+    if (e && e.target !== document.getElementById('settings-modal-overlay')) return;
+    document.getElementById('settings-modal-overlay').style.display = 'none';
+  }
+
+  async function submitSettings() {
+    const pHost = document.getElementById('setting-host').value;
+    const pPort = parseInt(document.getElementById('setting-port').value);
+    const pHb = parseInt(document.getElementById('setting-heartbeat').value);
+    const pWait = parseInt(document.getElementById('setting-wait').value);
+
+    try {
+      const res = await api('/api/settings', {
+        method: 'PUT',
+        body: JSON.stringify({
+          HOST: pHost,
+          PORT: pPort,
+          AGENT_HEARTBEAT_TIMEOUT: pHb,
+          MSG_WAIT_TIMEOUT: pWait
+        })
+      });
+      if (res && res.ok) {
+        const msg = document.getElementById('settings-message');
+        msg.textContent = res.message || 'Saved! Restart server to apply.';
+        msg.style.display = 'block';
+        setTimeout(() => closeSettingsModal(), 2500);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
 </script>
 </body>
 </html>
