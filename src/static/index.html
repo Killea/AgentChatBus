@@ -844,18 +844,7 @@ body[data-theme="light"] .ctx-item:hover {
     <div id="sidebar-tabs">
       <div class="stab active" id="tab-threads" onclick="switchTab('threads')">Threads</div>
     </div>
-    <div id="thread-filter-wrap">
-      <button id="btn-thread-filter" type="button" onclick="toggleThreadFilterPanel(event)">Filter: normal (5)</button>
-      <div id="thread-filter-panel" onclick="event.stopPropagation()">
-        <acb-filter-actions></acb-filter-actions>
-        <acb-filter-row status="discuss" checked></acb-filter-row>
-        <acb-filter-row status="implement" checked></acb-filter-row>
-        <acb-filter-row status="review" checked></acb-filter-row>
-        <acb-filter-row status="done" checked></acb-filter-row>
-        <acb-filter-row status="closed" checked></acb-filter-row>
-        <acb-filter-row status="archived"></acb-filter-row>
-      </div>
-    </div>
+    <acb-thread-filter-shell></acb-thread-filter-shell>
     <div id="thread-pane" class="visible"></div>
   </div>
 
@@ -948,6 +937,7 @@ body[data-theme="light"] .ctx-item:hover {
 <script src="/static/js/components/acb-icon-button.js"></script>
 <script src="/static/js/components/acb-filter-actions.js"></script>
 <script src="/static/js/components/acb-filter-row.js"></script>
+<script src="/static/js/components/acb-thread-filter-shell.js"></script>
 <script src="/static/js/components/acb-thread-item.js"></script>
 <script src="/static/js/shared-threads.js"></script>
 <script src="/static/js/shared-agent-status.js"></script>
