@@ -1,0 +1,59 @@
+name: Auto-create next patch tag on release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  create-next-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read released tag from event
+        id: get_tag
+        run: |
+          RELEASE_TAG=$(jq -r .release.tag_name "$GITHUB_EVENT_PATH")
+          if [ "$RELEASE_TAG" = "null" ] || [ -z "$RELEASE_TAG" ]; then
+            echo "release_tag=" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compute next patch tag
+        id: next_tag
+        run: |
+          BASE_TAG="${{ steps.get_tag.outputs.release_tag }}"
+          if [ -z "$BASE_TAG" ]; then
+            BASE_TAG="v0.0.0"
+          fi
+          CORE=${BASE_TAG#v}
+          MAJ=$(echo "$CORE" | cut -d. -f1)
+          MIN=$(echo "$CORE" | cut -d. -f2)
+          PATCH=$(echo "$CORE" | cut -d. -f3)
+          PATCH=$((PATCH + 1))
+          NEXT_TAG="v${MAJ}.${MIN}.${PATCH}"
+          echo "next_tag=$NEXT_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag (if not exists)
+        env:
+          NEXT_TAG: ${{ steps.next_tag.outputs.next_tag }}
+        run: |
+          if [ -z "$NEXT_TAG" ]; then
+            echo "No next tag computed, exiting"
+            exit 1
+          fi
+          if git rev-parse "refs/tags/$NEXT_TAG" >/dev/null 2>&1; then
+            echo "Tag $NEXT_TAG already exists, skipping"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "$NEXT_TAG"
+          git push origin "refs/tags/$NEXT_TAG"
