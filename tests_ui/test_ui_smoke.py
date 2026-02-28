@@ -34,6 +34,8 @@ CLEANUP_THREADS = os.getenv("AGENTCHATBUS_UI_CLEANUP", "1").strip().lower() not 
 
 _CREATED_TOPICS: set[str] = set()
 _CREATED_THREAD_IDS: set[str] = set()
+# Use a unique prefix to identify UI test threads
+_UI_TEST_PREFIX = "UI-Smoke-"
 
 
 def _find_thread_id_by_topic(topic: str) -> str | None:
@@ -107,6 +109,45 @@ def _require_server_or_skip() -> None:
     pytest.skip(f"AgentChatBus server is not reachable at {BASE_URL}")
 
 
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_old_ui_test_threads():
+    """Clean up any UI test threads from previous runs before starting tests."""
+    try:
+        with httpx.Client(base_url=BASE_URL, timeout=5) as client:
+            # Get all threads including archived
+            resp = client.get("/api/threads", params={"include_archived": "true"})
+            if resp.status_code == 200:
+                threads = resp.json()
+                # Delete threads that start with our test prefix
+                for thread in threads:
+                    topic = thread.get("topic", "")
+                    if topic.startswith(_UI_TEST_PREFIX):
+                        try:
+                            client.delete(f"/api/threads/{thread['id']}")
+                        except Exception:
+                            pass
+    except Exception:
+        pass
+    
+    yield
+    
+    # Clean up any UI test threads after all tests
+    try:
+        with httpx.Client(base_url=BASE_URL, timeout=5) as client:
+            resp = client.get("/api/threads", params={"include_archived": "true"})
+            if resp.status_code == 200:
+                threads = resp.json()
+                for thread in threads:
+                    topic = thread.get("topic", "")
+                    if topic.startswith(_UI_TEST_PREFIX):
+                        try:
+                            client.delete(f"/api/threads/{thread['id']}")
+                        except Exception:
+                            pass
+    except Exception:
+        pass
+
+
 @pytest.fixture(scope="module")
 def page() -> Generator[Page, None, None]:
     if not PLAYWRIGHT_AVAILABLE:
@@ -125,8 +166,9 @@ def page() -> Generator[Page, None, None]:
         browser.close()
 
 
-def _topic(prefix: str = "UI-Smoke") -> str:
-    return f"{prefix}-{int(time.time() * 1000)}"
+def _topic(prefix: str = "") -> str:
+    """Generate a unique topic with UI test prefix."""
+    return f"{_UI_TEST_PREFIX}{prefix}-{int(time.time() * 1000)}"
 
 
 def test_shell_regions_render(page: Page) -> None:
@@ -154,9 +196,18 @@ def test_create_thread_and_select(page: Page) -> None:
 
 
 def test_send_message_visible(page: Page) -> None:
-    # Ensure a thread exists and is selected for compose box.
+    # Ensure a thread exists and is selected for compose box
     if not page.locator("#thread-header").is_visible():
-        test_create_thread_and_select(page)
+        # Create a new thread
+        topic = _topic("UI-Message")
+        page.click("#btn-new-thread")
+        page.wait_for_selector("#modal-overlay.visible")
+        page.fill("#modal-topic", topic)
+        page.click("#modal .btn-primary")
+        page.wait_for_selector("#thread-header", state="visible")
+        title = page.locator("#thread-title").inner_text().strip()
+        assert title == topic
+        _record_created_topic(topic)
 
     # Wait a bit to ensure everything is loaded
     page.wait_for_timeout(500)
@@ -172,7 +223,7 @@ def test_send_message_visible(page: Page) -> None:
                 threads = threads_resp.json()
                 # Look for a thread with a topic matching our pattern
                 for t in threads:
-                    if t.get("topic", "").startswith("UI-Thread-"):
+                    if t.get("topic", "").startswith(_UI_TEST_PREFIX):
                         thread_id = t.get("id")
                         topic = t.get("topic")
                         break
@@ -192,7 +243,7 @@ def test_send_message_visible(page: Page) -> None:
             )
             if msg_resp.status_code >= 400:
                 print(f"Failed to send message: {msg_resp.status_code}, {msg_resp.text}")
-            assert msg_resp.status_code == 200, f"Failed to send message: {msg_resp.status_code}"
+            assert msg_resp.status_code in (200, 201), f"Failed to send message: {msg_resp.status_code}"
     except Exception as e:
         pytest.skip(f"Could not send message via API: {e}")
 

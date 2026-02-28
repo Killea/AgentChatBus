@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 _db: aiosqlite.Connection | None = None
 _lock = asyncio.Lock()
 
+# Schema version for consistency tracking
+SCHEMA_VERSION = 1
+
 
 async def get_db() -> aiosqlite.Connection:
     """Return the shared async database connection, initializing it if needed."""
@@ -46,6 +49,31 @@ async def close_db() -> None:
 
 async def init_schema(db: aiosqlite.Connection) -> None:
     """Create all tables if they do not already exist (idempotent)."""
+    await db.executescript("""
+        -- ----------------------------------------------------------------
+        -- Schema version tracking
+        -- ----------------------------------------------------------------
+        CREATE TABLE IF NOT EXISTS schema_version (
+            version INTEGER PRIMARY KEY,
+            applied_at TEXT NOT NULL
+        );
+    """)
+    await db.commit()
+    
+    # Check current schema version
+    current_version = None
+    async with db.execute("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1") as cur:
+        row = await cur.fetchone()
+        if row:
+            current_version = row["version"]
+    
+    # If version mismatch, warn but allow to continue (for development)
+    if current_version is not None and current_version != SCHEMA_VERSION:
+        logger.warning(
+            f"Schema version mismatch: current={current_version}, expected={SCHEMA_VERSION}. "
+            "Consider running migrations or recreating the database."
+        )
+    
     await db.executescript("""
         -- ----------------------------------------------------------------
         -- Thread: a conversation or task context
