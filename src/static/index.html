@@ -594,9 +594,10 @@ body[data-theme="light"] .msg-row.message-has-mentions .bubble-v2 {
 #compose.visible { display: flex; }
 #compose-author {
   background: var(--bg-input); border: 1px solid var(--border-light);
-  color: var(--text-2); border-radius: 8px;
-  padding: 8px 10px; font-size: 12px; font-family: inherit;
-  width: 100px; flex-shrink: 0;
+  color: var(--text-2); border-radius: 10px;
+  padding: 10px 14px; font-size: 13.5px; font-family: inherit;
+  width: 80px; flex-shrink: 0; text-align: center;
+  align-self: flex-start; height: 42px; box-sizing: border-box;
 }
 #compose-author:focus { outline: none; border-color: var(--accent); }
 #compose-input {
@@ -607,7 +608,7 @@ body[data-theme="light"] .msg-row.message-has-mentions .bubble-v2 {
   transition: border-color .15s;
 }
 #compose-input:focus { outline: none; border-color: var(--accent); }
-#compose-input::placeholder { color: var(--text-3); }
+#compose-input:empty::before { content: attr(placeholder); color: var(--text-3); pointer-events: none; }
 #btn-send {
   background: var(--accent); color: #fff; border: none; border-radius: 10px;
   width: 40px; height: 40px; cursor: pointer; flex-shrink: 0;

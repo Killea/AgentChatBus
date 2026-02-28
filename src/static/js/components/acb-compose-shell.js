@@ -11,12 +11,14 @@
       this.innerHTML = `
         <div id="compose">
           <input id="compose-author" type="text" value="human" placeholder="author" />
-          <div id="mentions-bar" style="display:none; padding: 5px; font-size: 0.85em; background: rgba(0,0,0,0.1); border-radius: 4px; margin-bottom: 5px;">
-            <span id="mentioned-agents"></span>
-            <button type="button" onclick="clearMentions()" style="margin-left: 10px; cursor: pointer; border: none; background: transparent; color: #666;">❌</button>
+          <div style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
+            <div id="mentions-bar" style="display:none; padding: 5px; font-size: 0.85em; background: rgba(0,0,0,0.1); border-radius: 4px; margin-bottom: 5px;">
+              <span id="mentioned-agents"></span>
+              <button type="button" onclick="clearMentions()" style="margin-left: 10px; cursor: pointer; border: none; background: transparent; color: #666;">❌</button>
+            </div>
+            <div id="image-preview" style="display:none; padding: 8px; background: rgba(100,150,200,.08); border-radius: 4px; margin-bottom: 5px; gap:8px; flex-wrap:wrap;"></div>
+            <div id="compose-input" contenteditable="true" style="overflow-y: auto; word-break: break-word;" placeholder="Send a message... Click an agent's row below to mention them!" onkeydown="handleKey(event)"></div>
           </div>
-          <div id="image-preview" style="display:none; padding: 8px; background: rgba(100,150,200,.08); border-radius: 4px; margin-bottom: 5px; display:flex; gap:8px; flex-wrap:wrap;"></div>
-          <div id="compose-input" contenteditable="true" style="min-height: 60px; padding: 10px; border: 1px solid var(--border-light); border-radius: 8px; background: var(--bg-input); color: var(--text-1); font-family: inherit; font-size: inherit; line-height: 1.5; word-break: break-word; outline: none;" placeholder="Send a message... Click an agent's row below to mention them!" onkeydown="handleKey(event)"></div>
           <button id="btn-send" onclick="sendMessage()" title="Send">➤</button>
         </div>`;
 
