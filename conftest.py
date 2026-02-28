@@ -5,6 +5,7 @@ This fixture ensures the server is running for e2e and UI tests.
 Uses a separate port and database to avoid conflicts with production server.
 """
 import os
+import signal
 import time
 import subprocess
 import httpx
@@ -68,15 +69,26 @@ def server():
     
     yield
     
-    # Cleanup: stop the server
+    # Cleanup: stop the server gracefully
     if _SERVER_PROCESS:
         print("Stopping test server...")
-        _SERVER_PROCESS.terminate()
         try:
-            _SERVER_PROCESS.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            _SERVER_PROCESS.kill()
-            _SERVER_PROCESS.wait()
+            # First try graceful shutdown with Ctrl+C
+            if os.name == 'nt':  # Windows
+                _SERVER_PROCESS.send_signal(signal.CTRL_C_EVENT)
+            else:
+                _SERVER_PROCESS.send_signal(signal.SIGTERM)
+            
+            # Wait up to 3 seconds for graceful shutdown
+            _SERVER_PROCESS.wait(timeout=3)
+        except (subprocess.TimeoutExpired, AttributeError, OSError):
+            # If graceful shutdown fails, force kill
+            try:
+                _SERVER_PROCESS.terminate()
+                _SERVER_PROCESS.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                _SERVER_PROCESS.kill()
+                _SERVER_PROCESS.wait()
         print("Test server stopped")
     
     # Optionally clean up test database

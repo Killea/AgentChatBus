@@ -194,7 +194,13 @@ def test_create_thread_and_select(page: Page) -> None:
     page.fill("#modal-topic", topic)
     page.click("#modal .btn-primary")
 
-    page.wait_for_selector("#thread-header", state="visible")
+    # Wait for modal to close and thread to be selected
+    page.wait_for_selector("#modal-overlay", state="hidden", timeout=5000)
+    page.wait_for_selector("#thread-header", state="visible", timeout=5000)
+    
+    # Wait a bit for the UI to update
+    page.wait_for_timeout(200)
+    
     title = page.locator("#thread-title").inner_text().strip()
     assert title == topic
     _record_created_topic(topic)
@@ -209,7 +215,10 @@ def test_send_message_visible(page: Page) -> None:
         page.wait_for_selector("#modal-overlay.visible")
         page.fill("#modal-topic", topic)
         page.click("#modal .btn-primary")
-        page.wait_for_selector("#thread-header", state="visible")
+        # Wait for modal to close and thread to be selected
+        page.wait_for_selector("#modal-overlay", state="hidden", timeout=5000)
+        page.wait_for_selector("#thread-header", state="visible", timeout=5000)
+        page.wait_for_timeout(200)
         title = page.locator("#thread-title").inner_text().strip()
         assert title == topic
         _record_created_topic(topic)
