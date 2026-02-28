@@ -140,9 +140,10 @@
     if (!container) return;
 
     let participants = [];
-    let isThreadMode = false;
+    const activeThreadIdVal = getActiveThreadId();
+    const isThreadMode = Boolean(activeThreadIdVal);
 
-    if (getActiveThreadId()) {
+    if (isThreadMode) {
       const participantIdMap = new Map();
       const msgArea = document.getElementById("messages");
       if (msgArea) {
@@ -165,14 +166,11 @@
         });
       }
 
+      // When a thread is selected, only show participants for that thread
       participants = Array.from(participantIdMap.values());
-      isThreadMode = participants.length > 0;
-    }
-
-    if (!isThreadMode) {
-      // Show all agents (both online and offline)
-      participants = allAgents;
-      isThreadMode = false;
+    } else {
+      // When no thread is selected, show only online agents
+      participants = allAgents.filter((a) => a.is_online);
     }
 
     participants.sort((a, b) => {
