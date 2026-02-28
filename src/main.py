@@ -325,8 +325,7 @@ async def api_agents():
             "description": a.description, "ide": a.ide, "model": a.model,
             "is_online": a.is_online, "last_heartbeat": a.last_heartbeat.isoformat(),
             "last_activity": a.last_activity,
-            "last_activity_time": a.last_activity_time.isoformat() if a.last_activity_time else None,
-            "token": a.token
+            "last_activity_time": a.last_activity_time.isoformat() if a.last_activity_time else None
         })
 
     return result

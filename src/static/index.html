@@ -1595,13 +1595,8 @@
         <acb-empty-state></acb-empty-state>
       </div>
 
-      <div id="compose">
-        <input id="compose-author" type="text" value="human" placeholder="author" />
-        <textarea id="compose-input" rows="1"
-          placeholder="Send a system message… (Enter to send, Shift+Enter for newline)" oninput="autoResize(this)"
-          onkeydown="handleKey(event)"></textarea>
-        <button id="btn-send" onclick="sendMessage()" title="Send">➤</button>
-      </div>
+      <acb-compose-shell></acb-compose-shell>
+
       <!-- Agent Status Bar -->
       <div id="agent-status-bar">
         <div id="agent-status-list"></div>
@@ -1777,8 +1772,8 @@
       return `@${displayName}
 Please resume this agent session with saved credentials.
 1) Call agent_resume(agent_id, token) with your credentials.
-2) If resume fails ΓÆ check token validity and retry.
-3) On success ΓÆ post confirmation message.
+2) If resume fails, check token validity and retry.
+3) On success, post confirmation message.
 4) Begin msg_wait loop to listen for incoming messages.
 
 Agent ID: ${agentId}
@@ -2198,7 +2193,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       if (author === 'human') return HUMAN_COLOR;
       if (author === 'system') return SYSTEM_COLOR;
       if (_colorCache[author]) return _colorCache[author];
-      // Stable hash ΓÆ palette index
+      // Stable hash palette index
       let h = 0;
       for (let i = 0; i < author.length; i++) h = (Math.imul(31, h) + author.charCodeAt(i)) | 0;
       const color = AUTHOR_PALETTE[Math.abs(h) % AUTHOR_PALETTE.length];
@@ -2376,9 +2371,12 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     // Compose
     // ==============================================================================================
     async function sendMessage() {
-      const input = document.getElementById("compose-input");
-      const author = document.getElementById("compose-author").value.trim() || "human";
       const acb = document.querySelector('acb-compose-shell');
+      if (!acb) return;
+
+      const input = acb.querySelector('#compose-input');
+      const authorInput = acb.querySelector('#compose-author');
+      const author = authorInput ? authorInput.value.trim() || "human" : "human";
 
       // Extract text content
       let content = '';
@@ -2392,7 +2390,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       content = content.trim();
 
       // Get uploaded images
-      const images = acb?.uploadedImages || [];
+      const images = acb.uploadedImages || [];
 
       if ((!content && images.length === 0) || !activeThreadId) return;
 
@@ -2406,10 +2404,10 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
 
       updateOnlinePresence();
       input.innerHTML = '';
-      const messageBar = document.getElementById("mentions-bar");
+      const messageBar = acb.querySelector("#mentions-bar");
       if (messageBar) messageBar.style.display = 'none';
-      if (acb && acb.uploadedImages) acb.uploadedImages = [];
-      if (acb && acb.renderImagePreview) acb.renderImagePreview();
+      acb.uploadedImages = [];
+      if (acb.renderImagePreview) acb.renderImagePreview();
 
       const payload = {
         author,
@@ -2439,44 +2437,15 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     }
 
     function autoResize(el) {
+      // Placeholder for compatibility
     }
 
     // ==============================================================================================
     // Agents
     // ==============================================================================================
     async function refreshAgents() {
-      const agents = await api('/api/agents') || [];
-      currentAgents = agents;
-
-      const agentListEl = document.getElementById('agent-status-list');
-      if (!agentListEl) return;
-
-      agentListEl.innerHTML = '';
-
-      agents.forEach(agent => {
-        const item = document.createElement('div');
-        item.className = 'agent-status-item';
-
-        const state = getAgentState(agent);
-        const emoji = getStateEmoji(state);
-
-        item.innerHTML = `
-        <div class="agent-status-emoji">${emoji}</div>
-        <div class="agent-status-text">
-          <div class="agent-alias">${agent.display_name || agent.name}</div>
-          <div class="agent-state">${state}</div>
-        </div>
-      `;
-
-        if (agent.is_online) {
-          item.addEventListener('mouseenter', () => showAgentTooltip(item, agent));
-          item.addEventListener('mouseleave', () => scheduleAgentTooltipHide());
-        }
-
-        agentListEl.appendChild(item);
-      });
-
-      updateOnlinePresence();
+      // Delegate to updateStatusBar() for consistency
+      await updateStatusBar();
     }
 
     // ==============================================================================================
@@ -2569,6 +2538,13 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
 
         const item = document.createElement('div');
         item.className = 'agent-status-item';
+
+        // Set data-agent-id for click-to-mention functionality
+        if (a && a.id) {
+          item.dataset.agentId = a.id;
+        } else if (a && a.agent_id) {
+          item.dataset.agentId = a.agent_id;
+        }
 
         // Compress display if offline > 1 hour: just emoji + single char
         if (isLongOffline) {

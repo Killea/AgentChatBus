@@ -144,15 +144,17 @@
   }
 
   window.clearMentions = function () {
-    const input = document.getElementById("compose-input");
-    if (input) {
-      for (const child of input.childNodes) {
-        if (child.nodeType === 1 && child.getAttribute && child.getAttribute('data-mention-id')) {
-          child.remove();
+    const acb = document.querySelector('acb-compose-shell');
+    if (acb) {
+      const input = acb.querySelector('#compose-input');
+      if (input) {
+        for (const child of input.childNodes) {
+          if (child.nodeType === 1 && child.getAttribute && child.getAttribute('data-mention-id')) {
+            child.remove();
+          }
         }
+        if (acb.updateMentions) acb.updateMentions();
       }
-      const acb = document.querySelector('acb-compose-shell');
-      if (acb && acb.updateMentions) acb.updateMentions();
     }
   };
 
@@ -167,20 +169,22 @@
   document.addEventListener('click', (e) => {
     const row = e.target.closest('acb-agent-status-item');
     if (row && row.dataset.agentId) {
-      const input = document.getElementById("compose-input");
       const acb = document.querySelector('acb-compose-shell');
-      if (input && acb) {
-        const mentionSpan = document.createElement('span');
-        mentionSpan.setAttribute('data-mention-id', row.dataset.agentId);
-        mentionSpan.contentEditable = 'false';
-        mentionSpan.style.cssText = 'background: rgba(59,130,246,0.2); color: #3b82f6; padding: 2px 6px; border-radius: 4px; margin: 0 4px; font-weight: 500; border: 1px solid #3b82f6; display: inline-block;';
-        mentionSpan.textContent = `@${row.dataset.agentId.slice(0, 8)}`;
-        
-        input.appendChild(mentionSpan);
-        input.appendChild(document.createTextNode(' '));
-        input.focus();
-        
-        if (acb.updateMentions) acb.updateMentions();
+      if (acb) {
+        const input = acb.querySelector('#compose-input');
+        if (input) {
+          const mentionSpan = document.createElement('span');
+          mentionSpan.setAttribute('data-mention-id', row.dataset.agentId);
+          mentionSpan.contentEditable = 'false';
+          mentionSpan.style.cssText = 'background: rgba(59,130,246,0.2); color: #3b82f6; padding: 2px 6px; border-radius: 4px; margin: 0 4px; font-weight: 500; border: 1px solid #3b82f6; display: inline-block;';
+          mentionSpan.textContent = `@${row.dataset.agentId.slice(0, 8)}`;
+
+          input.appendChild(mentionSpan);
+          input.appendChild(document.createTextNode(' '));
+          input.focus();
+
+          if (acb.updateMentions) acb.updateMentions();
+        }
       }
     }
   }, true);

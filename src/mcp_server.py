@@ -43,7 +43,7 @@ _current_agent_id: ContextVar[str | None] = ContextVar("current_agent_id", defau
 _current_agent_token: ContextVar[str | None] = ContextVar("current_agent_token", default=None)
 
 # Connection-level agent registry.
-# Maps session_id ΓÆ {"agent_id": ..., "token": ...}
+# Maps session_id  {"agent_id": ..., "token": ...}
 # Populated when agent_register/resume is called, used by msg_wait for auto-tracking.
 _connection_agents: dict[str, dict[str, str]] = {}
 
