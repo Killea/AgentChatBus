@@ -15,6 +15,16 @@ import src.db.database as dbmod
 os.environ["AGENTCHATBUS_DB"] = "data/test_timeout_unit.db"
 
 
+# Ensure each test runs with a fresh DB connection: close after every test
+@pytest.fixture(autouse=True)
+async def _per_test_db_close():
+    yield
+    try:
+        await dbmod.close_db()
+    except Exception:
+        pass
+
+
 # ─────────────────────────────────────────────
 # Helper: back-date a thread's last message or creation time
 # ─────────────────────────────────────────────
@@ -40,8 +50,12 @@ async def _get_thread_status(db, thread_id: str) -> str:
 
 
 async def _get_db():
-    if dbmod._db is None:
-        await dbmod.get_db()
+    # Always close any existing connection and open a new one for isolation
+    try:
+        await dbmod.close_db()
+    except Exception:
+        pass
+    await dbmod.get_db()
     return dbmod._db
 
 

@@ -16,14 +16,33 @@ os.environ["AGENTCHATBUS_DB"] = "data/test_rl_unit.db"
 from src.db.crud import RateLimitExceeded
 
 
+# Ensure the shared test DB connection is closed after this module's tests
+@pytest.fixture(scope="module", autouse=True)
+async def _cleanup_db():
+    yield
+    # Close the aiosqlite connection if it was opened during tests
+    try:
+        await dbmod.close_db()
+    except Exception:
+        pass
+
+
 # ─────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────
 
 async def _get_db():
-    """Return (or init) the shared DB connection."""
-    if dbmod._db is None:
-        await dbmod.get_db()
+    """Return a fresh DB connection for the calling test.
+
+    To avoid cross-test connection/state leakage we close any existing
+    connection and re-open a new one on each call. Tests are responsible for
+    closing the connection (see finally blocks below).
+    """
+    try:
+        await dbmod.close_db()
+    except Exception:
+        pass
+    await dbmod.get_db()
     return dbmod._db
 
 
@@ -84,6 +103,10 @@ async def test_rate_limit_allows_within_limit():
             assert msg.seq > 0
     finally:
         _restore_rate_limit(*orig)
+        try:
+            await dbmod.close_db()
+        except Exception:
+            pass
 
 
 @pytest.mark.asyncio
@@ -102,6 +125,10 @@ async def test_rate_limit_blocks_on_exceed():
         assert exc_info.value.retry_after > 0
     finally:
         _restore_rate_limit(*orig)
+        try:
+            await dbmod.close_db()
+        except Exception:
+            pass
 
 
 @pytest.mark.asyncio
@@ -120,6 +147,10 @@ async def test_rate_limit_scopes_per_author():
         assert msg.seq > 0
     finally:
         _restore_rate_limit(*orig)
+        try:
+            await dbmod.close_db()
+        except Exception:
+            pass
 
 
 @pytest.mark.asyncio
@@ -133,6 +164,10 @@ async def test_rate_limit_normal_single_message():
         assert msg.seq > 0
     finally:
         _restore_rate_limit(*orig)
+        try:
+            await dbmod.close_db()
+        except Exception:
+            pass
 
 
 @pytest.mark.asyncio
@@ -147,3 +182,7 @@ async def test_rate_limit_zero_disables():
             assert msg.seq > 0
     finally:
         _restore_rate_limit(*orig)
+        try:
+            await dbmod.close_db()
+        except Exception:
+            pass
