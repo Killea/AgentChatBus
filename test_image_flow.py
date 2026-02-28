@@ -7,6 +7,17 @@ import json
 from pathlib import Path
 import pytest
 
+import src.db.database as dbmod
+
+
+@pytest.fixture(autouse=True)
+async def _per_test_db_close():
+    yield
+    try:
+        await dbmod.close_db()
+    except Exception:
+        pass
+
 
 @pytest.mark.asyncio
 async def test_image_flow():
@@ -96,3 +107,5 @@ async def test_image_flow():
 
 if __name__ == "__main__":
     asyncio.run(test_image_flow())
+
+
