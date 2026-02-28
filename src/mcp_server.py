@@ -153,6 +153,11 @@ async def list_tools() -> list[types.Tool]:
                     "author":    {"type": "string", "description": "Agent ID, 'system', or 'human'."},
                     "content":   {"type": "string"},
                     "role":      {"type": "string", "enum": ["user", "assistant", "system"], "default": "user"},
+                    "mentions":  {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of agent IDs to mention in this message."
+                    },
                     "metadata":  {"type": "object"},
                 },
                 "required": ["thread_id", "author", "content"],
@@ -167,6 +172,16 @@ async def list_tools() -> list[types.Tool]:
                     "thread_id": {"type": "string"},
                     "after_seq": {"type": "integer", "default": 0, "description": "Return messages with seq > this value."},
                     "limit":     {"type": "integer", "default": 100},
+                    "return_format": {
+                        "type": "string",
+                        "enum": ["json", "blocks"],
+                        "default": "blocks",
+                        "description": (
+                            "Return format for tool result content. "
+                            "'blocks' returns native MCP content blocks (TextContent/ImageContent...). "
+                            "'json' returns a single JSON-encoded text payload (legacy)."
+                        ),
+                    },
                     "include_system_prompt": {
                         "type": "boolean",
                         "default": True,
@@ -191,6 +206,16 @@ async def list_tools() -> list[types.Tool]:
                     "thread_id":   {"type": "string"},
                     "after_seq":   {"type": "integer"},
                     "timeout_ms":  {"type": "integer", "default": 300000, "description": "Max wait in milliseconds."},
+                    "return_format": {
+                        "type": "string",
+                        "enum": ["json", "blocks"],
+                        "default": "blocks",
+                        "description": (
+                            "Return format for tool result content. "
+                            "'blocks' returns native MCP content blocks (TextContent/ImageContent...). "
+                            "'json' returns a single JSON-encoded text payload (legacy)."
+                        ),
+                    },
                     "agent_id":    {"type": "string", "description": "Optional: your agent ID for activity tracking."},
                     "token":       {"type": "string", "description": "Optional: your agent token for verification."},
                 },
@@ -295,7 +320,7 @@ async def list_tools() -> list[types.Tool]:
 
 
 @server.call_tool()
-async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
+async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.Content]:
     db = await get_db()
 
     import importlib

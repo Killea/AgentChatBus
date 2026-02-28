@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import time
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
@@ -239,7 +240,49 @@ async def api_messages(thread_id: str, after_seq: int = 0, limit: int = 200, inc
     except asyncio.TimeoutError:
         raise HTTPException(status_code=503, detail="Database operation timeout")
     return [{"id": m.id, "author": m.author, "author_id": m.author_id, "author_name": m.author_name, "role": m.role, "content": m.content,
-             "seq": m.seq, "created_at": m.created_at.isoformat()} for m in msgs]
+             "seq": m.seq, "created_at": m.created_at.isoformat(), "metadata": m.metadata} for m in msgs]
+
+
+# ─────────────────────────────────────────────
+# Image Upload API
+# ─────────────────────────────────────────────
+
+UPLOAD_DIR = Path(__file__).resolve().parent / "static" / "uploads"
+
+@app.post("/api/upload/image")
+async def api_upload_image(request: Request):
+    """Upload an image and return its URL."""
+    try:
+        form = await request.form()
+        file = form.get("file")
+        if not file or not file.filename:
+            raise HTTPException(status_code=400, detail="No file provided")
+        
+        # Validate file type
+        if not file.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail="File must be an image")
+        
+        # Create upload directory if it doesn't exist
+        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        
+        # Generate unique filename
+        ext = Path(file.filename).suffix or ".png"
+        unique_name = f"{uuid.uuid4()}{ext}"
+        file_path = UPLOAD_DIR / unique_name
+        
+        # Save file
+        contents = await file.read()
+        with open(file_path, "wb") as f:
+            f.write(contents)
+        
+        # Return URL
+        file_url = f"/static/uploads/{unique_name}"
+        return {"url": file_url, "name": file.filename}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Image upload error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/agents")
@@ -249,12 +292,19 @@ async def api_agents():
         agents = await asyncio.wait_for(crud.agent_list(db), timeout=DB_TIMEOUT)
     except asyncio.TimeoutError:
         raise HTTPException(status_code=503, detail="Database operation timeout")
-    return [{"id": a.id, "name": a.name, "display_name": a.display_name, "alias_source": a.alias_source,
-             "description": a.description, "ide": a.ide, "model": a.model,
-             "is_online": a.is_online, "last_heartbeat": a.last_heartbeat.isoformat(),
-             "last_activity": a.last_activity,
-             "last_activity_time": a.last_activity_time.isoformat() if a.last_activity_time else None,
-             "token": a.token} for a in agents]
+
+    result = []
+    for a in agents:
+        result.append({
+            "id": a.id, "name": a.name, "display_name": a.display_name, "alias_source": a.alias_source,
+            "description": a.description, "ide": a.ide, "model": a.model,
+            "is_online": a.is_online, "last_heartbeat": a.last_heartbeat.isoformat(),
+            "last_activity": a.last_activity,
+            "last_activity_time": a.last_activity_time.isoformat() if a.last_activity_time else None,
+            "token": a.token
+        })
+
+    return result
 
 
 @app.get("/api/settings")
@@ -298,6 +348,9 @@ class MessageCreate(BaseModel):
     author: str = "human"
     role: Literal["user", "assistant", "system"] = "user"
     content: str
+    mentions: list[str] | None = None
+    metadata: dict | None = None
+    images: list[dict] | None = None  # [{url: str, name: str}, ...]
 
 @app.post("/api/threads", status_code=201)
 async def api_create_thread(body: ThreadCreate):
@@ -321,16 +374,34 @@ async def api_post_message(thread_id: str, body: MessageCreate):
         raise HTTPException(status_code=503, detail="Database operation timeout")
     if t is None:
         raise HTTPException(status_code=404, detail="Thread not found")
+        
+    msg_metadata = body.metadata or {}
+    if body.mentions:
+        msg_metadata["mentions"] = body.mentions
+    if body.images:
+        msg_metadata["images"] = body.images
+
     try:
         m = await asyncio.wait_for(
             crud.msg_post(db, thread_id=thread_id, author=body.author,
-                         content=body.content, role=body.role),
+                         content=body.content, role=body.role,
+                         metadata=msg_metadata if msg_metadata else None),
             timeout=DB_TIMEOUT
         )
     except asyncio.TimeoutError:
         raise HTTPException(status_code=503, detail="Database operation timeout")
-    return {"id": m.id, "seq": m.seq, "author": m.author,
-            "role": m.role, "content": m.content}
+    
+    # Return the full message with metadata
+    result = {"id": m.id, "seq": m.seq, "author": m.author,
+            "role": m.role, "content": m.content, "created_at": m.created_at.isoformat()}
+    
+    # Add metadata (includes mentions and images)
+    if m.metadata:
+        result["metadata"] = m.metadata
+    else:
+        result["metadata"] = None
+    
+    return result
 
 
 # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -347,6 +418,7 @@ class AgentRegister(BaseModel):
 class AgentToken(BaseModel):
     agent_id: str
     token: str
+
 
 @app.post("/api/agents/register", status_code=200)
 async def api_agent_register(body: AgentRegister):
@@ -428,6 +500,9 @@ async def api_agent_unregister(body: AgentToken):
 
 
 # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+
+# ─────────────────────────────────────────────
 # Thread state management REST (for web console)
 # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
@@ -518,6 +593,46 @@ async def api_thread_archive(thread_id: str):
 
 
 # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+@app.post("/api/threads/{thread_id}/unarchive")
+async def api_thread_unarchive(thread_id: str):
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        t = await asyncio.wait_for(crud.thread_get(db, thread_id), timeout=DB_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+    if t is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    try:
+        ok = await asyncio.wait_for(
+            crud.thread_unarchive(db, thread_id),
+            timeout=DB_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not ok:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return {"ok": True}
+
+
+@app.delete("/api/threads/{thread_id}")
+async def api_thread_delete(thread_id: str):
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        ok = await asyncio.wait_for(
+            crud.thread_delete(db, thread_id),
+            timeout=DB_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+
+    if not ok:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return {"ok": True}
+
+
+# ─────────────────────────────────────────────
 # Health check
 # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
