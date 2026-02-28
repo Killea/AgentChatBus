@@ -517,7 +517,13 @@ async def agent_msg_wait(db: aiosqlite.Connection, agent_id: str, token: str) ->
         row = await cur.fetchone()
     if row is None or row["token"] != token:
         return False
-    return await _set_agent_activity(db, agent_id, "msg_wait", touch_heartbeat=False)
+    # When an agent is performing a long-poll `msg_wait`, treat that as an
+    # indication the agent is actively connected — update the heartbeat so the
+    # `/api/agents` endpoint reports `is_online` correctly while the agent is
+    # waiting. Previously this left `last_heartbeat` untouched, causing clients
+    # that only long-poll (without sending explicit heartbeats) to appear
+    # offline.
+    return await _set_agent_activity(db, agent_id, "msg_wait", touch_heartbeat=True)
 
 
 async def agent_msg_post(db: aiosqlite.Connection, agent_id: str) -> bool:
@@ -555,6 +561,18 @@ def _row_to_agent(row: aiosqlite.Row) -> AgentInfo:
     last_activity_raw = row["last_activity_time"] if "last_activity_time" in row.keys() else None
     last_activity_time = _parse_dt(last_activity_raw) if last_activity_raw else None
 
+    # Consider either the last heartbeat OR the most recent activity timestamp
+    # as signals of being "online". This helps in cases where `last_heartbeat`
+    # wasn't updated but the agent performed a recent activity (e.g. msg_wait
+    # recorded last_activity_time). Use whichever is freshest.
+    now = datetime.now(timezone.utc)
+    activity_elapsed = (now - last_activity_time).total_seconds() if last_activity_time else None
+    is_online = False
+    if elapsed is not None and elapsed < AGENT_HEARTBEAT_TIMEOUT:
+        is_online = True
+    elif activity_elapsed is not None and activity_elapsed < AGENT_HEARTBEAT_TIMEOUT:
+        is_online = True
+
     return AgentInfo(
         id=row["id"],
         name=row["name"],
@@ -564,7 +582,7 @@ def _row_to_agent(row: aiosqlite.Row) -> AgentInfo:
         capabilities=row["capabilities"],
         registered_at=_parse_dt(row["registered_at"]),
         last_heartbeat=last_hb,
-        is_online=elapsed < AGENT_HEARTBEAT_TIMEOUT,
+        is_online=is_online,
         token=row["token"],
         display_name=display_name,
         alias_source=alias_source,

@@ -319,11 +319,21 @@ async def api_agents():
         raise HTTPException(status_code=503, detail="Database operation timeout")
 
     result = []
+    # Consider active SSE connections as a sign the agent is online even if the
+    # DB heartbeat is slightly stale. mcp_server maintains a per-session mapping
+    # of connected agents which we consult here to reflect live connections in
+    # the `/api/agents` response.
+    try:
+        active_agent_ids = {v.get("agent_id") for v in mcp_server._connection_agents.values() if v.get("agent_id")}
+    except Exception:
+        active_agent_ids = set()
+
     for a in agents:
+        is_online = bool(a.is_online or (a.id in active_agent_ids))
         result.append({
             "id": a.id, "name": a.name, "display_name": a.display_name, "alias_source": a.alias_source,
             "description": a.description, "ide": a.ide, "model": a.model,
-            "is_online": a.is_online, "last_heartbeat": a.last_heartbeat.isoformat(),
+            "is_online": is_online, "last_heartbeat": a.last_heartbeat.isoformat(),
             "last_activity": a.last_activity,
             "last_activity_time": a.last_activity_time.isoformat() if a.last_activity_time else None
         })
