@@ -164,12 +164,24 @@
           }
         });
       }
+
+      // Also include all agents that are invitable (e.g. CLI Agents in configuration)
+      // so they appear in the thread's status bar and can be clicked/invited.
+      allAgents.forEach((a) => {
+        if (a.is_invitable) {
+          const key = a.id || a.agent_id || a.name;
+          if (key && !participantIdMap.has(key)) {
+            participantIdMap.set(key, a);
+          }
+        }
+      });
+
       participants = Array.from(participantIdMap.values());
       isThreadMode = participants.length > 0;
     }
 
     if (!isThreadMode) {
-      participants = allAgents.filter((a) => getAgentState(a) !== "Offline");
+      participants = allAgents.filter((a) => getAgentState(a) !== "Offline" || a.is_invitable);
       isThreadMode = false;
     }
 
@@ -197,7 +209,7 @@
       const label = String(a.display_name ?? a.name ?? "").trim() || "Unknown";
       const offlineTime = getOfflineTime(a);
       const offlineDisplay = offlineTime ? ` (${offlineTime})` : "";
-      const isLongOffline = isOfflineMoreThanHour(a);
+      const isLongOffline = isOfflineMoreThanHour(a) && !a.is_invitable;
 
       const compressedChar = getCompressedOfflineChar(offlineTime);
       const item = document.createElement("acb-agent-status-item");
