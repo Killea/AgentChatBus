@@ -143,6 +143,16 @@
     menu.style.left = `${Math.max(8, x)}px`;
     menu.style.top = `${Math.max(8, y)}px`;
 
+    // 高亮当前右键点击的 thread
+    const threadItems = document.querySelectorAll('.thread-item');
+    threadItems.forEach(item => {
+      if (item.getAttribute('data-thread-id') === String(thread.id)) {
+        item.classList.add('active');
+      } else {
+        item.classList.remove('active');
+      }
+    });
+
     return thread;
   }
 
