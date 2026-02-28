@@ -1694,12 +1694,11 @@
       applySavedTheme();
       await refreshThreads();
       await refreshAgents();
-      await updateStatusBar();
       updateOnlinePresence();
       startSSE();
       // Temporarily disable periodic agent polling to avoid showing many offline agents
       // setInterval(refreshAgents, 12000);
-      setInterval(updateStatusBar, 5000);  // Update status bar every 5 seconds
+      setInterval(refreshAgents, 5000);  // Update status bar every 5 seconds
 
       const tip = window.AcbTooltip.getTooltipElement();
       if (tip) {
@@ -2051,7 +2050,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       rebuildActiveThreadParticipants(msgs);
       msgs.forEach(appendBubble);
       updateOnlinePresence();
-      await updateStatusBar();
+      await refreshAgents();
       if (msgs.length) lastSeq = msgs[msgs.length - 1].seq;
       scrollBottom(false);
     }
@@ -2066,7 +2065,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       });
       msgs.forEach(appendBubble);
       updateOnlinePresence();
-      await updateStatusBar();
+      await refreshAgents();
       msgs.forEach(m => { lastSeq = Math.max(lastSeq, m.seq); });
       if (msgs.length) scrollBottom(true);
     }
@@ -2444,8 +2443,19 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     // Agents
     // ==============================================================================================
     async function refreshAgents() {
-      // Delegate to updateStatusBar() for consistency
-      await updateStatusBar();
+      // Delegate to window.AcbAgents.updateStatusBar() for consistency
+      await window.AcbAgents.updateStatusBar({
+        api,
+        setCurrentAgents: (agents) => { currentAgents = agents; },
+        getActiveThreadId: () => activeThreadId,
+        getAgentState,
+        getStateEmoji,
+        getOfflineTime,
+        isOfflineMoreThanHour,
+        getCompressedOfflineChar,
+        escapeHtml,
+        bindAgentTooltipEvents,
+      });
     }
 
     // ==============================================================================================
@@ -2536,37 +2546,24 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         const offlineDisplay = offlineTime ? ` (${offlineTime})` : '';
         const isLongOffline = isOfflineMoreThanHour(a);
 
-        const item = document.createElement('div');
-        item.className = 'agent-status-item';
+        const compressedChar = getCompressedOfflineChar(offlineTime);
+        const item = document.createElement('acb-agent-status-item');
+        item.setData({
+          emoji,
+          label,
+          state,
+          offlineDisplay,
+          isLongOffline,
+          compressedChar,
+          escapeHtml,
+        });
 
         // Set data-agent-id for click-to-mention functionality
         if (a && a.id) {
           item.dataset.agentId = a.id;
+          bindAgentTooltipEvents(item, a);
         } else if (a && a.agent_id) {
           item.dataset.agentId = a.agent_id;
-        }
-
-        // Compress display if offline > 1 hour: just emoji + single char
-        if (isLongOffline) {
-          const compressedChar = getCompressedOfflineChar(offlineTime);
-          item.innerHTML = `
-                <div class="agent-status-emoji">${emoji}</div>
-                <div class="agent-status-text-compact">${compressedChar}</div>
-              `;
-        } else {
-          // Remove thread info display to keep agent list clean
-          item.innerHTML = `
-                <div class="agent-status-emoji">${emoji}</div>
-                <div class="agent-status-text">
-                  <div class="agent-alias">${escapeHtml(label)}</div>
-                  <div class="agent-state">${state}${offlineDisplay}</div>
-                </div>
-              `;
-        }
-
-        // τ╗æσ«Üagent tooltipΣ║ñΣ║Æ
-        if (a && a.id) {
-          bindAgentTooltipEvents(item, a);
         }
         container.appendChild(item);
       });
