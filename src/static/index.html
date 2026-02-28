@@ -415,6 +415,16 @@
       border-left-color: var(--accent);
     }
 
+    .thread-item.context-highlight {
+      background: rgba(245, 158, 11, .1);
+      border-left-color: #f59e0b;
+    }
+
+    body[data-theme="light"] .thread-item.context-highlight {
+      background: rgba(245, 158, 11, .15);
+      border-left-color: #d97706;
+    }
+
     .thread-item .ti-topic {
       font-size: 13px;
       font-weight: 500;
@@ -999,7 +1009,31 @@
       }
     }
 
-    /* Empty state: removed, web components use <acb-empty-state> */
+    /* Empty state */
+    #empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-3);
+      gap: 12px;
+    }
+
+    #empty-state .es-icon {
+      font-size: 48px;
+      opacity: .4;
+    }
+
+    #empty-state .es-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-2);
+    }
+
+    #empty-state .es-sub {
+      font-size: 13px;
+    }
 
     /* Compose */
     #compose {
@@ -1355,8 +1389,8 @@
       background: rgba(239, 68, 68, .12);
     }
 
-    /* ── Delete thread dialog ───────────────────── */
-    #delete-thread-dialog {
+    /* ── Confirm dialog ───────────────────── */
+    acb-confirm-dialog dialog {
       background: var(--bg-card);
       border: 1px solid var(--border-light);
       border-radius: 14px;
@@ -1365,30 +1399,31 @@
       max-width: 90vw;
       box-shadow: var(--shadow);
       color: var(--text-1);
+      margin: auto;
     }
 
-    #delete-thread-dialog::backdrop {
+    acb-confirm-dialog dialog::backdrop {
       background: rgba(0, 0, 0, .55);
     }
 
-    #delete-thread-dialog h3 {
+    acb-confirm-dialog .confirm-title {
       font-size: 15px;
       font-weight: 600;
       margin: 0 0 12px;
     }
 
-    #delete-thread-dialog p {
+    acb-confirm-dialog .confirm-message {
       font-size: 13px;
       color: var(--text-2);
       margin: 0 0 20px;
       line-height: 1.5;
     }
 
-    #delete-thread-dialog p strong {
+    acb-confirm-dialog .confirm-message strong {
       color: var(--text-1);
     }
 
-    #delete-thread-dialog menu {
+    acb-confirm-dialog .confirm-actions {
       display: flex;
       gap: 10px;
       justify-content: flex-end;
@@ -1524,7 +1559,7 @@
   <div id="topbar">
     <div class="logo"><img src="/static/bus.png" alt="Bus" />AgentChatBus</div>
     <div id="footer-link">
-      <a href="https://github.com/Killea/AgentChatBus" target="_blank" rel="noopener noreferrer">GitHub ┬╖
+      <a href="https://github.com/Killea/AgentChatBus" target="_blank" rel="noopener noreferrer">GitHub
         AgentChatBus</a>
     </div>
     <div class="sep"></div>
@@ -1534,7 +1569,8 @@
     <!-- <button id="btn-settings" type="button" onclick="openSettingsModal()" title="MCP Server Settings"
       style="background: transparent; border: 1px solid var(--border-light); border-radius: 8px; font-size: 16px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-1); margin-left: 8px; transition: background 0.15s;">⚙️</button> -->
     <acb-icon-button button-id="btn-theme-toggle" label="Light" action="toggleTheme"></acb-icon-button>
-    <acb-icon-button button-id="btn-new-thread" label="＋ New Thread" action="openModal" title="Create new thread"></acb-icon-button>
+    <acb-icon-button button-id="btn-new-thread" label="＋ New Thread" action="openModal"
+      title="Create new thread"></acb-icon-button>
     <acb-icon-button button-id="btn-settings" label="⚙️" action="openSettingsModal" title="MCP Server Settings"
       aria-label="MCP Server Settings"></acb-icon-button>
   </div>
@@ -1582,16 +1618,8 @@
       onclick="deleteThreadFromMenu()">Delete</button>
   </div>
 
-  <!-- ── Delete thread confirmation dialog ─────── -->
-  <dialog id="delete-thread-dialog">
-    <h3>Delete thread</h3>
-    <p>Permanently delete <strong id="delete-thread-topic"></strong><span id="delete-thread-meta"></span>? This cannot
-      be undone.</p>
-    <menu>
-      <button type="button" value="cancel" class="btn-secondary" autofocus>Cancel</button>
-      <button type="button" value="delete" class="btn-destructive">Delete</button>
-    </menu>
-  </dialog>
+  <!-- ── Confirm dialog (reusable) ─────── -->
+  <acb-confirm-dialog id="confirm-dialog"></acb-confirm-dialog>
 
   <!-- <div id="agent-status-info-tooltip" class="">
     <div class="state-item"><span class="state-emoji">🟢</span> <strong>Active:</strong> Agent has activity within 30
@@ -1638,6 +1666,7 @@
   <script src="/static/js/shared-agents.js?v=2"></script>
   <script src="/static/js/shared-chat.js?v=2"></script>
   <script src="/static/js/shared-tooltip.js?v=2"></script>
+  <script src="/static/js/components/acb-confirm-dialog.js?v=2"></script>
   <script>
     // ==============================================================================================
     // State
@@ -1673,7 +1702,8 @@
       await updateStatusBar();
       updateOnlinePresence();
       startSSE();
-      setInterval(refreshAgents, 12000);
+      // Temporarily disable periodic agent polling to avoid showing many offline agents
+      // setInterval(refreshAgents, 12000);
       setInterval(updateStatusBar, 5000);  // Update status bar every 5 seconds
 
       const tip = window.AcbTooltip.getTooltipElement();
@@ -2067,23 +2097,17 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       const { id, topic } = contextMenuThread;
       hideThreadContextMenu();
 
-      document.getElementById('delete-thread-topic').textContent = topic || id;
-      document.getElementById('delete-thread-meta').textContent = '';
+      const confirmDialog = document.getElementById('confirm-dialog');
+      if (!confirmDialog) return;
 
-      const dlg = document.getElementById('delete-thread-dialog');
-      dlg.returnValue = '';
-      dlg.showModal();
+      const confirmed = await confirmDialog.show({
+        title: 'Delete thread',
+        message: `Permanently delete <strong>${esc(topic || id)}</strong>? This cannot be undone.`,
+        confirmText: 'Delete',
+        confirmClass: 'btn-destructive'
+      });
 
-      function onDialogClick(e) {
-        const btn = e.target.closest('button[value]');
-        if (!btn) return;
-        dlg.close(btn.value);
-      }
-      dlg.addEventListener('click', onDialogClick, { once: true });
-      await new Promise(resolve => dlg.addEventListener('close', resolve, { once: true }));
-      dlg.removeEventListener('click', onDialogClick);
-
-      if (dlg.returnValue !== 'delete') return;
+      if (!confirmed) return;
 
       const result = await api(`/api/threads/${id}`, { method: 'DELETE' });
       if (!result || result.ok !== true) return;
@@ -2240,7 +2264,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         <div class="msg-col">
           <div class="msg-header">
             <span class="msg-author-label" style="color:${color}">${esc(authorLabel)}</span>
-            <span class="msg-time-label">seq ${m.seq} ┬╖ ${fmtTime(m.created_at)}</span>
+            <span class="msg-time-label">seq ${m.seq} ${fmtTime(m.created_at)}</span>
           </div>
           <div class="bubble-v2" style="border-color:${color}55;${isHuman ? 'border-right-color' : 'border-left-color'}:${color}"></div>
         </div>`;

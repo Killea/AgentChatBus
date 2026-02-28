@@ -68,6 +68,7 @@
       const activeClass = this._active ? " active" : "";
       this.className = `thread-item${activeClass}`;
       this.id = `ti-${this._thread.id}`;
+      this.setAttribute('data-thread-id', String(this._thread.id));
       this.innerHTML = `
         <div class="ti-topic">${esc(this._thread.topic)}</div>
         <div class="ti-meta">
