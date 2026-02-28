@@ -1628,14 +1628,7 @@
   </div> -->
 
 
-  <acb-compose-shell></acb-compose-shell>
-  <!-- Agent Status Bar -->
-  <!-- <acb-agent-status-shell></acb-agent-status-shell> -->
-  </div>
-  </div>
-
   <acb-thread-context-menu></acb-thread-context-menu>
-
   <acb-modal-shell></acb-modal-shell>
 
   <script src="/static/js/shared-api.js?v=2"></script>
@@ -2026,48 +2019,34 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     }
 
     async function selectThread(id, topic, status) {
-      activeThreadId = id;
-      activeThreadStatus = status;
-      lastSeq = 0;
-      activeThreadLastSeenMs.clear();
-
-      // Sidebar highlight
-      document.querySelectorAll('.thread-item').forEach(el => el.classList.remove('active'));
-      const ti = document.getElementById(`ti-${id}`);
-      if (ti) ti.classList.add('active');
-
-      // Header
-      document.getElementById('thread-header').style.display = 'flex';
-      document.getElementById('thread-title').textContent = topic;
-      document.getElementById('compose').classList.add('visible');
-
-      // Clear messages
-      const box = document.getElementById('messages');
-      box.innerHTML = '';
-
-      // Load history
-      const msgs = await api(`/api/threads/${id}/messages?after_seq=0&limit=300&include_system_prompt=1`) || [];
-      rebuildActiveThreadParticipants(msgs);
-      msgs.forEach(appendBubble);
-      updateOnlinePresence();
-      await refreshAgents();
-      if (msgs.length) lastSeq = msgs[msgs.length - 1].seq;
-      scrollBottom(false);
+      return window.AcbChat.selectThread({
+        id, topic, status,
+        setActiveThread: (id, status) => { activeThreadId = id; activeThreadStatus = status; },
+        api,
+        rebuildActiveThreadParticipants,
+        appendBubble,
+        updateOnlinePresence,
+        updateStatusBar: refreshAgents,
+        setLastSeq: (s) => { lastSeq = s; },
+        clearThreadParticipants: () => activeThreadLastSeenMs.clear(),
+        scrollBottom,
+      });
     }
 
     async function loadNewMessages() {
-      if (!activeThreadId) return;
-      const msgs = await api(`/api/threads/${activeThreadId}/messages?after_seq=${lastSeq}&limit=100`) || [];
-      msgs.forEach((m) => {
-        const key = getAgentPresenceKey(m);
-        const label = getAgentDisplayName(m);
-        if (key) recordThreadAgentActivity(key, label, m.created_at);
+      return window.AcbChat.loadNewMessages({
+        getActiveThreadId: () => activeThreadId,
+        getLastSeq: () => lastSeq,
+        api,
+        getAgentPresenceKey,
+        getAgentDisplayName,
+        recordThreadAgentActivity,
+        appendBubble,
+        updateOnlinePresence,
+        updateStatusBar: refreshAgents,
+        setLastSeq: (fn) => { lastSeq = (typeof fn === 'function' ? fn(lastSeq) : fn); },
+        scrollBottom,
       });
-      msgs.forEach(appendBubble);
-      updateOnlinePresence();
-      await refreshAgents();
-      msgs.forEach(m => { lastSeq = Math.max(lastSeq, m.seq); });
-      if (msgs.length) scrollBottom(true);
     }
 
     async function closeThread(threadId = activeThreadId) {
@@ -2167,37 +2146,8 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     // Messages
     // ==============================================================================================
 
-    // ---- Color palette: 12 distinct, accessible hues ----------------------------------------------------
-    const AUTHOR_PALETTE = [
-      '#60a5fa', // blue
-      '#34d399', // emerald
-      '#f472b6', // pink
-      '#fb923c', // orange
-      '#a78bfa', // purple
-      '#22d3ee', // cyan
-      '#facc15', // yellow
-      '#f87171', // red
-      '#4ade80', // green
-      '#38bdf8', // sky
-      '#e879f9', // fuchsia
-      '#a3e635', // lime
-    ];
-    const HUMAN_COLOR = '#fb923c'; // warm orange ΓÇö always human
-    const SYSTEM_COLOR = '#fbbf24'; // amber  ΓÇö system events
-
-    // Cache so the same author always gets the same color in a session
-    const _colorCache = {};
-
     function authorColor(author) {
-      if (author === 'human') return HUMAN_COLOR;
-      if (author === 'system') return SYSTEM_COLOR;
-      if (_colorCache[author]) return _colorCache[author];
-      // Stable hash palette index
-      let h = 0;
-      for (let i = 0; i < author.length; i++) h = (Math.imul(31, h) + author.charCodeAt(i)) | 0;
-      const color = AUTHOR_PALETTE[Math.abs(h) % AUTHOR_PALETTE.length];
-      _colorCache[author] = color;
-      return color;
+      return window.AcbUtils.authorColor(author);
     }
 
     function fmtTime(iso) {
@@ -2220,8 +2170,8 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       return window.AcbMessageRenderer.renderTextWithInlineCode(containerEl, text);
     }
 
-    function renderMessageContent(containerEl, rawText) {
-      return window.AcbMessageRenderer.renderMessageContent(containerEl, rawText);
+                  function renderMessageContent(containerEl, rawText, metadata = null) {
+                    return window.AcbMessageRenderer.renderMessageContent(containerEl, rawText, metadata);
     }
 
     function appendBubble(m) {
@@ -2253,24 +2203,29 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       row.setAttribute('data-author-id', String(m.author_id ?? authorLabel));
       row.setAttribute('data-seq', String(m.seq));
 
-      // Check if this message has mentions (Phase 2: visual highlight)
-      if (m.mentions && Array.isArray(m.mentions) && m.mentions.length > 0) {
+      // Check if this message has mentions (look in metadata if string/object)
+      let metaObj = null;
+      if (m.metadata) {
+        metaObj = (typeof m.metadata === 'string') ? JSON.parse(m.metadata) : m.metadata;
+      }
+      const hasMentions = metaObj && metaObj.mentions && Array.isArray(metaObj.mentions) && metaObj.mentions.length > 0;
+      if (hasMentions) {
         row.classList.add('message-has-mentions');
       }
 
       row.innerHTML = `
-        <div class="msg-avatar" style="background:${bgAlpha};color:${color};border:1px solid ${color}44">${initials}</div>
-        <div class="msg-col">
-          <div class="msg-header">
-            <span class="msg-author-label" style="color:${color}">${esc(authorLabel)}</span>
-            <span class="msg-time-label">seq ${m.seq} ${fmtTime(m.created_at)}</span>
-          </div>
-          <div class="bubble-v2" style="border-color:${color}55;${isHuman ? 'border-right-color' : 'border-left-color'}:${color}"></div>
-        </div>`;
+      <div class="msg-avatar" style="background:${bgAlpha};color:${color};border:1px solid ${color}44">${initials}</div>
+      <div class="msg-col">
+        <div class="msg-header">
+          <span class="msg-author-label" style="color:${color}">${esc(authorLabel)}</span>
+          <span class="msg-time-label">seq ${m.seq} ${fmtTime(m.created_at)}</span>
+        </div>
+        <div class="bubble-v2" style="border-color:${color}55;${isHuman ? 'border-right-color' : 'border-left-color'}:${color}"></div>
+      </div>`;
 
       const bubbleEl = row.querySelector('.bubble-v2');
       if (bubbleEl) {
-        renderMessageContent(bubbleEl, m.content);
+        renderMessageContent(bubbleEl, m.content, m.metadata);
 
         // Render images if any
         let images = null;
@@ -2370,69 +2325,18 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     // Compose
     // ==============================================================================================
     async function sendMessage() {
-      const acb = document.querySelector('acb-compose-shell');
-      if (!acb) return;
-
-      const input = acb.querySelector('#compose-input');
-      const authorInput = acb.querySelector('#compose-author');
-      const author = authorInput ? authorInput.value.trim() || "human" : "human";
-
-      // Extract text content
-      let content = '';
-      for (const node of input.childNodes) {
-        if (node.nodeType === 3) {
-          content += node.textContent;
-        } else if (node.nodeType === 1 && !node.getAttribute('data-mention-id')) {
-          content += node.textContent;
-        }
-      }
-      content = content.trim();
-
-      // Get uploaded images
-      const images = acb.uploadedImages || [];
-
-      if ((!content && images.length === 0) || !activeThreadId) return;
-
-      // Extract mentions
-      const mentions = [];
-      for (const child of input.childNodes) {
-        if (child.nodeType === 1 && child.getAttribute && child.getAttribute('data-mention-id')) {
-          mentions.push(child.getAttribute('data-mention-id'));
-        }
-      }
-
-      updateOnlinePresence();
-      input.innerHTML = '';
-      const messageBar = acb.querySelector("#mentions-bar");
-      if (messageBar) messageBar.style.display = 'none';
-      acb.uploadedImages = [];
-      if (acb.renderImagePreview) acb.renderImagePreview();
-
-      const payload = {
-        author,
-        role: "user",
-        content,
-        mentions: mentions.length > 0 ? mentions : undefined,
-        images: images.length > 0 ? images : undefined
-      };
-
-      const m = await api(`/api/threads/${activeThreadId}/messages`, {
-        method: "POST",
-        body: JSON.stringify(payload),
+      return window.AcbChat.sendMessage({
+        getActiveThreadId: () => activeThreadId,
+        updateOnlinePresence,
+        api,
+        setLastSeq: (fn) => { lastSeq = (typeof fn === 'function' ? fn(lastSeq) : fn); },
+        appendBubble,
+        scrollBottom,
       });
-
-      if (m) {
-        lastSeq = Math.max(lastSeq, m.seq);
-        appendBubble({ ...m, created_at: new Date().toISOString() });
-        scrollBottom(true);
-      }
     }
 
     function handleKey(e) {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        sendMessage();
-      }
+      return window.AcbChat.handleKey(e, sendMessage);
     }
 
     function autoResize(el) {

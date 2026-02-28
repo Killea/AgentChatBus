@@ -53,6 +53,39 @@
     }
   }
 
+  // ---- Color palette: 12 distinct, accessible hues ----------------------------------------------------
+  const AUTHOR_PALETTE = [
+    "#60a5fa", // blue
+    "#34d399", // emerald
+    "#f472b6", // pink
+    "#fb923c", // orange
+    "#a78bfa", // purple
+    "#22d3ee", // cyan
+    "#facc15", // yellow
+    "#f87171", // red
+    "#4ade80", // green
+    "#38bdf8", // sky
+    "#e879f9", // fuchsia
+    "#a3e635", // lime
+  ];
+  const HUMAN_COLOR = "#fb923c"; // warm orange — always human
+  const SYSTEM_COLOR = "#fbbf24"; // amber — system events
+  const _colorCache = {};
+
+  function authorColor(author) {
+    if (author === "human") return HUMAN_COLOR;
+    if (author === "system") return SYSTEM_COLOR;
+    if (_colorCache[author]) return _colorCache[author];
+
+    let h = 0;
+    for (let i = 0; i < author.length; i++) {
+      h = (Math.imul(31, h) + author.charCodeAt(i)) | 0;
+    }
+    const color = AUTHOR_PALETTE[Math.abs(h) % AUTHOR_PALETTE.length];
+    _colorCache[author] = color;
+    return color;
+  }
+
   window.AcbUtils = {
     escapeHtml,
     esc,
@@ -60,5 +93,6 @@
     timeAgo,
     autoResize,
     copyTextWithFallback,
+    authorColor,
   };
 })();

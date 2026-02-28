@@ -217,9 +217,19 @@
     containerEl.insertAdjacentHTML("beforeend", htmlStr);
   }
 
-  function renderMessageContent(containerEl, rawText) {
+  function renderMessageContent(containerEl, rawText, metadata = null) {
     containerEl.textContent = "";
     const tokens = tokenizeMessage(rawText);
+
+    // Parse mentions from metadata for the pill-rendering logic
+    let mentions = [];
+    let mentionLabels = {};
+    if (metadata) {
+      const meta = typeof metadata === 'string' ? JSON.parse(metadata) : metadata;
+      mentions = meta.mentions || [];
+      mentionLabels = meta.mention_labels || {};
+    }
+
     for (const tok of tokens) {
       if (tok.type === "code_block") {
         const wrap = document.createElement("div");
@@ -255,7 +265,82 @@
         wrap.appendChild(pre);
         containerEl.appendChild(wrap);
       } else {
-        renderTextWithMarkdown(containerEl, tok.text);
+        // High-quality mention pill rendering
+        const text = tok.text;
+        const html = renderMarkdownToHTML(text);
+
+        // Wrap the HTML in a temporary element to process mentions
+        const temp = document.createElement("div");
+        temp.innerHTML = html;
+
+        // Find and replace @Mentions with pills if they exist in metadata
+        if (Object.keys(mentionLabels).length > 0) {
+          // Identify all labels we know about
+          const labels = Object.values(mentionLabels);
+          if (labels.length > 0) {
+            // Simple regex for all @Nickname occurrences
+            // Note: This is an approximation. Reliable matching usually requires more metadata about positions.
+            // But this matches the user request for "carrying names".
+
+            // Create a map of Label -> ID for reverse lookup
+            const labelToId = {};
+            for (const [id, label] of Object.entries(mentionLabels)) {
+              labelToId[label] = id;
+            }
+
+            // Correctly handle multiple mentions in text nodes without breaking the walker
+            const walker = document.createTreeWalker(temp, NodeFilter.SHOW_TEXT);
+            const textNodes = [];
+            let n;
+            while (n = walker.nextNode()) textNodes.push(n);
+
+            // Regex that matches any of our known labels
+            const escapedLabels = labels.map(l => l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+            // Sort long labels first for correct matching
+            escapedLabels.sort((a, b) => b.length - a.length);
+            const regex = new RegExp(`@(${escapedLabels.join('|')})`, 'g');
+
+            for (const textNode of textNodes) {
+              const text = textNode.textContent;
+              let lastIndex = 0;
+              let match;
+              let hasMatch = false;
+              const fragment = document.createDocumentFragment();
+
+              while ((match = regex.exec(text)) !== null) {
+                hasMatch = true;
+                // Text before the mention
+                if (match.index > lastIndex) {
+                  fragment.appendChild(document.createTextNode(text.substring(lastIndex, match.index)));
+                }
+
+                // The mention pill
+                const matchedLabel = match[1];
+                const mid = labelToId[matchedLabel];
+                const pill = document.createElement('span');
+                pill.className = 'mention-pill-sent';
+                pill.style.cssText = 'background: rgba(59,130,246,0.15); color: #3b82f6; padding: 1px 5px; border-radius: 4px; margin: 0 2px; font-weight: 500; border: 1px solid rgba(59,130,246,0.3); font-size: 0.95em; cursor: default;';
+                pill.textContent = match[0];
+                pill.title = `Agent ID: ${mid}`;
+                fragment.appendChild(pill);
+
+                lastIndex = regex.lastIndex;
+              }
+
+              if (hasMatch) {
+                // Remaining text
+                if (lastIndex < text.length) {
+                  fragment.appendChild(document.createTextNode(text.substring(lastIndex)));
+                }
+                textNode.parentNode.replaceChild(fragment, textNode);
+              }
+            }
+          }
+        }
+
+        while (temp.firstChild) {
+          containerEl.appendChild(temp.firstChild);
+        }
       }
     }
   }

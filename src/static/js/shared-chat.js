@@ -93,34 +93,44 @@
     const author = document.getElementById("compose-author").value.trim() || "human";
     const acb = document.querySelector('acb-compose-shell');
 
-    // Extract text content from contenteditable div
-    let content = '';
-    for (const node of input.childNodes) {
-      if (node.nodeType === 3) {
-        content += node.textContent;
-      } else if (node.nodeType === 1) {
-        content += node.textContent;
+    // Extract content and mentions with full recursion for nested structures
+    const mentions = [];
+    const mentionLabels = {};
+    function extractRichContent(root) {
+      let text = '';
+      for (const node of root.childNodes) {
+        if (node.nodeType === 3) {
+          text += node.textContent;
+        } else if (node.nodeType === 1) {
+          // If it's a mention pill
+          if (node.hasAttribute('data-mention-id')) {
+            const mid = node.getAttribute('data-mention-id');
+            const mlabel = node.getAttribute('data-mention-label') || node.textContent.replace(/^@/, '');
+            if (!mentions.includes(mid)) {
+              mentions.push(mid);
+              mentionLabels[mid] = mlabel;
+            }
+            text += node.textContent; // Include "@Nickname" in plain text
+          } else {
+            // Normal element (like a div from Enter or a br)
+            const innerText = extractRichContent(node);
+            text += innerText;
+            if (node.tagName === 'DIV' || node.tagName === 'P' || node.tagName === 'BR') {
+              if (text && !text.endsWith('\n')) text += '\n';
+            }
+          }
+        }
       }
+      return text;
     }
-    content = content.trim();
 
+    const content = extractRichContent(input).trim();
     // Get uploaded images first so image-only messages can be sent.
     const images = acb?.uploadedImages || [];
 
     if ((!content && images.length === 0) || !activeThreadId) return;
 
-    // Extract mentions from data attributes
-    const mentions = [];
-    for (const child of input.childNodes) {
-      if (child.nodeType === 1 && child.getAttribute && child.getAttribute('data-mention-id')) {
-        mentions.push(child.getAttribute('data-mention-id'));
-      }
-    }
-
     console.log(`[SendMessage] Sending message with ${mentions.length} mentions and ${images.length} images`);
-    if (images.length > 0) {
-      console.log(`[SendMessage] Images:`, images);
-    }
 
     updateOnlinePresence();
     input.innerHTML = '';
@@ -134,6 +144,7 @@
       role: "user",
       content,
       mentions: mentions.length > 0 ? mentions : undefined,
+      metadata: mentions.length > 0 ? { mention_labels: mentionLabels } : undefined,
       images: images.length > 0 ? images : undefined
     };
     console.log(`[SendMessage] Payload:`, JSON.stringify(payload));
