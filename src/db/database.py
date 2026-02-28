@@ -5,9 +5,11 @@ Uses aiosqlite for fully async, non-blocking access.
 import aiosqlite
 import asyncio
 import logging
+import threading
 from pathlib import Path
 from typing import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone, timedelta
 
 from src.config import DB_PATH
 
@@ -15,26 +17,32 @@ logger = logging.getLogger(__name__)
 
 # Module-level connection pool (single shared connection with WAL mode)
 _db: aiosqlite.Connection | None = None
-_lock = asyncio.Lock()
+_initializing = False
 
 # Schema version for consistency tracking
 SCHEMA_VERSION = 1
 
 
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
 async def get_db() -> aiosqlite.Connection:
     """Return the shared async database connection, initializing it if needed."""
-    global _db
-    if _db is None:
-        async with _lock:
-            if _db is None:
-                Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
-                _db = await aiosqlite.connect(DB_PATH)
-                _db.row_factory = aiosqlite.Row
-                # WAL mode: allows concurrent reads while writing
-                await _db.execute("PRAGMA journal_mode=WAL")
-                await _db.execute("PRAGMA foreign_keys=ON")
-                await init_schema(_db)
-                logger.info(f"Database initialized at {DB_PATH}")
+    global _db, _initializing
+    if _db is None and not _initializing:
+        _initializing = True
+        try:
+            Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
+            _db = await aiosqlite.connect(DB_PATH)
+            _db.row_factory = aiosqlite.Row
+            # WAL mode: allows concurrent reads while writing
+            await _db.execute("PRAGMA journal_mode=WAL")
+            await _db.execute("PRAGMA foreign_keys=ON")
+            await init_schema(_db)
+            logger.info(f"Database initialized at {DB_PATH}")
+        finally:
+            _initializing = False
     return _db
 
 
@@ -247,4 +255,38 @@ async def init_schema(db: aiosqlite.Connection) -> None:
         except Exception:
             pass
 
-    logger.info("Schema initialized.")
+    # Record current schema version
+    await db.execute(
+        "INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES (?, ?)",
+        (SCHEMA_VERSION, _now())
+    )
+    await db.commit()
+    
+    logger.info(f"Schema initialized (version {SCHEMA_VERSION}).")
+
+
+async def get_schema_version(db: aiosqlite.Connection) -> int | None:
+    """Get the current schema version from the database."""
+    try:
+        async with db.execute("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1") as cur:
+            row = await cur.fetchone()
+            return row["version"] if row else None
+    except Exception:
+        return None
+
+
+async def verify_schema_consistency(db: aiosqlite.Connection) -> tuple[bool, str]:
+    """Verify that the database schema matches the expected version.
+    
+    Returns:
+        (is_consistent, message)
+    """
+    try:
+        current_version = await get_schema_version(db)
+        if current_version is None:
+            return False, "Schema version table not found"
+        if current_version != SCHEMA_VERSION:
+            return False, f"Schema version mismatch: expected {SCHEMA_VERSION}, got {current_version}"
+        return True, f"Schema version {SCHEMA_VERSION} is consistent"
+    except Exception as e:
+        return False, f"Error checking schema: {e}"
