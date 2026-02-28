@@ -968,18 +968,14 @@ body[data-theme="light"] .ctx-divider {
     <acb-thread-header></acb-thread-header>
 
     <div id="messages">
-      <div id="empty-state">
-        <div class="es-icon">≡ƒÆ¼</div>
-        <div class="es-title">No thread selected</div>
-        <div class="es-sub">Create or select a thread to start watching the conversation</div>
-        </div>
+      <acb-empty-state></acb-empty-state>
         </div>
         
         <div id="compose">
           <input id="compose-author" type="text" value="human" placeholder="author" />
-          <textarea id="compose-input" rows="1" placeholder="Send a system messageΓÇª (Enter to send, Shift+Enter for newline)"
+          <textarea id="compose-input" rows="1" placeholder="Send a system message… (Enter to send, Shift+Enter for newline)"
             oninput="autoResize(this)" onkeydown="handleKey(event)"></textarea>
-          <button id="btn-send" onclick="sendMessage()" title="Send">Γ₧ñ</button>
+          <button id="btn-send" onclick="sendMessage()" title="Send">➤</button>
         </div>
         <!-- Agent Status Bar -->
         <div id="agent-status-bar">
@@ -1010,7 +1006,7 @@ body[data-theme="light"] .ctx-divider {
 <div id="modal-overlay" onclick="closeModal(event)">
   <div id="modal">
     <h3>Γ£ª Create New Thread</h3>
-    <input id="modal-topic" type="text" placeholder="Thread topicΓÇª" onkeydown="if(event.key==='Enter') submitModal()" />
+    <input id="modal-topic" type="text" placeholder="Thread topic…" onkeydown="if(event.key==='Enter') submitModal()" />
     <div class="modal-actions">
       <button class="btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn-primary" onclick="submitModal()">Create</button>
@@ -1119,12 +1115,6 @@ body[data-theme="light"] .ctx-divider {
     let activeAgentTooltipTarget = null;
     let currentAgents = []; // Cache of all agents for tooltip lookups
 
-    const EMPTY_STATE_TEMPLATE = `
-      <div id="empty-state">
-        <div class="es-icon">≡ƒÆ¼</div>
-        <div class="es-title">No thread selected</div>
-        <div class="es-sub">Create or select a thread to start watching the conversation</div>
-      </div>`;
     const EMPTY_STATE_TEMPLATE = '<acb-empty-state></acb-empty-state>';
 
     // ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
@@ -1406,7 +1396,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       const label = document.getElementById('status-label');
       dot.style.background = v ? 'var(--green)' : 'var(--red)';
       dot.style.boxShadow = v ? '0 0 8px var(--green)' : '0 0 8px var(--red)';
-      label.textContent = v ? 'Connected' : 'ReconnectingΓÇª';
+      label.textContent = v ? 'Connected' : 'Reconnecting…';
       return window.AcbSSE.setConnectedUI(v);
     }
 
@@ -1845,7 +1835,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
           <div class="msg-col">
             <div class="msg-header">
               <span class="msg-author-label" style="color:${color}">${esc(agentId)}</span>
-              <span class="msg-time-label">typingΓÇª</span>
+              <span class="msg-time-label">typing…</span>
             </div>
             <div class="typing-bubble"><span></span><span></span><span></span></div>
           </div>`;
