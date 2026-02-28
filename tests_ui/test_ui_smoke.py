@@ -40,7 +40,8 @@ _UI_TEST_PREFIX = "UI-Smoke-"
 
 def _find_thread_id_by_topic(topic: str) -> str | None:
     try:
-        with httpx.Client(base_url=BASE_URL, timeout=5) as client:
+        # Reduced timeout from 5 to 3 seconds for faster lookups
+        with httpx.Client(base_url=BASE_URL, timeout=3) as client:
             resp = client.get("/api/threads", params={"include_archived": "true"})
             if resp.status_code >= 400:
                 return None
@@ -60,12 +61,13 @@ def _find_thread_id_by_topic(topic: str) -> str | None:
 def _record_created_topic(topic: str) -> None:
     _CREATED_TOPICS.add(topic)
     # UI create is async; poll briefly until API reflects the new thread.
-    for _ in range(12):
+    # Reduced from 12 to 8 iterations for faster tests
+    for i in range(8):
         tid = _find_thread_id_by_topic(topic)
         if tid:
             _CREATED_THREAD_IDS.add(tid)
             return
-        time.sleep(0.2)
+        time.sleep(0.1)  # Reduced from 0.2 to 0.1
 
 
 def _cleanup_created_threads() -> None:
@@ -81,7 +83,8 @@ def _cleanup_created_threads() -> None:
     if not _CREATED_THREAD_IDS:
         return
 
-    with httpx.Client(base_url=BASE_URL, timeout=8) as client:
+    # Reduced timeout from 8 to 3 seconds for faster cleanup
+    with httpx.Client(base_url=BASE_URL, timeout=3) as client:
         for tid in sorted(_CREATED_THREAD_IDS):
             # Prefer hard delete; fallback to archive on older servers.
             try:
@@ -100,7 +103,8 @@ def _cleanup_created_threads() -> None:
 
 def _require_server_or_skip() -> None:
     try:
-        with httpx.Client(base_url=BASE_URL, timeout=5) as client:
+        # Reduced timeout from 5 to 3 seconds
+        with httpx.Client(base_url=BASE_URL, timeout=3) as client:
             resp = client.get("/api/threads")
             if resp.status_code < 500:
                 return
@@ -113,7 +117,8 @@ def _require_server_or_skip() -> None:
 def cleanup_old_ui_test_threads():
     """Clean up any UI test threads from previous runs before starting tests."""
     try:
-        with httpx.Client(base_url=BASE_URL, timeout=5) as client:
+        # Reduced timeout from 5 to 3 seconds
+        with httpx.Client(base_url=BASE_URL, timeout=3) as client:
             # Get all threads including archived
             resp = client.get("/api/threads", params={"include_archived": "true"})
             if resp.status_code == 200:
@@ -133,7 +138,7 @@ def cleanup_old_ui_test_threads():
     
     # Clean up any UI test threads after all tests
     try:
-        with httpx.Client(base_url=BASE_URL, timeout=5) as client:
+        with httpx.Client(base_url=BASE_URL, timeout=3) as client:
             resp = client.get("/api/threads", params={"include_archived": "true"})
             if resp.status_code == 200:
                 threads = resp.json()
@@ -158,8 +163,8 @@ def page() -> Generator[Page, None, None]:
         ctx = browser.new_context(viewport={"width": 1440, "height": 900})
         pg = ctx.new_page()
         pg.goto(BASE_URL, wait_until="load", timeout=30000)
-        # Wait for the app to be fully loaded
-        pg.wait_for_timeout(1000)
+        # Reduced wait from 1000 to 500ms - wait for the app to be fully loaded
+        pg.wait_for_timeout(500)
         yield pg
         _cleanup_created_threads()
         ctx.close()
@@ -209,71 +214,44 @@ def test_send_message_visible(page: Page) -> None:
         assert title == topic
         _record_created_topic(topic)
 
-    # Wait a bit to ensure everything is loaded
-    page.wait_for_timeout(500)
-
-    # Try to find thread ID by getting threads from API
+    # Get the current thread ID from the URL or API
     thread_id = None
-    topic = None
-
     try:
-        with httpx.Client(base_url=BASE_URL, timeout=5) as client:
+        with httpx.Client(base_url=BASE_URL, timeout=3) as client:
             threads_resp = client.get("/api/threads")
             if threads_resp.status_code == 200:
                 threads = threads_resp.json()
-                # Look for a thread with a topic matching our pattern
+                # Get the most recent thread with our prefix
                 for t in threads:
                     if t.get("topic", "").startswith(_UI_TEST_PREFIX):
                         thread_id = t.get("id")
-                        topic = t.get("topic")
                         break
     except Exception as e:
         print(f"Error getting threads: {e}")
 
     if not thread_id:
-        pytest.skip(f"Could not find thread ID. Threads: {thread_id}, Topic: {topic}")
+        pytest.skip(f"Could not find thread ID")
 
-    # Send a message via API
+    # Send a message via API with shorter timeout
     content = f"UI message {int(time.time() * 1000)}"
     try:
-        with httpx.Client(base_url=BASE_URL, timeout=5) as client:
+        with httpx.Client(base_url=BASE_URL, timeout=3) as client:
             msg_resp = client.post(
                 f"/api/threads/{thread_id}/messages",
                 json={"author": "human", "content": content, "role": "user"}
             )
-            if msg_resp.status_code >= 400:
-                print(f"Failed to send message: {msg_resp.status_code}, {msg_resp.text}")
             assert msg_resp.status_code in (200, 201), f"Failed to send message: {msg_resp.status_code}"
     except Exception as e:
         pytest.skip(f"Could not send message via API: {e}")
 
-    # Wait for the message to appear on the page (via SSE)
-    page.wait_for_timeout(2000)
+    # Wait for the message to appear on the page (via SSE) - reduced from 2000 to 1000
+    page.wait_for_timeout(1000)
 
     # Check if messages are visible
     msg_rows = page.locator(".msg-row")
     count = msg_rows.count()
 
-    # If still no messages, reload the page to force a refresh
-    if count == 0:
-        print(f"No messages found after 2s, reloading page...")
-        page.reload(wait_until="load", timeout=30000)
-        page.wait_for_timeout(1000)
-        count = msg_rows.count()
-        print(f"After reload, found {count} messages")
-
-    # If still no messages, check via API
-    if count == 0:
-        try:
-            with httpx.Client(base_url=BASE_URL, timeout=5) as client:
-                msgs_resp = client.get(f"/api/threads/{thread_id}/messages")
-                if msgs_resp.status_code == 200:
-                    messages = msgs_resp.json()
-                    print(f"API says there are {len(messages)} messages")
-        except Exception as e:
-            print(f"Error checking messages via API: {e}")
-
-    assert count > 0, f"No messages found on page after sending via API. Thread: {thread_id}, Content: {content}"
+    assert count > 0, f"No messages found on page after sending via API. Thread: {thread_id}"
 
 
 def test_thread_filter_panel_toggle(page: Page) -> None:
@@ -352,7 +330,7 @@ def test_numeric_agent_and_author_does_not_crash_js(page: Page) -> None:
 
     # Force the frontend to re-fetch agents
     page.evaluate("window.refreshAgents()")
-    page.wait_for_timeout(500)
+    page.wait_for_timeout(300)  # Reduced from 500 to 300
 
     # Click a thread to trigger selectThread -> load messages -> updateOnlinePresence
     topic = _topic("UI-Crash-Test")
@@ -360,7 +338,7 @@ def test_numeric_agent_and_author_does_not_crash_js(page: Page) -> None:
     page.wait_for_selector("#modal-overlay.visible")
     page.fill("#modal-topic", topic)
     page.click("#modal .btn-primary")
-    page.wait_for_timeout(1000)
+    page.wait_for_timeout(500)  # Reduced from 1000 to 500
     _record_created_topic(topic)
 
     # Unroute
