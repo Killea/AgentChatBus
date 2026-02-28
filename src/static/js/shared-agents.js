@@ -20,24 +20,31 @@
       .sort((a, b) => a.localeCompare(b));
 
     const nowMs = Date.now();
-    const threadOnlineKeys = Array.from(activeThreadLastSeenMs.entries())
-      .filter(
-        ([key, lastSeenMs]) =>
-          onlineAgentKeys.has(key) || nowMs - lastSeenMs <= threadActivityWindowMs
-      )
-      .map(([key]) => key);
+    // All participant keys for the active thread (both online and offline)
+    const threadAllKeys = Array.from(activeThreadLabelsByKey.keys());
+
+    // Determine which of the thread participants are considered online/recent
+    const threadOnlineKeys = threadAllKeys.filter((key) => {
+      if (onlineAgentKeys.has(key)) return true;
+      const lastSeenMs = activeThreadLastSeenMs.get(key);
+      return typeof lastSeenMs === "number" && nowMs - lastSeenMs <= threadActivityWindowMs;
+    });
+
+    const threadAllAgents = threadAllKeys
+      .map((key) => String(activeThreadLabelsByKey.get(key) || onlineAgentLabelsByKey.get(key) || key))
+      .sort((a, b) => a.localeCompare(b));
 
     const threadOnlineAgents = threadOnlineKeys
       .map((key) => String(activeThreadLabelsByKey.get(key) || onlineAgentLabelsByKey.get(key) || key))
       .sort((a, b) => a.localeCompare(b));
 
     const showingThreadScoped = Boolean(activeThreadId);
-    const total = showingThreadScoped ? threadOnlineKeys.length : onlineAgentEntries.length;
+    const total = showingThreadScoped ? threadAllKeys.length : onlineAgentEntries.length;
 
-    countEl.textContent = showingThreadScoped ? `Thread online ${total}` : `Online agents ${total}`;
+    countEl.textContent = showingThreadScoped ? `Thread agents ${total}` : `Online agents ${total}`;
 
     const tooltip = showingThreadScoped
-      ? `Thread online: ${threadOnlineAgents.length ? threadOnlineAgents.join(", ") : "(none)"} | Global online: ${onlineAgents.length ? onlineAgents.join(", ") : "(none)"}`
+      ? `Thread participants: ${threadAllAgents.length ? threadAllAgents.join(", ") : "(none)"} | Thread online: ${threadOnlineAgents.length ? threadOnlineAgents.join(", ") : "(none)"} | Global online: ${onlineAgents.length ? onlineAgents.join(", ") : "(none)"}`
       : `Agents: ${onlineAgents.length ? onlineAgents.join(", ") : "(none)"}`;
     if (window.AcbTooltip && window.AcbTooltip.setTooltip) {
       window.AcbTooltip.setTooltip(badgeEl, tooltip);
