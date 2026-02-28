@@ -28,6 +28,7 @@ from starlette.routing import Mount
 from src.config import HOST, PORT, get_config_dict, save_config_dict
 from src.db.database import get_db, close_db
 from src.db import crud
+from src.config import THREAD_TIMEOUT_ENABLED, THREAD_TIMEOUT_MINUTES, THREAD_TIMEOUT_SWEEP_INTERVAL
 from src.mcp_server import server as mcp_server, _session_language
 
 logging.basicConfig(
@@ -54,6 +55,21 @@ async def _cleanup_events_loop():
             logger.error(f"Event cleanup failed: {e}")
         await asyncio.sleep(60)
 
+async def _thread_timeout_loop() -> None:
+    """Background task: periodically close inactive threads."""
+    logger.info(f"Thread timeout sweep enabled: {THREAD_TIMEOUT_MINUTES}min inactivity threshold, sweep every {THREAD_TIMEOUT_SWEEP_INTERVAL}s")
+    while True:
+        try:
+            await asyncio.sleep(THREAD_TIMEOUT_SWEEP_INTERVAL)
+            db = await get_db()
+            closed = await crud.thread_timeout_sweep(db, THREAD_TIMEOUT_MINUTES)
+            if closed:
+                logger.info(f"Timeout sweep: closed {len(closed)} thread(s): {closed}")
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            logger.warning(f"Thread timeout sweep error: {exc}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: initialize DB
@@ -63,10 +79,17 @@ async def lifespan(app: FastAPI):
         logger.error("Startup timeout: Unable to connect to database")
         raise
     cleanup_task = asyncio.create_task(_cleanup_events_loop())
+    timeout_task = asyncio.create_task(_thread_timeout_loop()) if THREAD_TIMEOUT_ENABLED else None
     logger.info(f"AgentChatBus running at http://{HOST}:{PORT}")
     yield
     # Shutdown: close DB
     cleanup_task.cancel()
+    if timeout_task is not None:
+        timeout_task.cancel()
+        try:
+            await timeout_task
+        except asyncio.CancelledError:
+            pass
     try:
         await cleanup_task
     except asyncio.CancelledError:
