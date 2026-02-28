@@ -16,15 +16,8 @@ os.environ["AGENTCHATBUS_DB"] = "data/test_rl_unit.db"
 from src.db.crud import RateLimitExceeded
 
 
-# Ensure the shared test DB connection is closed after this module's tests
-@pytest.fixture(scope="module", autouse=True)
-async def _cleanup_db():
-    yield
-    # Close the aiosqlite connection if it was opened during tests
-    try:
-        await dbmod.close_db()
-    except Exception:
-        pass
+# NOTE: Per-test DB cleanup is performed explicitly in each async test's
+# finally block to avoid autouse async fixtures that interfere with sync tests.
 
 
 # ─────────────────────────────────────────────
