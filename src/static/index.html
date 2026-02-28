@@ -1467,76 +1467,78 @@
     }
 
     /* ---- Agent tooltip (custom, copy-enabled) -------------------------------------------------------------- */
-    #agent-tooltip {
-      position: fixed;
-      z-index: 9999;
-
-      /* ── Agent tooltip (custom, copy-enabled) ─────────────────────────────── */
-      .acb-tooltip-agent {
-        width: min(380px, calc(100vw - 24px));
-        padding: 10px;
-      }
-
-      .agent-tip-title {
-        font-size: 12px;
-        font-weight: 700;
-        color: var(--text-1);
-        margin-bottom: 8px;
-      }
-
-      .agent-tip-meta {
-        font-size: 11px;
-        color: var(--text-2);
-        margin-bottom: 8px;
-        line-height: 1.5;
-      }
-
-      .agent-tip-meta code {
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 11px;
-        color: var(--text-1);
-      }
-
-      .agent-tip-prompt {
-        margin: 0;
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        background: var(--bg-input);
-        color: var(--text-1);
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 11px;
-        line-height: 1.45;
-        padding: 8px;
-        max-height: 180px;
-        overflow: auto;
-        white-space: pre-wrap;
-        word-break: break-word;
-      }
-
-      .agent-tip-actions {
-        display: flex;
-        gap: 8px;
-        margin-top: 8px;
-      }
-
-      .agent-tip-actions button {
-        flex: 1;
-        border: 1px solid var(--border-light);
-        background: var(--bg-hover);
-        color: var(--text-1);
-        border-radius: 8px;
-        font-size: 11px;
-        font-weight: 600;
-        padding: 6px 8px;
-        cursor: pointer;
-      }
-
-      .agent-tip-actions button:hover {
-        border-color: var(--accent);
-      }
+    /* Tooltip container styles for AcbTooltip web component */
+    #acb-global-tooltip {
+      pointer-events: none;
     }
 
-  }
+    #acb-global-tooltip.interactive {
+      pointer-events: auto;
+    }
+
+    /* Agent tooltip specific styles */
+    .acb-tooltip-agent {
+      width: min(380px, calc(100vw - 24px));
+      padding: 10px;
+    }
+
+    .agent-tip-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-1);
+      margin-bottom: 8px;
+    }
+
+    .agent-tip-meta {
+      font-size: 11px;
+      color: var(--text-2);
+      margin-bottom: 8px;
+      line-height: 1.5;
+    }
+
+    .agent-tip-meta code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text-1);
+    }
+
+    .agent-tip-prompt {
+      margin: 0;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg-input);
+      color: var(--text-1);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      line-height: 1.45;
+      padding: 8px;
+      max-height: 180px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .agent-tip-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .agent-tip-actions button {
+      flex: 1;
+      border: 1px solid var(--border-light);
+      background: var(--bg-hover);
+      color: var(--text-1);
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 6px 8px;
+      cursor: pointer;
+    }
+
+    .agent-tip-actions button:hover {
+      border-color: var(--accent);
+    }
   </style>
 </head>
 
@@ -1552,9 +1554,9 @@
     <div class="sep"></div>
     <div id="status-dot"></div>
     <div class="status-label" id="status-label">Connected</div>
-    <button id="btn-theme-toggle" type="button" onclick="toggleTheme()">Light</button>
-    <button id="btn-settings" type="button" onclick="openSettingsModal()" title="MCP Server Settings"
-      style="background: transparent; border: 1px solid var(--border-light); border-radius: 8px; font-size: 16px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-1); margin-left: 8px; transition: background 0.15s;">⚙️</button>
+    <!-- <button id="btn-theme-toggle" type="button" onclick="toggleTheme()">Light</button> -->
+    <!-- <button id="btn-settings" type="button" onclick="openSettingsModal()" title="MCP Server Settings"
+      style="background: transparent; border: 1px solid var(--border-light); border-radius: 8px; font-size: 16px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-1); margin-left: 8px; transition: background 0.15s;">⚙️</button> -->
     <acb-icon-button button-id="btn-theme-toggle" label="Light" action="toggleTheme"></acb-icon-button>
     <button id="btn-new-thread" onclick="openModal()">＋ New Thread</button>
     <acb-icon-button button-id="btn-settings" label="⚙️" action="openSettingsModal" title="MCP Server Settings"
@@ -1663,8 +1665,6 @@
       </div>
     </div>
   </div>
-
-  <div id="agent-tooltip" aria-hidden="true"></div>
 
   <!-- <div id="agent-status-info-tooltip" class="">
     <div class="state-item"><span class="state-emoji">🟢</span> <strong>Active:</strong> Agent has activity within 30
