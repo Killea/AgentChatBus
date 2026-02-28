@@ -50,6 +50,8 @@ THREAD_TIMEOUT_MINUTES = int(os.getenv("AGENTCHATBUS_THREAD_TIMEOUT", "0"))
 THREAD_TIMEOUT_ENABLED = THREAD_TIMEOUT_MINUTES > 0
 # How often the timeout sweep runs (seconds)
 THREAD_TIMEOUT_SWEEP_INTERVAL = int(os.getenv("AGENTCHATBUS_TIMEOUT_SWEEP_INTERVAL", "60"))
+# Expose per-thread resources in MCP server (default: false for cleaner MCP client UI)
+EXPOSE_THREAD_RESOURCES = os.getenv("AGENTCHATBUS_EXPOSE_THREAD_RESOURCES", "false").lower() in {"1", "true", "yes"}
 
 def get_config_dict():
     return {
@@ -57,6 +59,7 @@ def get_config_dict():
         "PORT": PORT,
         "AGENT_HEARTBEAT_TIMEOUT": AGENT_HEARTBEAT_TIMEOUT,
         "MSG_WAIT_TIMEOUT": MSG_WAIT_TIMEOUT,
+        "EXPOSE_THREAD_RESOURCES": EXPOSE_THREAD_RESOURCES,
     }
 
 def save_config_dict(new_data: dict):
