@@ -5,10 +5,12 @@ These tests require a running local server at BASE_URL.
 If the server is not reachable, tests are skipped (not failed).
 """
 
+import os
 import httpx
 import pytest
 
-BASE_URL = "http://127.0.0.1:39765"
+# Use the same test port as conftest.py (39766) to connect to test server
+BASE_URL = os.getenv("AGENTCHATBUS_BASE_URL", "http://127.0.0.1:39766")
 
 
 def _build_client() -> httpx.Client:

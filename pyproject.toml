@@ -55,3 +55,9 @@ include = ["src*"]
 
 [tool.setuptools.package-data]
 src = ["static/*.html", "static/*.png", "static/js/*.js"]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::RuntimeWarning",
+    "ignore::pytest.PytestUnraisableExceptionWarning"
+]

@@ -34,12 +34,36 @@ def client():
 
 
 # Suppress RuntimeWarnings from mocking async functions
-@pytest.fixture(autouse=True)
+@pytest.fixture(autouse=True, scope="session")
 def suppress_runtime_warnings():
     """Suppress RuntimeWarnings caused by mocking async functions."""
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=RuntimeWarning)
-        yield
+    import warnings
+    import sys
+    
+    # Suppress both RuntimeWarning and PytestUnraisableExceptionWarning
+    warnings.filterwarnings("ignore", category=RuntimeWarning)
+    
+    # Also suppress pytest's unraisable exception warnings
+    class WarningInterceptor:
+        def __init__(self):
+            self.original_showwarning = warnings.showwarning
+            
+        def custom_showwarning(self, message, category, filename, lineno, file=None, line=None):
+            # Ignore RuntimeWarnings
+            if category == RuntimeWarning:
+                return
+            # Ignore pytest unraisable warnings
+            if "PytestUnraisableExceptionWarning" in str(type(category)):
+                return
+            self.original_showwarning(message, category, filename, lineno, file, line)
+    
+    interceptor = WarningInterceptor()
+    warnings.showwarning = interceptor.custom_showwarning
+    
+    yield
+    
+    # Restore original
+    warnings.showwarning = interceptor.original_showwarning
 
 
 # ─────────────────────────────────────────────
