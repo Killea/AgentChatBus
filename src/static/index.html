@@ -1453,7 +1453,48 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         </div>`;
 
       const bubbleEl = row.querySelector('.bubble-v2');
-      if (bubbleEl) renderMessageContent(bubbleEl, m.content);
+      if (bubbleEl) {
+        renderMessageContent(bubbleEl, m.content);
+        
+        // Render images if any
+        let images = null;
+        console.log(`[Bubble] Message metadata:`, m.metadata, `Type: ${typeof m.metadata}`);
+        if (m.metadata) {
+          // Parse metadata if it's a string
+          if (typeof m.metadata === 'string') {
+            try {
+              const meta = JSON.parse(m.metadata);
+              images = meta.images;
+              console.log(`[Bubble] Parsed metadata as string, images:`, images);
+            } catch (e) {
+              console.error(`[Bubble] Failed to parse metadata JSON:`, e);
+            }
+          } else if (typeof m.metadata === 'object') {
+            images = m.metadata.images;
+            console.log(`[Bubble] Got metadata as object, images:`, images);
+          }
+        } else {
+          console.log(`[Bubble] No metadata in message`);
+        }
+        
+        if (images && Array.isArray(images) && images.length > 0) {
+          console.log(`[Bubble] Rendering ${images.length} images`);
+          const imgContainer = document.createElement('div');
+          imgContainer.style.cssText = 'display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;';
+          images.forEach(img => {
+            const imgEl = document.createElement('img');
+            imgEl.src = img.url;
+            imgEl.title = img.name || 'Uploaded image';
+            imgEl.style.cssText = 'max-width: 200px; max-height: 200px; border-radius: 8px; object-fit: cover; cursor: pointer;';
+            imgEl.onclick = () => window.open(img.url, '_blank');
+            imgContainer.appendChild(imgEl);
+            console.log(`[Bubble] Added image: ${img.url}`);
+          });
+          bubbleEl.appendChild(imgContainer);
+        } else {
+          console.log(`[Bubble] No images to render`);
+        }
+      }
 
       if (!isHuman && !isSystem) {
         const avatarEl = row.querySelector('.msg-avatar');

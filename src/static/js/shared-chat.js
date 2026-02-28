@@ -91,27 +91,61 @@
     const activeThreadId = getActiveThreadId();
     const input = document.getElementById("compose-input");
     const author = document.getElementById("compose-author").value.trim() || "human";
-    const content = input.value.trim();
+    const acb = document.querySelector('acb-compose-shell');
+
+    // Extract text content from contenteditable div
+    let content = '';
+    for (const node of input.childNodes) {
+      if (node.nodeType === 3) {
+        content += node.textContent;
+      } else if (node.nodeType === 1 && !node.getAttribute('data-mention-id')) {
+        content += node.textContent;
+      }
+    }
+    content = content.trim();
+
     if (!content || !activeThreadId) return;
 
-    const mentionPattern = /@agent-([a-f0-9\-]+)/g;
-    const mentions = [...content.matchAll(mentionPattern)].map(m => m[1]);
+    // Extract mentions from data attributes
+    const mentions = [];
+    for (const child of input.childNodes) {
+      if (child.nodeType === 1 && child.getAttribute && child.getAttribute('data-mention-id')) {
+        mentions.push(child.getAttribute('data-mention-id'));
+      }
+    }
+
+    // Get uploaded images
+    const images = acb?.uploadedImages || [];
+    console.log(`[SendMessage] Sending message with ${mentions.length} mentions and ${images.length} images`);
+    if (images.length > 0) {
+      console.log(`[SendMessage] Images:`, images);
+    }
 
     updateOnlinePresence();
-    input.value = "";
-    autoResize(input);
-    const acb = document.querySelector('acb-compose-shell');
-    if (acb && acb.updateMentions) acb.updateMentions();
+    input.innerHTML = '';
+    const messageBar = document.getElementById("mentions-bar");
+    if (messageBar) messageBar.style.display = 'none';
+    if (acb && acb.uploadedImages) acb.uploadedImages = [];
+    if (acb && acb.renderImagePreview) acb.renderImagePreview();
+
+    const payload = {
+      author,
+      role: "user",
+      content,
+      mentions: mentions.length > 0 ? mentions : undefined,
+      images: images.length > 0 ? images : undefined
+    };
+    console.log(`[SendMessage] Payload:`, JSON.stringify(payload));
 
     const m = await api(`/api/threads/${activeThreadId}/messages`, {
       method: "POST",
-      body: JSON.stringify({
-        author,
-        role: "user",
-        content,
-        mentions: mentions.length > 0 ? mentions : undefined
-      }),
+      body: JSON.stringify(payload),
     });
+
+    console.log(`[SendMessage] Response:`, m);
+    if (m && m.metadata) {
+      console.log(`[SendMessage] Message metadata:`, m.metadata);
+    }
 
     if (m) {
       setLastSeq((prev) => Math.max(prev, m.seq));
