@@ -104,7 +104,10 @@
     }
     content = content.trim();
 
-    if (!content || !activeThreadId) return;
+    // Get uploaded images first so image-only messages can be sent.
+    const images = acb?.uploadedImages || [];
+
+    if ((!content && images.length === 0) || !activeThreadId) return;
 
     // Extract mentions from data attributes
     const mentions = [];
@@ -114,8 +117,6 @@
       }
     }
 
-    // Get uploaded images
-    const images = acb?.uploadedImages || [];
     console.log(`[SendMessage] Sending message with ${mentions.length} mentions and ${images.length} images`);
     if (images.length > 0) {
       console.log(`[SendMessage] Images:`, images);

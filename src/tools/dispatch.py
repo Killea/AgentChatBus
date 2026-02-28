@@ -6,6 +6,9 @@ without dropping connections.
 import json
 import asyncio
 import logging
+import base64
+import mimetypes
+from pathlib import Path
 from typing import Any
 
 import mcp.types as types
@@ -52,6 +55,33 @@ def _strip_data_url(value: str) -> tuple[str | None, str | None]:
     return mime_part, payload
 
 
+def _url_to_local_upload_path(url: str) -> Path | None:
+    """Map '/static/uploads/...' URLs to local files under src/static/uploads."""
+    if not isinstance(url, str):
+        return None
+    if not url.startswith("/static/uploads/"):
+        return None
+
+    rel = url[len("/static/uploads/"):]
+    
+    # dispatch.py is in src/tools/.
+    # So Path(__file__).resolve().parent is src/tools/
+    # parent[0] is src/, parent[1] is project root
+    tools_dir = Path(__file__).resolve().parent
+    src_dir = tools_dir.parent  # src/
+    uploads_root = src_dir / "static" / "uploads"
+    
+    candidate = (uploads_root / rel).resolve()
+
+    # Validate that candidate is within uploads_root
+    try:
+        candidate.relative_to(uploads_root)
+    except ValueError:
+        return None
+
+    return candidate
+
+
 def _message_to_blocks(m: Message) -> list[types.Content]:
     author = m.author_name or m.author
     created = m.created_at.isoformat() if getattr(m, "created_at", None) else ""
@@ -69,7 +99,7 @@ def _message_to_blocks(m: Message) -> list[types.Content]:
     if isinstance(meta, dict):
         attachments = meta.get("attachments")
         if attachments is None:
-            attachments = meta.get("images")
+            attachments = meta.get("images")  # Web UI format: list of {"url": "/static/uploads/...", "name": "..."}
         if attachments is None:
             attachments = meta.get("image")
 
@@ -83,6 +113,7 @@ def _message_to_blocks(m: Message) -> list[types.Content]:
                 kind = (att.get("type") or att.get("kind") or "").lower()
                 mime_type = att.get("mimeType") or att.get("mime_type")
                 data = att.get("data") or att.get("base64") or att.get("b64") or att.get("data_url")
+                url = att.get("url") or att.get("src")
 
                 if isinstance(data, str):
                     inferred_mime, stripped = _strip_data_url(data)
@@ -95,7 +126,28 @@ def _message_to_blocks(m: Message) -> list[types.Content]:
                     mime_type = "image/png"
 
                 if not data:
-                    continue
+                    # Support URL-backed uploads from web UI metadata, e.g. {"url": "/static/uploads/.."}
+                    if isinstance(url, str):
+                        local_path = _url_to_local_upload_path(url)
+                        if local_path and local_path.exists():
+                            try:
+                                raw = local_path.read_bytes()
+                                data = base64.b64encode(raw).decode("ascii")
+                                guessed_mime = mimetypes.guess_type(local_path.name)[0]
+                                if not mime_type and guessed_mime:
+                                    mime_type = guessed_mime
+                                logger.info(f"[_message_to_blocks] Loaded image from {url}: {len(data)} bytes, mime={mime_type}")
+                            except Exception as e:
+                                logger.warning(f"[_message_to_blocks] Failed to read {local_path}: {e}")
+                                data = None
+
+                    # If still no embeddable bytes, keep image reference visible as text.
+                    if not data and isinstance(url, str):
+                        blocks.append(types.TextContent(type="text", text=f"[image] {url}"))
+                        continue
+
+                    if not data:
+                        continue
                 if kind and kind != "image" and not (mime_type and str(mime_type).startswith("image/")):
                     continue
                 if mime_type and not str(mime_type).startswith("image/"):
@@ -186,7 +238,7 @@ async def handle_msg_list(db, arguments: dict[str, Any]) -> list[types.Content]:
 
     return [types.TextContent(type="text", text=json.dumps([
         {"msg_id": m.id, "author": m.author, "author_id": m.author_id, "author_name": m.author_name, "role": m.role,
-         "content": m.content, "seq": m.seq, "created_at": m.created_at.isoformat()}
+         "content": m.content, "seq": m.seq, "created_at": m.created_at.isoformat(), "metadata": m.metadata}
         for m in msgs
     ]))]
 
@@ -234,7 +286,7 @@ async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.Content]:
 
     return [types.TextContent(type="text", text=json.dumps([
         {"msg_id": m.id, "author": m.author, "author_id": m.author_id, "author_name": m.author_name, "role": m.role,
-         "content": m.content, "seq": m.seq, "created_at": m.created_at.isoformat()}
+         "content": m.content, "seq": m.seq, "created_at": m.created_at.isoformat(), "metadata": m.metadata}
         for m in msgs
     ]))]
 

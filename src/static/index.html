@@ -1485,7 +1485,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
             const imgEl = document.createElement('img');
             imgEl.src = img.url;
             imgEl.title = img.name || 'Uploaded image';
-            imgEl.style.cssText = 'max-width: 200px; max-height: 200px; border-radius: 8px; object-fit: cover; cursor: pointer;';
+            imgEl.style.cssText = 'width: min(520px, 80vw); max-width: 100%; max-height: 70vh; border-radius: 8px; object-fit: contain; cursor: zoom-in; background: rgba(0,0,0,0.05);';
             imgEl.onclick = () => window.open(img.url, '_blank');
             imgContainer.appendChild(imgEl);
             console.log(`[Bubble] Added image: ${img.url}`);
