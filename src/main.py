@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import time
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
@@ -27,6 +28,7 @@ from starlette.routing import Mount
 from src.config import HOST, PORT, get_config_dict, save_config_dict
 from src.db.database import get_db, close_db
 from src.db import crud
+from src.config import THREAD_TIMEOUT_ENABLED, THREAD_TIMEOUT_MINUTES, THREAD_TIMEOUT_SWEEP_INTERVAL
 from src.mcp_server import server as mcp_server, _session_language
 from src.content_filter import ContentFilterError
 
@@ -54,6 +56,21 @@ async def _cleanup_events_loop():
             logger.error(f"Event cleanup failed: {e}")
         await asyncio.sleep(60)
 
+async def _thread_timeout_loop() -> None:
+    """Background task: periodically close inactive threads."""
+    logger.info(f"Thread timeout sweep enabled: {THREAD_TIMEOUT_MINUTES}min inactivity threshold, sweep every {THREAD_TIMEOUT_SWEEP_INTERVAL}s")
+    while True:
+        try:
+            await asyncio.sleep(THREAD_TIMEOUT_SWEEP_INTERVAL)
+            db = await get_db()
+            closed = await crud.thread_timeout_sweep(db, THREAD_TIMEOUT_MINUTES)
+            if closed:
+                logger.info(f"Timeout sweep: closed {len(closed)} thread(s): {closed}")
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            logger.warning(f"Thread timeout sweep error: {exc}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: initialize DB
@@ -63,10 +80,17 @@ async def lifespan(app: FastAPI):
         logger.error("Startup timeout: Unable to connect to database")
         raise
     cleanup_task = asyncio.create_task(_cleanup_events_loop())
+    timeout_task = asyncio.create_task(_thread_timeout_loop()) if THREAD_TIMEOUT_ENABLED else None
     logger.info(f"AgentChatBus running at http://{HOST}:{PORT}")
     yield
     # Shutdown: close DB
     cleanup_task.cancel()
+    if timeout_task is not None:
+        timeout_task.cancel()
+        try:
+            await timeout_task
+        except asyncio.CancelledError:
+            pass
     try:
         await cleanup_task
     except asyncio.CancelledError:
@@ -86,9 +110,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # MCP SSE Transport (mounted at /mcp)
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 sse_transport = SseServerTransport("/mcp/messages")
 
@@ -100,7 +124,7 @@ class _SseCompletedResponse:
     The SSE transport sends the full HTTP response (http.response.start +
     http.response.body chunks) directly to uvicorn via request._send.
     If we return a real Response(), FastAPI calls it with send, which tries
-    to emit a SECOND http.response.start — uvicorn rejects this with:
+    to emit a SECOND http.response.start ΓÇö uvicorn rejects this with:
       "Unexpected ASGI message 'http.response.start'"  (normal close), or
       "Expected 'http.response.body', got 'http.response.start'"  (abrupt close).
 
@@ -108,12 +132,12 @@ class _SseCompletedResponse:
     any additional ASGI messages.
     """
     async def __call__(self, scope, receive, send):
-        pass  # intentional no-op — SSE transport already sent the response
+        pass  # intentional no-op ΓÇö SSE transport already sent the response
 
 
 @app.get("/mcp/sse")
 async def mcp_sse_endpoint(request: Request):
-    """MCP SSE endpoint consumed by MCP clients (Claude Desktop, Cursor, …)."""
+    """MCP SSE endpoint consumed by MCP clients (Claude Desktop, Cursor, ΓÇª)."""
     from src.mcp_server import init_session_id
     
     # Initialize unique session ID for this SSE connection
@@ -133,23 +157,23 @@ async def mcp_sse_endpoint(request: Request):
                 mcp_server.create_initialization_options(),
             )
     except Exception as exc:
-        # Most are normal disconnects (anyio.ClosedResourceError, CancelledError…).
+        # Most are normal disconnects (anyio.ClosedResourceError, CancelledErrorΓÇª).
         # Log at DEBUG to avoid polluting the terminal.
         logger.debug("MCP SSE session ended: %s: %s", type(exc).__name__, exc)
     return _SseCompletedResponse()
 
 
-# Mount handle_post_message as a raw ASGI app — NOT a FastAPI route.
+# Mount handle_post_message as a raw ASGI app ΓÇö NOT a FastAPI route.
 # The transport sends its own 202 Accepted internally; a FastAPI route wrapper
 # would attempt a second response and produce ASGI errors.
 app.mount("/mcp/messages/", app=sse_transport.handle_post_message)
 
 
-# ── Suppress leftover ASGI RuntimeErrors caused by client disconnects ──────────
+# ΓöÇΓöÇ Suppress leftover ASGI RuntimeErrors caused by client disconnects ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 class _AsgiDisconnectFilter(logging.Filter):
     """
     Filters uvicorn 'Exception in ASGI application' records that are caused
-    by normal MCP client disconnects — not real bugs, just transport noise.
+    by normal MCP client disconnects ΓÇö not real bugs, just transport noise.
     """
     _NOISE = (
         "Unexpected ASGI message 'http.response.start'",
@@ -163,9 +187,9 @@ for _ln in ("uvicorn.error", "uvicorn"):
 
 
 
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # Public SSE broadcast for the web console
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 @app.get("/events")
 async def global_sse_stream(request: Request):
@@ -199,9 +223,9 @@ async def global_sse_stream(request: Request):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # Simple REST API for the web console
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 @app.get("/api/threads")
 async def api_threads(status: str | None = None, include_archived: bool = False):
@@ -240,7 +264,49 @@ async def api_messages(thread_id: str, after_seq: int = 0, limit: int = 200, inc
     except asyncio.TimeoutError:
         raise HTTPException(status_code=503, detail="Database operation timeout")
     return [{"id": m.id, "author": m.author, "author_id": m.author_id, "author_name": m.author_name, "role": m.role, "content": m.content,
-             "seq": m.seq, "created_at": m.created_at.isoformat()} for m in msgs]
+             "seq": m.seq, "created_at": m.created_at.isoformat(), "metadata": m.metadata} for m in msgs]
+
+
+# ─────────────────────────────────────────────
+# Image Upload API
+# ─────────────────────────────────────────────
+
+UPLOAD_DIR = Path(__file__).resolve().parent / "static" / "uploads"
+
+@app.post("/api/upload/image")
+async def api_upload_image(request: Request):
+    """Upload an image and return its URL."""
+    try:
+        form = await request.form()
+        file = form.get("file")
+        if not file or not file.filename:
+            raise HTTPException(status_code=400, detail="No file provided")
+        
+        # Validate file type
+        if not file.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail="File must be an image")
+        
+        # Create upload directory if it doesn't exist
+        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        
+        # Generate unique filename
+        ext = Path(file.filename).suffix or ".png"
+        unique_name = f"{uuid.uuid4()}{ext}"
+        file_path = UPLOAD_DIR / unique_name
+        
+        # Save file
+        contents = await file.read()
+        with open(file_path, "wb") as f:
+            f.write(contents)
+        
+        # Return URL
+        file_url = f"/static/uploads/{unique_name}"
+        return {"url": file_url, "name": file.filename}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Image upload error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/agents")
@@ -250,12 +316,19 @@ async def api_agents():
         agents = await asyncio.wait_for(crud.agent_list(db), timeout=DB_TIMEOUT)
     except asyncio.TimeoutError:
         raise HTTPException(status_code=503, detail="Database operation timeout")
-    return [{"id": a.id, "name": a.name, "display_name": a.display_name, "alias_source": a.alias_source,
-             "description": a.description, "ide": a.ide, "model": a.model,
-             "is_online": a.is_online, "last_heartbeat": a.last_heartbeat.isoformat(),
-             "last_activity": a.last_activity,
-             "last_activity_time": a.last_activity_time.isoformat() if a.last_activity_time else None,
-             "token": a.token} for a in agents]
+
+    result = []
+    for a in agents:
+        result.append({
+            "id": a.id, "name": a.name, "display_name": a.display_name, "alias_source": a.alias_source,
+            "description": a.description, "ide": a.ide, "model": a.model,
+            "is_online": a.is_online, "last_heartbeat": a.last_heartbeat.isoformat(),
+            "last_activity": a.last_activity,
+            "last_activity_time": a.last_activity_time.isoformat() if a.last_activity_time else None,
+            "token": a.token
+        })
+
+    return result
 
 
 @app.get("/api/settings")
@@ -276,9 +349,9 @@ async def api_update_settings(body: SettingsUpdate):
     # The user should be notified that a restart is required for some settings
     return {"ok": True, "message": "Settings saved. Restart the server to apply changes."}
 
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # Request/Response Models
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 class ThreadCreate(BaseModel):
     topic: str
@@ -299,6 +372,9 @@ class MessageCreate(BaseModel):
     author: str = "human"
     role: Literal["user", "assistant", "system"] = "user"
     content: str
+    mentions: list[str] | None = None
+    metadata: dict | None = None
+    images: list[dict] | None = None  # [{url: str, name: str}, ...]
 
 @app.post("/api/threads", status_code=201)
 async def api_create_thread(body: ThreadCreate):
@@ -322,23 +398,41 @@ async def api_post_message(thread_id: str, body: MessageCreate):
         raise HTTPException(status_code=503, detail="Database operation timeout")
     if t is None:
         raise HTTPException(status_code=404, detail="Thread not found")
+        
+    msg_metadata = body.metadata or {}
+    if body.mentions:
+        msg_metadata["mentions"] = body.mentions
+    if body.images:
+        msg_metadata["images"] = body.images
+
     try:
         m = await asyncio.wait_for(
             crud.msg_post(db, thread_id=thread_id, author=body.author,
-                         content=body.content, role=body.role),
+                         content=body.content, role=body.role,
+                         metadata=msg_metadata if msg_metadata else None),
             timeout=DB_TIMEOUT
         )
     except ContentFilterError as e:
         raise HTTPException(status_code=400, detail={"error": "Content blocked by filter", "pattern": e.pattern_name})
     except asyncio.TimeoutError:
         raise HTTPException(status_code=503, detail="Database operation timeout")
-    return {"id": m.id, "seq": m.seq, "author": m.author,
-            "role": m.role, "content": m.content}
+    
+    # Return the full message with metadata
+    result = {"id": m.id, "seq": m.seq, "author": m.author,
+            "role": m.role, "content": m.content, "created_at": m.created_at.isoformat()}
+    
+    # Add metadata (includes mentions and images)
+    if m.metadata:
+        result["metadata"] = m.metadata
+    else:
+        result["metadata"] = None
+    
+    return result
 
 
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # Agent REST API (for simulation scripts)
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 class AgentRegister(BaseModel):
     ide: str
@@ -350,6 +444,7 @@ class AgentRegister(BaseModel):
 class AgentToken(BaseModel):
     agent_id: str
     token: str
+
 
 @app.post("/api/agents/register", status_code=200)
 async def api_agent_register(body: AgentRegister):
@@ -430,9 +525,12 @@ async def api_agent_unregister(body: AgentToken):
 
 
 
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+
 # ─────────────────────────────────────────────
 # Thread state management REST (for web console)
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 class StateChange(BaseModel):
     state: str
@@ -479,6 +577,24 @@ async def api_thread_close(thread_id: str, body: ThreadClose):
     return {"ok": True}
 
 
+@app.delete("/api/threads/{thread_id}")
+async def api_thread_delete(thread_id: str):
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+    try:
+        result = await asyncio.wait_for(
+            crud.thread_delete(db, thread_id),
+            timeout=DB_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+    if result is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return {"ok": True, "deleted": result}
+
+
 @app.post("/api/threads/{thread_id}/archive")
 async def api_thread_archive(thread_id: str):
     try:
@@ -502,9 +618,33 @@ async def api_thread_archive(thread_id: str):
     return {"ok": True}
 
 
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+@app.post("/api/threads/{thread_id}/unarchive")
+async def api_thread_unarchive(thread_id: str):
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        t = await asyncio.wait_for(crud.thread_get(db, thread_id), timeout=DB_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+    if t is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    try:
+        ok = await asyncio.wait_for(
+            crud.thread_unarchive(db, thread_id),
+            timeout=DB_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not ok:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return {"ok": True}
+
+
 # ─────────────────────────────────────────────
 # Health check
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 @app.get("/health")
 async def health():
@@ -512,9 +652,9 @@ async def health():
 
 
 
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # Web Console (served from /static or inline)
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 @app.get("/", response_class=HTMLResponse)
 async def web_console():
@@ -526,9 +666,9 @@ async def web_console():
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # Entry point
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 if __name__ == "__main__":
     reload_enabled = os.getenv("AGENTCHATBUS_RELOAD", "1") in {"1", "true", "True"}

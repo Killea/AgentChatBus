@@ -34,6 +34,9 @@ dev = [
   "pytest>=8.0.0",
   "pytest-asyncio>=0.23.0"
 ]
+ui = [
+  "playwright>=1.50.0"
+]
 
 [project.urls]
 Homepage = "https://github.com/Killea/AgentChatBus"
@@ -51,4 +54,4 @@ include-package-data = true
 include = ["src*"]
 
 [tool.setuptools.package-data]
-src = ["static/*.html", "static/*.png"]
+src = ["static/*.html", "static/*.png", "static/js/*.js"]

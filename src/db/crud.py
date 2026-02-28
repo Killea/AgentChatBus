@@ -33,27 +33,6 @@ Welcome to this Thread. You are participating in a multi-agent workspace sharing
 Operate like a delivery-focused engineering team: communicate clearly, move work forward, and resolve blockers quickly."""
 
 
-def _compose_system_prompt(thread_prompt: Optional[str]) -> str:
-    """Return the synthetic seq=0 system prompt shown to agents.
-
-    Rules:
-    - Built-in global system prompt is always present.
-    - If thread creation provides a custom prompt, append it as a second section.
-    - Both sections are advisory so each agent can decide compliance.
-    """
-    custom = (thread_prompt or "").strip()
-    if not custom:
-        return GLOBAL_SYSTEM_PROMPT
-
-    return (
-        "## Section: System (Built-in)\n\n"
-        f"{GLOBAL_SYSTEM_PROMPT}\n\n"
-        "## Section: Thread Create (Provided By Creator)\n\n"
-        f"{custom}\n\n"
-        "Note: Both sections are guidance. Each agent can decide how to follow them."
-    )
-
-
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -62,9 +41,9 @@ def _parse_dt(s: str) -> datetime:
     return datetime.fromisoformat(s)
 
 
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # Sequence counter (global, bus-wide)
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 async def next_seq(db: aiosqlite.Connection) -> int:
     """Atomically increment and return the next global sequence number.
@@ -85,9 +64,9 @@ async def next_seq(db: aiosqlite.Connection) -> int:
     return row["val"]
 
 
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # Thread CRUD
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 async def thread_create(db: aiosqlite.Connection, topic: str, metadata: Optional[dict] = None, system_prompt: Optional[str] = None) -> Thread:
     # Atomic idempotency: use transaction to prevent race condition on concurrent creates with same topic
@@ -107,7 +86,7 @@ async def thread_create(db: aiosqlite.Connection, topic: str, metadata: Optional
         return Thread(id=tid, topic=topic, status="discuss", created_at=_parse_dt(now),
                       closed_at=None, summary=None, metadata=meta_json, system_prompt=system_prompt)
     except sqlite3.IntegrityError as e:
-        # UNIQUE constraint violation on threads.topic — another thread was created concurrently
+        # UNIQUE constraint violation on threads.topic ΓÇö another thread was created concurrently
         # Fetch and return the existing thread for idempotency
         logger.info(f"Thread '{topic}' creation raced (UNIQUE constraint), fetching existing: {e}")
         async with db.execute("SELECT * FROM threads WHERE topic = ? ORDER BY created_at DESC LIMIT 1", (topic,)) as cur:
@@ -138,19 +117,27 @@ async def thread_list(
     include_archived: bool = False,
 ) -> list[Thread]:
     if status:
-        async with db.execute("SELECT * FROM threads WHERE status = ? ORDER BY created_at DESC", (status,)) as cur:
+        async with db.execute(
+            "SELECT * FROM threads WHERE status = ? ORDER BY created_at DESC",
+            (status,),
+        ) as cur:
             rows = await cur.fetchall()
-    elif include_archived:
+        return [_row_to_thread(r) for r in rows]
+
+    if include_archived:
         async with db.execute("SELECT * FROM threads ORDER BY created_at DESC") as cur:
             rows = await cur.fetchall()
-    else:
-        async with db.execute("SELECT * FROM threads WHERE status != 'archived' ORDER BY created_at DESC") as cur:
-            rows = await cur.fetchall()
+        return [_row_to_thread(r) for r in rows]
+
+    async with db.execute(
+        "SELECT * FROM threads WHERE status != 'archived' ORDER BY created_at DESC"
+    ) as cur:
+        rows = await cur.fetchall()
     return [_row_to_thread(r) for r in rows]
 
 
 async def thread_set_state(db: aiosqlite.Connection, thread_id: str, state: str) -> bool:
-    valid = {"discuss", "implement", "review", "done", "closed"}
+    valid = {"discuss", "implement", "review", "done", "closed", "archived"}
     if state not in valid:
         raise ValueError(f"Invalid state '{state}'. Must be one of {valid}")
     async with db.execute("UPDATE threads SET status = ? WHERE id = ?", (state, thread_id)) as cur:
@@ -163,40 +150,64 @@ async def thread_set_state(db: aiosqlite.Connection, thread_id: str, state: str)
 
 
 async def thread_archive(db: aiosqlite.Connection, thread_id: str) -> bool:
-    async with db.execute("SELECT status FROM threads WHERE id = ?", (thread_id,)) as cur:
-        row = await cur.fetchone()
-    if row is None:
+    ok = await thread_set_state(db, thread_id, "archived")
+    if not ok:
         return False
+    await _emit_event(db, "thread.archived", thread_id, {"thread_id": thread_id})
+    return True
 
-    current_state = row["status"]
 
-    async with db.execute("UPDATE threads SET status = 'archived' WHERE id = ?", (thread_id,)) as cur:
-        updated = cur.rowcount
-    await db.commit()
-    if updated == 0:
+async def thread_unarchive(db: aiosqlite.Connection, thread_id: str) -> bool:
+    ok = await thread_set_state(db, thread_id, "discuss")
+    if not ok:
         return False
-
-    await _emit_event(
-        db,
-        "thread.archived",
-        thread_id,
-        {"thread_id": thread_id, "previous_state": current_state, "state": "archived"},
-    )
+    await _emit_event(db, "thread.unarchived", thread_id, {"thread_id": thread_id})
     return True
 
 
 async def thread_close(db: aiosqlite.Connection, thread_id: str, summary: Optional[str] = None) -> bool:
     now = _now()
-    async with db.execute(
+    await db.execute(
         "UPDATE threads SET status = 'closed', closed_at = ?, summary = ? WHERE id = ?",
         (now, summary, thread_id),
-    ) as cur:
-        updated = cur.rowcount
+    )
     await db.commit()
-    if updated == 0:
-        return False  # thread_id does not exist
     await _emit_event(db, "thread.closed", thread_id, {"thread_id": thread_id, "summary": summary})
     return True
+
+
+async def thread_delete(db: aiosqlite.Connection, thread_id: str) -> dict | None:
+    """Permanently delete a thread and all its messages.
+
+    Returns a dict with audit info (thread_id, topic, message_count) on success,
+    or None if the thread does not exist.
+    Messages are deleted before the thread to satisfy the FK constraint.
+    Both deletes are wrapped in a single transaction with rollback on error.
+    """
+    async with db.execute("SELECT * FROM threads WHERE id = ?", (thread_id,)) as cur:
+        row = await cur.fetchone()
+    if row is None:
+        return None
+
+    topic = row["topic"]
+    async with db.execute(
+        "SELECT COUNT(*) AS cnt FROM messages WHERE thread_id = ?", (thread_id,)
+    ) as cur:
+        msg_count = (await cur.fetchone())["cnt"]
+
+    try:
+        await db.execute("DELETE FROM messages WHERE thread_id = ?", (thread_id,))
+        await db.execute("DELETE FROM threads WHERE id = ?", (thread_id,))
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    await _emit_event(db, "thread.deleted", thread_id, {
+        "thread_id": thread_id, "topic": topic, "message_count": msg_count,
+    })
+    logger.info(f"Thread deleted: {thread_id} '{topic}' ({msg_count} messages)")
+    return {"thread_id": thread_id, "topic": topic, "message_count": msg_count}
 
 
 async def thread_latest_seq(db: aiosqlite.Connection, thread_id: str) -> int:
@@ -222,9 +233,9 @@ def _row_to_thread(row: aiosqlite.Row) -> Thread:
     )
 
 
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # Message CRUD
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 async def msg_post(
     db: aiosqlite.Connection,
@@ -244,13 +255,12 @@ async def msg_post(
     author_id = None
     author_name = author
 
-    async with db.execute("SELECT id, name, display_name FROM agents WHERE id = ?", (author,)) as cur:
+    async with db.execute("SELECT id, name FROM agents WHERE id = ?", (author,)) as cur:
         row = await cur.fetchone()
         if row:
             actual_author = row["name"]
             author_id = row["id"]
-            # Prefer display_name (alias) if available, fallback to name
-            author_name = row["display_name"] or row["name"]
+            author_name = row["name"]
 
     mid = str(uuid.uuid4())
     now = _now()
@@ -260,11 +270,9 @@ async def msg_post(
         "INSERT INTO messages (id, thread_id, author, role, content, seq, created_at, metadata, author_id, author_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (mid, thread_id, actual_author, role, content, seq, now, meta_json, author_id, author_name),
     )
-    # Update agent's last activity to 'msg_post'
-    if author_id:
-        await db.execute("UPDATE agents SET last_activity = ?, last_activity_time = ? WHERE id = ?",
-                         ('msg_post', now, author_id))
     await db.commit()
+    if author_id:
+        await agent_msg_post(db, author_id)
     await _emit_event(db, "msg.new", thread_id, {
         "msg_id": mid, "thread_id": thread_id, "author": author_name,
         "author_id": author_id, "role": role, "seq": seq, "content": content[:200],  # truncate for event payload
@@ -293,11 +301,21 @@ async def msg_list(
     msgs = [_row_to_message(r) for r in rows]
     
     if include_system_prompt and after_seq == 0:
-        # Always include built-in system prompt. If thread has custom prompt, append it.
+        # Check if the thread has a custom system_prompt, else use global fallback.
+        # If a custom prompt exists, append it after the built-in guidance.
         async with db.execute("SELECT system_prompt, created_at FROM threads WHERE id = ?", (thread_id,)) as cur:
             t_row = await cur.fetchone()
-
-        prompt_text = _compose_system_prompt(t_row["system_prompt"] if t_row else None)
+            
+        thread_prompt = t_row["system_prompt"] if (t_row and t_row["system_prompt"]) else None
+        if thread_prompt:
+            prompt_text = (
+                "## Section: System (Built-in)\n\n"
+                f"{GLOBAL_SYSTEM_PROMPT}\n\n"
+                "## Section: Thread Create (Provided By Creator)\n\n"
+                f"{thread_prompt}"
+            )
+        else:
+            prompt_text = GLOBAL_SYSTEM_PROMPT
         created_at_dt = _parse_dt(t_row["created_at"]) if t_row else _parse_dt(_now())
         
         sys_msg = Message(
@@ -338,23 +356,11 @@ def _row_to_message(row: aiosqlite.Row) -> Message:
     )
 
 
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # ─────────────────────────────────────────────
 # Agent registry
-# ─────────────────────────────────────────────
-
-def _generate_auto_alias(ide: str, model: str, uuid_short: str) -> str:
-    """
-    Generate a human-readable auto alias from IDE, model, and UUID suffix.
-    Format: {IDE-short}-{Model-short}-{UUID-4-chars}
-    Example: VSC-HAI-a1b2, Cur-GPT-d4a3
-    """
-    ide_short = ide.strip()[:3].upper() if ide.strip() else "UNK"
-    # Take first word of model, then first 3 chars
-    model_first = model.strip().split()[0] if model.strip() else "MOD"
-    model_short = model_first[:3].upper()
-    return f"{ide_short}-{model_short}-{uuid_short.lower()}"
-
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 async def agent_register(
     db: aiosqlite.Connection,
@@ -367,13 +373,10 @@ async def agent_register(
     """
     Register a new agent on the bus.
 
-    The display `name` is auto-generated as ``ide (model)`` — e.g. "Cursor (GPT-4)".
+    The display `name` is auto-generated as ``ide (model)`` ΓÇö e.g. "Cursor (GPT-4)".
     If another agent with that exact base name is already registered, a numeric
-    suffix is appended: "Cursor (GPT-4) 2", "Cursor (GPT-4) 3", …
+    suffix is appended: "Cursor (GPT-4) 2", "Cursor (GPT-4) 3", ΓÇª
     This lets identical IDE+model pairs co-exist without confusion.
-    
-    The optional `display_name` provides a human-readable alias. If not provided,
-    an auto-generated alias is created from IDE/model/UUID.
     """
     ide   = ide.strip()   or "Unknown IDE"
     model = model.strip() or "Unknown Model"
@@ -394,29 +397,71 @@ async def agent_register(
             n += 1
         name = f"{base_name} {n}"
 
-    # Generate or use provided display_name
     aid = str(uuid.uuid4())
-    alias_src = "user" if display_name else "auto"
-    if not display_name:
-        # Auto-generate: {IDE-short}-{Model-short}-{UUID-4-chars}
-        display_name = _generate_auto_alias(ide, model, aid[-4:])
-    
     token = secrets.token_hex(32)
     now = _now()
     caps_json = json.dumps(capabilities) if capabilities else None
+    clean_display_name = (display_name or "").strip() or name
+    alias_source = "user" if (display_name or "").strip() else "auto"
     await db.execute(
         "INSERT INTO agents (id, name, ide, model, description, capabilities, registered_at, last_heartbeat, token, display_name, alias_source, last_activity, last_activity_time) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (aid, name, ide, model, description, caps_json, now, now, token, display_name, alias_src, 'registered', now),
+        (aid, name, ide, model, description, caps_json, now, now, token, clean_display_name, alias_source, "registered", now),
     )
     await db.commit()
-    await _emit_event(db, "agent.online", None, {"agent_id": aid, "name": name, "ide": ide, "model": model, "display_name": display_name})
-    logger.info(f"Agent registered: {aid} '{name}' (alias: {display_name})")
+    await _emit_event(db, "agent.online", None, {"agent_id": aid, "name": name, "ide": ide, "model": model})
+    logger.info(f"Agent registered: {aid} '{name}'")
     return AgentInfo(id=aid, name=name, ide=ide, model=model, description=description,
                      capabilities=caps_json, registered_at=_parse_dt(now),
                      last_heartbeat=_parse_dt(now), is_online=True, token=token,
-                     display_name=display_name, alias_source=alias_src,
-                     last_activity='registered', last_activity_time=_parse_dt(now))
+                     display_name=clean_display_name, alias_source=alias_source,
+                     last_activity="registered", last_activity_time=_parse_dt(now))
+
+
+async def _set_agent_activity(
+    db: aiosqlite.Connection,
+    agent_id: str,
+    activity: str,
+    *,
+    touch_heartbeat: bool = False,
+) -> bool:
+    now = _now()
+    if touch_heartbeat:
+        async with db.execute(
+            "UPDATE agents SET last_activity = ?, last_activity_time = ?, last_heartbeat = ? WHERE id = ?",
+            (activity, now, now, agent_id),
+        ) as cur:
+            updated = cur.rowcount
+    else:
+        async with db.execute(
+            "UPDATE agents SET last_activity = ?, last_activity_time = ? WHERE id = ?",
+            (activity, now, agent_id),
+        ) as cur:
+            updated = cur.rowcount
+    await db.commit()
+    return updated > 0
+
+
+async def agent_resume(db: aiosqlite.Connection, agent_id: str, token: str) -> AgentInfo:
+    async with db.execute("SELECT token FROM agents WHERE id = ?", (agent_id,)) as cur:
+        row = await cur.fetchone()
+    if row is None or row["token"] != token:
+        raise ValueError("Invalid agent_id/token")
+
+    await _set_agent_activity(db, agent_id, "resume", touch_heartbeat=True)
+
+    async with db.execute("SELECT * FROM agents WHERE id = ?", (agent_id,)) as cur:
+        refreshed = await cur.fetchone()
+    if refreshed is None:
+        raise ValueError("Agent not found after resume")
+
+    await _emit_event(db, "agent.online", None, {
+        "agent_id": refreshed["id"],
+        "name": refreshed["name"],
+        "ide": refreshed["ide"] if "ide" in refreshed.keys() else "",
+        "model": refreshed["model"] if "model" in refreshed.keys() else "",
+    })
+    return _row_to_agent(refreshed)
 
 
 async def agent_heartbeat(db: aiosqlite.Connection, agent_id: str, token: str) -> bool:
@@ -424,69 +469,29 @@ async def agent_heartbeat(db: aiosqlite.Connection, agent_id: str, token: str) -
         row = await cur.fetchone()
     if row is None or row["token"] != token:
         return False
-    now = _now()
-    await db.execute("UPDATE agents SET last_heartbeat = ?, last_activity = ?, last_activity_time = ? WHERE id = ?", 
-                     (now, 'heartbeat', now, agent_id))
-    await db.commit()
-    return True
-
-
-async def agent_resume(db: aiosqlite.Connection, agent_id: str, token: str) -> AgentInfo:
-    """
-    Resume an offline agent by verifying its ID and token, then updating last_heartbeat.
-    All identity fields (name, display_name, alias_source) remain unchanged.
-    
-    Raises ValueError if agent_id not found or token is invalid.
-    """
-    async with db.execute("SELECT * FROM agents WHERE id = ?", (agent_id,)) as cur:
-        row = await cur.fetchone()
-    
-    if row is None or row["token"] != token:
-        raise ValueError("Invalid agent_id or token for resume")
-    
-    now = _now()
-    await db.execute("UPDATE agents SET last_heartbeat = ?, last_activity = ?, last_activity_time = ? WHERE id = ?", 
-                     (now, 'resume', now, agent_id))
-    await db.commit()
-    display_name = row["display_name"] if "display_name" in row.keys() else None
-    await _emit_event(db, "agent.resume", None, {"agent_id": agent_id, "name": row["name"], "display_name": display_name})
-    logger.info(f"Agent resumed: {agent_id} '{row['name']}'")
-    return _row_to_agent(row)
-
-
-async def agent_unregister(db: aiosqlite.Connection, agent_id: str, token: str) -> bool:
-    """
-    Gracefully unregister an agent (verify token, emit offline event).
-    Does NOT delete the agent record - allows resume via agent_resume().
-    Agent will become naturally offline after heartbeat timeout.
-    """
-    async with db.execute("SELECT token FROM agents WHERE id = ?", (agent_id,)) as cur:
-        row = await cur.fetchone()
-    if row is None or row["token"] != token:
-        return False
-    # Don't delete - just emit offline event. Agent will timeout naturally and become offline.
-    await _emit_event(db, "agent.offline", None, {"agent_id": agent_id})
-    return True
+    return await _set_agent_activity(db, agent_id, "heartbeat", touch_heartbeat=True)
 
 
 async def agent_msg_wait(db: aiosqlite.Connection, agent_id: str, token: str) -> bool:
-    """
-    Record that an agent is waiting for messages (for status tracking).
-    Verifies agent_id and token, then updates last_activity to 'msg_wait'.
-    
-    Returns True if successfully recorded, False if agent_id or token invalid.
-    """
     async with db.execute("SELECT token FROM agents WHERE id = ?", (agent_id,)) as cur:
         row = await cur.fetchone()
     if row is None or row["token"] != token:
         return False
-    
-    now = _now()
-    await db.execute(
-        "UPDATE agents SET last_activity = ?, last_activity_time = ? WHERE id = ?",
-        ('msg_wait', now, agent_id)
-    )
+    return await _set_agent_activity(db, agent_id, "msg_wait", touch_heartbeat=False)
+
+
+async def agent_msg_post(db: aiosqlite.Connection, agent_id: str) -> bool:
+    return await _set_agent_activity(db, agent_id, "msg_post", touch_heartbeat=False)
+
+
+async def agent_unregister(db: aiosqlite.Connection, agent_id: str, token: str) -> bool:
+    async with db.execute("SELECT token FROM agents WHERE id = ?", (agent_id,)) as cur:
+        row = await cur.fetchone()
+    if row is None or row["token"] != token:
+        return False
+    await db.execute("DELETE FROM agents WHERE id = ?", (agent_id,))
     await db.commit()
+    await _emit_event(db, "agent.offline", None, {"agent_id": agent_id})
     return True
 
 
@@ -499,6 +504,17 @@ async def agent_list(db: aiosqlite.Connection) -> list[AgentInfo]:
 def _row_to_agent(row: aiosqlite.Row) -> AgentInfo:
     last_hb = _parse_dt(row["last_heartbeat"])
     elapsed = (datetime.now(timezone.utc) - last_hb).total_seconds()
+    display_name = row["display_name"] if "display_name" in row.keys() else None
+    alias_source = row["alias_source"] if "alias_source" in row.keys() else None
+    if not display_name:
+        display_name = row["name"]
+        if not alias_source:
+            alias_source = "auto"
+
+    last_activity = row["last_activity"] if "last_activity" in row.keys() else None
+    last_activity_raw = row["last_activity_time"] if "last_activity_time" in row.keys() else None
+    last_activity_time = _parse_dt(last_activity_raw) if last_activity_raw else None
+
     return AgentInfo(
         id=row["id"],
         name=row["name"],
@@ -510,16 +526,16 @@ def _row_to_agent(row: aiosqlite.Row) -> AgentInfo:
         last_heartbeat=last_hb,
         is_online=elapsed < AGENT_HEARTBEAT_TIMEOUT,
         token=row["token"],
-        display_name=row["display_name"] if "display_name" in row.keys() else None,
-        alias_source=row["alias_source"] if "alias_source" in row.keys() else None,
-        last_activity=row["last_activity"] if "last_activity" in row.keys() else None,
-        last_activity_time=_parse_dt(row["last_activity_time"]) if "last_activity_time" in row.keys() and row["last_activity_time"] else None,
+        display_name=display_name,
+        alias_source=alias_source,
+        last_activity=last_activity,
+        last_activity_time=last_activity_time,
     )
 
 
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # Event fan-out (for SSE)
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 async def _emit_event(db: aiosqlite.Connection, event_type: str, thread_id: Optional[str], payload: dict) -> None:
     await db.execute(
@@ -527,7 +543,61 @@ async def _emit_event(db: aiosqlite.Connection, event_type: str, thread_id: Opti
         (event_type, thread_id, json.dumps(payload), _now()),
     )
     await db.commit()
+async def thread_timeout_sweep(db: aiosqlite.Connection, timeout_minutes: int) -> list[str]:
+    """
+    Close open threads whose last message is older than timeout_minutes.
+    Returns the list of thread IDs that were closed.
 
+    A thread is considered inactive if:
+    - Its status is 'discuss' (not already closed/archived)
+    - Its most recent message (or its creation time if no messages) is older than timeout_minutes
+
+    Emits a 'thread.timeout' event for each closed thread.
+    """
+    if timeout_minutes <= 0:
+        return []
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)).isoformat()
+    now = _now()
+
+    # Find threads that are open and whose last activity is before the cutoff.
+    # We use a LEFT JOIN so threads with no messages are also considered
+    # (they time out from creation time).
+    async with db.execute("""
+        SELECT t.id, t.topic,
+               COALESCE(MAX(m.created_at), t.created_at) AS last_activity
+        FROM threads t
+        LEFT JOIN messages m ON m.thread_id = t.id
+        WHERE t.status = 'discuss'
+        GROUP BY t.id
+        HAVING last_activity < ?
+    """, (cutoff,)) as cur:
+        rows = await cur.fetchall()
+
+    closed_ids: list[str] = []
+    for row in rows:
+        thread_id = row["id"]
+        topic = row["topic"]
+        last_activity = row["last_activity"]
+        await db.execute(
+            "UPDATE threads SET status = 'closed', closed_at = ? WHERE id = ?",
+            (now, thread_id),
+        )
+        await _emit_event(db, "thread.timeout", thread_id, {
+            "thread_id": thread_id,
+            "topic": topic,
+            "last_activity": last_activity,
+            "timeout_minutes": timeout_minutes,
+            "closed_at": now,
+        })
+        closed_ids.append(thread_id)
+        logger.info(f"Thread {thread_id[:8]}... ('{topic}') auto-closed after {timeout_minutes}min inactivity.")
+
+    if closed_ids:
+        await db.commit()
+        logger.info(f"Timeout sweep closed {len(closed_ids)} thread(s).")
+
+    return closed_ids
 
 async def events_since(db: aiosqlite.Connection, after_id: int = 0, limit: int = 50) -> list[Event]:
     """Fetch events newer than `after_id` for the SSE pump to deliver."""

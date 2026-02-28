@@ -1,920 +1,1679 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>AgentChatBus Console</title>
-<link rel="icon" type="image/png" href="/static/bus.png" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link
-  href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
-  rel="stylesheet" />
-<style>
-/* ══════════════════════════════════════════
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgentChatBus Console</title>
+  <link rel="icon" type="image/png" href="/static/bus.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet" />
+  <style>
+    /* ====================================================================================
    Reset & Base
-══════════════════════════════════════════ */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+==================================================================================== */
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
-:root {
-  --bg-base:      #0a0d12;
-  --bg-panel:     #0f1318;
-  --bg-card:      #151a22;
-  --bg-hover:     #1a2030;
-  --bg-input:     #111620;
-  --border:       #1e2635;
-  --border-light: #253040;
-  --accent:       #3b82f6;
-  --accent-dim:   #1d4ed8;
-  --accent-glow:  rgba(59,130,246,.18);
-  --green:        #22c55e;
-  --amber:        #f59e0b;
-  --purple:       #a855f7;
-  --red:          #ef4444;
-  --text-1:       #e2e8f0;
-  --text-2:       #94a3b8;
-  --text-3:       #4b5563;
-  --radius:       10px;
-  --shadow:       0 4px 24px rgba(0,0,0,.5);
-}
+    :root {
+      --bg-base: #0a0d12;
+      --bg-panel: #0f1318;
+      --bg-card: #151a22;
+      --bg-hover: #1a2030;
+      --bg-input: #111620;
+      --border: #1e2635;
+      --border-light: #253040;
+      --accent: #3b82f6;
+      --accent-dim: #1d4ed8;
+      --accent-glow: rgba(59, 130, 246, .18);
+      --green: #22c55e;
+      --amber: #f59e0b;
+      --purple: #a855f7;
+      --red: #ef4444;
+      --text-1: #e2e8f0;
+      --text-2: #94a3b8;
+      --text-3: #4b5563;
+      --radius: 10px;
+      --shadow: 0 4px 24px rgba(0, 0, 0, .5);
+    }
 
-html, body { height: 100%; overflow: hidden; }
+    html,
+    body {
+      height: 100%;
+      overflow: hidden;
+    }
 
-body {
-  font-family: 'Inter', system-ui, sans-serif;
-  background: var(--bg-base);
-  color: var(--text-1);
-  display: flex;
-  flex-direction: column;
-}
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg-base);
+      color: var(--text-1);
+      display: flex;
+      flex-direction: column;
+    }
 
-body[data-theme="light"] {
-  --bg-base:      #f3f6fb;
-  --bg-panel:     #ffffff;
-  --bg-card:      #f9fbff;
-  --bg-hover:     #edf3ff;
-  --bg-input:     #ffffff;
-  --border:       #d9e2ef;
-  --border-light: #c8d4e5;
-  --accent:       #2563eb;
-  --accent-dim:   #1d4ed8;
-  --accent-glow:  rgba(37,99,235,.18);
-  --green:        #16a34a;
-  --amber:        #d97706;
-  --purple:       #7c3aed;
-  --red:          #dc2626;
-  --text-1:       #0f172a;
-  --text-2:       #334155;
-  --text-3:       #64748b;
-  --shadow:       0 4px 20px rgba(15,23,42,.12);
-}
+    body[data-theme="light"] {
+      --bg-base: #f3f6fb;
+      --bg-panel: #ffffff;
+      --bg-card: #f9fbff;
+      --bg-hover: #edf3ff;
+      --bg-input: #ffffff;
+      --border: #d9e2ef;
+      --border-light: #c8d4e5;
+      --accent: #2563eb;
+      --accent-dim: #1d4ed8;
+      --accent-glow: rgba(37, 99, 235, .18);
+      --green: #16a34a;
+      --amber: #d97706;
+      --purple: #7c3aed;
+      --red: #dc2626;
+      --text-1: #0f172a;
+      --text-2: #334155;
+      --text-3: #64748b;
+      --shadow: 0 4px 20px rgba(15, 23, 42, .12);
+    }
 
-body[data-theme="light"] #topbar .logo {
-  background: linear-gradient(135deg, #1d4ed8, #7c3aed);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-body[data-theme="light"] .thread-item:hover,
-body[data-theme="light"] .thread-item.active {
-  background: #e8f0ff;
-}
-body[data-theme="light"] .badge-discuss {
-  background: rgba(37,99,235,.14);
-  color: #1d4ed8;
-}
-body[data-theme="light"] .badge-implement {
-  background: rgba(22,163,74,.14);
-  color: #15803d;
-}
-body[data-theme="light"] .badge-review {
-  background: rgba(217,119,6,.14);
-  color: #b45309;
-}
-body[data-theme="light"] .badge-done {
-  background: rgba(124,58,237,.14);
-  color: #6d28d9;
-}
-body[data-theme="light"] .badge-closed {
-  background: rgba(100,116,139,.16);
-  color: #475569;
-}
-body[data-theme="light"] .badge-archived {
-  background: rgba(148,163,184,.2);
-  color: #475569;
-}
-body[data-theme="light"] #online-presence {
-  background: rgba(22,163,74,.14);
-  border-color: rgba(22,163,74,.35);
-  color: #166534;
-}
-body[data-theme="light"] #online-presence:hover {
-  background: rgba(22,163,74,.2);
-  border-color: rgba(22,163,74,.45);
-}
-body[data-theme="light"] .msg-sys-event {
-  background: rgba(217,119,6,.1);
-  border-color: rgba(217,119,6,.24);
-  color: #92400e;
-}
-body[data-theme="light"] .ctx-item:hover {
-  background: #e8f0ff;
-}
+    body[data-theme="light"] #topbar .logo {
+      background: linear-gradient(135deg, #1d4ed8, #7c3aed);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
 
-/* ══════════════════════════════════════════
+    body[data-theme="light"] .thread-item:hover,
+    body[data-theme="light"] .thread-item.active {
+      background: #e8f0ff;
+    }
+
+    body[data-theme="light"] .badge-discuss {
+      background: rgba(37, 99, 235, .14);
+      color: #1d4ed8;
+    }
+
+    body[data-theme="light"] .badge-implement {
+      background: rgba(22, 163, 74, .14);
+      color: #15803d;
+    }
+
+    body[data-theme="light"] .badge-review {
+      background: rgba(217, 119, 6, .14);
+      color: #b45309;
+    }
+
+    body[data-theme="light"] .badge-done {
+      background: rgba(124, 58, 237, .14);
+      color: #6d28d9;
+    }
+
+    body[data-theme="light"] .badge-closed {
+      background: rgba(100, 116, 139, .16);
+      color: #475569;
+    }
+
+    body[data-theme="light"] .badge-archived {
+      background: rgba(148, 163, 184, .2);
+      color: #475569;
+    }
+
+    body[data-theme="light"] #online-presence {
+      background: rgba(22, 163, 74, .14);
+      border-color: rgba(22, 163, 74, .35);
+      color: #166534;
+    }
+
+    body[data-theme="light"] #online-presence:hover {
+      background: rgba(22, 163, 74, .2);
+      border-color: rgba(22, 163, 74, .45);
+    }
+
+    body[data-theme="light"] .msg-sys-event {
+      background: rgba(217, 119, 6, .1);
+      border-color: rgba(217, 119, 6, .24);
+      color: #92400e;
+    }
+
+    body[data-theme="light"] .ctx-item:hover {
+      background: #e8f0ff;
+    }
+
+    body[data-theme="light"] .msg-row.message-has-mentions .bubble-v2 {
+      background: linear-gradient(135deg, rgba(255, 235, 130, .12) 0%, rgba(255, 193, 7, .08) 100%);
+      border-color: rgba(255, 193, 7, .4);
+      box-shadow: inset 0 0 12px rgba(255, 193, 7, .1),
+        0 0 20px rgba(255, 193, 7, .15);
+    }
+
+    /* ====================================================================================
    Top bar
-══════════════════════════════════════════ */
-#topbar {
-  height: 52px;
-  background: var(--bg-panel);
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  padding: 0 20px;
-  gap: 12px;
-  flex-shrink: 0;
-  z-index: 10;
-}
-#topbar .logo {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 16px;
-  font-weight: 700;
-  background: linear-gradient(135deg, #3b82f6, #a855f7);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  letter-spacing: -.3px;
-}
-#topbar .logo img {
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
-  object-fit: cover;
-  flex-shrink: 0;
-}
-#topbar .sep { flex: 1; }
-#status-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 8px var(--green);
-  animation: pulse-dot 2s infinite;
-}
-@keyframes pulse-dot {
-  0%,100% { opacity: 1; }
-  50%      { opacity: .4; }
-}
-#topbar .status-label { font-size: 12px; color: var(--text-2); }
-#btn-new-thread {
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  border-radius: var(--radius);
-  padding: 6px 14px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  display: flex; align-items: center; gap: 6px;
-  transition: background .15s, transform .1s;
-}
-#btn-new-thread:hover { background: #2563eb; }
-#btn-new-thread:active { transform: scale(.97); }
-#btn-theme-toggle {
-  background: transparent;
-  color: var(--text-2);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius);
-  padding: 6px 10px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background .15s, color .15s;
-}
-#btn-theme-toggle:hover {
-  background: var(--bg-hover);
-  color: var(--text-1);
-}
+==================================================================================== */
+    #topbar {
+      height: 52px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      gap: 12px;
+      flex-shrink: 0;
+      z-index: 10;
+    }
 
-/* ══════════════════════════════════════════
+    #topbar .logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 16px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #3b82f6, #a855f7);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -.3px;
+    }
+
+    #topbar .logo img {
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+
+    #topbar .sep {
+      flex: 1;
+    }
+
+    #status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      animation: pulse-dot 2s infinite;
+    }
+
+    @keyframes pulse-dot {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: .4;
+      }
+    }
+
+    #topbar .status-label {
+      font-size: 12px;
+      color: var(--text-2);
+    }
+
+    #btn-new-thread {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background .15s, transform .1s;
+    }
+
+    #btn-new-thread:hover {
+      background: #2563eb;
+    }
+
+    #btn-new-thread:active {
+      transform: scale(.97);
+    }
+
+    #btn-theme-toggle {
+      background: transparent;
+      color: var(--text-2);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      padding: 6px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background .15s, color .15s;
+    }
+
+    #btn-theme-toggle:hover {
+      background: var(--bg-hover);
+      color: var(--text-1);
+    }
+
+    #btn-settings {
+      background: transparent;
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      font-size: 16px;
+      width: 34px;
+      height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--text-1);
+      margin-left: 8px;
+      transition: background 0.15s;
+    }
+
+    #btn-settings:hover {
+      background: var(--bg-hover);
+    }
+
+    /* ====================================================================================
    Layout: sidebar + main
-══════════════════════════════════════════ */
-#layout {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
+==================================================================================== */
+    #layout {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+    }
 
-/* ── Sidebar ── */
-#sidebar {
-  width: 260px;
-  background: var(--bg-panel);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-}
-#sidebar-tabs {
-  display: flex;
-  border-bottom: 1px solid var(--border);
-}
-.stab {
-  flex: 1; padding: 10px; font-size: 12px; font-weight: 600;
-  text-align: center; cursor: pointer; color: var(--text-3);
-  transition: color .15s, border-color .15s;
-  border-bottom: 2px solid transparent;
-  letter-spacing: .04em; text-transform: uppercase;
-}
-.stab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    /* ---- Sidebar ---- */
+    #sidebar {
+      width: 260px;
+      background: var(--bg-panel);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
 
-#thread-pane { flex: 1; overflow-y: auto; display: block; }
+    #sidebar-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+    }
 
-#thread-filter-wrap {
-  border-bottom: 1px solid var(--border);
-  padding: 8px 10px;
-  position: relative;
-}
-#btn-thread-filter {
-  width: 100%;
-  background: var(--bg-card);
-  color: var(--text-2);
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  padding: 6px 10px;
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
-}
-#btn-thread-filter:hover { background: var(--bg-hover); }
-#thread-filter-panel {
-  display: none;
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  top: 44px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: 10px;
-  box-shadow: var(--shadow);
-  z-index: 20;
-  padding: 8px;
-}
-#thread-filter-panel.visible { display: block; }
-.filter-actions {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.filter-actions button {
-  flex: 1;
-  background: var(--bg-hover);
-  color: var(--text-2);
-  border: 1px solid var(--border-light);
-  border-radius: 7px;
-  font-size: 11px;
-  padding: 5px 6px;
-  cursor: pointer;
-}
-.filter-actions button:hover { background: #233047; }
-.filter-row {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12px;
-  color: var(--text-1);
-  padding: 4px 2px;
-}
-.filter-row input { accent-color: var(--accent); }
+    .stab {
+      flex: 1;
+      padding: 10px;
+      font-size: 12px;
+      font-weight: 600;
+      text-align: center;
+      cursor: pointer;
+      color: var(--text-3);
+      transition: color .15s, border-color .15s;
+      border-bottom: 2px solid transparent;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
 
-/* Thread list */
-.thread-item {
-  padding: 12px 16px;
-  cursor: pointer;
-  border-left: 3px solid transparent;
-  transition: background .15s, border-color .15s;
-  position: relative;
-}
-.thread-item:hover { background: var(--bg-hover); }
-.thread-item.active {
-  background: var(--bg-hover);
-  border-left-color: var(--accent);
-}
-.thread-item .ti-topic {
-  font-size: 13px; font-weight: 500;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  color: var(--text-1);
-}
-.thread-item .ti-meta {
-  font-size: 11px; color: var(--text-3); margin-top: 4px;
-  display: flex; align-items: center; gap: 6px;
-}
-.badge {
-  display: inline-flex; align-items: center;
-  padding: 2px 7px; border-radius: 20px; font-size: 10px; font-weight: 600;
-  letter-spacing: .04em; text-transform: uppercase;
-}
-.badge-discuss   { background: rgba(59,130,246,.15);  color: #60a5fa; }
-.badge-implement { background: rgba(34,197,94,.12);   color: #4ade80; }
-.badge-review    { background: rgba(245,158,11,.12);  color: #fbbf24; }
-.badge-done      { background: rgba(168,85,247,.12);  color: #c084fc; }
-.badge-closed    { background: rgba(75,85,99,.15);    color: var(--text-3); }
-.badge-archived  { background: rgba(148,163,184,.16); color: #94a3b8; }
+    .stab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
 
-/* Agent list */
-.agent-item {
-  padding: 10px 16px;
-  display: flex; align-items: center; gap: 10px;
-  border-bottom: 1px solid var(--border);
-}
-.agent-avatar {
-  width: 32px; height: 32px; border-radius: 8px;
-  background: linear-gradient(135deg, #1d4ed8, #7c3aed);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0;
-}
-.agent-avatar-interactive { cursor: pointer; }
-.agent-name { font-size: 13px; font-weight: 500; }
-.agent-desc { font-size: 11px; color: var(--text-3); margin-top: 2px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
-.online-dot {
-  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-left: auto;
-}
-.online-dot.on  { background: var(--green); box-shadow: 0 0 6px var(--green); }
-.online-dot.off { background: var(--text-3); }
+    #thread-pane {
+      flex: 1;
+      overflow-y: auto;
+      display: block;
+    }
 
-/* ── Main area ── */
-#main {
-  flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0;
-}
+    #thread-filter-wrap {
+      border-bottom: 1px solid var(--border);
+      padding: 8px 10px;
+      position: relative;
+    }
 
-/* Thread header */
-#thread-header {
-  padding: 0 20px;
-  height: 52px;
-  border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; gap: 12px;
-  flex-shrink: 0;
-}
-#thread-header h2 { font-size: 15px; font-weight: 600; flex: 1; min-width: 0;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#online-presence {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 56px;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border-light);
-  background: rgba(34,197,94,.12);
-  color: #86efac;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: .01em;
-  cursor: default;
-  transition: background .15s, border-color .15s;
-}
-#online-presence:hover {
-  background: rgba(34,197,94,.18);
-  border-color: rgba(34,197,94,.45);
-}
-#online-count {
-  white-space: nowrap;
-}
+    #btn-thread-filter {
+      width: 100%;
+      background: var(--bg-card);
+      color: var(--text-2);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 12px;
+      text-align: left;
+      cursor: pointer;
+    }
 
-/* Messages */
-#messages {
-  flex: 1; overflow-y: auto; padding: 20px;
-  display: flex; flex-direction: column; gap: 14px;
-}
-#messages::-webkit-scrollbar { width: 16px; }
-#messages::-webkit-scrollbar-track { background: transparent; }
-#messages::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
+    #btn-thread-filter:hover {
+      background: var(--bg-hover);
+    }
 
-/* ── Message rows (author-based coloring) ── */
-.msg-row {
-  display: flex; align-items: flex-start; gap: 10px; max-width: 82%;
-  animation: bubble-in .2s ease;
-}
-.msg-row-left  { align-self: flex-start; }
-.msg-row-right { align-self: flex-end; flex-direction: row-reverse; }
+    #thread-filter-panel {
+      display: none;
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      top: 44px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+      z-index: 20;
+      padding: 8px;
+    }
 
-@keyframes bubble-in {
-  from { opacity: 0; transform: translateY(6px) scale(.98); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
+    #thread-filter-panel.visible {
+      display: block;
+    }
 
-.msg-avatar {
-  width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 700; letter-spacing: .02em;
-  margin-top: 2px;
-}
-.msg-avatar-interactive { cursor: pointer; }
+    .filter-actions {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
 
-.msg-col { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.msg-row-right .msg-col { align-items: flex-end; }
+    .filter-actions button {
+      flex: 1;
+      background: var(--bg-hover);
+      color: var(--text-2);
+      border: 1px solid var(--border-light);
+      border-radius: 7px;
+      font-size: 11px;
+      padding: 5px 6px;
+      cursor: pointer;
+    }
 
-.msg-header {
-  display: flex; align-items: baseline; gap: 8px;
-  font-size: 11px;
-}
-.msg-row-right .msg-header { flex-direction: row-reverse; }
-.msg-author-label { font-weight: 600; }
-.msg-time-label   { color: var(--text-3); }
+    .filter-actions button:hover {
+      background: #233047;
+    }
 
-.bubble-v2 {
-  padding: 10px 14px;
-  border-radius: 12px;
-  font-size: 13.5px; line-height: 1.6;
-  word-break: break-word;
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-left-width: 3px;
-  max-width: 100%;
-}
-.msg-row-right .bubble-v2 {
-  border-left-width: 1px;
-  border-right-width: 3px;
-}
+    .filter-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12px;
+      color: var(--text-1);
+      padding: 4px 2px;
+    }
 
-/* System event row (centered) */
-.msg-sys-event {
-  align-self: center; max-width: 80%;
-  padding: 6px 14px;
-  background: rgba(245,158,11,.07);
-  border: 1px solid rgba(245,158,11,.18);
-  border-radius: 20px;
-  font-size: 11.5px; font-style: italic; color: #fbbf24;
-  text-align: center;
-  animation: bubble-in .2s ease;
-}
+    .filter-row input {
+      accent-color: var(--accent);
+    }
 
-.bubble-meta { font-size: 10px; color: var(--text-3); margin: 0 4px; }
+    /* Thread list */
+    .thread-item {
+      padding: 12px 16px;
+      cursor: pointer;
+      border-left: 3px solid transparent;
+      transition: background .15s, border-color .15s;
+      position: relative;
+    }
 
-.typing-bubble {
-  display: flex; align-items: center; gap: 4px;
-  padding: 10px 16px;
-  background: var(--bg-card); border: 1px solid var(--border-light);
-  border-radius: 14px 14px 14px 4px;
-  max-width: 80px;
-}
-.typing-bubble span {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--text-3); display: block;
-  animation: bouncing .9s infinite;
-}
-.typing-bubble span:nth-child(2) { animation-delay: .15s; }
-.typing-bubble span:nth-child(3) { animation-delay: .3s; }
-@keyframes bouncing {
-  0%,60%,100% { transform: translateY(0); }
-  30%         { transform: translateY(-5px); background: var(--accent); }
-}
+    .thread-item:hover {
+      background: var(--bg-hover);
+    }
 
-/* Empty state */
-#empty-state {
-  flex: 1; display: flex; flex-direction: column; align-items: center;
-  justify-content: center; color: var(--text-3); gap: 12px;
-}
-#empty-state .es-icon { font-size: 48px; opacity: .4; }
-#empty-state .es-title { font-size: 16px; font-weight: 600; color: var(--text-2); }
-#empty-state .es-sub { font-size: 13px; }
+    .thread-item.active {
+      background: var(--bg-hover);
+      border-left-color: var(--accent);
+    }
 
-/* Compose */
-#compose {
-  padding: 14px 20px;
-  border-top: 1px solid var(--border);
-  display: none; gap: 10px; align-items: flex-end;
-  background: var(--bg-panel);
-}
-#compose.visible { display: flex; }
-#compose-author {
-  background: var(--bg-input); border: 1px solid var(--border-light);
-  color: var(--text-2); border-radius: 8px;
-  padding: 8px 10px; font-size: 12px; font-family: inherit;
-  width: 100px; flex-shrink: 0;
-}
-#compose-author:focus { outline: none; border-color: var(--accent); }
-#compose-input {
-  flex: 1; background: var(--bg-input); border: 1px solid var(--border-light);
-  color: var(--text-1); border-radius: 10px; padding: 10px 14px;
-  font-size: 13.5px; resize: none; min-height: 42px; max-height: 140px;
-  font-family: inherit; line-height: 1.5;
-  transition: border-color .15s;
-}
-#compose-input:focus { outline: none; border-color: var(--accent); }
-#compose-input::placeholder { color: var(--text-3); }
-#btn-send {
-  background: var(--accent); color: #fff; border: none; border-radius: 10px;
-  width: 40px; height: 40px; cursor: pointer; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 18px; transition: background .15s, transform .1s;
-}
-#btn-send:hover { background: #2563eb; }
-#btn-send:active { transform: scale(.93); }
+    .thread-item.context-highlight {
+      background: rgba(245, 158, 11, .1);
+      border-left-color: #f59e0b;
+    }
 
-/** Agent Status Bar **/
-#agent-status-bar {
-  display: flex;
-  background: var(--bg-base);
-  border-top: 1px solid var(--border-light);
-  padding: 8px 12px;
-  height: 56px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  gap: 10px;
-  font-size: 12px;
-}
-#agent-status-list {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: nowrap;
-}
-.agent-status-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  white-space: nowrap;
-  flex-shrink: 0;
-  font-size: 12px;
-  color: var(--text-1);
-}
-.agent-status-emoji {
-  font-size: 16px;
-  width: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.agent-status-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.agent-alias {
-  font-weight: 500;
-  color: var(--text-1);
-}
-.agent-state {
-  font-size: 11px;
-  color: var(--text-2);
-}
-.agent-status-text-compact {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-2);
-  min-width: 16px;
-  text-align: center;
-}
+    body[data-theme="light"] .thread-item.context-highlight {
+      background: rgba(245, 158, 11, .15);
+      border-left-color: #d97706;
+    }
 
-#agent-status-info {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  cursor: help;
-  padding: 4px 8px;
-  border-radius: 4px;
-  transition: background-color 0.2s;
-  flex-shrink: 0;
-  position: relative;
-}
-#agent-status-info:hover {
-  background-color: var(--bg-input);
-}
+    .thread-item .ti-topic {
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--text-1);
+    }
 
-#agent-status-info-tooltip {
-  position: fixed;
-  z-index: 9999;
-  width: 280px;
-  border: 1px solid var(--border-light);
-  border-radius: 10px;
-  background: var(--bg-card);
-  box-shadow: var(--shadow);
-  padding: 12px;
-  display: none;
-  font-size: 11px;
-  line-height: 1.6;
-  color: var(--text-1);
-}
-#agent-status-info-tooltip.visible {
-  display: block;
-}
-#agent-status-info-tooltip .state-item {
-  margin-bottom: 8px;
-}
-#agent-status-info-tooltip .state-item:last-child {
-  margin-bottom: 0;
-}
-#agent-status-info-tooltip .state-emoji {
-  font-weight: bold;
-  margin-right: 6px;
-}
-#agent-status-info-tooltip strong {
-  color: var(--text-1);
-}
+    .thread-item .ti-meta {
+      font-size: 11px;
+      color: var(--text-3);
+      margin-top: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
 
-/* ══════════════════════════════════════════
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 7px;
+      border-radius: 20px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
+    .badge-discuss {
+      background: rgba(59, 130, 246, .15);
+      color: #60a5fa;
+    }
+
+    .badge-implement {
+      background: rgba(34, 197, 94, .12);
+      color: #4ade80;
+    }
+
+    .badge-review {
+      background: rgba(245, 158, 11, .12);
+      color: #fbbf24;
+    }
+
+    .badge-done {
+      background: rgba(168, 85, 247, .12);
+      color: #c084fc;
+    }
+
+    .badge-closed {
+      background: rgba(75, 85, 99, .15);
+      color: var(--text-3);
+    }
+
+    .badge-archived {
+      background: rgba(148, 163, 184, .16);
+      color: #94a3b8;
+    }
+
+    /* Agent list */
+    .agent-item {
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .agent-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #1d4ed8, #7c3aed);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    .agent-avatar-interactive {
+      cursor: pointer;
+    }
+
+    .agent-name {
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .agent-desc {
+      font-size: 11px;
+      color: var(--text-3);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 150px;
+    }
+
+    .online-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      margin-left: auto;
+    }
+
+    .online-dot.on {
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+    }
+
+    .online-dot.off {
+      background: var(--text-3);
+    }
+
+    /* ---- Main area ---- */
+    #main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+    }
+
+    /* Thread header */
+    #thread-header {
+      padding: 0 20px;
+      height: 52px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    #thread-header h2 {
+      font-size: 15px;
+      font-weight: 600;
+      flex: 1;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #online-presence {
+      margin-left: auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 56px;
+      height: 28px;
+      padding: 0 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border-light);
+      background: rgba(34, 197, 94, .12);
+      color: #86efac;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: .01em;
+      cursor: default;
+      transition: background .15s, border-color .15s;
+    }
+
+    #online-presence:hover {
+      background: rgba(34, 197, 94, .18);
+      border-color: rgba(34, 197, 94, .45);
+    }
+
+    #online-count {
+      white-space: nowrap;
+    }
+
+    /* Messages */
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-height: 0;
+    }
+
+    #messages.loading-history .msg-row,
+    #messages.loading-history .msg-sys-event {
+      animation: none !important;
+    }
+
+    #messages::-webkit-scrollbar {
+      width: 16px;
+    }
+
+    #messages::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    #messages::-webkit-scrollbar-thumb {
+      background: var(--border-light);
+      border-radius: 4px;
+    }
+
+    #messages>acb-empty-state {
+      display: flex;
+      flex: 1;
+      min-height: 100%;
+    }
+
+    /* ---- Message rows (author-based coloring) ---- */
+    .msg-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      max-width: 82%;
+      animation: bubble-in .2s ease;
+    }
+
+    .msg-row-left {
+      align-self: flex-start;
+    }
+
+    .msg-row-right {
+      align-self: flex-end;
+      flex-direction: row-reverse;
+    }
+
+    @keyframes bubble-in {
+      from {
+        opacity: 0;
+        transform: translateY(6px) scale(.98);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    /* ── Messages with mentions (Phase 2 notification) ── */
+    .msg-row.message-has-mentions .bubble-v2 {
+      background: linear-gradient(135deg, rgba(255, 250, 205, .08) 0%, rgba(255, 193, 7, .05) 100%);
+      border-color: rgba(255, 193, 7, .3);
+      box-shadow: inset 0 0 12px rgba(255, 193, 7, .08),
+        0 0 20px rgba(255, 193, 7, .12);
+    }
+
+    .msg-row.message-has-mentions {
+      position: relative;
+    }
+
+    .msg-row.message-has-mentions::before {
+      content: "";
+      position: absolute;
+      left: -6px;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: linear-gradient(to bottom, #ff9800, #ffc107);
+      border-radius: 2px;
+    }
+
+    .msg-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 9px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .02em;
+      margin-top: 2px;
+    }
+
+    .msg-avatar-interactive {
+      cursor: pointer;
+    }
+
+    .msg-col {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .msg-row-right .msg-col {
+      align-items: flex-end;
+    }
+
+    .msg-header {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      font-size: 11px;
+    }
+
+    .msg-row-right .msg-header {
+      flex-direction: row-reverse;
+    }
+
+    .msg-author-label {
+      font-weight: 600;
+    }
+
+    .msg-time-label {
+      color: var(--text-3);
+    }
+
+    .bubble-v2 {
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 13.5px;
+      line-height: 1.6;
+      word-break: break-word;
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-left-width: 3px;
+      max-width: 100%;
+    }
+
+    .msg-row-right .bubble-v2 {
+      border-left-width: 1px;
+      border-right-width: 3px;
+    }
+
+    /* Markdown rendering inside message bubbles */
+    .bubble-v2 h1,
+    .bubble-v2 h2,
+    .bubble-v2 h3,
+    .bubble-v2 h4,
+    .bubble-v2 h5,
+    .bubble-v2 h6 {
+      margin: 12px 0 6px;
+      line-height: 1.3;
+      color: var(--text-1);
+    }
+
+    .bubble-v2 h1 {
+      font-size: 16px;
+    }
+
+    .bubble-v2 h2 {
+      font-size: 14.5px;
+    }
+
+    .bubble-v2 h3 {
+      font-size: 13.5px;
+    }
+
+    .bubble-v2 h4,
+    .bubble-v2 h5,
+    .bubble-v2 h6 {
+      font-size: 13px;
+    }
+
+    .bubble-v2 h1:first-child,
+    .bubble-v2 h2:first-child,
+    .bubble-v2 h3:first-child {
+      margin-top: 0;
+    }
+
+    .bubble-v2 p {
+      margin: 6px 0;
+    }
+
+    .bubble-v2 p:first-child {
+      margin-top: 0;
+    }
+
+    .bubble-v2 p:last-child {
+      margin-bottom: 0;
+    }
+
+    .bubble-v2 ul,
+    .bubble-v2 ol {
+      margin: 6px 0;
+      padding-left: 20px;
+    }
+
+    .bubble-v2 li {
+      margin: 2px 0;
+    }
+
+    .bubble-v2 blockquote {
+      margin: 8px 0;
+      padding: 4px 12px;
+      border-left: 3px solid var(--accent);
+      color: var(--text-2);
+      font-style: italic;
+      background: rgba(59, 130, 246, .05);
+      border-radius: 0 6px 6px 0;
+    }
+
+    .bubble-v2 code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      background: rgba(255, 255, 255, .06);
+      padding: 1px 5px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+
+    body[data-theme="light"] .bubble-v2 code {
+      background: rgba(0, 0, 0, .05);
+    }
+
+    .bubble-v2 pre {
+      margin: 8px 0;
+      padding: 10px 12px;
+      background: var(--bg-base);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow-x: auto;
+    }
+
+    .bubble-v2 pre code {
+      background: none;
+      padding: 0;
+      border: none;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .bubble-v2 table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8px 0;
+      font-size: 12px;
+    }
+
+    .bubble-v2 th,
+    .bubble-v2 td {
+      padding: 5px 10px;
+      border: 1px solid var(--border-light);
+      text-align: left;
+    }
+
+    .bubble-v2 th {
+      background: rgba(59, 130, 246, .08);
+      font-weight: 600;
+      color: var(--text-1);
+    }
+
+    .bubble-v2 hr {
+      border: none;
+      border-top: 1px solid var(--border-light);
+      margin: 10px 0;
+    }
+
+    .bubble-v2 a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .bubble-v2 a:hover {
+      text-decoration: underline;
+    }
+
+    .bubble-v2 strong {
+      color: var(--text-1);
+    }
+
+    .bubble-v2 pre {
+      margin: 8px 0;
+      padding: 10px 12px;
+      background: var(--bg-input);
+      border: 1px solid var(--border-light);
+      border-radius: 10px;
+      overflow: auto;
+    }
+
+    .code-block {
+      position: relative;
+    }
+
+    .code-block pre {
+      padding-top: 34px;
+    }
+
+    .code-copy {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 8px;
+      border: 1px solid var(--border-light);
+      background: var(--bg-card);
+      color: var(--text-2);
+      cursor: pointer;
+    }
+
+    .code-copy:active {
+      transform: translateY(1px);
+    }
+
+    .code-copy:disabled {
+      cursor: default;
+      opacity: .8;
+    }
+
+    .bubble-v2 pre code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 12.5px;
+      line-height: 1.5;
+      white-space: pre;
+    }
+
+    .bubble-v2 code.inline-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 12.5px;
+      background: var(--bg-input);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      padding: 1px 6px;
+    }
+
+    /* System event row (centered) */
+    .msg-sys-event {
+      align-self: center;
+      max-width: 80%;
+      padding: 6px 14px;
+      background: rgba(245, 158, 11, .07);
+      border: 1px solid rgba(245, 158, 11, .18);
+      border-radius: 20px;
+      font-size: 11.5px;
+      font-style: italic;
+      color: #fbbf24;
+      text-align: center;
+      animation: bubble-in .2s ease;
+    }
+
+    .bubble-meta {
+      font-size: 10px;
+      color: var(--text-3);
+      margin: 0 4px;
+    }
+
+    .typing-bubble {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 10px 16px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-radius: 14px 14px 14px 4px;
+      max-width: 80px;
+    }
+
+    .typing-bubble span {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--text-3);
+      display: block;
+      animation: bouncing .9s infinite;
+    }
+
+    .typing-bubble span:nth-child(2) {
+      animation-delay: .15s;
+    }
+
+    .typing-bubble span:nth-child(3) {
+      animation-delay: .3s;
+    }
+
+    @keyframes bouncing {
+
+      0%,
+      60%,
+      100% {
+        transform: translateY(0);
+      }
+
+      30% {
+        transform: translateY(-5px);
+        background: var(--accent);
+      }
+    }
+
+    /* Empty state */
+    #empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-3);
+      gap: 12px;
+    }
+
+    #empty-state .es-icon {
+      font-size: 48px;
+      opacity: .4;
+    }
+
+    #empty-state .es-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-2);
+    }
+
+    #empty-state .es-sub {
+      font-size: 13px;
+    }
+
+    /* Compose */
+    #compose {
+      padding: 14px 20px;
+      border-top: 1px solid var(--border);
+      display: none;
+      gap: 10px;
+      align-items: flex-end;
+      background: var(--bg-panel);
+    }
+
+    #compose.visible {
+      display: flex;
+    }
+
+    #compose-author {
+      background: var(--bg-input);
+      border: 1px solid var(--border-light);
+      color: var(--text-2);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 13.5px;
+      font-family: inherit;
+      width: 80px;
+      flex-shrink: 0;
+      text-align: center;
+      align-self: flex-start;
+      height: 42px;
+      box-sizing: border-box;
+    }
+
+    #compose-author:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    #compose-input {
+      flex: 1;
+      background: var(--bg-input);
+      border: 1px solid var(--border-light);
+      color: var(--text-1);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 13.5px;
+      resize: none;
+      min-height: 42px;
+      max-height: 140px;
+      font-family: inherit;
+      line-height: 1.5;
+      transition: border-color .15s;
+    }
+
+    #compose-input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    #compose-input:empty::before {
+      content: attr(placeholder);
+      color: var(--text-3);
+      pointer-events: none;
+    }
+
+    #btn-send {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      width: 40px;
+      height: 40px;
+      cursor: pointer;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      transition: background .15s, transform .1s;
+    }
+
+    #btn-send:hover {
+      background: #2563eb;
+    }
+
+    #btn-send:active {
+      transform: scale(.93);
+    }
+
+    /** Agent Status Bar **/
+    #agent-status-bar {
+      display: flex;
+      background: var(--bg-base);
+      border-top: 1px solid var(--border-light);
+      padding: 8px 12px;
+      height: 56px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      gap: 10px;
+      font-size: 12px;
+    }
+
+    #agent-status-list {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: nowrap;
+    }
+
+    .agent-status-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      background: var(--bg-input);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      font-size: 12px;
+      color: var(--text-1);
+    }
+
+    .agent-status-emoji {
+      font-size: 16px;
+      width: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .agent-status-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .agent-alias {
+      font-weight: 500;
+      color: var(--text-1);
+    }
+
+    .agent-state {
+      font-size: 11px;
+      color: var(--text-2);
+    }
+
+    .agent-status-text-compact {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-2);
+      min-width: 16px;
+      text-align: center;
+    }
+
+    #agent-status-info {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      cursor: help;
+      padding: 4px 8px;
+      border-radius: 4px;
+      transition: background-color 0.2s;
+      flex-shrink: 0;
+      position: relative;
+    }
+
+    #agent-status-info:hover {
+      background-color: var(--bg-input);
+    }
+
+    .acb-tooltip-info .state-item {
+      margin-bottom: 8px;
+    }
+
+    .acb-tooltip-info .state-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .acb-tooltip-info .state-emoji {
+      font-weight: bold;
+      margin-right: 6px;
+    }
+
+    .acb-tooltip-info strong {
+      color: var(--text-1);
+    }
+
+    /* ====================================================================================
    Modal
-══════════════════════════════════════════ */
-#modal-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,.7);
-  display: none; align-items: center; justify-content: center;
-  z-index: 100; animation: fade-in .15s ease;
-}
-#modal-overlay.visible { display: flex; }
-@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-#modal {
-  background: var(--bg-card); border: 1px solid var(--border-light);
-  border-radius: 14px; padding: 28px; width: 440px; max-width: 90vw;
-  box-shadow: var(--shadow);
-  animation: modal-in .2s ease;
-}
-@keyframes modal-in {
-  from { opacity: 0; transform: scale(.95) translateY(-10px); }
-  to   { opacity: 1; transform: scale(1) translateY(0); }
-}
-#modal h3 { font-size: 16px; font-weight: 600; margin-bottom: 18px; }
-#modal-topic {
-  width: 100%; background: var(--bg-input); border: 1px solid var(--border-light);
-  color: var(--text-1); border-radius: 10px; padding: 10px 14px;
-  font-size: 14px; font-family: inherit; margin-bottom: 16px;
-}
-#modal-topic:focus { outline: none; border-color: var(--accent); }
-.modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
-.btn-secondary {
-  background: var(--bg-hover); color: var(--text-2); border: 1px solid var(--border-light);
-  border-radius: 8px; padding: 8px 18px; font-size: 13px;
-  cursor: pointer; font-family: inherit; transition: background .15s;
-}
-.btn-secondary:hover { background: var(--border-light); }
-.btn-primary {
-  background: var(--accent); color: #fff; border: none;
-  border-radius: 8px; padding: 8px 18px; font-size: 13px;
-  cursor: pointer; font-family: inherit; transition: background .15s;
-}
-.btn-primary:hover { background: #2563eb; }
+==================================================================================== */
+    #modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, .7);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      animation: fade-in .15s ease;
+    }
 
-/* Thread context menu */
-#thread-context-menu {
-  position: fixed;
-  min-width: 150px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: 10px;
-  box-shadow: var(--shadow);
-  padding: 6px;
-  z-index: 1200;
-  display: none;
-}
-#thread-context-menu.visible { display: block; }
-.ctx-item {
-  width: 100%;
-  text-align: left;
-  background: transparent;
-  border: none;
-  color: var(--text-1);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 12px;
-  cursor: pointer;
-}
-.ctx-item:hover { background: var(--bg-hover); }
-.ctx-item:disabled {
-  color: var(--text-3);
-  cursor: not-allowed;
-}
+    #modal-overlay.visible {
+      display: flex;
+    }
 
-#footer-link {
-  display: inline-flex;
-  align-items: center;
-  font-size: 11px;
-  color: var(--text-3);
-  opacity: .72;
-  margin-left: 2px;
-}
-#footer-link a {
-  color: inherit;
-  text-decoration: none;
-}
-#footer-link a:hover {
-  color: var(--text-2);
-  text-decoration: underline;
-}
+    @keyframes fade-in {
+      from {
+        opacity: 0;
+      }
 
-/* Scrollbar */
-#thread-pane::-webkit-scrollbar { width: 16px; }
-#thread-pane::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
+      to {
+        opacity: 1;
+      }
+    }
 
-/* ── Agent tooltip (custom, copy-enabled) ─────────────────────────────── */
-#agent-tooltip {
-  position: fixed;
-  z-index: 9999;
-  width: min(380px, calc(100vw - 24px));
-  border: 1px solid var(--border-light);
-  border-radius: 10px;
-  background: var(--bg-card);
-  box-shadow: var(--shadow);
-  padding: 10px;
-  display: none;
-}
-#agent-tooltip.visible { display: block; }
-.agent-tip-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-1);
-  margin-bottom: 8px;
-}
-.agent-tip-meta {
-  font-size: 11px;
-  color: var(--text-2);
-  margin-bottom: 8px;
-  line-height: 1.5;
-}
-.agent-tip-meta code {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  color: var(--text-1);
-}
-.agent-tip-prompt {
-  margin: 0;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg-input);
-  color: var(--text-1);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  line-height: 1.45;
-  padding: 8px;
-  max-height: 180px;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.agent-tip-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
-.agent-tip-actions button {
-  flex: 1;
-  border: 1px solid var(--border-light);
-  background: var(--bg-hover);
-  color: var(--text-1);
-  border-radius: 8px;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 6px 8px;
-  cursor: pointer;
-}
-.agent-tip-actions button:hover { border-color: var(--accent); }
-</style>
+    #modal {
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-radius: 14px;
+      padding: 28px;
+      width: 440px;
+      max-width: 90vw;
+      box-shadow: var(--shadow);
+      animation: modal-in .2s ease;
+    }
+
+    @keyframes modal-in {
+      from {
+        opacity: 0;
+        transform: scale(.95) translateY(-10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
+
+    #modal h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 18px;
+    }
+
+    #modal-topic {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1px solid var(--border-light);
+      color: var(--text-1);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 14px;
+      font-family: inherit;
+      margin-bottom: 16px;
+    }
+
+    #modal-topic:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    .btn-secondary {
+      background: var(--bg-hover);
+      color: var(--text-2);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      padding: 8px 18px;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background .15s;
+    }
+
+    .btn-secondary:hover {
+      background: var(--border-light);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 18px;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background .15s;
+    }
+
+    .btn-primary:hover {
+      background: #2563eb;
+    }
+
+    /* Thread context menu */
+    #thread-context-menu {
+      position: fixed;
+      min-width: 150px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+      padding: 6px;
+      z-index: 1200;
+      display: none;
+    }
+
+    #thread-context-menu.visible {
+      display: block;
+    }
+
+    .ctx-item {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: none;
+      color: var(--text-1);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .ctx-item:hover {
+      background: var(--bg-hover);
+    }
+
+    .ctx-item:disabled {
+      color: var(--text-3);
+      cursor: not-allowed;
+    }
+
+    .ctx-divider {
+      margin: 4px 0;
+      border: none;
+      border-top: 1px solid rgba(255, 255, 255, .1);
+    }
+
+    body[data-theme="light"] .ctx-divider {
+      border-top-color: rgba(0, 0, 0, .1);
+    }
+
+    .ctx-item--destructive {
+      color: #ef4444;
+    }
+
+    .ctx-item--destructive:hover {
+      background: rgba(239, 68, 68, .12);
+    }
+
+    /* ── Confirm dialog ───────────────────── */
+    acb-confirm-dialog dialog {
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-radius: 14px;
+      padding: 24px 28px;
+      width: 420px;
+      max-width: 90vw;
+      box-shadow: var(--shadow);
+      color: var(--text-1);
+      margin: auto;
+    }
+
+    acb-confirm-dialog dialog::backdrop {
+      background: rgba(0, 0, 0, .55);
+    }
+
+    acb-confirm-dialog .confirm-title {
+      font-size: 15px;
+      font-weight: 600;
+      margin: 0 0 12px;
+    }
+
+    acb-confirm-dialog .confirm-message {
+      font-size: 13px;
+      color: var(--text-2);
+      margin: 0 0 20px;
+      line-height: 1.5;
+    }
+
+    acb-confirm-dialog .confirm-message strong {
+      color: var(--text-1);
+    }
+
+    acb-confirm-dialog .confirm-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .btn-destructive {
+      background: #dc2626;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 18px;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background .15s;
+    }
+
+    .btn-destructive:hover {
+      background: #b91c1c;
+    }
+
+    #footer-link {
+      display: inline-flex;
+      align-items: center;
+      font-size: 11px;
+      color: var(--text-3);
+      opacity: .72;
+      margin-left: 2px;
+    }
+
+    #footer-link a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    #footer-link a:hover {
+      color: var(--text-2);
+      text-decoration: underline;
+    }
+
+    /* Scrollbar */
+    #thread-pane::-webkit-scrollbar {
+      width: 16px;
+    }
+
+    #thread-pane::-webkit-scrollbar-thumb {
+      background: var(--border-light);
+      border-radius: 4px;
+    }
+
+    /* ---- Agent tooltip (custom, copy-enabled) -------------------------------------------------------------- */
+    /* Tooltip container styles for AcbTooltip web component */
+    #acb-global-tooltip {
+      pointer-events: none;
+    }
+
+    #acb-global-tooltip.interactive {
+      pointer-events: auto;
+    }
+
+    /* Agent tooltip specific styles */
+    .acb-tooltip-agent {
+      width: min(380px, calc(100vw - 24px));
+      padding: 10px;
+    }
+
+    .agent-tip-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-1);
+      margin-bottom: 8px;
+    }
+
+    .agent-tip-meta {
+      font-size: 11px;
+      color: var(--text-2);
+      margin-bottom: 8px;
+      line-height: 1.5;
+    }
+
+    .agent-tip-meta code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text-1);
+    }
+
+    .agent-tip-prompt {
+      margin: 0;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg-input);
+      color: var(--text-1);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      line-height: 1.45;
+      padding: 8px;
+      max-height: 180px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .agent-tip-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .agent-tip-actions button {
+      flex: 1;
+      border: 1px solid var(--border-light);
+      background: var(--bg-hover);
+      color: var(--text-1);
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 6px 8px;
+      cursor: pointer;
+    }
+
+    .agent-tip-actions button:hover {
+      border-color: var(--accent);
+    }
+  </style>
 </head>
+
 <body>
 
-<!-- ── Top bar ─────────────────────────────── -->
-<div id="topbar">
-  <div class="logo"><img src="/static/bus.png" alt="Bus" />AgentChatBus</div>
-  <div id="footer-link">
-    <a href="https://github.com/Killea/AgentChatBus" target="_blank" rel="noopener noreferrer">GitHub · AgentChatBus</a>
-  </div>
-  <div class="sep"></div>
-  <div id="status-dot"></div>
-  <div class="status-label" id="status-label">Connected</div>
-  <button id="btn-theme-toggle" type="button" onclick="toggleTheme()">Light</button>
-  <button id="btn-new-thread" onclick="openModal()">＋ New Thread</button>
-  <button id="btn-settings" type="button" onclick="openSettingsModal()" title="MCP Server Settings"
-    style="background: transparent; border: 1px solid var(--border-light); border-radius: 8px; font-size: 16px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-1); margin-left: 8px; transition: background 0.15s;">⚙️</button>
-</div>
-
-<!-- ── Layout ──────────────────────────────── -->
-<div id="layout">
-
-  <!-- Sidebar -->
-  <div id="sidebar">
-    <div id="sidebar-tabs">
-      <div class="stab active" id="tab-threads" onclick="switchTab('threads')">Threads</div>
+  <!-- ---- Top bar -------------------------------------------------------------- -->
+  <div id="topbar">
+    <div class="logo"><img src="/static/bus.png" alt="Bus" />AgentChatBus</div>
+    <div id="footer-link">
+      <a href="https://github.com/Killea/AgentChatBus" target="_blank" rel="noopener noreferrer">GitHub
+        AgentChatBus</a>
     </div>
-    <div id="thread-filter-wrap">
-      <button id="btn-thread-filter" type="button" onclick="toggleThreadFilterPanel(event)">Filter: normal (5)</button>
-      <div id="thread-filter-panel" onclick="event.stopPropagation()">
-        <div class="filter-actions">
-          <button type="button" onclick="selectAllThreadStatuses()">Select all</button>
-          <button type="button" onclick="selectNormalThreadStatuses()">Normal only</button>
-        </div>
-        <label class="filter-row"><input type="checkbox" data-status="discuss" checked onchange="onThreadFilterChange()"/>discuss</label>
-        <label class="filter-row"><input type="checkbox" data-status="implement" checked onchange="onThreadFilterChange()"/>implement</label>
-        <label class="filter-row"><input type="checkbox" data-status="review" checked onchange="onThreadFilterChange()"/>review</label>
-        <label class="filter-row"><input type="checkbox" data-status="done" checked onchange="onThreadFilterChange()"/>done</label>
-        <label class="filter-row"><input type="checkbox" data-status="closed" checked onchange="onThreadFilterChange()"/>closed</label>
-        <label class="filter-row"><input type="checkbox" data-status="archived" onchange="onThreadFilterChange()"/>archived</label>
+    <div class="sep"></div>
+    <div id="status-dot"></div>
+    <div class="status-label" id="status-label">Connected</div>
+    <!-- <button id="btn-theme-toggle" type="button" onclick="toggleTheme()">Light</button> -->
+    <!-- <button id="btn-settings" type="button" onclick="openSettingsModal()" title="MCP Server Settings"
+      style="background: transparent; border: 1px solid var(--border-light); border-radius: 8px; font-size: 16px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-1); margin-left: 8px; transition: background 0.15s;">⚙️</button> -->
+    <acb-icon-button button-id="btn-theme-toggle" label="Light" action="toggleTheme"></acb-icon-button>
+    <acb-icon-button button-id="btn-new-thread" label="＋ New Thread" action="openModal"
+      title="Create new thread"></acb-icon-button>
+    <acb-icon-button button-id="btn-settings" label="⚙️" action="openSettingsModal" title="MCP Server Settings"
+      aria-label="MCP Server Settings"></acb-icon-button>
+  </div>
+
+  <!-- ---- Layout ---------------------------------------------------------------- -->
+  <div id="layout">
+
+    <!-- Sidebar -->
+    <div id="sidebar">
+      <div id="sidebar-tabs">
+        <div class="stab active" id="tab-threads" onclick="switchTab('threads')">Threads</div>
+      </div>
+      <acb-thread-filter-shell></acb-thread-filter-shell>
+      <div id="thread-pane" class="visible"></div>
+    </div>
+
+    <!-- Main -->
+    <div id="main">
+      <acb-thread-header></acb-thread-header>
+
+      <div id="messages">
+        <acb-empty-state></acb-empty-state>
+      </div>
+
+      <div id="compose">
+        <input id="compose-author" type="text" value="human" placeholder="author" />
+        <textarea id="compose-input" rows="1"
+          placeholder="Send a system message… (Enter to send, Shift+Enter for newline)" oninput="autoResize(this)"
+          onkeydown="handleKey(event)"></textarea>
+        <button id="btn-send" onclick="sendMessage()" title="Send">➤</button>
+      </div>
+      <!-- Agent Status Bar -->
+      <div id="agent-status-bar">
+        <div id="agent-status-list"></div>
+        <div id="agent-status-info">ℹ️</div>
       </div>
     </div>
-    <div id="thread-pane" class="visible"></div>
   </div>
 
-  <!-- Main -->
-  <div id="main">
-    <div id="thread-header" style="display:none">
-      <h2 id="thread-title"></h2>
-      <div id="online-presence" title="">
-        <span id="online-count">1</span>
-      </div>
-    </div>
-
-    <div id="messages">
-      <div id="empty-state">
-        <div class="es-icon">💬</div>
-        <div class="es-title">No thread selected</div>
-        <div class="es-sub">Create or select a thread to start watching the conversation</div>
-        </div>
-        </div>
-        
-        <div id="compose">
-          <input id="compose-author" type="text" value="human" placeholder="author" />
-          <textarea id="compose-input" rows="1" placeholder="Send a system message… (Enter to send, Shift+Enter for newline)"
-            oninput="autoResize(this)" onkeydown="handleKey(event)"></textarea>
-          <button id="btn-send" onclick="sendMessage()" title="Send">➤</button>
-        </div>
-        <!-- Agent Status Bar -->
-        <div id="agent-status-bar">
-          <div id="agent-status-list"></div>
-          <div id="agent-status-info">ℹ️</div>
-        </div>
-        </div>
-        </div>
-
-<div id="thread-context-menu">
-  <button id="ctx-close" class="ctx-item" type="button" onclick="closeThreadFromMenu()">Close</button>
-  <button id="ctx-archive" class="ctx-item" type="button" onclick="archiveThreadFromMenu()">Archive</button>
-</div>
-
-<!-- ── New thread modal ─────────────────────── -->
-<div id="modal-overlay" onclick="closeModal(event)">
-  <div id="modal">
-    <h3>✦ Create New Thread</h3>
-    <input id="modal-topic" type="text" placeholder="Thread topic…" onkeydown="if(event.key==='Enter') submitModal()" />
-    <div class="modal-actions">
-      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn-primary" onclick="submitModal()">Create</button>
-    </div>
+  <div id="thread-context-menu">
+    <button id="ctx-close" class="ctx-item" type="button" onclick="closeThreadFromMenu()">Close</button>
+    <button id="ctx-archive" class="ctx-item" type="button" onclick="archiveThreadFromMenu()">Archive</button>
+    <hr class="ctx-divider" aria-hidden="true">
+    <button id="ctx-delete" class="ctx-item ctx-item--destructive" type="button"
+      onclick="deleteThreadFromMenu()">Delete</button>
   </div>
-</div>
 
-<!-- ── Settings modal ───────────────────────── -->
-<div id="settings-modal-overlay" onclick="closeSettingsModal(event)"
-  style="display:none; position: fixed; inset: 0; background: rgba(0,0,0,.7); align-items: center; justify-content: center; z-index: 100; animation: fade-in .15s ease;">
-  <div id="settings-modal"
-    style="background: var(--bg-card); border: 1px solid var(--border-light); border-radius: 14px; padding: 28px; width: 440px; max-width: 90vw; box-shadow: var(--shadow); animation: modal-in .2s ease;"
-    onclick="event.stopPropagation()">
-    <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 18px; color: var(--text-1)">⚙️ MCP Server Settings</h3>
+  <!-- ── Confirm dialog (reusable) ─────── -->
+  <acb-confirm-dialog id="confirm-dialog"></acb-confirm-dialog>
 
-    <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Host</label>
-    <input id="setting-host" type="text"
-      style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-1); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; margin-bottom: 16px;" />
+  <!-- <div id="agent-status-info-tooltip" class="">
+    <div class="state-item"><span class="state-emoji">🟢</span> <strong>Active:</strong> Agent has activity within 30
+      seconds</div>
+    <div class="state-item"><span class="state-emoji">🌙</span> <strong>Idle:</strong> Agent has activity within 5
+      minutes</div>
+    <div class="state-item"><span class="state-emoji">⏳</span> <strong>Waiting:</strong> Agent is waiting for response
+      (within 60 seconds)</div>
+    <div class="state-item"><span class="state-emoji">⚫</span> <strong>Offline:</strong> Agent has no recent activity
+      and is not heartbeating</div>
+  </div> -->
 
-    <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Port</label>
-    <input id="setting-port" type="number"
-      style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-1); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; margin-bottom: 16px;" />
 
-    <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Agent Heartbeat Timeout
-      (s)</label>
-    <input id="setting-heartbeat" type="number"
-      style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-1); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; margin-bottom: 16px;" />
-
-    <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Wait Timeout (s)</label>
-    <input id="setting-wait" type="number"
-      style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-1); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; margin-bottom: 16px;" />
-
-    <div id="settings-message" style="font-size: 12px; color: var(--green); margin-bottom: 16px; display: none;"></div>
-
-    <div class="modal-actions">
-      <button class="btn-secondary" onclick="closeSettingsModal()">Cancel</button>
-      <button class="btn-primary" onclick="submitSettings()">Save (Requires Restart)</button>
-    </div>
+  <acb-compose-shell></acb-compose-shell>
+  <!-- Agent Status Bar -->
+  <!-- <acb-agent-status-shell></acb-agent-status-shell> -->
   </div>
-</div>
+  </div>
 
-<div id="agent-tooltip" aria-hidden="true"></div>
+  <acb-thread-context-menu></acb-thread-context-menu>
 
-<div id="agent-status-info-tooltip" class="">
-  <div class="state-item"><span class="state-emoji">🟢</span> <strong>Active:</strong> Agent has activity within 30 seconds</div>
-  <div class="state-item"><span class="state-emoji">🌙</span> <strong>Idle:</strong> Agent has activity within 5 minutes</div>
-  <div class="state-item"><span class="state-emoji">⏳</span> <strong>Waiting:</strong> Agent is waiting for response (within 60 seconds)</div>
-  <div class="state-item"><span class="state-emoji">⚫</span> <strong>Offline:</strong> Agent has no recent activity and is not heartbeating</div>
-</div>
+  <acb-modal-shell></acb-modal-shell>
 
-<script>
-    // ═══════════════════════════════════════════════
+  <script src="/static/js/shared-api.js?v=2"></script>
+  <script src="/static/js/shared-theme.js?v=2"></script>
+  <script src="/static/js/shared-utils.js?v=2"></script>
+  <script src="/static/js/shared-message-renderer.js?v=2"></script>
+  <script src="/static/js/shared-sse.js?v=2"></script>
+  <script src="/static/js/shared-modals.js?v=2"></script>
+  <script src="/static/js/components/acb-modal-shell.js?v=2"></script>
+  <script src="/static/js/components/acb-empty-state.js?v=2"></script>
+  <script src="/static/js/components/acb-icon-button.js?v=2"></script>
+  <script src="/static/js/components/acb-filter-actions.js?v=2"></script>
+  <script src="/static/js/components/acb-filter-row.js?v=2"></script>
+  <script src="/static/js/components/acb-thread-filter-shell.js?v=2"></script>
+  <script src="/static/js/components/acb-thread-context-menu.js?v=2"></script>
+  <script src="/static/js/components/acb-thread-header.js?v=2"></script>
+  <script src="/static/js/components/acb-thread-item.js?v=2"></script>
+  <script src="/static/js/components/acb-compose-shell.js?v=3"></script>
+  <script src="/static/js/components/acb-agent-status-shell.js?v=2"></script>
+  <script src="/static/js/shared-threads.js?v=2"></script>
+  <script src="/static/js/shared-agent-status.js?v=2"></script>
+  <script src="/static/js/components/acb-agent-status-item.js?v=2"></script>
+  <script src="/static/js/shared-agents.js?v=2"></script>
+  <script src="/static/js/shared-chat.js?v=2"></script>
+  <script src="/static/js/shared-tooltip.js?v=2"></script>
+  <script src="/static/js/components/acb-confirm-dialog.js?v=2"></script>
+  <script>
+    // ==============================================================================================
     // State
-    // ═══════════════════════════════════════════════
-  let activeThreadId = null;
+    // ==============================================================================================
+    let activeThreadId = null;
     let activeThreadStatus = 'discuss';
-  let lastSeq = 0;
+    let lastSeq = 0;
     let typingTimers = {};   // agent_id -> timer
     let isConnected = false;
     let contextMenuThread = null;
@@ -930,34 +1689,30 @@ body[data-theme="light"] .ctx-item:hover {
     let activeAgentTooltipTarget = null;
     let currentAgents = []; // Cache of all agents for tooltip lookups
 
-    const EMPTY_STATE_TEMPLATE = `
-      <div id="empty-state">
-        <div class="es-icon">💬</div>
-        <div class="es-title">No thread selected</div>
-        <div class="es-sub">Create or select a thread to start watching the conversation</div>
-      </div>`;
+    const EMPTY_STATE_TEMPLATE = '<acb-empty-state></acb-empty-state>';
 
-    // ═══════════════════════════════════════════════
+    // ==============================================================================================
     // Bootstrap
-    // ═══════════════════════════════════════════════
+    // ==============================================================================================
     (async function init() {
+      window.AcbTooltip.init();
       applySavedTheme();
       await refreshThreads();
       await refreshAgents();
       await updateStatusBar();
       updateOnlinePresence();
       startSSE();
-      setInterval(refreshAgents, 12000);
+      // Temporarily disable periodic agent polling to avoid showing many offline agents
+      // setInterval(refreshAgents, 12000);
       setInterval(updateStatusBar, 5000);  // Update status bar every 5 seconds
-      // Fallback poll: refresh messages every 3s in case an SSE event was missed
-      setInterval(() => { if (activeThreadId) loadNewMessages(); }, 3000);
 
-      const tip = getAgentTooltipEl();
+      const tip = window.AcbTooltip.getTooltipElement();
       if (tip) {
         tip.addEventListener('mouseenter', () => clearAgentTooltipHideTimer());
         tip.addEventListener('mouseleave', () => scheduleAgentTooltipHide());
         tip.addEventListener('click', async (e) => {
           e.stopPropagation();
+
           const btn = e.target.closest('button[data-copy]');
           if (!btn) return;
           // Don't allow copy if button is disabled
@@ -980,8 +1735,6 @@ body[data-theme="light"] .ctx-item:hover {
       hideThreadContextMenu();
       hideThreadFilterPanel();
       hideAgentTooltip();
-      const infoTooltip = document.getElementById('agent-status-info-tooltip');
-      if (infoTooltip) infoTooltip.classList.remove('visible');
     });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') hideThreadContextMenu();
@@ -989,69 +1742,34 @@ body[data-theme="light"] .ctx-item:hover {
     window.addEventListener('resize', () => {
       hideThreadContextMenu();
       hideAgentTooltip();
-      const infoTooltip = document.getElementById('agent-status-info-tooltip');
-      if (infoTooltip) infoTooltip.classList.remove('visible');
     });
 
-    // Agent Status Info tooltip
-    const infoEl = document.getElementById('agent-status-info');
-    const infoTooltip = document.getElementById('agent-status-info-tooltip');
-    let infoTooltipHideTimer = null;
+    (function setupUnifiedInfoTooltip() {
+      const infoEl = document.getElementById('agent-status-info');
+      if (!infoEl) return;
 
-    function positionInfoTooltip() {
-      if (!infoEl || !infoTooltip) return;
-      const rect = infoEl.getBoundingClientRect();
-      const padding = 10;
-      const tipW = infoTooltip.offsetWidth || 280;
-      const tipH = infoTooltip.offsetHeight || 200;
-      
-      // Position tooltip above the icon, centered horizontally
-      let left = rect.left + rect.width / 2 - tipW / 2;
-      let top = rect.top - tipH - 8;
-      
-      // Ensure tooltip stays within viewport bounds
-      if (left < padding) {
-        left = padding;
-      }
-      if (left + tipW > window.innerWidth - padding) {
-        left = Math.max(padding, window.innerWidth - tipW - padding);
-      }
-      if (top < padding) {
-        top = rect.bottom + 8;
-      }
-      
-      infoTooltip.style.left = `${left}px`;
-      infoTooltip.style.top = `${top}px`;
-    }
+      const tooltipHtml = `
+        <div style="padding:8px 12px;min-width:260px;">
+          <div style="font-size:12px;color:var(--text-2);margin-bottom:6px;">Status Legend:</div>
+          <div class="state-item"><span class="state-emoji">🟢</span> <strong>Active:</strong> Activity within 30s</div>
+          <div class="state-item"><span class="state-emoji">🌙</span> <strong>Idle:</strong> Activity within 5m</div>
+          <div class="state-item"><span class="state-emoji">⏳</span> <strong>Waiting:</strong> Waiting for response (&lt;60s)</div>
+          <div class="state-item"><span class="state-emoji">⚫</span> <strong>Offline:</strong> No recent activity</div>
+        </div>
+      `;
 
-    if (infoEl && infoTooltip) {
       infoEl.addEventListener('mouseenter', () => {
-        clearTimeout(infoTooltipHideTimer);
-        
-        // Update tooltip content
-        let tooltipHtml = `
-          <div style="padding:8px 12px;"><div style="font-size:12px;color:var(--text-2);margin-bottom:6px;">Status Legend:</div>
-            <div class="state-item"><span class="state-emoji">🟢</span> <strong>Active:</strong> Activity within 30s</div>
-            <div class="state-item"><span class="state-emoji">🌙</span> <strong>Idle:</strong> Activity within 5m</div>
-            <div class="state-item"><span class="state-emoji">⏳</span> <strong>Waiting:</strong> Waiting for response (&lt;60s)</div>
-            <div class="state-item"><span class="state-emoji">⚫</span> <strong>Offline:</strong> No recent activity</div>
-          </div>
-        `;
-        infoTooltip.innerHTML = tooltipHtml;
-        
-        infoTooltip.classList.add('visible');
-        setTimeout(positionInfoTooltip, 0);
+        window.AcbTooltip.showRich(infoEl, tooltipHtml, {
+          interactive: false,
+          maxWidth: '340px',
+          className: 'acb-tooltip-info',
+        });
       });
-      infoEl.addEventListener('mouseleave', () => {
-        infoTooltipHideTimer = setTimeout(() => infoTooltip.classList.remove('visible'), 200);
-      });
-      infoTooltip.addEventListener('mouseenter', () => clearTimeout(infoTooltipHideTimer));
-      infoTooltip.addEventListener('mouseleave', () => infoTooltip.classList.remove('visible'));
-    }
 
-    function getAgentTooltipEl() {
-      return document.getElementById('agent-tooltip');
-    }
+      infoEl.addEventListener('mouseleave', () => {
+        window.AcbTooltip.scheduleHide(120);
+      });
+    })();
 
     function getResumePromptForAgent(agentId, displayName, token) {
       const threadName = document.getElementById('thread-title')?.textContent?.trim() || '(current thread)';
@@ -1059,8 +1777,8 @@ body[data-theme="light"] .ctx-item:hover {
       return `@${displayName}
 Please resume this agent session with saved credentials.
 1) Call agent_resume(agent_id, token) with your credentials.
-2) If resume fails → check token validity and retry.
-3) On success → post confirmation message.
+2) If resume fails ΓÆ check token validity and retry.
+3) On success ΓÆ post confirmation message.
 4) Begin msg_wait loop to listen for incoming messages.
 
 Agent ID: ${agentId}
@@ -1070,53 +1788,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     }
 
     async function copyTextWithFallback(text) {
-      try {
-        await navigator.clipboard.writeText(text);
-        return true;
-      } catch {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.setAttribute('readonly', 'readonly');
-        ta.style.position = 'fixed';
-        ta.style.left = '-9999px';
-        document.body.appendChild(ta);
-        ta.select();
-        let ok = false;
-        try { ok = document.execCommand('copy'); } catch { ok = false; }
-        ta.remove();
-        return ok;
-      }
-    }
-
-    function positionAgentTooltip(anchorEl) {
-      const tip = getAgentTooltipEl();
-      if (!tip || !anchorEl) return;
-      
-      // Find the emoji element within the status item
-      const emojiEl = anchorEl.querySelector('.agent-status-emoji');
-      const emojiR = emojiEl ? emojiEl.getBoundingClientRect() : anchorEl.getBoundingClientRect();
-      
-      const padding = 10;
-      const tipW = tip.offsetWidth || 320;
-      const tipH = tip.offsetHeight || 220;
-      
-      // Position tooltip above the emoji, centered horizontally
-      let left = emojiR.left + emojiR.width / 2 - tipW / 2;
-      let top = emojiR.top - tipH - 8;
-      
-      // Ensure tooltip stays within viewport bounds
-      if (left < padding) {
-        left = padding;
-      }
-      if (left + tipW > window.innerWidth - padding) {
-        left = Math.max(padding, window.innerWidth - tipW - padding);
-      }
-      if (top < padding) {
-        top = emojiR.bottom + 8;
-      }
-      
-      tip.style.left = `${left}px`;
-      tip.style.top = `${top}px`;
+      return window.AcbUtils.copyTextWithFallback(text);
     }
 
     function clearAgentTooltipHideTimer() {
@@ -1124,6 +1796,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         clearTimeout(agentTooltipHideTimer);
         agentTooltipHideTimer = null;
       }
+      window.AcbTooltip.clearHideTimer();
     }
 
     function scheduleAgentTooltipHide(delay = 120) {
@@ -1133,16 +1806,12 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
 
     function hideAgentTooltip() {
       clearAgentTooltipHideTimer();
-      const tip = getAgentTooltipEl();
-      if (!tip) return;
-      tip.classList.remove('visible');
-      tip.setAttribute('aria-hidden', 'true');
+      window.AcbTooltip.hideTooltip();
       activeAgentTooltipTarget = null;
     }
 
     function showAgentTooltip(anchorEl, agent) {
-      const tip = getAgentTooltipEl();
-      if (!tip || !anchorEl || !agent) return;
+      if (!anchorEl || !agent) return;
       clearAgentTooltipHideTimer();
       const alias = String(agent.display_name ?? agent.name ?? 'Unknown').trim() || 'Unknown';
       const agentId = String(agent.id ?? agent.agent_id ?? '').trim();
@@ -1150,12 +1819,12 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       const model = String(agent.model ?? 'Unknown').trim() || 'Unknown';
       const token = String(agent.token ?? '').trim();
       const prompt = getResumePromptForAgent(agentId, alias, token);
-      
+
       // Disable resume button if no thread is selected
       const resumeButtonState = activeThreadId ? '' : 'disabled';
       const resumeButtonStyle = activeThreadId ? '' : 'style="opacity:0.5;cursor:not-allowed;"';
-      
-      tip.innerHTML = `
+
+      const html = `
         <div class="agent-tip-title">Agent Quick Prompt</div>
         <div class="agent-tip-meta">Alias: <code>${esc(alias)}</code><br/>Agent ID: <code>${esc(agentId || '(unknown)')}</code><br/>IDE: <code>${esc(ide)}</code><br/>Model: <code>${esc(model)}</code></div>
         <pre class="agent-tip-prompt">${esc(prompt)}</pre>
@@ -1163,19 +1832,20 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
           <button type="button" data-copy="agent-id" data-copy-value="${esc(agentId)}">Copy Agent ID</button>
           <button type="button" data-copy="resume" data-copy-value="${esc(prompt)}" ${resumeButtonState} ${resumeButtonStyle} title="${activeThreadId ? '' : 'Select a thread first'}">Copy Resume Prompt</button>
         </div>`;
-      tip.classList.add('visible');
-      tip.setAttribute('aria-hidden', 'false');
+
+      window.AcbTooltip.showRich(anchorEl, html, {
+        interactive: true,
+        width: 'min(380px, calc(100vw - 24px))',
+        maxWidth: '380px',
+        className: 'acb-tooltip-agent',
+      });
       activeAgentTooltipTarget = anchorEl;
-      positionAgentTooltip(anchorEl);
     }
 
     function bindAgentTooltipEvents(avatarEl, agent) {
       if (!avatarEl) return;
       avatarEl.addEventListener('mouseenter', () => showAgentTooltip(avatarEl, agent));
       avatarEl.addEventListener('mouseleave', () => scheduleAgentTooltipHide());
-      avatarEl.addEventListener('mousemove', () => {
-        if (activeAgentTooltipTarget === avatarEl) positionAgentTooltip(avatarEl);
-      });
       avatarEl.addEventListener('click', (e) => {
         e.stopPropagation();
         showAgentTooltip(avatarEl, agent);
@@ -1183,121 +1853,102 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     }
 
     function applySavedTheme() {
-      const savedTheme = localStorage.getItem('agentchatbus-theme') || 'dark';
-      setTheme(savedTheme);
+      return window.AcbTheme.applySavedTheme();
     }
 
     function setTheme(theme) {
-      const effectiveTheme = theme === 'light' ? 'light' : 'dark';
-      document.body.setAttribute('data-theme', effectiveTheme);
-      const btn = document.getElementById('btn-theme-toggle');
-      if (btn) {
-        btn.textContent = effectiveTheme === 'light' ? 'Dark' : 'Light';
-        btn.title = effectiveTheme === 'light' ? 'Switch to dark theme' : 'Switch to light theme';
-      }
-      localStorage.setItem('agentchatbus-theme', effectiveTheme);
+      return window.AcbTheme.setTheme(theme);
     }
 
     function toggleTheme() {
-      const current = document.body.getAttribute('data-theme') || 'dark';
-      setTheme(current === 'light' ? 'dark' : 'light');
+      return window.AcbTheme.toggleTheme();
     }
 
     function updateOnlinePresence() {
-      const countEl = document.getElementById('online-count');
-      const badgeEl = document.getElementById('online-presence');
-      if (!countEl || !badgeEl) return;
-
-      const onlineAgentEntries = Array.from(onlineAgentKeys)
-        .map((key) => ({ key, label: onlineAgentLabelsByKey.get(key) || key }));
-      const onlineAgents = onlineAgentEntries.map((x) => x.label).sort((a, b) => a.localeCompare(b));
-      const nowMs = Date.now();
-      const threadOnlineKeys = Array.from(activeThreadLastSeenMs.entries())
-        .filter(([key, lastSeenMs]) => onlineAgentKeys.has(key) || (nowMs - lastSeenMs) <= THREAD_ACTIVITY_WINDOW_MS)
-        .map(([key]) => key);
-      const threadOnlineAgents = threadOnlineKeys
-        .map((key) => activeThreadLabelsByKey.get(key) || onlineAgentLabelsByKey.get(key) || key)
-        .sort((a, b) => a.localeCompare(b));
-      const showingThreadScoped = Boolean(activeThreadId);
-      const total = showingThreadScoped ? threadOnlineKeys.length : onlineAgentEntries.length;
-
-      countEl.textContent = showingThreadScoped ? `Thread online ${total}` : `Online agents ${total}`;
-
-      const tooltip = showingThreadScoped
-        ? `Thread online: ${threadOnlineAgents.length ? threadOnlineAgents.join(', ') : '(none)'} | Global online: ${onlineAgents.length ? onlineAgents.join(', ') : '(none)'}`
-        : `Agents: ${onlineAgents.length ? onlineAgents.join(', ') : '(none)'}`;
-      badgeEl.title = tooltip;
-      countEl.title = tooltip;
-    }
-
-    function getAgentDisplayName(msg) {
-      if (!msg) return null;
-      const role = String(msg.role ?? '').toLowerCase();
-      const author = String(msg.author_name ?? msg.author ?? '').trim();
-      if (!author) return null;
-      if (role === 'system') return null;
-      const lower = author.toLowerCase();
-      if (lower === 'human' || lower === 'system') return null;
-      return author;
-    }
-
-    function getAgentPresenceKey(msg) {
-      if (!msg) return null;
-      const role = String(msg.role ?? '').toLowerCase();
-      if (role === 'system') return null;
-      const label = String(msg.author_name ?? msg.author ?? '').trim().toLowerCase();
-      if (!label || label === 'human' || label === 'system') return null;
-      const key = String(msg.author_id ?? msg.author_name ?? msg.author ?? '').trim();
-      return key || null;
-    }
-
-    function recordThreadAgentActivity(key, label, createdAtIso) {
-      if (!key) return;
-      const parsed = createdAtIso ? Date.parse(createdAtIso) : NaN;
-      const seenMs = Number.isFinite(parsed) ? parsed : Date.now();
-      const prev = activeThreadLastSeenMs.get(key) || 0;
-      if (seenMs > prev) activeThreadLastSeenMs.set(key, seenMs);
-      if (label) activeThreadLabelsByKey.set(key, label);
-    }
-
-    function rebuildActiveThreadParticipants(messages) {
-      activeThreadLastSeenMs.clear();
-      activeThreadLabelsByKey.clear();
-      (messages || []).forEach((m) => {
-        const key = getAgentPresenceKey(m);
-        const label = getAgentDisplayName(m);
-        if (key) recordThreadAgentActivity(key, label, m.created_at);
+      return window.AcbAgents.updateOnlinePresence({
+        onlineAgentKeys,
+        onlineAgentLabelsByKey,
+        activeThreadLastSeenMs,
+        activeThreadLabelsByKey,
+        threadActivityWindowMs: THREAD_ACTIVITY_WINDOW_MS,
+        activeThreadId,
       });
     }
 
-    // ═══════════════════════════════════════════════
+    function getAgentDisplayName(msg) {
+      return window.AcbAgents.getAgentDisplayName(msg);
+    }
+
+    function getAgentPresenceKey(msg) {
+      return window.AcbAgents.getAgentPresenceKey(msg);
+    }
+
+    function recordThreadAgentActivity(key, label, createdAtIso) {
+      return window.AcbAgents.recordThreadAgentActivity({
+        key,
+        label,
+        createdAtIso,
+        activeThreadLastSeenMs,
+        activeThreadLabelsByKey,
+      });
+    }
+
+    function rebuildActiveThreadParticipants(messages) {
+      return window.AcbAgents.rebuildActiveThreadParticipants({
+        messages,
+        getAgentPresenceKey,
+        getAgentDisplayName,
+        recordThreadAgentActivity,
+        activeThreadLastSeenMs,
+        activeThreadLabelsByKey,
+      });
+    }
+
+    // ==============================================================================================
     // SSE
-    // ═══════════════════════════════════════════════
+    // ==============================================================================================
     function startSSE() {
       const es = new EventSource('/events');
       es.onopen = () => setConnected(true);
       es.onerror = () => { setConnected(false); setTimeout(startSSE, 3000); es.close(); };
 
-    es.onmessage = async (e) => {
-      const ev = JSON.parse(e.data);
-      const p = ev.payload;
+      es.onmessage = async (e) => {
+        const ev = JSON.parse(e.data);
+        const p = ev.payload;
 
-    if (ev.type === 'msg.new') {
-      if (p.thread_id === activeThreadId) await loadNewMessages();
-      await refreshThreads();  // update sidebar counts
+        if (ev.type === 'msg.new') {
+          if (p.thread_id === activeThreadId) await loadNewMessages();
+          await refreshThreads();  // update sidebar counts
+        }
+        if (ev.type === 'thread.new' || ev.type === 'thread.state' || ev.type === 'thread.closed' || ev.type === 'thread.archived' || ev.type === 'thread.deleted') {
+          await refreshThreads();
+          if (ev.type === 'thread.deleted' && p.thread_id === activeThreadId) {
+            activeThreadId = null;
+            document.getElementById('msg-pane').innerHTML = '';
+            const hdr = document.getElementById('thread-header');
+            if (hdr) hdr.textContent = '';
+          }
+        }
+        if (ev.type === 'agent.online' || ev.type === 'agent.offline') {
+          await refreshAgents();
+        }
+        if (ev.type === 'agent.typing' && p.thread_id === activeThreadId) {
+          if (p.is_typing) showTyping(p.agent_id);
+          else hideTyping(p.agent_id);
+        }
+      };
+      return window.AcbSSE.startSSE({
+        getActiveThreadId: () => activeThreadId,
+        onMsgNew: async () => loadNewMessages(),
+        onThreadEvent: async () => refreshThreads(),
+        onAgentPresence: async () => refreshAgents(),
+        onTyping: (agentId, isTyping) => {
+          if (isTyping) showTyping(agentId);
+          else hideTyping(agentId);
+        },
+        setConnected,
+      });
     }
-    if (ev.type === 'thread.new' || ev.type === 'thread.state' || ev.type === 'thread.closed' || ev.type === 'thread.archived') {
-      await refreshThreads();
-    }
-    if (ev.type === 'agent.online' || ev.type === 'agent.offline') {
-      await refreshAgents();
-      }
-      if (ev.type === 'agent.typing' && p.thread_id === activeThreadId) {
-        if (p.is_typing) showTyping(p.agent_id);
-        else hideTyping(p.agent_id);
-      }
-    };
-  }
 
     function setConnected(v) {
       isConnected = v;
@@ -1306,274 +1957,283 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       dot.style.background = v ? 'var(--green)' : 'var(--red)';
       dot.style.boxShadow = v ? '0 0 8px var(--green)' : '0 0 8px var(--red)';
       label.textContent = v ? 'Connected' : 'Reconnecting…';
+      return window.AcbSSE.setConnectedUI(v);
     }
 
-    // ═══════════════════════════════════════════════
+    // ==============================================================================================
     // API
-    // ═══════════════════════════════════════════════
+    // ==============================================================================================
     async function api(path, opts = {}) {
-      try {
-    const r = await fetch(path, { headers: {'Content-Type':'application/json'}, ...opts });
-    return r.json();
-    } catch { return null; }
-  }
-
-    // ═══════════════════════════════════════════════
-    // Threads
-    // ═══════════════════════════════════════════════
-  async function refreshThreads() {
-    const allThreads = await api('/api/threads?include_archived=1') || [];
-    const threads = allThreads.filter(t => selectedThreadStatuses.has(t.status));
-    const pane = document.getElementById('thread-pane');
-    pane.innerHTML = threads.length ? '' : `
-    <div style="padding:24px 16px;color:var(--text-3);font-size:13px;text-align:center">
-      No threads match current filter.
-    </div>`;
-    const hasActiveThread = activeThreadId && threads.some(t => t.id === activeThreadId);
-    if (activeThreadId && !hasActiveThread) {
-      resetThreadSelection();
+      return window.AcbApi.api(path, opts);
     }
-    threads.forEach(t => {
-      const div = document.createElement('div');
-      div.className = `thread-item${t.id === activeThreadId ? ' active' : ''}`;
-      div.id = `ti-${t.id}`;
-      div.onclick = () => selectThread(t.id, t.topic, t.status);
-      div.oncontextmenu = (e) => openThreadContextMenu(e, t);
-      div.innerHTML = `
-      <div class="ti-topic">${esc(t.topic)}</div>
-      <div class="ti-meta">
-        <span class="badge badge-${t.status}">${t.status}</span>
-        <span>${timeAgo(t.created_at)}</span>
-      </div>`;
-      pane.appendChild(div);
-    });
 
-    updateThreadFilterButton();
-  }
+    // ==============================================================================================
+    // Threads
+    // ==============================================================================================
+    async function refreshThreads() {
+      return window.AcbThreads.refreshThreads({
+        api,
+        getSelectedStatuses: () => selectedThreadStatuses,
+        getActiveThreadId: () => activeThreadId,
+        resetThreadSelection,
+        onSelectThread: selectThread,
+        onOpenContextMenu: openThreadContextMenu,
+        esc,
+        timeAgo,
+        updateThreadFilterButton,
+      });
+    }
 
-  function toggleThreadFilterPanel(event) {
-    event.stopPropagation();
-    const panel = document.getElementById('thread-filter-panel');
-    panel.classList.toggle('visible');
-  }
+    function toggleThreadFilterPanel(event) {
+      return window.AcbThreads.toggleThreadFilterPanel(event);
+    }
 
-  function hideThreadFilterPanel() {
-    document.getElementById('thread-filter-panel').classList.remove('visible');
-  }
+    function hideThreadFilterPanel() {
+      return window.AcbThreads.hideThreadFilterPanel();
+    }
 
-  function selectedStatusListFromUI() {
-    const checkboxes = document.querySelectorAll('#thread-filter-panel input[data-status]');
-    return Array.from(checkboxes)
-      .filter(cb => cb.checked)
-      .map(cb => cb.getAttribute('data-status'));
-  }
+    function selectedStatusListFromUI() {
+      return window.AcbThreads.selectedStatusListFromUI();
+    }
 
-  function onThreadFilterChange() {
-    const selected = selectedStatusListFromUI();
-    if (!selected.length) {
+    function onThreadFilterChange() {
+      const selected = selectedStatusListFromUI();
+      if (!selected.length) {
+        document.querySelectorAll('#thread-filter-panel input[data-status]').forEach((cb) => {
+          const status = cb.getAttribute('data-status');
+          cb.checked = NORMAL_THREAD_STATUSES.includes(status);
+        });
+        selectedThreadStatuses = new Set(NORMAL_THREAD_STATUSES);
+      } else {
+        selectedThreadStatuses = new Set(selected);
+      }
+      refreshThreads();
+    }
+
+    function selectAllThreadStatuses() {
+      document.querySelectorAll('#thread-filter-panel input[data-status]').forEach(cb => cb.checked = true);
+      onThreadFilterChange();
+    }
+
+    function selectNormalThreadStatuses() {
       document.querySelectorAll('#thread-filter-panel input[data-status]').forEach((cb) => {
         const status = cb.getAttribute('data-status');
         cb.checked = NORMAL_THREAD_STATUSES.includes(status);
       });
-      selectedThreadStatuses = new Set(NORMAL_THREAD_STATUSES);
-    } else {
-      selectedThreadStatuses = new Set(selected);
+      onThreadFilterChange();
     }
-    refreshThreads();
-  }
 
-  function selectAllThreadStatuses() {
-    document.querySelectorAll('#thread-filter-panel input[data-status]').forEach(cb => cb.checked = true);
-    onThreadFilterChange();
-  }
-
-  function selectNormalThreadStatuses() {
-    document.querySelectorAll('#thread-filter-panel input[data-status]').forEach((cb) => {
-      const status = cb.getAttribute('data-status');
-      cb.checked = NORMAL_THREAD_STATUSES.includes(status);
-    });
-    onThreadFilterChange();
-  }
-
-  function updateThreadFilterButton() {
-    const btn = document.getElementById('btn-thread-filter');
-    const selected = ALL_THREAD_STATUSES.filter(s => selectedThreadStatuses.has(s));
-    const normalOnly = selected.length === NORMAL_THREAD_STATUSES.length &&
-      NORMAL_THREAD_STATUSES.every(s => selectedThreadStatuses.has(s)) &&
-      !selectedThreadStatuses.has('archived');
-    if (normalOnly) {
-      btn.textContent = 'Filter: normal (5)';
-      return;
+    function updateThreadFilterButton() {
+      return window.AcbThreads.updateThreadFilterButton(
+        ALL_THREAD_STATUSES,
+        NORMAL_THREAD_STATUSES,
+        selectedThreadStatuses
+      );
     }
-    if (selected.length === ALL_THREAD_STATUSES.length) {
-      btn.textContent = 'Filter: all (6)';
-      return;
+
+    async function selectThread(id, topic, status) {
+      activeThreadId = id;
+      activeThreadStatus = status;
+      lastSeq = 0;
+      activeThreadLastSeenMs.clear();
+
+      // Sidebar highlight
+      document.querySelectorAll('.thread-item').forEach(el => el.classList.remove('active'));
+      const ti = document.getElementById(`ti-${id}`);
+      if (ti) ti.classList.add('active');
+
+      // Header
+      document.getElementById('thread-header').style.display = 'flex';
+      document.getElementById('thread-title').textContent = topic;
+      document.getElementById('compose').classList.add('visible');
+
+      // Clear messages
+      const box = document.getElementById('messages');
+      box.innerHTML = '';
+
+      // Load history
+      const msgs = await api(`/api/threads/${id}/messages?after_seq=0&limit=300&include_system_prompt=1`) || [];
+      rebuildActiveThreadParticipants(msgs);
+      msgs.forEach(appendBubble);
+      updateOnlinePresence();
+      await updateStatusBar();
+      if (msgs.length) lastSeq = msgs[msgs.length - 1].seq;
+      scrollBottom(false);
     }
-    btn.textContent = `Filter: ${selected.join(', ')}`;
-  }
 
-  async function selectThread(id, topic, status) {
-    activeThreadId = id;
-    activeThreadStatus = status;
-    lastSeq = 0;
-    activeThreadLastSeenMs.clear();
-
-    // Sidebar highlight
-    document.querySelectorAll('.thread-item').forEach(el => el.classList.remove('active'));
-    const ti = document.getElementById(`ti-${id}`);
-    if (ti) ti.classList.add('active');
-
-    // Header
-    document.getElementById('thread-header').style.display = 'flex';
-    document.getElementById('thread-title').textContent = topic;
-          document.getElementById('compose').classList.add('visible');
-
-          // Clear messages
-          const box = document.getElementById('messages');
-          box.innerHTML = '';
-
-          // Load history
-          const msgs = await api(`/api/threads/${id}/messages?after_seq=0&limit=300&include_system_prompt=1`) || [];
-          rebuildActiveThreadParticipants(msgs);
-          msgs.forEach(appendBubble);
-          updateOnlinePresence();
-          await updateStatusBar();  // 更新状态栏显示该thread的所有agents
-          if (msgs.length) lastSeq = msgs[msgs.length - 1].seq;
-    scrollBottom(false);
-        }
-
-        async function loadNewMessages() {
-          if (!activeThreadId) return;
-          const msgs = await api(`/api/threads/${activeThreadId}/messages?after_seq=${lastSeq}&limit=100`) || [];
-              msgs.forEach((m) => {
-                const key = getAgentPresenceKey(m);
-                const label = getAgentDisplayName(m);
-                if (key) recordThreadAgentActivity(key, label, m.created_at);
-              });
-          msgs.forEach(appendBubble);
-          updateOnlinePresence();
-          await updateStatusBar();  // 新消息可能有新agents，更新状态栏
-          msgs.forEach(m => { lastSeq = Math.max(lastSeq, m.seq); });  // always advance cursor
-          if (msgs.length) scrollBottom(true);
-        }
+    async function loadNewMessages() {
+      if (!activeThreadId) return;
+      const msgs = await api(`/api/threads/${activeThreadId}/messages?after_seq=${lastSeq}&limit=100`) || [];
+      msgs.forEach((m) => {
+        const key = getAgentPresenceKey(m);
+        const label = getAgentDisplayName(m);
+        if (key) recordThreadAgentActivity(key, label, m.created_at);
+      });
+      msgs.forEach(appendBubble);
+      updateOnlinePresence();
+      await updateStatusBar();
+      msgs.forEach(m => { lastSeq = Math.max(lastSeq, m.seq); });
+      if (msgs.length) scrollBottom(true);
+    }
 
     async function closeThread(threadId = activeThreadId) {
-    if (!threadId) return;
-    const summary = prompt('Optional summary for this thread (leave blank to skip):');
-    await api(`/api/threads/${threadId}/close`, {
-      method: 'POST', body: JSON.stringify({ summary: summary || null })
-    });
-    await refreshThreads();
-  }
-
-  function openThreadContextMenu(event, thread) {
-    event.preventDefault();
-    event.stopPropagation();
-
-    contextMenuThread = thread;
-    const menu = document.getElementById('thread-context-menu');
-    const archiveBtn = document.getElementById('ctx-archive');
-    const closeBtn = document.getElementById('ctx-close');
-    closeBtn.disabled = false;
-    closeBtn.textContent = 'Close';
-    archiveBtn.disabled = false;
-    archiveBtn.textContent = 'Archive';
-
-    menu.classList.add('visible');
-    const menuWidth = 170;
-    const menuHeight = 84;
-    const x = Math.min(event.clientX, window.innerWidth - menuWidth - 8);
-    const y = Math.min(event.clientY, window.innerHeight - menuHeight - 8);
-    menu.style.left = `${Math.max(8, x)}px`;
-    menu.style.top = `${Math.max(8, y)}px`;
-  }
-
-  function hideThreadContextMenu() {
-    const menu = document.getElementById('thread-context-menu');
-    menu.classList.remove('visible');
-    contextMenuThread = null;
-  }
-
-  async function archiveThreadFromMenu() {
-    if (!contextMenuThread) return;
-    const { id } = contextMenuThread;
-
-    hideThreadContextMenu();
-    const result = await api(`/api/threads/${id}/archive`, { method: 'POST' });
-    if (!result || result.ok !== true) return;
-
-    if (activeThreadId === id) {
-      resetThreadSelection();
+      return window.AcbThreads.closeThread({
+        threadId,
+        api,
+        refreshThreads,
+      });
     }
-    await refreshThreads();
-  }
 
-  async function closeThreadFromMenu() {
-    if (!contextMenuThread) return;
-    const { id } = contextMenuThread;
-    hideThreadContextMenu();
-    await closeThread(id);
-  }
+    function openThreadContextMenu(event, thread) {
+      contextMenuThread = window.AcbThreads.openThreadContextMenu(event, thread);
+      // 保存右键点击的位置，用于确认对话框定位
+      contextMenuThread._clickX = event.clientX;
+      contextMenuThread._clickY = event.clientY;
+    }
 
-  function resetThreadSelection() {
-    activeThreadId = null;
-    activeThreadStatus = 'discuss';
-    lastSeq = 0;
-    activeThreadLastSeenMs.clear();
+    function hideThreadContextMenu() {
+      contextMenuThread = window.AcbThreads.hideThreadContextMenu();
+    }
 
-    document.querySelectorAll('.thread-item').forEach(el => el.classList.remove('active'));
-    document.getElementById('thread-header').style.display = 'none';
-    document.getElementById('compose').classList.remove('visible');
-    document.getElementById('messages').innerHTML = EMPTY_STATE_TEMPLATE;
-    updateOnlinePresence();
-  }
+    async function deleteThreadFromMenu() {
+      if (!contextMenuThread) return;
+      const { id, topic, _clickX, _clickY } = contextMenuThread;
+      hideThreadContextMenu();
 
-    // ═══════════════════════════════════════════════
+      const confirmDialog = document.getElementById('confirm-dialog');
+      if (!confirmDialog) return;
+
+      const confirmed = await confirmDialog.show({
+        title: 'Delete thread',
+        message: `Permanently delete <strong>${esc(topic || id)}</strong>? This cannot be undone.`,
+        confirmText: 'Delete',
+        confirmClass: 'btn-destructive',
+        x: _clickX,
+        y: _clickY
+      });
+
+      if (!confirmed) return;
+
+      const result = await api(`/api/threads/${id}`, { method: 'DELETE' });
+      if (!result || result.ok !== true) return;
+
+      if (activeThreadId === id) {
+        activeThreadId = null;
+        document.getElementById('msg-pane').innerHTML = '';
+        const hdr = document.getElementById('thread-header');
+        if (hdr) hdr.textContent = '';
+      }
+      await refreshThreads();
+    }
+
+    async function archiveThreadFromMenu() {
+      return window.AcbThreads.archiveThreadFromMenu({
+        getContextMenuThread: () => contextMenuThread,
+        hideThreadContextMenu,
+        api,
+        getActiveThreadId: () => activeThreadId,
+        resetThreadSelection,
+        refreshThreads,
+      });
+    }
+
+    async function unarchiveThreadFromMenu() {
+      return window.AcbThreads.unarchiveThreadFromMenu({
+        getContextMenuThread: () => contextMenuThread,
+        hideThreadContextMenu,
+        api,
+        getActiveThreadId: () => activeThreadId,
+        resetThreadSelection,
+        refreshThreads,
+      });
+    }
+
+    async function closeThreadFromMenu() {
+      return window.AcbThreads.closeThreadFromMenu({
+        getContextMenuThread: () => contextMenuThread,
+        hideThreadContextMenu,
+        closeThread,
+      });
+    }
+
+    function resetThreadSelection() {
+      activeThreadId = null;
+      activeThreadStatus = 'discuss';
+      lastSeq = 0;
+      activeThreadLastSeenMs.clear();
+
+      document.querySelectorAll('.thread-item').forEach(el => el.classList.remove('active'));
+      document.getElementById('thread-header').style.display = 'none';
+      document.getElementById('compose').classList.remove('visible');
+      document.getElementById('messages').innerHTML = EMPTY_STATE_TEMPLATE;
+      updateOnlinePresence();
+    }
+
+    // ==============================================================================================
     // Messages
-    // ═══════════════════════════════════════════════
+    // ==============================================================================================
 
-  // ── Color palette: 12 distinct, accessible hues ──────────────────────────
-  const AUTHOR_PALETTE = [
-    '#60a5fa', // blue
-    '#34d399', // emerald
-    '#f472b6', // pink
-    '#fb923c', // orange
-    '#a78bfa', // purple
-    '#22d3ee', // cyan
-    '#facc15', // yellow
-    '#f87171', // red
-    '#4ade80', // green
-    '#38bdf8', // sky
-    '#e879f9', // fuchsia
-    '#a3e635', // lime
-  ];
-  const HUMAN_COLOR = '#fb923c'; // warm orange — always human
-  const SYSTEM_COLOR = '#fbbf24'; // amber  — system events
+    // ---- Color palette: 12 distinct, accessible hues ----------------------------------------------------
+    const AUTHOR_PALETTE = [
+      '#60a5fa', // blue
+      '#34d399', // emerald
+      '#f472b6', // pink
+      '#fb923c', // orange
+      '#a78bfa', // purple
+      '#22d3ee', // cyan
+      '#facc15', // yellow
+      '#f87171', // red
+      '#4ade80', // green
+      '#38bdf8', // sky
+      '#e879f9', // fuchsia
+      '#a3e635', // lime
+    ];
+    const HUMAN_COLOR = '#fb923c'; // warm orange ΓÇö always human
+    const SYSTEM_COLOR = '#fbbf24'; // amber  ΓÇö system events
 
-  // Cache so the same author always gets the same color in a session
-  const _colorCache = {};
+    // Cache so the same author always gets the same color in a session
+    const _colorCache = {};
 
-  function authorColor(author) {
-    if (author === 'human') return HUMAN_COLOR;
-    if (author === 'system') return SYSTEM_COLOR;
-    if (_colorCache[author]) return _colorCache[author];
-    // Stable hash → palette index
-    let h = 0;
-    for (let i = 0; i < author.length; i++) h = (Math.imul(31, h) + author.charCodeAt(i)) | 0;
-    const color = AUTHOR_PALETTE[Math.abs(h) % AUTHOR_PALETTE.length];
-    _colorCache[author] = color;
-    return color;
-  }
+    function authorColor(author) {
+      if (author === 'human') return HUMAN_COLOR;
+      if (author === 'system') return SYSTEM_COLOR;
+      if (_colorCache[author]) return _colorCache[author];
+      // Stable hash ΓÆ palette index
+      let h = 0;
+      for (let i = 0; i < author.length; i++) h = (Math.imul(31, h) + author.charCodeAt(i)) | 0;
+      const color = AUTHOR_PALETTE[Math.abs(h) % AUTHOR_PALETTE.length];
+      _colorCache[author] = color;
+      return color;
+    }
 
-  function fmtTime(iso) {
-    if (!iso) return '';
-    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  }
+    function fmtTime(iso) {
+      return window.AcbUtils.fmtTime(iso);
+    }
+
+    function normalizeMessageText(raw) {
+      return window.AcbMessageRenderer.normalizeMessageText(raw);
+    }
+
+    function tokenizeMessage(rawText) {
+      return window.AcbMessageRenderer.tokenizeMessage(rawText);
+    }
+
+    function parseInlineCodeSegments(line) {
+      return window.AcbMessageRenderer.parseInlineCodeSegments(line);
+    }
+
+    function renderTextWithInlineCode(containerEl, text) {
+      return window.AcbMessageRenderer.renderTextWithInlineCode(containerEl, text);
+    }
+
+    function renderMessageContent(containerEl, rawText) {
+      return window.AcbMessageRenderer.renderMessageContent(containerEl, rawText);
+    }
 
     function appendBubble(m) {
       const box = document.getElementById('messages');
 
-      // ── System event (centered pill) ─────────────────────────────────────
+      // ---- System event (centered pill) --------------------------------------------------------------------------
       if (m.role === 'system' && m.author === 'system') {
         const pill = document.createElement('div');
         pill.className = 'msg-sys-event';
@@ -1599,15 +2259,64 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       row.setAttribute('data-author-id', String(m.author_id ?? authorLabel));
       row.setAttribute('data-seq', String(m.seq));
 
+      // Check if this message has mentions (Phase 2: visual highlight)
+      if (m.mentions && Array.isArray(m.mentions) && m.mentions.length > 0) {
+        row.classList.add('message-has-mentions');
+      }
+
       row.innerHTML = `
         <div class="msg-avatar" style="background:${bgAlpha};color:${color};border:1px solid ${color}44">${initials}</div>
         <div class="msg-col">
           <div class="msg-header">
             <span class="msg-author-label" style="color:${color}">${esc(authorLabel)}</span>
-            <span class="msg-time-label">seq ${m.seq} · ${fmtTime(m.created_at)}</span>
+            <span class="msg-time-label">seq ${m.seq} ${fmtTime(m.created_at)}</span>
           </div>
-          <div class="bubble-v2" style="border-color:${color}55;${isHuman ? 'border-right-color' : 'border-left-color'}:${color}">${esc(m.content).replace(/\n/g, '<br/>')}</div>
+          <div class="bubble-v2" style="border-color:${color}55;${isHuman ? 'border-right-color' : 'border-left-color'}:${color}"></div>
         </div>`;
+
+      const bubbleEl = row.querySelector('.bubble-v2');
+      if (bubbleEl) {
+        renderMessageContent(bubbleEl, m.content);
+
+        // Render images if any
+        let images = null;
+        console.log(`[Bubble] Message metadata:`, m.metadata, `Type: ${typeof m.metadata}`);
+        if (m.metadata) {
+          // Parse metadata if it's a string
+          if (typeof m.metadata === 'string') {
+            try {
+              const meta = JSON.parse(m.metadata);
+              images = meta.images;
+              console.log(`[Bubble] Parsed metadata as string, images:`, images);
+            } catch (e) {
+              console.error(`[Bubble] Failed to parse metadata JSON:`, e);
+            }
+          } else if (typeof m.metadata === 'object') {
+            images = m.metadata.images;
+            console.log(`[Bubble] Got metadata as object, images:`, images);
+          }
+        } else {
+          console.log(`[Bubble] No metadata in message`);
+        }
+
+        if (images && Array.isArray(images) && images.length > 0) {
+          console.log(`[Bubble] Rendering ${images.length} images`);
+          const imgContainer = document.createElement('div');
+          imgContainer.style.cssText = 'display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;';
+          images.forEach(img => {
+            const imgEl = document.createElement('img');
+            imgEl.src = img.url;
+            imgEl.title = img.name || 'Uploaded image';
+            imgEl.style.cssText = 'width: min(520px, 80vw); max-width: 100%; max-height: 70vh; border-radius: 8px; object-fit: contain; cursor: zoom-in; background: rgba(0,0,0,0.05);';
+            imgEl.onclick = () => window.open(img.url, '_blank');
+            imgContainer.appendChild(imgEl);
+            console.log(`[Bubble] Added image: ${img.url}`);
+          });
+          bubbleEl.appendChild(imgContainer);
+        } else {
+          console.log(`[Bubble] No images to render`);
+        }
+      }
 
       if (!isHuman && !isSystem) {
         const avatarEl = row.querySelector('.msg-avatar');
@@ -1631,7 +2340,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       box.appendChild(row);
     }
 
-      // ── Typing indicator ─────────────────────────────────────────────────────
+    // ---- Typing indicator ----------------------------------------------------------------------------------------------------------
     function showTyping(agentId) {
       const box = document.getElementById('messages');
       let el = document.getElementById(`typing-${agentId}`);
@@ -1663,381 +2372,350 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       if (el) el.remove();
     }
 
-    // ═══════════════════════════════════════════════
+    // ==============================================================================================
     // Compose
-    // ═══════════════════════════════════════════════
+    // ==============================================================================================
     async function sendMessage() {
-    const input = document.getElementById('compose-input');
-    const author = document.getElementById('compose-author').value.trim() || 'human';
-    const content = input.value.trim();
-    if (!content || !activeThreadId) return;
-    updateOnlinePresence();
-    input.value = '';
-    autoResize(input);
+      const input = document.getElementById("compose-input");
+      const author = document.getElementById("compose-author").value.trim() || "human";
+      const acb = document.querySelector('acb-compose-shell');
 
-    const m = await api(`/api/threads/${activeThreadId}/messages`, {
-      method: 'POST',
-    body: JSON.stringify({ author, role: 'user', content }),
-  });
-      if (m) { lastSeq = Math.max(lastSeq, m.seq); appendBubble({ ...m, created_at: new Date().toISOString() }); scrollBottom(true); }
-  }
+      // Extract text content
+      let content = '';
+      for (const node of input.childNodes) {
+        if (node.nodeType === 3) {
+          content += node.textContent;
+        } else if (node.nodeType === 1 && !node.getAttribute('data-mention-id')) {
+          content += node.textContent;
+        }
+      }
+      content = content.trim();
 
-  function handleKey(e) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-  }
+      // Get uploaded images
+      const images = acb?.uploadedImages || [];
 
-    function autoResize(el) {
-      el.style.height = 'auto';
-      el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+      if ((!content && images.length === 0) || !activeThreadId) return;
+
+      // Extract mentions
+      const mentions = [];
+      for (const child of input.childNodes) {
+        if (child.nodeType === 1 && child.getAttribute && child.getAttribute('data-mention-id')) {
+          mentions.push(child.getAttribute('data-mention-id'));
+        }
+      }
+
+      updateOnlinePresence();
+      input.innerHTML = '';
+      const messageBar = document.getElementById("mentions-bar");
+      if (messageBar) messageBar.style.display = 'none';
+      if (acb && acb.uploadedImages) acb.uploadedImages = [];
+      if (acb && acb.renderImagePreview) acb.renderImagePreview();
+
+      const payload = {
+        author,
+        role: "user",
+        content,
+        mentions: mentions.length > 0 ? mentions : undefined,
+        images: images.length > 0 ? images : undefined
+      };
+
+      const m = await api(`/api/threads/${activeThreadId}/messages`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+      if (m) {
+        lastSeq = Math.max(lastSeq, m.seq);
+        appendBubble({ ...m, created_at: new Date().toISOString() });
+        scrollBottom(true);
+      }
     }
 
-    // ═══════════════════════════════════════════════
-    // Agents
-    // ═══════════════════════════════════════════════
-  async function refreshAgents() {
-    hideAgentTooltip();
-    const allAgents = await api('/api/agents') || [];
-    currentAgents = allAgents; // Cache for tooltip lookups
-    onlineAgentKeys.clear();
-    onlineAgentLabelsByKey.clear();
-    allAgents.forEach(a => {
-      const key = String(a.id ?? a.agent_id ?? a.name ?? '').trim();
-      const label = String(a.display_name ?? a.name ?? '').trim();
-      if (a.is_online && key) {
-        onlineAgentKeys.add(key);
-        onlineAgentLabelsByKey.set(key, label || key);
+    function handleKey(e) {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
       }
-    });
-    updateOnlinePresence();
-    // Left sidebar agents panel removed - agents now displayed only in status bar
-  }
+    }
 
-        // ═══════════════════════════════════════════════
-        // Helper: Escape HTML
-        // ═══════════════════════════════════════════════
-        function escapeHtml(t) {
-          const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-          return String(t).replace(/[&<>"']/g, c => map[c]);
+    function autoResize(el) {
+    }
+
+    // ==============================================================================================
+    // Agents
+    // ==============================================================================================
+    async function refreshAgents() {
+      const agents = await api('/api/agents') || [];
+      currentAgents = agents;
+
+      const agentListEl = document.getElementById('agent-status-list');
+      if (!agentListEl) return;
+
+      agentListEl.innerHTML = '';
+
+      agents.forEach(agent => {
+        const item = document.createElement('div');
+        item.className = 'agent-status-item';
+
+        const state = getAgentState(agent);
+        const emoji = getStateEmoji(state);
+
+        item.innerHTML = `
+        <div class="agent-status-emoji">${emoji}</div>
+        <div class="agent-status-text">
+          <div class="agent-alias">${agent.display_name || agent.name}</div>
+          <div class="agent-state">${state}</div>
+        </div>
+      `;
+
+        if (agent.is_online) {
+          item.addEventListener('mouseenter', () => showAgentTooltip(item, agent));
+          item.addEventListener('mouseleave', () => scheduleAgentTooltipHide());
         }
 
-        // ═══════════════════════════════════════════════
-        // Agent Status Bar Update
-        // ═══════════════════════════════════════════════
-        async function updateStatusBar() {
-          const allAgents = await api('/api/agents') || [];
-          currentAgents = allAgents; // Cache for tooltip lookups
-          const container = document.getElementById('agent-status-list');
-          if (!container) {
-            return;
-          }
-          
-          let participants = [];
-          let isThreadMode = false;  // Track if showing thread-specific agents
-          
-          // If a thread is selected, show agents in that thread
-          if (activeThreadId) {
-            // 从当前thread的消息中提取所有参与agents（按author_id）
-            const participantIdMap = new Map();  // id -> agent数据
-            const msgArea = document.getElementById('messages');
-            if (msgArea) {
-              const rows = msgArea.querySelectorAll('[data-author-id]');
-              rows.forEach(row => {
-                const authorId = row.getAttribute('data-author-id');
-                if (authorId && authorId !== 'system' && authorId !== 'human' && !participantIdMap.has(authorId)) {
-                  // 查找该author_id对应的agent
-                  const agent = allAgents.find(a => (a.id === authorId || a.agent_id === authorId));
-                  if (agent) {
-                    participantIdMap.set(authorId, agent);
-                  } else {
-                    // 即使agent不在allAgents中，也创建一个离线表示
-                    participantIdMap.set(authorId, {
-                      id: authorId,
-                      display_name: authorId,
-                      name: authorId,
-                      is_online: false,
-                    });
-                  }
-                }
-              });
+        agentListEl.appendChild(item);
+      });
+
+      updateOnlinePresence();
+    }
+
+    // ==============================================================================================
+    // Helper: Escape HTML
+    // ==============================================================================================
+    function escapeHtml(t) {
+      return window.AcbUtils.escapeHtml(t);
+    }
+
+    // ==============================================================================================
+    // Agent Status Bar Update
+    // ==============================================================================================
+    async function updateStatusBar() {
+      const allAgents = await api('/api/agents') || [];
+      currentAgents = allAgents; // Cache for tooltip lookups
+      const container = document.getElementById('agent-status-list');
+      if (!container) {
+        return;
+      }
+
+      let participants = [];
+      let isThreadMode = false;  // Track if showing thread-specific agents
+
+      // If a thread is selected, show agents in that thread
+      if (activeThreadId) {
+        // Σ╗Äσ╜ôσëìthreadτÜäµ╢êµü»Σ╕¡µÉσûµëÇµ£ëσéΣ╕Äagents∩╝êµîëauthor_id∩╝ë
+        const participantIdMap = new Map();  // id -> agentµò░µì«
+        const msgArea = document.getElementById('messages');
+        if (msgArea) {
+          const rows = msgArea.querySelectorAll('[data-author-id]');
+          rows.forEach(row => {
+            const authorId = row.getAttribute('data-author-id');
+            if (authorId && authorId !== 'system' && authorId !== 'human' && !participantIdMap.has(authorId)) {
+              // µƒÑµë╛Φ»Ñauthor_idσ»╣σ║öτÜäagent
+              const agent = allAgents.find(a => (a.id === authorId || a.agent_id === authorId));
+              if (agent) {
+                participantIdMap.set(authorId, agent);
+              } else {
+                // σì│Σ╜┐agentΣ╕ìσ£¿allAgentsΣ╕¡∩╝îΣ╣ƒσê¢σ╗║Σ╕ÇΣ╕¬τª╗τ║┐Φí¿τñ║
+                participantIdMap.set(authorId, {
+                  id: authorId,
+                  display_name: authorId,
+                  name: authorId,
+                  is_online: false,
+                });
+              }
             }
-            participants = Array.from(participantIdMap.values());
-            isThreadMode = participants.length > 0;  // Only thread mode if we have participants
-          }
-          
-          // If no thread selected or no participants in thread, fall back to showing all non-offline agents
-          if (!isThreadMode) {
-            participants = allAgents.filter(a => {
-              const state = getAgentState(a);
-              return state !== 'Offline';
-            });
-            isThreadMode = false;  // Global mode - no thread context
-          }
-          
-          // 排序：在线优先，然后按最后活动时间排序
-          participants.sort((a, b) => {
-            if (a.is_online !== b.is_online) {
-              return a.is_online ? -1 : 1;  // 在线优先
-            }
-            if (a.is_online && b.is_online) {
-              const timeA = a.last_activity_time ? new Date(a.last_activity_time) : new Date(0);
-              const timeB = b.last_activity_time ? new Date(b.last_activity_time) : new Date(0);
-              return timeB - timeA;  // 最近活动优先
-            }
-            return 0;
           });
-          
-          container.innerHTML = '';
-          
-          if (participants.length === 0) {
-            container.innerHTML = '<div style="color:var(--text-3);font-size:11px;padding:4px 12px;">No active agents</div>';
-            return;
-          }
-          
-          participants.forEach(a => {
-            const state = getAgentState(a);
-            const emoji = getStateEmoji(state);
-            const label = String(a.display_name ?? a.name ?? '').trim() || 'Unknown';
-            const offlineTime = getOfflineTime(a);
-            const offlineDisplay = offlineTime ? ` (${offlineTime})` : '';
-            const isLongOffline = isOfflineMoreThanHour(a);
-            
-            const item = document.createElement('div');
-            item.className = 'agent-status-item';
-            
-            // Compress display if offline > 1 hour: just emoji + single char
-            if (isLongOffline) {
-              const compressedChar = getCompressedOfflineChar(offlineTime);
-              item.innerHTML = `
+        }
+        participants = Array.from(participantIdMap.values());
+        isThreadMode = participants.length > 0;  // Only thread mode if we have participants
+      }
+
+      // If no thread selected or no participants in thread, fall back to showing all non-offline agents
+      if (!isThreadMode) {
+        participants = allAgents.filter(a => {
+          const state = getAgentState(a);
+          return state !== 'Offline';
+        });
+        isThreadMode = false;  // Global mode - no thread context
+      }
+
+      // µÄÆσ║∩╝Üσ£¿τ║┐Σ╝ÿσàê∩╝îτä╢σÉÄµîëµ£ÇσÉÄµ┤╗σè¿µù╢Θù┤µÄÆσ║
+      participants.sort((a, b) => {
+        if (a.is_online !== b.is_online) {
+          return a.is_online ? -1 : 1;  // σ£¿τ║┐Σ╝ÿσàê
+        }
+        if (a.is_online && b.is_online) {
+          const timeA = a.last_activity_time ? new Date(a.last_activity_time) : new Date(0);
+          const timeB = b.last_activity_time ? new Date(b.last_activity_time) : new Date(0);
+          return timeB - timeA;  // µ£ÇΦ┐æµ┤╗σè¿Σ╝ÿσàê
+        }
+        return 0;
+      });
+
+      container.innerHTML = '';
+
+      if (participants.length === 0) {
+        container.innerHTML = '<div style="color:var(--text-3);font-size:11px;padding:4px 12px;">No active agents</div>';
+        return;
+      }
+
+      participants.forEach(a => {
+        const state = getAgentState(a);
+        const emoji = getStateEmoji(state);
+        const label = String(a.display_name ?? a.name ?? '').trim() || 'Unknown';
+        const offlineTime = getOfflineTime(a);
+        const offlineDisplay = offlineTime ? ` (${offlineTime})` : '';
+        const isLongOffline = isOfflineMoreThanHour(a);
+
+        const item = document.createElement('div');
+        item.className = 'agent-status-item';
+
+        // Compress display if offline > 1 hour: just emoji + single char
+        if (isLongOffline) {
+          const compressedChar = getCompressedOfflineChar(offlineTime);
+          item.innerHTML = `
                 <div class="agent-status-emoji">${emoji}</div>
                 <div class="agent-status-text-compact">${compressedChar}</div>
               `;
-            } else {
-              // Remove thread info display to keep agent list clean
-              item.innerHTML = `
+        } else {
+          // Remove thread info display to keep agent list clean
+          item.innerHTML = `
                 <div class="agent-status-emoji">${emoji}</div>
                 <div class="agent-status-text">
                   <div class="agent-alias">${escapeHtml(label)}</div>
                   <div class="agent-state">${state}${offlineDisplay}</div>
                 </div>
               `;
-            }
-            
-            // 绑定agent tooltip交互
-            if (a && a.id) {
-              bindAgentTooltipEvents(item, a);
-            }
-            container.appendChild(item);
-          });
-        }
-        
-        function getAgentState(agent) {
-          // 优先使用last_activity_time判断状态，而非is_online（后者基于heartbeat超时）
-          const activityTime = agent.last_activity_time ? new Date(agent.last_activity_time) : null;
-          const now = new Date();
-          
-          if (!activityTime) {
-            // 完全没有活动记录
-            return agent.is_online ? 'Waiting' : 'Offline';
-          }
-          
-          const secondsAgo = (now - activityTime) / 1000;
-          
-          // 根据活动类型和时间判断状态
-          if (agent.last_activity === 'msg_wait' && secondsAgo < 60) return 'Waiting';
-          if (secondsAgo < 30) return 'Active';
-          if (secondsAgo < 300) return 'Idle';  // 5分钟内有活动算 Idle
-          
-          // 超过5分钟没活动且is_online=false才显示Offline
-          return agent.is_online ? 'Idle' : 'Offline';
         }
 
-        function getOfflineTime(agent) {
-          // Calculate how long the agent has been offline
-          const lastActivityTime = agent.last_activity_time ? new Date(agent.last_activity_time) : null;
-          if (!lastActivityTime) return null;
-          
-          const now = new Date();
-          const secondsAgo = (now - lastActivityTime) / 1000;
-          
-          // Only show offline time for truly offline agents (not active, idle, or in other states)
-          const state = getAgentState(agent);
-          if (state !== 'Offline') return null;
-          
-          // Format time duration
-          if (secondsAgo < 60) {
-            return `${Math.round(secondsAgo)}s`;
-          } else if (secondsAgo < 3600) {
-            const mins = Math.round(secondsAgo / 60 * 10) / 10; // 1 decimal place
-            return `${mins}m`;
-          } else if (secondsAgo < 86400) {
-            const hours = Math.round(secondsAgo / 3600 * 10) / 10; // 1 decimal place
-            return `${hours}h`;
-          } else if (secondsAgo < 2592000) {  // 30 days
-            const days = Math.round(secondsAgo / 86400 * 10) / 10; // 1 decimal place
-            return `${days}d`;
-          } else if (secondsAgo < 31536000) {  // 365 days
-            const months = Math.round(secondsAgo / 2592000 * 10) / 10; // 1 decimal place
-            return `${months}mon`;
-          } else {
-            const years = Math.round(secondsAgo / 31536000 * 10) / 10; // 1 decimal place
-            return `${years}y`;
-          }
+        // τ╗æσ«Üagent tooltipΣ║ñΣ║Æ
+        if (a && a.id) {
+          bindAgentTooltipEvents(item, a);
         }
+        container.appendChild(item);
+      });
+    }
 
-        function isOfflineMoreThanHour(agent) {
-          // Check if agent is offline for more than 1 hour, OR offline with no time info
-          const lastActivityTime = agent.last_activity_time ? new Date(agent.last_activity_time) : null;
-          const state = getAgentState(agent);
-          
-          // Only consider truly offline agents
-          if (state !== 'Offline') return false;
-          
-          // Compress if: no activity time info available, OR offline >= 1 hour
-          if (!lastActivityTime) return true;
-          
-          const now = new Date();
-          const secondsAgo = (now - lastActivityTime) / 1000;
-          return secondsAgo >= 3600;  // >= 1 hour
-        }
+    function getAgentState(agent) {
+      // Σ╝ÿσàêΣ╜┐τö¿last_activity_timeσêñµû¡τè╢µÇü∩╝îΦÇîΘ¥₧is_online∩╝êσÉÄΦÇàσƒ║Σ║ÄheartbeatΦ╢àµù╢∩╝ë
+      const activityTime = agent.last_activity_time ? new Date(agent.last_activity_time) : null;
+      const now = new Date();
 
-        function getCompressedOfflineChar(offlineTimeStr) {
-          // Extract single character from time string for compact display: h, d, m, y, etc.
-          if (!offlineTimeStr) return '?';  // No time info available
-          
-          const match = offlineTimeStr.match(/([hdmony]+)/);
-          if (match) {
-            return match[1].substring(0, 1);  // First letter (h, d, m, y)
-          }
-          return '?';  // Default fallback for unknown time
-        }
-        
-        
-        function getStateEmoji(state) {
-          const map = { 'Offline': '⚫', 'Waiting': '⏳', 'Active': '🟢', 'Idle': '🌙' };
-          return map[state] || '❓';
-        }
+      if (!activityTime) {
+        // σ«îσà¿µ▓íµ£ëµ┤╗σè¿Φ«░σ╜ò
+        return agent.is_online ? 'Waiting' : 'Offline';
+      }
 
-        // ═══════════════════════════════════════════════
-        // Sidebar tabs
-        // ═══════════════════════════════════════════════
-        function switchTab(tab) {
-          // Only threads tab is available now
-          if (tab !== 'threads') return;
-          // Control filter visibility
-          const filterWrap = document.getElementById('thread-filter-wrap');
-          if (filterWrap) {
-            filterWrap.style.display = '';
-          }
-        }
+      const secondsAgo = (now - activityTime) / 1000;
 
-    // ═══════════════════════════════════════════════
+      // µá╣µì«µ┤╗σè¿τ▒╗σ₧ïσÆîµù╢Θù┤σêñµû¡τè╢µÇü
+      if (agent.last_activity === 'msg_wait' && secondsAgo < 60) return 'Waiting';
+      if (secondsAgo < 30) return 'Active';
+      if (secondsAgo < 300) return 'Idle';  // 5σêΘÆƒσàµ£ëµ┤╗σè¿τ«ù Idle
+
+      // Φ╢àΦ┐ç5σêΘÆƒµ▓íµ┤╗σè¿Σ╕öis_online=falseµëìµÿ╛τñ║Offline
+      return agent.is_online ? 'Idle' : 'Offline';
+    }
+
+    function getOfflineTime(agent) {
+      return window.AcbAgentStatus.getOfflineTime(agent);
+    }
+
+    function isOfflineMoreThanHour(agent) {
+      return window.AcbAgentStatus.isOfflineMoreThanHour(agent);
+    }
+
+    function getCompressedOfflineChar(offlineTimeStr) {
+      return window.AcbAgentStatus.getCompressedOfflineChar(offlineTimeStr);
+    }
+
+
+    function getStateEmoji(state) {
+      const map = { 'Offline': '⚫', 'Waiting': '⏳', 'Active': '🟢', 'Idle': '🌙' };
+      return map[state] || 'Γ¥ô';
+    }
+
+    // ==============================================================================================
+    // Sidebar tabs
+    // ==============================================================================================
+    function switchTab(tab) {
+      // Only threads tab is available now
+      if (tab !== 'threads') return;
+      // Control filter visibility
+      const filterWrap = document.getElementById('thread-filter-wrap');
+      if (filterWrap) {
+        filterWrap.style.display = '';
+      }
+    }
+
+    // ==============================================================================================
     // Modal
-    // ═══════════════════════════════════════════════
+    // ==============================================================================================
     function openModal() {
-      document.getElementById('modal-overlay').classList.add('visible');
-      setTimeout(() => document.getElementById('modal-topic').focus(), 100);
+      return window.AcbModals.openThreadModal();
     }
 
     function closeModal(e) {
-      if (!e || e.target === document.getElementById('modal-overlay'))
-        document.getElementById('modal-overlay').classList.remove('visible');
+      return window.AcbModals.closeThreadModal(e);
     }
 
-  async function submitModal() {
-    const topic = document.getElementById('modal-topic').value.trim();
-    if (!topic) return;
-    document.getElementById('modal-topic').value = '';
-    closeModal();
-    const t = await api('/api/threads', { method: 'POST', body: JSON.stringify({ topic }) });
-    if (t) {
-      await refreshThreads();
-      selectThread(t.id, t.topic, t.status);
+    async function submitModal() {
+      return window.AcbModals.submitThreadModal({ api, refreshThreads, selectThread });
     }
-  }
 
-    // ═══════════════════════════════════════════════
+    // ==============================================================================================
     // Extras: thread state & close (REST shims)
-    // ═══════════════════════════════════════════════
+    // ==============================================================================================
     // Extend the REST API with two extra POST endpoints that main.py may serve later.
-    // If they 404, we silently ignore — the MCP tool path is the canonical way.
+    // If they 404, we silently ignore ΓÇö the MCP tool path is the canonical way.
 
-    // ═══════════════════════════════════════════════
+    // ==============================================================================================
     // Utilities
-    // ═══════════════════════════════════════════════
+    // ==============================================================================================
     function esc(s) {
-      return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return window.AcbUtils.esc(s);
     }
 
-      function scrollBottom(smooth = false) {
+    // renderMarkdown and inlineMd functions are now in shared-message-renderer.js module
+    // Access them via window.AcbMessageRenderer.renderMarkdown() and window.AcbMessageRenderer.inlineMd()
+
+    function scrollBottom(smooth = false) {
       const box = document.getElementById('messages');
-      requestAnimationFrame(() => {
+      if (!box) return;
+
+      // Use setTimeout to ensure DOM updates and layout are fully applied
+      // before attempting to scroll to the bottom.
+      setTimeout(() => {
+        // Force synchronous layout so scrollHeight is accurate
+        void box.offsetHeight;
         if (smooth) {
+          console.log('Scrolling to bottom', { top: box.scrollHeight, behavior: 'smooth' });
           box.scrollTo({ top: box.scrollHeight, behavior: 'smooth' });
         } else {
           box.scrollTop = box.scrollHeight;
         }
-      });
+      }, 50);
     }
 
     function timeAgo(iso) {
-      if (!iso) return '';
-      const diff = (Date.now() - new Date(iso)) / 1000;
-      if (diff < 60) return 'just now';
-      if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
-      if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
-      return new Date(iso).toLocaleDateString();
+      return window.AcbUtils.timeAgo(iso);
     }
 
-  // ═══════════════════════════════════════════════
-  // Settings Settings
-  // ═══════════════════════════════════════════════
-  async function openSettingsModal() {
-    document.getElementById('settings-message').style.display = 'none';
-    document.getElementById('settings-modal-overlay').style.display = 'flex';
-    try {
-      const res = await api('/api/settings');
-      if (res) {
-        document.getElementById('setting-host').value = res.HOST || '0.0.0.0';
-        document.getElementById('setting-port').value = res.PORT || 39765;
-        document.getElementById('setting-heartbeat').value = res.AGENT_HEARTBEAT_TIMEOUT || 30;
-        document.getElementById('setting-wait').value = res.MSG_WAIT_TIMEOUT || 300;
-      }
-    } catch (err) {
-      console.error(err);
+    // ==============================================================================================
+    // Settings Settings
+    // ==============================================================================================
+    async function openSettingsModal() {
+      return window.AcbModals.openSettingsModal(api);
     }
-  }
 
-  function closeSettingsModal(e) {
-    if (e && e.target !== document.getElementById('settings-modal-overlay')) return;
-    document.getElementById('settings-modal-overlay').style.display = 'none';
-  }
-
-  async function submitSettings() {
-    const pHost = document.getElementById('setting-host').value;
-    const pPort = parseInt(document.getElementById('setting-port').value);
-    const pHb = parseInt(document.getElementById('setting-heartbeat').value);
-    const pWait = parseInt(document.getElementById('setting-wait').value);
-
-    try {
-      const res = await api('/api/settings', {
-        method: 'PUT',
-        body: JSON.stringify({
-          HOST: pHost,
-          PORT: pPort,
-          AGENT_HEARTBEAT_TIMEOUT: pHb,
-          MSG_WAIT_TIMEOUT: pWait
-        })
-      });
-      if (res && res.ok) {
-        const msg = document.getElementById('settings-message');
-        msg.textContent = res.message || 'Saved! Restart server to apply.';
-        msg.style.display = 'block';
-        setTimeout(() => closeSettingsModal(), 2500);
-      }
-    } catch (err) {
-      console.error(err);
+    function closeSettingsModal(e) {
+      return window.AcbModals.closeSettingsModal(e);
     }
-  }
-</script>
+
+    async function submitSettings() {
+      return window.AcbModals.submitSettings(api);
+    }
+  </script>
 </body>
+
 </html>

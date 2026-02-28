@@ -11,7 +11,7 @@ from typing import Optional, Any
 class Thread:
     id: str
     topic: str
-    status: str          # discuss | implement | review | done | closed
+    status: str          # discuss | implement | review | done | closed | archived
     created_at: datetime
     closed_at: Optional[datetime]
     summary: Optional[str]

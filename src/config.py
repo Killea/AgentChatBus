@@ -42,6 +42,11 @@ BUS_VERSION = "0.1.0"
 
 # Content filter: block messages containing known secret patterns
 CONTENT_FILTER_ENABLED = os.getenv("AGENTCHATBUS_CONTENT_FILTER_ENABLED", "true").lower() in {"1", "true", "yes"}
+# Conversation timeout: auto-close threads inactive for this many minutes (0 = disabled)
+THREAD_TIMEOUT_MINUTES = int(os.getenv("AGENTCHATBUS_THREAD_TIMEOUT", "0"))
+THREAD_TIMEOUT_ENABLED = THREAD_TIMEOUT_MINUTES > 0
+# How often the timeout sweep runs (seconds)
+THREAD_TIMEOUT_SWEEP_INTERVAL = int(os.getenv("AGENTCHATBUS_TIMEOUT_SWEEP_INTERVAL", "60"))
 
 def get_config_dict():
     return {
