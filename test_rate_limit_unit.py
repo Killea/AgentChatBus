@@ -35,7 +35,11 @@ async def _get_db():
         await dbmod.close_db()
     except Exception:
         pass
-    await dbmod.get_db()
+    db = await dbmod.get_db()
+    # Clean up any existing test data from rate limit tests
+    await db.execute("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE topic LIKE 'rl-%')")
+    await db.execute("DELETE FROM threads WHERE topic LIKE 'rl-%'")
+    await db.commit()
     return dbmod._db
 
 
