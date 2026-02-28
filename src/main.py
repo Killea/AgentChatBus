@@ -86,9 +86,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # MCP SSE Transport (mounted at /mcp)
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 sse_transport = SseServerTransport("/mcp/messages")
 
@@ -100,7 +100,7 @@ class _SseCompletedResponse:
     The SSE transport sends the full HTTP response (http.response.start +
     http.response.body chunks) directly to uvicorn via request._send.
     If we return a real Response(), FastAPI calls it with send, which tries
-    to emit a SECOND http.response.start — uvicorn rejects this with:
+    to emit a SECOND http.response.start ΓÇö uvicorn rejects this with:
       "Unexpected ASGI message 'http.response.start'"  (normal close), or
       "Expected 'http.response.body', got 'http.response.start'"  (abrupt close).
 
@@ -108,12 +108,12 @@ class _SseCompletedResponse:
     any additional ASGI messages.
     """
     async def __call__(self, scope, receive, send):
-        pass  # intentional no-op — SSE transport already sent the response
+        pass  # intentional no-op ΓÇö SSE transport already sent the response
 
 
 @app.get("/mcp/sse")
 async def mcp_sse_endpoint(request: Request):
-    """MCP SSE endpoint consumed by MCP clients (Claude Desktop, Cursor, …)."""
+    """MCP SSE endpoint consumed by MCP clients (Claude Desktop, Cursor, ΓÇª)."""
     from src.mcp_server import init_session_id
     
     # Initialize unique session ID for this SSE connection
@@ -133,23 +133,23 @@ async def mcp_sse_endpoint(request: Request):
                 mcp_server.create_initialization_options(),
             )
     except Exception as exc:
-        # Most are normal disconnects (anyio.ClosedResourceError, CancelledError…).
+        # Most are normal disconnects (anyio.ClosedResourceError, CancelledErrorΓÇª).
         # Log at DEBUG to avoid polluting the terminal.
         logger.debug("MCP SSE session ended: %s: %s", type(exc).__name__, exc)
     return _SseCompletedResponse()
 
 
-# Mount handle_post_message as a raw ASGI app — NOT a FastAPI route.
+# Mount handle_post_message as a raw ASGI app ΓÇö NOT a FastAPI route.
 # The transport sends its own 202 Accepted internally; a FastAPI route wrapper
 # would attempt a second response and produce ASGI errors.
 app.mount("/mcp/messages/", app=sse_transport.handle_post_message)
 
 
-# ── Suppress leftover ASGI RuntimeErrors caused by client disconnects ──────────
+# ΓöÇΓöÇ Suppress leftover ASGI RuntimeErrors caused by client disconnects ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 class _AsgiDisconnectFilter(logging.Filter):
     """
     Filters uvicorn 'Exception in ASGI application' records that are caused
-    by normal MCP client disconnects — not real bugs, just transport noise.
+    by normal MCP client disconnects ΓÇö not real bugs, just transport noise.
     """
     _NOISE = (
         "Unexpected ASGI message 'http.response.start'",
@@ -163,9 +163,9 @@ for _ln in ("uvicorn.error", "uvicorn"):
 
 
 
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # Public SSE broadcast for the web console
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 @app.get("/events")
 async def global_sse_stream(request: Request):
@@ -199,9 +199,9 @@ async def global_sse_stream(request: Request):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # Simple REST API for the web console
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 @app.get("/api/threads")
 async def api_threads(status: str | None = None, include_archived: bool = False):
@@ -325,9 +325,9 @@ async def api_update_settings(body: SettingsUpdate):
     # The user should be notified that a restart is required for some settings
     return {"ok": True, "message": "Settings saved. Restart the server to apply changes."}
 
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # Request/Response Models
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 class ThreadCreate(BaseModel):
     topic: str
@@ -404,9 +404,9 @@ async def api_post_message(thread_id: str, body: MessageCreate):
     return result
 
 
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # Agent REST API (for simulation scripts)
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 class AgentRegister(BaseModel):
     ide: str
@@ -499,11 +499,12 @@ async def api_agent_unregister(body: AgentToken):
 
 
 
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 
 # ─────────────────────────────────────────────
 # Thread state management REST (for web console)
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 class StateChange(BaseModel):
     state: str
@@ -550,6 +551,24 @@ async def api_thread_close(thread_id: str, body: ThreadClose):
     return {"ok": True}
 
 
+@app.delete("/api/threads/{thread_id}")
+async def api_thread_delete(thread_id: str):
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+    try:
+        result = await asyncio.wait_for(
+            crud.thread_delete(db, thread_id),
+            timeout=DB_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+    if result is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return {"ok": True, "deleted": result}
+
+
 @app.post("/api/threads/{thread_id}/archive")
 async def api_thread_archive(thread_id: str):
     try:
@@ -573,6 +592,7 @@ async def api_thread_archive(thread_id: str):
     return {"ok": True}
 
 
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 @app.post("/api/threads/{thread_id}/unarchive")
 async def api_thread_unarchive(thread_id: str):
     try:
@@ -614,7 +634,7 @@ async def api_thread_delete(thread_id: str):
 
 # ─────────────────────────────────────────────
 # Health check
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 @app.get("/health")
 async def health():
@@ -622,9 +642,9 @@ async def health():
 
 
 
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # Web Console (served from /static or inline)
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 @app.get("/", response_class=HTMLResponse)
 async def web_console():
@@ -636,9 +656,9 @@ async def web_console():
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # Entry point
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 if __name__ == "__main__":
     reload_enabled = os.getenv("AGENTCHATBUS_RELOAD", "1") in {"1", "true", "True"}
