@@ -1,1104 +1,1722 @@
 ﻿<!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>AgentChatBus Console</title>
-<link rel="icon" type="image/png" href="/static/bus.png" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link
-  href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
-  rel="stylesheet" />
-<style>
-/* ====================================================================================
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgentChatBus Console</title>
+  <link rel="icon" type="image/png" href="/static/bus.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet" />
+  <style>
+    /* ====================================================================================
    Reset & Base
 ==================================================================================== */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
-:root {
-  --bg-base:      #0a0d12;
-  --bg-panel:     #0f1318;
-  --bg-card:      #151a22;
-  --bg-hover:     #1a2030;
-  --bg-input:     #111620;
-  --border:       #1e2635;
-  --border-light: #253040;
-  --accent:       #3b82f6;
-  --accent-dim:   #1d4ed8;
-  --accent-glow:  rgba(59,130,246,.18);
-  --green:        #22c55e;
-  --amber:        #f59e0b;
-  --purple:       #a855f7;
-  --red:          #ef4444;
-  --text-1:       #e2e8f0;
-  --text-2:       #94a3b8;
-  --text-3:       #4b5563;
-  --radius:       10px;
-  --shadow:       0 4px 24px rgba(0,0,0,.5);
-}
+    :root {
+      --bg-base: #0a0d12;
+      --bg-panel: #0f1318;
+      --bg-card: #151a22;
+      --bg-hover: #1a2030;
+      --bg-input: #111620;
+      --border: #1e2635;
+      --border-light: #253040;
+      --accent: #3b82f6;
+      --accent-dim: #1d4ed8;
+      --accent-glow: rgba(59, 130, 246, .18);
+      --green: #22c55e;
+      --amber: #f59e0b;
+      --purple: #a855f7;
+      --red: #ef4444;
+      --text-1: #e2e8f0;
+      --text-2: #94a3b8;
+      --text-3: #4b5563;
+      --radius: 10px;
+      --shadow: 0 4px 24px rgba(0, 0, 0, .5);
+    }
 
-html, body { height: 100%; overflow: hidden; }
+    html,
+    body {
+      height: 100%;
+      overflow: hidden;
+    }
 
-body {
-  font-family: 'Inter', system-ui, sans-serif;
-  background: var(--bg-base);
-  color: var(--text-1);
-  display: flex;
-  flex-direction: column;
-}
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg-base);
+      color: var(--text-1);
+      display: flex;
+      flex-direction: column;
+    }
 
-body[data-theme="light"] {
-  --bg-base:      #f3f6fb;
-  --bg-panel:     #ffffff;
-  --bg-card:      #f9fbff;
-  --bg-hover:     #edf3ff;
-  --bg-input:     #ffffff;
-  --border:       #d9e2ef;
-  --border-light: #c8d4e5;
-  --accent:       #2563eb;
-  --accent-dim:   #1d4ed8;
-  --accent-glow:  rgba(37,99,235,.18);
-  --green:        #16a34a;
-  --amber:        #d97706;
-  --purple:       #7c3aed;
-  --red:          #dc2626;
-  --text-1:       #0f172a;
-  --text-2:       #334155;
-  --text-3:       #64748b;
-  --shadow:       0 4px 20px rgba(15,23,42,.12);
-}
+    body[data-theme="light"] {
+      --bg-base: #f3f6fb;
+      --bg-panel: #ffffff;
+      --bg-card: #f9fbff;
+      --bg-hover: #edf3ff;
+      --bg-input: #ffffff;
+      --border: #d9e2ef;
+      --border-light: #c8d4e5;
+      --accent: #2563eb;
+      --accent-dim: #1d4ed8;
+      --accent-glow: rgba(37, 99, 235, .18);
+      --green: #16a34a;
+      --amber: #d97706;
+      --purple: #7c3aed;
+      --red: #dc2626;
+      --text-1: #0f172a;
+      --text-2: #334155;
+      --text-3: #64748b;
+      --shadow: 0 4px 20px rgba(15, 23, 42, .12);
+    }
 
-body[data-theme="light"] #topbar .logo {
-  background: linear-gradient(135deg, #1d4ed8, #7c3aed);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-body[data-theme="light"] .thread-item:hover,
-body[data-theme="light"] .thread-item.active {
-  background: #e8f0ff;
-}
-body[data-theme="light"] .badge-discuss {
-  background: rgba(37,99,235,.14);
-  color: #1d4ed8;
-}
-body[data-theme="light"] .badge-implement {
-  background: rgba(22,163,74,.14);
-  color: #15803d;
-}
-body[data-theme="light"] .badge-review {
-  background: rgba(217,119,6,.14);
-  color: #b45309;
-}
-body[data-theme="light"] .badge-done {
-  background: rgba(124,58,237,.14);
-  color: #6d28d9;
-}
-body[data-theme="light"] .badge-closed {
-  background: rgba(100,116,139,.16);
-  color: #475569;
-}
-body[data-theme="light"] .badge-archived {
-  background: rgba(148,163,184,.2);
-  color: #475569;
-}
-body[data-theme="light"] #online-presence {
-  background: rgba(22,163,74,.14);
-  border-color: rgba(22,163,74,.35);
-  color: #166534;
-}
-body[data-theme="light"] #online-presence:hover {
-  background: rgba(22,163,74,.2);
-  border-color: rgba(22,163,74,.45);
-}
-body[data-theme="light"] .msg-sys-event {
-  background: rgba(217,119,6,.1);
-  border-color: rgba(217,119,6,.24);
-  color: #92400e;
-}
-body[data-theme="light"] .ctx-item:hover {
-  background: #e8f0ff;
-}
-body[data-theme="light"] .msg-row.message-has-mentions .bubble-v2 {
-  background: linear-gradient(135deg, rgba(255,235,130,.12) 0%, rgba(255,193,7,.08) 100%);
-  border-color: rgba(255,193,7,.4);
-  box-shadow: inset 0 0 12px rgba(255,193,7,.1),
-              0 0 20px rgba(255,193,7,.15);
-}
+    body[data-theme="light"] #topbar .logo {
+      background: linear-gradient(135deg, #1d4ed8, #7c3aed);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
 
-/* ====================================================================================
+    body[data-theme="light"] .thread-item:hover,
+    body[data-theme="light"] .thread-item.active {
+      background: #e8f0ff;
+    }
+
+    body[data-theme="light"] .badge-discuss {
+      background: rgba(37, 99, 235, .14);
+      color: #1d4ed8;
+    }
+
+    body[data-theme="light"] .badge-implement {
+      background: rgba(22, 163, 74, .14);
+      color: #15803d;
+    }
+
+    body[data-theme="light"] .badge-review {
+      background: rgba(217, 119, 6, .14);
+      color: #b45309;
+    }
+
+    body[data-theme="light"] .badge-done {
+      background: rgba(124, 58, 237, .14);
+      color: #6d28d9;
+    }
+
+    body[data-theme="light"] .badge-closed {
+      background: rgba(100, 116, 139, .16);
+      color: #475569;
+    }
+
+    body[data-theme="light"] .badge-archived {
+      background: rgba(148, 163, 184, .2);
+      color: #475569;
+    }
+
+    body[data-theme="light"] #online-presence {
+      background: rgba(22, 163, 74, .14);
+      border-color: rgba(22, 163, 74, .35);
+      color: #166534;
+    }
+
+    body[data-theme="light"] #online-presence:hover {
+      background: rgba(22, 163, 74, .2);
+      border-color: rgba(22, 163, 74, .45);
+    }
+
+    body[data-theme="light"] .msg-sys-event {
+      background: rgba(217, 119, 6, .1);
+      border-color: rgba(217, 119, 6, .24);
+      color: #92400e;
+    }
+
+    body[data-theme="light"] .ctx-item:hover {
+      background: #e8f0ff;
+    }
+
+    body[data-theme="light"] .msg-row.message-has-mentions .bubble-v2 {
+      background: linear-gradient(135deg, rgba(255, 235, 130, .12) 0%, rgba(255, 193, 7, .08) 100%);
+      border-color: rgba(255, 193, 7, .4);
+      box-shadow: inset 0 0 12px rgba(255, 193, 7, .1),
+        0 0 20px rgba(255, 193, 7, .15);
+    }
+
+    /* ====================================================================================
    Top bar
 ==================================================================================== */
-#topbar {
-  height: 52px;
-  background: var(--bg-panel);
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  padding: 0 20px;
-  gap: 12px;
-  flex-shrink: 0;
-  z-index: 10;
-}
-#topbar .logo {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 16px;
-  font-weight: 700;
-  background: linear-gradient(135deg, #3b82f6, #a855f7);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  letter-spacing: -.3px;
-}
-#topbar .logo img {
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
-  object-fit: cover;
-  flex-shrink: 0;
-}
-#topbar .sep { flex: 1; }
-#status-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 8px var(--green);
-  animation: pulse-dot 2s infinite;
-}
-@keyframes pulse-dot {
-  0%,100% { opacity: 1; }
-  50%      { opacity: .4; }
-}
-#topbar .status-label { font-size: 12px; color: var(--text-2); }
-#btn-new-thread {
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  border-radius: var(--radius);
-  padding: 6px 14px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  display: flex; align-items: center; gap: 6px;
-  transition: background .15s, transform .1s;
-}
-#btn-new-thread:hover { background: #2563eb; }
-#btn-new-thread:active { transform: scale(.97); }
-#btn-theme-toggle {
-  background: transparent;
-  color: var(--text-2);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius);
-  padding: 6px 10px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background .15s, color .15s;
-}
-#btn-theme-toggle:hover {
-  background: var(--bg-hover);
-  color: var(--text-1);
-}
-#btn-settings {
-  background: transparent;
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  font-size: 16px;
-  width: 34px;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: var(--text-1);
-  margin-left: 8px;
-  transition: background 0.15s;
-}
-#btn-settings:hover {
-  background: var(--bg-hover);
-}
+    #topbar {
+      height: 52px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      gap: 12px;
+      flex-shrink: 0;
+      z-index: 10;
+    }
 
-/* ====================================================================================
+    #topbar .logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 16px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #3b82f6, #a855f7);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -.3px;
+    }
+
+    #topbar .logo img {
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+
+    #topbar .sep {
+      flex: 1;
+    }
+
+    #status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      animation: pulse-dot 2s infinite;
+    }
+
+    @keyframes pulse-dot {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: .4;
+      }
+    }
+
+    #topbar .status-label {
+      font-size: 12px;
+      color: var(--text-2);
+    }
+
+    #btn-new-thread {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background .15s, transform .1s;
+    }
+
+    #btn-new-thread:hover {
+      background: #2563eb;
+    }
+
+    #btn-new-thread:active {
+      transform: scale(.97);
+    }
+
+    #btn-theme-toggle {
+      background: transparent;
+      color: var(--text-2);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      padding: 6px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background .15s, color .15s;
+    }
+
+    #btn-theme-toggle:hover {
+      background: var(--bg-hover);
+      color: var(--text-1);
+    }
+
+    #btn-settings {
+      background: transparent;
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      font-size: 16px;
+      width: 34px;
+      height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--text-1);
+      margin-left: 8px;
+      transition: background 0.15s;
+    }
+
+    #btn-settings:hover {
+      background: var(--bg-hover);
+    }
+
+    /* ====================================================================================
    Layout: sidebar + main
 ==================================================================================== */
-#layout {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
+    #layout {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+    }
 
-/* ---- Sidebar ---- */
-#sidebar {
-  width: 260px;
-  background: var(--bg-panel);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-}
-#sidebar-tabs {
-  display: flex;
-  border-bottom: 1px solid var(--border);
-}
-.stab {
-  flex: 1; padding: 10px; font-size: 12px; font-weight: 600;
-  text-align: center; cursor: pointer; color: var(--text-3);
-  transition: color .15s, border-color .15s;
-  border-bottom: 2px solid transparent;
-  letter-spacing: .04em; text-transform: uppercase;
-}
-.stab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    /* ---- Sidebar ---- */
+    #sidebar {
+      width: 260px;
+      background: var(--bg-panel);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
 
-#thread-pane { flex: 1; overflow-y: auto; display: block; }
+    #sidebar-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+    }
 
-#thread-filter-wrap {
-  border-bottom: 1px solid var(--border);
-  padding: 8px 10px;
-  position: relative;
-}
-#btn-thread-filter {
-  width: 100%;
-  background: var(--bg-card);
-  color: var(--text-2);
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  padding: 6px 10px;
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
-}
-#btn-thread-filter:hover { background: var(--bg-hover); }
-#thread-filter-panel {
-  display: none;
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  top: 44px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: 10px;
-  box-shadow: var(--shadow);
-  z-index: 20;
-  padding: 8px;
-}
-#thread-filter-panel.visible { display: block; }
-.filter-actions {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.filter-actions button {
-  flex: 1;
-  background: var(--bg-hover);
-  color: var(--text-2);
-  border: 1px solid var(--border-light);
-  border-radius: 7px;
-  font-size: 11px;
-  padding: 5px 6px;
-  cursor: pointer;
-}
-.filter-actions button:hover { background: #233047; }
-.filter-row {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12px;
-  color: var(--text-1);
-  padding: 4px 2px;
-}
-.filter-row input { accent-color: var(--accent); }
+    .stab {
+      flex: 1;
+      padding: 10px;
+      font-size: 12px;
+      font-weight: 600;
+      text-align: center;
+      cursor: pointer;
+      color: var(--text-3);
+      transition: color .15s, border-color .15s;
+      border-bottom: 2px solid transparent;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
 
-/* Thread list */
-.thread-item {
-  padding: 12px 16px;
-  cursor: pointer;
-  border-left: 3px solid transparent;
-  transition: background .15s, border-color .15s;
-  position: relative;
-}
-.thread-item:hover { background: var(--bg-hover); }
-.thread-item.active {
-  background: var(--bg-hover);
-  border-left-color: var(--accent);
-}
-.thread-item .ti-topic {
-  font-size: 13px; font-weight: 500;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  color: var(--text-1);
-}
-.thread-item .ti-meta {
-  font-size: 11px; color: var(--text-3); margin-top: 4px;
-  display: flex; align-items: center; gap: 6px;
-}
-.badge {
-  display: inline-flex; align-items: center;
-  padding: 2px 7px; border-radius: 20px; font-size: 10px; font-weight: 600;
-  letter-spacing: .04em; text-transform: uppercase;
-}
-.badge-discuss   { background: rgba(59,130,246,.15);  color: #60a5fa; }
-.badge-implement { background: rgba(34,197,94,.12);   color: #4ade80; }
-.badge-review    { background: rgba(245,158,11,.12);  color: #fbbf24; }
-.badge-done      { background: rgba(168,85,247,.12);  color: #c084fc; }
-.badge-closed    { background: rgba(75,85,99,.15);    color: var(--text-3); }
-.badge-archived  { background: rgba(148,163,184,.16); color: #94a3b8; }
+    .stab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
 
-/* Agent list */
-.agent-item {
-  padding: 10px 16px;
-  display: flex; align-items: center; gap: 10px;
-  border-bottom: 1px solid var(--border);
-}
-.agent-avatar {
-  width: 32px; height: 32px; border-radius: 8px;
-  background: linear-gradient(135deg, #1d4ed8, #7c3aed);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0;
-}
-.agent-avatar-interactive { cursor: pointer; }
-.agent-name { font-size: 13px; font-weight: 500; }
-.agent-desc { font-size: 11px; color: var(--text-3); margin-top: 2px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
-.online-dot {
-  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-left: auto;
-}
-.online-dot.on  { background: var(--green); box-shadow: 0 0 6px var(--green); }
-.online-dot.off { background: var(--text-3); }
+    #thread-pane {
+      flex: 1;
+      overflow-y: auto;
+      display: block;
+    }
 
-/* ---- Main area ---- */
-#main {
-  flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0;
-}
+    #thread-filter-wrap {
+      border-bottom: 1px solid var(--border);
+      padding: 8px 10px;
+      position: relative;
+    }
 
-/* Thread header */
-#thread-header {
-  padding: 0 20px;
-  height: 52px;
-  border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; gap: 12px;
-  flex-shrink: 0;
-}
-#thread-header h2 { font-size: 15px; font-weight: 600; flex: 1; min-width: 0;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#online-presence {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 56px;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border-light);
-  background: rgba(34,197,94,.12);
-  color: #86efac;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: .01em;
-  cursor: default;
-  transition: background .15s, border-color .15s;
-}
-#online-presence:hover {
-  background: rgba(34,197,94,.18);
-  border-color: rgba(34,197,94,.45);
-}
-#online-count {
-  white-space: nowrap;
-}
+    #btn-thread-filter {
+      width: 100%;
+      background: var(--bg-card);
+      color: var(--text-2);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 12px;
+      text-align: left;
+      cursor: pointer;
+    }
 
-/* Messages */
-#messages {
-  flex: 1; overflow-y: auto; padding: 20px;
-  display: flex; flex-direction: column; gap: 14px;
-  min-height: 0;
-}
-#messages.loading-history .msg-row,
-#messages.loading-history .msg-sys-event {
-  animation: none !important;
-}
-#messages::-webkit-scrollbar { width: 16px; }
-#messages::-webkit-scrollbar-track { background: transparent; }
-#messages::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
-#messages > acb-empty-state {
-  display: flex;
-  flex: 1;
-  min-height: 100%;
-}
+    #btn-thread-filter:hover {
+      background: var(--bg-hover);
+    }
 
-/* ---- Message rows (author-based coloring) ---- */
-.msg-row {
-  display: flex; align-items: flex-start; gap: 10px; max-width: 82%;
-  animation: bubble-in .2s ease;
-}
-.msg-row-left  { align-self: flex-start; }
-.msg-row-right { align-self: flex-end; flex-direction: row-reverse; }
+    #thread-filter-panel {
+      display: none;
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      top: 44px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+      z-index: 20;
+      padding: 8px;
+    }
 
-@keyframes bubble-in {
-  from { opacity: 0; transform: translateY(6px) scale(.98); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
+    #thread-filter-panel.visible {
+      display: block;
+    }
 
-/* ── Messages with mentions (Phase 2 notification) ── */
-.msg-row.message-has-mentions .bubble-v2 {
-  background: linear-gradient(135deg, rgba(255,250,205,.08) 0%, rgba(255,193,7,.05) 100%);
-  border-color: rgba(255,193,7,.3);
-  box-shadow: inset 0 0 12px rgba(255,193,7,.08),
-              0 0 20px rgba(255,193,7,.12);
-}
+    .filter-actions {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
 
-.msg-row.message-has-mentions {
-  position: relative;
-}
+    .filter-actions button {
+      flex: 1;
+      background: var(--bg-hover);
+      color: var(--text-2);
+      border: 1px solid var(--border-light);
+      border-radius: 7px;
+      font-size: 11px;
+      padding: 5px 6px;
+      cursor: pointer;
+    }
 
-.msg-row.message-has-mentions::before {
-  content: "";
-  position: absolute;
-  left: -6px;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: linear-gradient(to bottom, #ff9800, #ffc107);
-  border-radius: 2px;
-}
+    .filter-actions button:hover {
+      background: #233047;
+    }
 
-.msg-avatar {
-  width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 700; letter-spacing: .02em;
-  margin-top: 2px;
-}
-.msg-avatar-interactive { cursor: pointer; }
+    .filter-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12px;
+      color: var(--text-1);
+      padding: 4px 2px;
+    }
 
-.msg-col { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.msg-row-right .msg-col { align-items: flex-end; }
+    .filter-row input {
+      accent-color: var(--accent);
+    }
 
-.msg-header {
-  display: flex; align-items: baseline; gap: 8px;
-  font-size: 11px;
-}
-.msg-row-right .msg-header { flex-direction: row-reverse; }
-.msg-author-label { font-weight: 600; }
-.msg-time-label   { color: var(--text-3); }
+    /* Thread list */
+    .thread-item {
+      padding: 12px 16px;
+      cursor: pointer;
+      border-left: 3px solid transparent;
+      transition: background .15s, border-color .15s;
+      position: relative;
+    }
 
-.bubble-v2 {
-  padding: 10px 14px;
-  border-radius: 12px;
-  font-size: 13.5px; line-height: 1.6;
-  word-break: break-word;
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-left-width: 3px;
-  max-width: 100%;
-}
-.msg-row-right .bubble-v2 {
-  border-left-width: 1px;
-  border-right-width: 3px;
-}
+    .thread-item:hover {
+      background: var(--bg-hover);
+    }
 
-/* Markdown rendering inside message bubbles */
-.bubble-v2 h1, .bubble-v2 h2, .bubble-v2 h3,
-.bubble-v2 h4, .bubble-v2 h5, .bubble-v2 h6 {
-  margin: 12px 0 6px; line-height: 1.3; color: var(--text-1);
-}
-.bubble-v2 h1 { font-size: 16px; }
-.bubble-v2 h2 { font-size: 14.5px; }
-.bubble-v2 h3 { font-size: 13.5px; }
-.bubble-v2 h4, .bubble-v2 h5, .bubble-v2 h6 { font-size: 13px; }
-.bubble-v2 h1:first-child, .bubble-v2 h2:first-child,
-.bubble-v2 h3:first-child { margin-top: 0; }
-.bubble-v2 p { margin: 6px 0; }
-.bubble-v2 p:first-child { margin-top: 0; }
-.bubble-v2 p:last-child  { margin-bottom: 0; }
-.bubble-v2 ul, .bubble-v2 ol { margin: 6px 0; padding-left: 20px; }
-.bubble-v2 li { margin: 2px 0; }
-.bubble-v2 blockquote {
-  margin: 8px 0; padding: 4px 12px;
-  border-left: 3px solid var(--accent); color: var(--text-2);
-  font-style: italic; background: rgba(59,130,246,.05);
-  border-radius: 0 6px 6px 0;
-}
-.bubble-v2 code {
-  font-family: 'JetBrains Mono', monospace; font-size: 12px;
-  background: rgba(255,255,255,.06); padding: 1px 5px;
-  border-radius: 4px; border: 1px solid var(--border);
-}
-body[data-theme="light"] .bubble-v2 code { background: rgba(0,0,0,.05); }
-.bubble-v2 pre {
-  margin: 8px 0; padding: 10px 12px;
-  background: var(--bg-base); border: 1px solid var(--border);
-  border-radius: 8px; overflow-x: auto;
-}
-.bubble-v2 pre code { background: none; padding: 0; border: none; font-size: 12px; line-height: 1.5; }
-.bubble-v2 table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
-.bubble-v2 th, .bubble-v2 td { padding: 5px 10px; border: 1px solid var(--border-light); text-align: left; }
-.bubble-v2 th { background: rgba(59,130,246,.08); font-weight: 600; color: var(--text-1); }
-.bubble-v2 hr { border: none; border-top: 1px solid var(--border-light); margin: 10px 0; }
-.bubble-v2 a { color: var(--accent); text-decoration: none; }
-.bubble-v2 a:hover { text-decoration: underline; }
-.bubble-v2 strong { color: var(--text-1); }
-.bubble-v2 pre {
-  margin: 8px 0;
-  padding: 10px 12px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-light);
-  border-radius: 10px;
-  overflow: auto;
-}
-.code-block {
-  position: relative;
-}
-.code-block pre {
-  padding-top: 34px;
-}
-.code-copy {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  font-size: 11px;
-  padding: 4px 8px;
-  border-radius: 8px;
-  border: 1px solid var(--border-light);
-  background: var(--bg-card);
-  color: var(--text-2);
-  cursor: pointer;
-}
-.code-copy:active {
-  transform: translateY(1px);
-}
-.code-copy:disabled {
-  cursor: default;
-  opacity: .8;
-}
-.bubble-v2 pre code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 12.5px;
-  line-height: 1.5;
-  white-space: pre;
-}
-.bubble-v2 code.inline-code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 12.5px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  padding: 1px 6px;
-}
+    .thread-item.active {
+      background: var(--bg-hover);
+      border-left-color: var(--accent);
+    }
 
-/* System event row (centered) */
-.msg-sys-event {
-  align-self: center; max-width: 80%;
-  padding: 6px 14px;
-  background: rgba(245,158,11,.07);
-  border: 1px solid rgba(245,158,11,.18);
-  border-radius: 20px;
-  font-size: 11.5px; font-style: italic; color: #fbbf24;
-  text-align: center;
-  animation: bubble-in .2s ease;
-}
+    .thread-item .ti-topic {
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--text-1);
+    }
 
-.bubble-meta { font-size: 10px; color: var(--text-3); margin: 0 4px; }
+    .thread-item .ti-meta {
+      font-size: 11px;
+      color: var(--text-3);
+      margin-top: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
 
-.typing-bubble {
-  display: flex; align-items: center; gap: 4px;
-  padding: 10px 16px;
-  background: var(--bg-card); border: 1px solid var(--border-light);
-  border-radius: 14px 14px 14px 4px;
-  max-width: 80px;
-}
-.typing-bubble span {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--text-3); display: block;
-  animation: bouncing .9s infinite;
-}
-.typing-bubble span:nth-child(2) { animation-delay: .15s; }
-.typing-bubble span:nth-child(3) { animation-delay: .3s; }
-@keyframes bouncing {
-  0%,60%,100% { transform: translateY(0); }
-  30%         { transform: translateY(-5px); background: var(--accent); }
-}
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 7px;
+      border-radius: 20px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
 
-/* Empty state */
-#empty-state {
-  flex: 1; display: flex; flex-direction: column; align-items: center;
-  justify-content: center; color: var(--text-3); gap: 12px;
-}
-#empty-state .es-icon { font-size: 48px; opacity: .4; }
-#empty-state .es-title { font-size: 16px; font-weight: 600; color: var(--text-2); }
-#empty-state .es-sub { font-size: 13px; }
+    .badge-discuss {
+      background: rgba(59, 130, 246, .15);
+      color: #60a5fa;
+    }
 
-/* Compose */
-#compose {
-  padding: 14px 20px;
-  border-top: 1px solid var(--border);
-  display: none; gap: 10px; align-items: flex-end;
-  background: var(--bg-panel);
-}
-#compose.visible { display: flex; }
-#compose-author {
-  background: var(--bg-input); border: 1px solid var(--border-light);
-  color: var(--text-2); border-radius: 10px;
-  padding: 10px 14px; font-size: 13.5px; font-family: inherit;
-  width: 80px; flex-shrink: 0; text-align: center;
-  align-self: flex-start; height: 42px; box-sizing: border-box;
-}
-#compose-author:focus { outline: none; border-color: var(--accent); }
-#compose-input {
-  flex: 1; background: var(--bg-input); border: 1px solid var(--border-light);
-  color: var(--text-1); border-radius: 10px; padding: 10px 14px;
-  font-size: 13.5px; resize: none; min-height: 42px; max-height: 140px;
-  font-family: inherit; line-height: 1.5;
-  transition: border-color .15s;
-}
-#compose-input:focus { outline: none; border-color: var(--accent); }
-#compose-input:empty::before { content: attr(placeholder); color: var(--text-3); pointer-events: none; }
-#btn-send {
-  background: var(--accent); color: #fff; border: none; border-radius: 10px;
-  width: 40px; height: 40px; cursor: pointer; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 18px; transition: background .15s, transform .1s;
-}
-#btn-send:hover { background: #2563eb; }
-#btn-send:active { transform: scale(.93); }
+    .badge-implement {
+      background: rgba(34, 197, 94, .12);
+      color: #4ade80;
+    }
 
-/** Agent Status Bar **/
-#agent-status-bar {
-  display: flex;
-  background: var(--bg-base);
-  border-top: 1px solid var(--border-light);
-  padding: 8px 12px;
-  height: 56px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  gap: 10px;
-  font-size: 12px;
-}
-#agent-status-list {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: nowrap;
-}
-.agent-status-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  white-space: nowrap;
-  flex-shrink: 0;
-  font-size: 12px;
-  color: var(--text-1);
-}
-.agent-status-emoji {
-  font-size: 16px;
-  width: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.agent-status-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.agent-alias {
-  font-weight: 500;
-  color: var(--text-1);
-}
-.agent-state {
-  font-size: 11px;
-  color: var(--text-2);
-}
-.agent-status-text-compact {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-2);
-  min-width: 16px;
-  text-align: center;
-}
+    .badge-review {
+      background: rgba(245, 158, 11, .12);
+      color: #fbbf24;
+    }
 
-#agent-status-info {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  cursor: help;
-  padding: 4px 8px;
-  border-radius: 4px;
-  transition: background-color 0.2s;
-  flex-shrink: 0;
-  position: relative;
-}
-#agent-status-info:hover {
-  background-color: var(--bg-input);
-}
+    .badge-done {
+      background: rgba(168, 85, 247, .12);
+      color: #c084fc;
+    }
 
-.acb-tooltip-info .state-item {
-  margin-bottom: 8px;
-}
-.acb-tooltip-info .state-item:last-child {
-  margin-bottom: 0;
-}
-.acb-tooltip-info .state-emoji {
-  font-weight: bold;
-  margin-right: 6px;
-}
-.acb-tooltip-info strong {
-  color: var(--text-1);
-}
+    .badge-closed {
+      background: rgba(75, 85, 99, .15);
+      color: var(--text-3);
+    }
 
-/* ====================================================================================
+    .badge-archived {
+      background: rgba(148, 163, 184, .16);
+      color: #94a3b8;
+    }
+
+    /* Agent list */
+    .agent-item {
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .agent-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #1d4ed8, #7c3aed);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    .agent-avatar-interactive {
+      cursor: pointer;
+    }
+
+    .agent-name {
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .agent-desc {
+      font-size: 11px;
+      color: var(--text-3);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 150px;
+    }
+
+    .online-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      margin-left: auto;
+    }
+
+    .online-dot.on {
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+    }
+
+    .online-dot.off {
+      background: var(--text-3);
+    }
+
+    /* ---- Main area ---- */
+    #main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+    }
+
+    /* Thread header */
+    #thread-header {
+      padding: 0 20px;
+      height: 52px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    #thread-header h2 {
+      font-size: 15px;
+      font-weight: 600;
+      flex: 1;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #online-presence {
+      margin-left: auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 56px;
+      height: 28px;
+      padding: 0 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border-light);
+      background: rgba(34, 197, 94, .12);
+      color: #86efac;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: .01em;
+      cursor: default;
+      transition: background .15s, border-color .15s;
+    }
+
+    #online-presence:hover {
+      background: rgba(34, 197, 94, .18);
+      border-color: rgba(34, 197, 94, .45);
+    }
+
+    #online-count {
+      white-space: nowrap;
+    }
+
+    /* Messages */
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-height: 0;
+    }
+
+    #messages.loading-history .msg-row,
+    #messages.loading-history .msg-sys-event {
+      animation: none !important;
+    }
+
+    #messages::-webkit-scrollbar {
+      width: 16px;
+    }
+
+    #messages::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    #messages::-webkit-scrollbar-thumb {
+      background: var(--border-light);
+      border-radius: 4px;
+    }
+
+    #messages>acb-empty-state {
+      display: flex;
+      flex: 1;
+      min-height: 100%;
+    }
+
+    /* ---- Message rows (author-based coloring) ---- */
+    .msg-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      max-width: 82%;
+      animation: bubble-in .2s ease;
+    }
+
+    .msg-row-left {
+      align-self: flex-start;
+    }
+
+    .msg-row-right {
+      align-self: flex-end;
+      flex-direction: row-reverse;
+    }
+
+    @keyframes bubble-in {
+      from {
+        opacity: 0;
+        transform: translateY(6px) scale(.98);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    /* ── Messages with mentions (Phase 2 notification) ── */
+    .msg-row.message-has-mentions .bubble-v2 {
+      background: linear-gradient(135deg, rgba(255, 250, 205, .08) 0%, rgba(255, 193, 7, .05) 100%);
+      border-color: rgba(255, 193, 7, .3);
+      box-shadow: inset 0 0 12px rgba(255, 193, 7, .08),
+        0 0 20px rgba(255, 193, 7, .12);
+    }
+
+    .msg-row.message-has-mentions {
+      position: relative;
+    }
+
+    .msg-row.message-has-mentions::before {
+      content: "";
+      position: absolute;
+      left: -6px;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: linear-gradient(to bottom, #ff9800, #ffc107);
+      border-radius: 2px;
+    }
+
+    .msg-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 9px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .02em;
+      margin-top: 2px;
+    }
+
+    .msg-avatar-interactive {
+      cursor: pointer;
+    }
+
+    .msg-col {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .msg-row-right .msg-col {
+      align-items: flex-end;
+    }
+
+    .msg-header {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      font-size: 11px;
+    }
+
+    .msg-row-right .msg-header {
+      flex-direction: row-reverse;
+    }
+
+    .msg-author-label {
+      font-weight: 600;
+    }
+
+    .msg-time-label {
+      color: var(--text-3);
+    }
+
+    .bubble-v2 {
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 13.5px;
+      line-height: 1.6;
+      word-break: break-word;
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-left-width: 3px;
+      max-width: 100%;
+    }
+
+    .msg-row-right .bubble-v2 {
+      border-left-width: 1px;
+      border-right-width: 3px;
+    }
+
+    /* Markdown rendering inside message bubbles */
+    .bubble-v2 h1,
+    .bubble-v2 h2,
+    .bubble-v2 h3,
+    .bubble-v2 h4,
+    .bubble-v2 h5,
+    .bubble-v2 h6 {
+      margin: 12px 0 6px;
+      line-height: 1.3;
+      color: var(--text-1);
+    }
+
+    .bubble-v2 h1 {
+      font-size: 16px;
+    }
+
+    .bubble-v2 h2 {
+      font-size: 14.5px;
+    }
+
+    .bubble-v2 h3 {
+      font-size: 13.5px;
+    }
+
+    .bubble-v2 h4,
+    .bubble-v2 h5,
+    .bubble-v2 h6 {
+      font-size: 13px;
+    }
+
+    .bubble-v2 h1:first-child,
+    .bubble-v2 h2:first-child,
+    .bubble-v2 h3:first-child {
+      margin-top: 0;
+    }
+
+    .bubble-v2 p {
+      margin: 6px 0;
+    }
+
+    .bubble-v2 p:first-child {
+      margin-top: 0;
+    }
+
+    .bubble-v2 p:last-child {
+      margin-bottom: 0;
+    }
+
+    .bubble-v2 ul,
+    .bubble-v2 ol {
+      margin: 6px 0;
+      padding-left: 20px;
+    }
+
+    .bubble-v2 li {
+      margin: 2px 0;
+    }
+
+    .bubble-v2 blockquote {
+      margin: 8px 0;
+      padding: 4px 12px;
+      border-left: 3px solid var(--accent);
+      color: var(--text-2);
+      font-style: italic;
+      background: rgba(59, 130, 246, .05);
+      border-radius: 0 6px 6px 0;
+    }
+
+    .bubble-v2 code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      background: rgba(255, 255, 255, .06);
+      padding: 1px 5px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+
+    body[data-theme="light"] .bubble-v2 code {
+      background: rgba(0, 0, 0, .05);
+    }
+
+    .bubble-v2 pre {
+      margin: 8px 0;
+      padding: 10px 12px;
+      background: var(--bg-base);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow-x: auto;
+    }
+
+    .bubble-v2 pre code {
+      background: none;
+      padding: 0;
+      border: none;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .bubble-v2 table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8px 0;
+      font-size: 12px;
+    }
+
+    .bubble-v2 th,
+    .bubble-v2 td {
+      padding: 5px 10px;
+      border: 1px solid var(--border-light);
+      text-align: left;
+    }
+
+    .bubble-v2 th {
+      background: rgba(59, 130, 246, .08);
+      font-weight: 600;
+      color: var(--text-1);
+    }
+
+    .bubble-v2 hr {
+      border: none;
+      border-top: 1px solid var(--border-light);
+      margin: 10px 0;
+    }
+
+    .bubble-v2 a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .bubble-v2 a:hover {
+      text-decoration: underline;
+    }
+
+    .bubble-v2 strong {
+      color: var(--text-1);
+    }
+
+    .bubble-v2 pre {
+      margin: 8px 0;
+      padding: 10px 12px;
+      background: var(--bg-input);
+      border: 1px solid var(--border-light);
+      border-radius: 10px;
+      overflow: auto;
+    }
+
+    .code-block {
+      position: relative;
+    }
+
+    .code-block pre {
+      padding-top: 34px;
+    }
+
+    .code-copy {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 8px;
+      border: 1px solid var(--border-light);
+      background: var(--bg-card);
+      color: var(--text-2);
+      cursor: pointer;
+    }
+
+    .code-copy:active {
+      transform: translateY(1px);
+    }
+
+    .code-copy:disabled {
+      cursor: default;
+      opacity: .8;
+    }
+
+    .bubble-v2 pre code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 12.5px;
+      line-height: 1.5;
+      white-space: pre;
+    }
+
+    .bubble-v2 code.inline-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 12.5px;
+      background: var(--bg-input);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      padding: 1px 6px;
+    }
+
+    /* System event row (centered) */
+    .msg-sys-event {
+      align-self: center;
+      max-width: 80%;
+      padding: 6px 14px;
+      background: rgba(245, 158, 11, .07);
+      border: 1px solid rgba(245, 158, 11, .18);
+      border-radius: 20px;
+      font-size: 11.5px;
+      font-style: italic;
+      color: #fbbf24;
+      text-align: center;
+      animation: bubble-in .2s ease;
+    }
+
+    .bubble-meta {
+      font-size: 10px;
+      color: var(--text-3);
+      margin: 0 4px;
+    }
+
+    .typing-bubble {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 10px 16px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-radius: 14px 14px 14px 4px;
+      max-width: 80px;
+    }
+
+    .typing-bubble span {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--text-3);
+      display: block;
+      animation: bouncing .9s infinite;
+    }
+
+    .typing-bubble span:nth-child(2) {
+      animation-delay: .15s;
+    }
+
+    .typing-bubble span:nth-child(3) {
+      animation-delay: .3s;
+    }
+
+    @keyframes bouncing {
+
+      0%,
+      60%,
+      100% {
+        transform: translateY(0);
+      }
+
+      30% {
+        transform: translateY(-5px);
+        background: var(--accent);
+      }
+    }
+
+    /* Empty state */
+    #empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-3);
+      gap: 12px;
+    }
+
+    #empty-state .es-icon {
+      font-size: 48px;
+      opacity: .4;
+    }
+
+    #empty-state .es-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-2);
+    }
+
+    #empty-state .es-sub {
+      font-size: 13px;
+    }
+
+    /* Compose */
+    #compose {
+      padding: 14px 20px;
+      border-top: 1px solid var(--border);
+      display: none;
+      gap: 10px;
+      align-items: flex-end;
+      background: var(--bg-panel);
+    }
+
+    #compose.visible {
+      display: flex;
+    }
+
+    #compose-author {
+      background: var(--bg-input);
+      border: 1px solid var(--border-light);
+      color: var(--text-2);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 13.5px;
+      font-family: inherit;
+      width: 80px;
+      flex-shrink: 0;
+      text-align: center;
+      align-self: flex-start;
+      height: 42px;
+      box-sizing: border-box;
+    }
+
+    #compose-author:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    #compose-input {
+      flex: 1;
+      background: var(--bg-input);
+      border: 1px solid var(--border-light);
+      color: var(--text-1);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 13.5px;
+      resize: none;
+      min-height: 42px;
+      max-height: 140px;
+      font-family: inherit;
+      line-height: 1.5;
+      transition: border-color .15s;
+    }
+
+    #compose-input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    #compose-input:empty::before {
+      content: attr(placeholder);
+      color: var(--text-3);
+      pointer-events: none;
+    }
+
+    #btn-send {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      width: 40px;
+      height: 40px;
+      cursor: pointer;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      transition: background .15s, transform .1s;
+    }
+
+    #btn-send:hover {
+      background: #2563eb;
+    }
+
+    #btn-send:active {
+      transform: scale(.93);
+    }
+
+    /** Agent Status Bar **/
+    #agent-status-bar {
+      display: flex;
+      background: var(--bg-base);
+      border-top: 1px solid var(--border-light);
+      padding: 8px 12px;
+      height: 56px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      gap: 10px;
+      font-size: 12px;
+    }
+
+    #agent-status-list {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: nowrap;
+    }
+
+    .agent-status-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      background: var(--bg-input);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      font-size: 12px;
+      color: var(--text-1);
+    }
+
+    .agent-status-emoji {
+      font-size: 16px;
+      width: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .agent-status-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .agent-alias {
+      font-weight: 500;
+      color: var(--text-1);
+    }
+
+    .agent-state {
+      font-size: 11px;
+      color: var(--text-2);
+    }
+
+    .agent-status-text-compact {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-2);
+      min-width: 16px;
+      text-align: center;
+    }
+
+    #agent-status-info {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      cursor: help;
+      padding: 4px 8px;
+      border-radius: 4px;
+      transition: background-color 0.2s;
+      flex-shrink: 0;
+      position: relative;
+    }
+
+    #agent-status-info:hover {
+      background-color: var(--bg-input);
+    }
+
+    .acb-tooltip-info .state-item {
+      margin-bottom: 8px;
+    }
+
+    .acb-tooltip-info .state-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .acb-tooltip-info .state-emoji {
+      font-weight: bold;
+      margin-right: 6px;
+    }
+
+    .acb-tooltip-info strong {
+      color: var(--text-1);
+    }
+
+    /* ====================================================================================
    Modal
 ==================================================================================== */
-#modal-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,.7);
-  display: none; align-items: center; justify-content: center;
-  z-index: 100; animation: fade-in .15s ease;
-}
-#modal-overlay.visible { display: flex; }
-@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-#modal {
-  background: var(--bg-card); border: 1px solid var(--border-light);
-  border-radius: 14px; padding: 28px; width: 440px; max-width: 90vw;
-  box-shadow: var(--shadow);
-  animation: modal-in .2s ease;
-}
-@keyframes modal-in {
-  from { opacity: 0; transform: scale(.95) translateY(-10px); }
-  to   { opacity: 1; transform: scale(1) translateY(0); }
-}
-#modal h3 { font-size: 16px; font-weight: 600; margin-bottom: 18px; }
-#modal-topic {
-  width: 100%; background: var(--bg-input); border: 1px solid var(--border-light);
-  color: var(--text-1); border-radius: 10px; padding: 10px 14px;
-  font-size: 14px; font-family: inherit; margin-bottom: 16px;
-}
-#modal-topic:focus { outline: none; border-color: var(--accent); }
-.modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
-.btn-secondary {
-  background: var(--bg-hover); color: var(--text-2); border: 1px solid var(--border-light);
-  border-radius: 8px; padding: 8px 18px; font-size: 13px;
-  cursor: pointer; font-family: inherit; transition: background .15s;
-}
-.btn-secondary:hover { background: var(--border-light); }
-.btn-primary {
-  background: var(--accent); color: #fff; border: none;
-  border-radius: 8px; padding: 8px 18px; font-size: 13px;
-  cursor: pointer; font-family: inherit; transition: background .15s;
-}
-.btn-primary:hover { background: #2563eb; }
+    #modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, .7);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      animation: fade-in .15s ease;
+    }
 
-/* Thread context menu */
-#thread-context-menu {
-  position: fixed;
-  min-width: 150px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: 10px;
-  box-shadow: var(--shadow);
-  padding: 6px;
-  z-index: 1200;
-  display: none;
-}
-#thread-context-menu.visible { display: block; }
-.ctx-item {
-  width: 100%;
-  text-align: left;
-  background: transparent;
-  border: none;
-  color: var(--text-1);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 12px;
-  cursor: pointer;
-}
-.ctx-item:hover { background: var(--bg-hover); }
-.ctx-item:disabled {
-  color: var(--text-3);
-  cursor: not-allowed;
-}
-.ctx-divider {
-  margin: 4px 0;
-  border: none;
-  border-top: 1px solid rgba(255,255,255,.1);
-}
-body[data-theme="light"] .ctx-divider {
-  border-top-color: rgba(0,0,0,.1);
-}
-.ctx-item--destructive { color: #ef4444; }
-.ctx-item--destructive:hover { background: rgba(239,68,68,.12); }
+    #modal-overlay.visible {
+      display: flex;
+    }
 
-/* ── Delete thread dialog ───────────────────── */
-#delete-thread-dialog {
-  background: var(--bg-card); border: 1px solid var(--border-light);
-  border-radius: 14px; padding: 24px 28px; width: 420px; max-width: 90vw;
-  box-shadow: var(--shadow); color: var(--text-1);
-}
-#delete-thread-dialog::backdrop { background: rgba(0,0,0,.55); }
-#delete-thread-dialog h3 { font-size: 15px; font-weight: 600; margin: 0 0 12px; }
-#delete-thread-dialog p { font-size: 13px; color: var(--text-2); margin: 0 0 20px; line-height: 1.5; }
-#delete-thread-dialog p strong { color: var(--text-1); }
-#delete-thread-dialog menu {
-  display: flex; gap: 10px; justify-content: flex-end;
-  margin: 0; padding: 0; list-style: none;
-}
-.btn-destructive {
-  background: #dc2626; color: #fff; border: none;
-  border-radius: 8px; padding: 8px 18px; font-size: 13px;
-  cursor: pointer; font-family: inherit; transition: background .15s;
-}
-.btn-destructive:hover { background: #b91c1c; }
+    @keyframes fade-in {
+      from {
+        opacity: 0;
+      }
 
-#footer-link {
-  display: inline-flex;
-  align-items: center;
-  font-size: 11px;
-  color: var(--text-3);
-  opacity: .72;
-  margin-left: 2px;
-}
-#footer-link a {
-  color: inherit;
-  text-decoration: none;
-}
-#footer-link a:hover {
-  color: var(--text-2);
-  text-decoration: underline;
-}
+      to {
+        opacity: 1;
+      }
+    }
 
-/* Scrollbar */
-#thread-pane::-webkit-scrollbar { width: 16px; }
-#thread-pane::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
+    #modal {
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-radius: 14px;
+      padding: 28px;
+      width: 440px;
+      max-width: 90vw;
+      box-shadow: var(--shadow);
+      animation: modal-in .2s ease;
+    }
 
-/* ---- Agent tooltip (custom, copy-enabled) -------------------------------------------------------------- */
-#agent-tooltip {
-  position: fixed;
-  z-index: 9999;
-/* ── Agent tooltip (custom, copy-enabled) ─────────────────────────────── */
-.acb-tooltip-agent {
-  width: min(380px, calc(100vw - 24px));
-  padding: 10px;
-}
-.agent-tip-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-1);
-  margin-bottom: 8px;
-}
-.agent-tip-meta {
-  font-size: 11px;
-  color: var(--text-2);
-  margin-bottom: 8px;
-  line-height: 1.5;
-}
-.agent-tip-meta code {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  color: var(--text-1);
-}
-.agent-tip-prompt {
-  margin: 0;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg-input);
-  color: var(--text-1);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  line-height: 1.45;
-  padding: 8px;
-  max-height: 180px;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.agent-tip-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
-.agent-tip-actions button {
-  flex: 1;
-  border: 1px solid var(--border-light);
-  background: var(--bg-hover);
-  color: var(--text-1);
-  border-radius: 8px;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 6px 8px;
-  cursor: pointer;
-}
-.agent-tip-actions button:hover { border-color: var(--accent); }
-</style>
+    @keyframes modal-in {
+      from {
+        opacity: 0;
+        transform: scale(.95) translateY(-10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
+
+    #modal h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 18px;
+    }
+
+    #modal-topic {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1px solid var(--border-light);
+      color: var(--text-1);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 14px;
+      font-family: inherit;
+      margin-bottom: 16px;
+    }
+
+    #modal-topic:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    .btn-secondary {
+      background: var(--bg-hover);
+      color: var(--text-2);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      padding: 8px 18px;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background .15s;
+    }
+
+    .btn-secondary:hover {
+      background: var(--border-light);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 18px;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background .15s;
+    }
+
+    .btn-primary:hover {
+      background: #2563eb;
+    }
+
+    /* Thread context menu */
+    #thread-context-menu {
+      position: fixed;
+      min-width: 150px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+      padding: 6px;
+      z-index: 1200;
+      display: none;
+    }
+
+    #thread-context-menu.visible {
+      display: block;
+    }
+
+    .ctx-item {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: none;
+      color: var(--text-1);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .ctx-item:hover {
+      background: var(--bg-hover);
+    }
+
+    .ctx-item:disabled {
+      color: var(--text-3);
+      cursor: not-allowed;
+    }
+
+    .ctx-divider {
+      margin: 4px 0;
+      border: none;
+      border-top: 1px solid rgba(255, 255, 255, .1);
+    }
+
+    body[data-theme="light"] .ctx-divider {
+      border-top-color: rgba(0, 0, 0, .1);
+    }
+
+    .ctx-item--destructive {
+      color: #ef4444;
+    }
+
+    .ctx-item--destructive:hover {
+      background: rgba(239, 68, 68, .12);
+    }
+
+    /* ── Delete thread dialog ───────────────────── */
+    #delete-thread-dialog {
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-radius: 14px;
+      padding: 24px 28px;
+      width: 420px;
+      max-width: 90vw;
+      box-shadow: var(--shadow);
+      color: var(--text-1);
+    }
+
+    #delete-thread-dialog::backdrop {
+      background: rgba(0, 0, 0, .55);
+    }
+
+    #delete-thread-dialog h3 {
+      font-size: 15px;
+      font-weight: 600;
+      margin: 0 0 12px;
+    }
+
+    #delete-thread-dialog p {
+      font-size: 13px;
+      color: var(--text-2);
+      margin: 0 0 20px;
+      line-height: 1.5;
+    }
+
+    #delete-thread-dialog p strong {
+      color: var(--text-1);
+    }
+
+    #delete-thread-dialog menu {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .btn-destructive {
+      background: #dc2626;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 18px;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background .15s;
+    }
+
+    .btn-destructive:hover {
+      background: #b91c1c;
+    }
+
+    #footer-link {
+      display: inline-flex;
+      align-items: center;
+      font-size: 11px;
+      color: var(--text-3);
+      opacity: .72;
+      margin-left: 2px;
+    }
+
+    #footer-link a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    #footer-link a:hover {
+      color: var(--text-2);
+      text-decoration: underline;
+    }
+
+    /* Scrollbar */
+    #thread-pane::-webkit-scrollbar {
+      width: 16px;
+    }
+
+    #thread-pane::-webkit-scrollbar-thumb {
+      background: var(--border-light);
+      border-radius: 4px;
+    }
+
+    /* ---- Agent tooltip (custom, copy-enabled) -------------------------------------------------------------- */
+    #agent-tooltip {
+      position: fixed;
+      z-index: 9999;
+
+      /* ── Agent tooltip (custom, copy-enabled) ─────────────────────────────── */
+      .acb-tooltip-agent {
+        width: min(380px, calc(100vw - 24px));
+        padding: 10px;
+      }
+
+      .agent-tip-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--text-1);
+        margin-bottom: 8px;
+      }
+
+      .agent-tip-meta {
+        font-size: 11px;
+        color: var(--text-2);
+        margin-bottom: 8px;
+        line-height: 1.5;
+      }
+
+      .agent-tip-meta code {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        color: var(--text-1);
+      }
+
+      .agent-tip-prompt {
+        margin: 0;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg-input);
+        color: var(--text-1);
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        line-height: 1.45;
+        padding: 8px;
+        max-height: 180px;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .agent-tip-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+      }
+
+      .agent-tip-actions button {
+        flex: 1;
+        border: 1px solid var(--border-light);
+        background: var(--bg-hover);
+        color: var(--text-1);
+        border-radius: 8px;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 6px 8px;
+        cursor: pointer;
+      }
+
+      .agent-tip-actions button:hover {
+        border-color: var(--accent);
+      }
+  </style>
 </head>
+
 <body>
 
-<!-- ---- Top bar -------------------------------------------------------------- -->
-<div id="topbar">
-  <div class="logo"><img src="/static/bus.png" alt="Bus" />AgentChatBus</div>
-  <div id="footer-link">
-    <a href="https://github.com/Killea/AgentChatBus" target="_blank" rel="noopener noreferrer">GitHub ┬╖ AgentChatBus</a>
-  </div>
-  <div class="sep"></div>
-  <div id="status-dot"></div>
-  <div class="status-label" id="status-label">Connected</div>
-  <button id="btn-theme-toggle" type="button" onclick="toggleTheme()">Light</button>
-  <button id="btn-settings" type="button" onclick="openSettingsModal()" title="MCP Server Settings"
-    style="background: transparent; border: 1px solid var(--border-light); border-radius: 8px; font-size: 16px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-1); margin-left: 8px; transition: background 0.15s;">⚙️</button>
-  <acb-icon-button button-id="btn-theme-toggle" label="Light" action="toggleTheme"></acb-icon-button>
-  <button id="btn-new-thread" onclick="openModal()">＋ New Thread</button>
-  <acb-icon-button button-id="btn-settings" label="⚙️" action="openSettingsModal" title="MCP Server Settings" aria-label="MCP Server Settings"></acb-icon-button>
-</div>
-
-<!-- ---- Layout ---------------------------------------------------------------- -->
-<div id="layout">
-
-  <!-- Sidebar -->
-  <div id="sidebar">
-    <div id="sidebar-tabs">
-      <div class="stab active" id="tab-threads" onclick="switchTab('threads')">Threads</div>
+  <!-- ---- Top bar -------------------------------------------------------------- -->
+  <div id="topbar">
+    <div class="logo"><img src="/static/bus.png" alt="Bus" />AgentChatBus</div>
+    <div id="footer-link">
+      <a href="https://github.com/Killea/AgentChatBus" target="_blank" rel="noopener noreferrer">GitHub ┬╖
+        AgentChatBus</a>
     </div>
-    <acb-thread-filter-shell></acb-thread-filter-shell>
-    <div id="thread-pane" class="visible"></div>
+    <div class="sep"></div>
+    <div id="status-dot"></div>
+    <div class="status-label" id="status-label">Connected</div>
+    <button id="btn-theme-toggle" type="button" onclick="toggleTheme()">Light</button>
+    <button id="btn-settings" type="button" onclick="openSettingsModal()" title="MCP Server Settings"
+      style="background: transparent; border: 1px solid var(--border-light); border-radius: 8px; font-size: 16px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-1); margin-left: 8px; transition: background 0.15s;">⚙️</button>
+    <acb-icon-button button-id="btn-theme-toggle" label="Light" action="toggleTheme"></acb-icon-button>
+    <button id="btn-new-thread" onclick="openModal()">＋ New Thread</button>
+    <acb-icon-button button-id="btn-settings" label="⚙️" action="openSettingsModal" title="MCP Server Settings"
+      aria-label="MCP Server Settings"></acb-icon-button>
   </div>
 
-  <!-- Main -->
-  <div id="main">
-    <acb-thread-header></acb-thread-header>
+  <!-- ---- Layout ---------------------------------------------------------------- -->
+  <div id="layout">
 
-    <div id="messages">
-      <acb-empty-state></acb-empty-state>
-        </div>
-        
-        <div id="compose">
-          <input id="compose-author" type="text" value="human" placeholder="author" />
-          <textarea id="compose-input" rows="1" placeholder="Send a system message… (Enter to send, Shift+Enter for newline)"
-            oninput="autoResize(this)" onkeydown="handleKey(event)"></textarea>
-          <button id="btn-send" onclick="sendMessage()" title="Send">➤</button>
-        </div>
-        <!-- Agent Status Bar -->
-        <div id="agent-status-bar">
-          <div id="agent-status-list"></div>
-          <div id="agent-status-info">ℹ️Å</div>
-        </div>
-        </div>
-        </div>
+    <!-- Sidebar -->
+    <div id="sidebar">
+      <div id="sidebar-tabs">
+        <div class="stab active" id="tab-threads" onclick="switchTab('threads')">Threads</div>
+      </div>
+      <acb-thread-filter-shell></acb-thread-filter-shell>
+      <div id="thread-pane" class="visible"></div>
+    </div>
 
-<div id="thread-context-menu">
-  <button id="ctx-close" class="ctx-item" type="button" onclick="closeThreadFromMenu()">Close</button>
-  <button id="ctx-archive" class="ctx-item" type="button" onclick="archiveThreadFromMenu()">Archive</button>
-  <hr class="ctx-divider" aria-hidden="true">
-  <button id="ctx-delete" class="ctx-item ctx-item--destructive" type="button" onclick="deleteThreadFromMenu()">Delete</button>
-</div>
+    <!-- Main -->
+    <div id="main">
+      <acb-thread-header></acb-thread-header>
 
-<!-- ── Delete thread confirmation dialog ─────── -->
-<dialog id="delete-thread-dialog">
-  <h3>Delete thread</h3>
-  <p>Permanently delete <strong id="delete-thread-topic"></strong><span id="delete-thread-meta"></span>? This cannot be undone.</p>
-  <menu>
-    <button type="button" value="cancel" class="btn-secondary" autofocus>Cancel</button>
-    <button type="button" value="delete" class="btn-destructive">Delete</button>
-  </menu>
-</dialog>
+      <div id="messages">
+        <acb-empty-state></acb-empty-state>
+      </div>
 
-<!-- ---- New thread modal ---------------------------------------------- -->
-<div id="modal-overlay" onclick="closeModal(event)">
-  <div id="modal">
-    <h3>✦ Create New Thread</h3>
-    <input id="modal-topic" type="text" placeholder="Thread topic…" onkeydown="if(event.key==='Enter') submitModal()" />
-    <div class="modal-actions">
-      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn-primary" onclick="submitModal()">Create</button>
+      <div id="compose">
+        <input id="compose-author" type="text" value="human" placeholder="author" />
+        <textarea id="compose-input" rows="1"
+          placeholder="Send a system message… (Enter to send, Shift+Enter for newline)" oninput="autoResize(this)"
+          onkeydown="handleKey(event)"></textarea>
+        <button id="btn-send" onclick="sendMessage()" title="Send">➤</button>
+      </div>
+      <!-- Agent Status Bar -->
+      <div id="agent-status-bar">
+        <div id="agent-status-list"></div>
+        <div id="agent-status-info">ℹ️Å</div>
+      </div>
     </div>
   </div>
-</div>
 
-<!-- ---- Settings modal -------------------------------------------------- -->
-<div id="settings-modal-overlay" onclick="closeSettingsModal(event)"
-  style="display:none; position: fixed; inset: 0; background: rgba(0,0,0,.7); align-items: center; justify-content: center; z-index: 100; animation: fade-in .15s ease;">
-  <div id="settings-modal"
-    style="background: var(--bg-card); border: 1px solid var(--border-light); border-radius: 14px; padding: 28px; width: 440px; max-width: 90vw; box-shadow: var(--shadow); animation: modal-in .2s ease;"
-    onclick="event.stopPropagation()">
-    <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 18px; color: var(--text-1)">⚙️Å MCP Server Settings</h3>
+  <div id="thread-context-menu">
+    <button id="ctx-close" class="ctx-item" type="button" onclick="closeThreadFromMenu()">Close</button>
+    <button id="ctx-archive" class="ctx-item" type="button" onclick="archiveThreadFromMenu()">Archive</button>
+    <hr class="ctx-divider" aria-hidden="true">
+    <button id="ctx-delete" class="ctx-item ctx-item--destructive" type="button"
+      onclick="deleteThreadFromMenu()">Delete</button>
+  </div>
 
-    <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Host</label>
-    <input id="setting-host" type="text"
-      style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-1); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; margin-bottom: 16px;" />
+  <!-- ── Delete thread confirmation dialog ─────── -->
+  <dialog id="delete-thread-dialog">
+    <h3>Delete thread</h3>
+    <p>Permanently delete <strong id="delete-thread-topic"></strong><span id="delete-thread-meta"></span>? This cannot
+      be undone.</p>
+    <menu>
+      <button type="button" value="cancel" class="btn-secondary" autofocus>Cancel</button>
+      <button type="button" value="delete" class="btn-destructive">Delete</button>
+    </menu>
+  </dialog>
 
-    <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Port</label>
-    <input id="setting-port" type="number"
-      style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-1); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; margin-bottom: 16px;" />
-
-    <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Agent Heartbeat Timeout
-      (s)</label>
-    <input id="setting-heartbeat" type="number"
-      style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-1); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; margin-bottom: 16px;" />
-
-    <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Wait Timeout (s)</label>
-    <input id="setting-wait" type="number"
-      style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-1); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; margin-bottom: 16px;" />
-
-    <div id="settings-message" style="font-size: 12px; color: var(--green); margin-bottom: 16px; display: none;"></div>
-
-    <div class="modal-actions">
-      <button class="btn-secondary" onclick="closeSettingsModal()">Cancel</button>
-      <button class="btn-primary" onclick="submitSettings()">Save (Requires Restart)</button>
+  <!-- ---- New thread modal ---------------------------------------------- -->
+  <div id="modal-overlay" onclick="closeModal(event)">
+    <div id="modal">
+      <h3>✦ Create New Thread</h3>
+      <input id="modal-topic" type="text" placeholder="Thread topic…"
+        onkeydown="if(event.key==='Enter') submitModal()" />
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn-primary" onclick="submitModal()">Create</button>
+      </div>
     </div>
   </div>
-</div>
 
-<div id="agent-tooltip" aria-hidden="true"></div>
+  <!-- ---- Settings modal -------------------------------------------------- -->
+  <div id="settings-modal-overlay" onclick="closeSettingsModal(event)"
+    style="display:none; position: fixed; inset: 0; background: rgba(0,0,0,.7); align-items: center; justify-content: center; z-index: 100; animation: fade-in .15s ease;">
+    <div id="settings-modal"
+      style="background: var(--bg-card); border: 1px solid var(--border-light); border-radius: 14px; padding: 28px; width: 440px; max-width: 90vw; box-shadow: var(--shadow); animation: modal-in .2s ease;"
+      onclick="event.stopPropagation()">
+      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 18px; color: var(--text-1)">⚙️Å MCP Server Settings
+      </h3>
 
-<div id="agent-status-info-tooltip" class="">
-  <div class="state-item"><span class="state-emoji">🟢</span> <strong>Active:</strong> Agent has activity within 30 seconds</div>
-  <div class="state-item"><span class="state-emoji">🌙</span> <strong>Idle:</strong> Agent has activity within 5 minutes</div>
-  <div class="state-item"><span class="state-emoji">⏳</span> <strong>Waiting:</strong> Agent is waiting for response (within 60 seconds)</div>
-  <div class="state-item"><span class="state-emoji">⚫</span> <strong>Offline:</strong> Agent has no recent activity and is not heartbeating</div>
-</div>
+      <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Host</label>
+      <input id="setting-host" type="text"
+        style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-1); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; margin-bottom: 16px;" />
 
-      <acb-empty-state></acb-empty-state>
-        </div>
-        
-        <acb-compose-shell></acb-compose-shell>
-        <!-- Agent Status Bar -->
-        <acb-agent-status-shell></acb-agent-status-shell>
-        </div>
-        </div>
+      <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Port</label>
+      <input id="setting-port" type="number"
+        style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-1); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; margin-bottom: 16px;" />
 
-<acb-thread-context-menu></acb-thread-context-menu>
+      <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Agent Heartbeat Timeout
+        (s)</label>
+      <input id="setting-heartbeat" type="number"
+        style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-1); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; margin-bottom: 16px;" />
 
-<acb-modal-shell></acb-modal-shell>
+      <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Wait Timeout (s)</label>
+      <input id="setting-wait" type="number"
+        style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-1); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; margin-bottom: 16px;" />
 
-<script src="/static/js/shared-api.js?v=2"></script>
-<script src="/static/js/shared-theme.js?v=2"></script>
-<script src="/static/js/shared-utils.js?v=2"></script>
-<script src="/static/js/shared-message-renderer.js?v=2"></script>
-<script src="/static/js/shared-sse.js?v=2"></script>
-<script src="/static/js/shared-modals.js?v=2"></script>
-<script src="/static/js/components/acb-modal-shell.js?v=2"></script>
-<script src="/static/js/components/acb-empty-state.js?v=2"></script>
-<script src="/static/js/components/acb-icon-button.js?v=2"></script>
-<script src="/static/js/components/acb-filter-actions.js?v=2"></script>
-<script src="/static/js/components/acb-filter-row.js?v=2"></script>
-<script src="/static/js/components/acb-thread-filter-shell.js?v=2"></script>
-<script src="/static/js/components/acb-thread-context-menu.js?v=2"></script>
-<script src="/static/js/components/acb-thread-header.js?v=2"></script>
-<script src="/static/js/components/acb-thread-item.js?v=2"></script>
-<script src="/static/js/components/acb-compose-shell.js?v=3"></script>
-<script src="/static/js/components/acb-agent-status-shell.js?v=2"></script>
-<script src="/static/js/shared-threads.js?v=2"></script>
-<script src="/static/js/shared-agent-status.js?v=2"></script>
-<script src="/static/js/components/acb-agent-status-item.js?v=2"></script>
-<script src="/static/js/shared-agents.js?v=2"></script>
-<script src="/static/js/shared-chat.js?v=2"></script>
-<script src="/static/js/shared-tooltip.js?v=2"></script>
-<script>
+      <div id="settings-message" style="font-size: 12px; color: var(--green); margin-bottom: 16px; display: none;">
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="closeSettingsModal()">Cancel</button>
+        <button class="btn-primary" onclick="submitSettings()">Save (Requires Restart)</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="agent-tooltip" aria-hidden="true"></div>
+
+  <div id="agent-status-info-tooltip" class="">
+    <div class="state-item"><span class="state-emoji">🟢</span> <strong>Active:</strong> Agent has activity within 30
+      seconds</div>
+    <div class="state-item"><span class="state-emoji">🌙</span> <strong>Idle:</strong> Agent has activity within 5
+      minutes</div>
+    <div class="state-item"><span class="state-emoji">⏳</span> <strong>Waiting:</strong> Agent is waiting for response
+      (within 60 seconds)</div>
+    <div class="state-item"><span class="state-emoji">⚫</span> <strong>Offline:</strong> Agent has no recent activity
+      and is not heartbeating</div>
+  </div>
+
+  <acb-empty-state></acb-empty-state>
+  </div>
+
+  <acb-compose-shell></acb-compose-shell>
+  <!-- Agent Status Bar -->
+  <acb-agent-status-shell></acb-agent-status-shell>
+  </div>
+  </div>
+
+  <acb-thread-context-menu></acb-thread-context-menu>
+
+  <acb-modal-shell></acb-modal-shell>
+
+  <script src="/static/js/shared-api.js?v=2"></script>
+  <script src="/static/js/shared-theme.js?v=2"></script>
+  <script src="/static/js/shared-utils.js?v=2"></script>
+  <script src="/static/js/shared-message-renderer.js?v=2"></script>
+  <script src="/static/js/shared-sse.js?v=2"></script>
+  <script src="/static/js/shared-modals.js?v=2"></script>
+  <script src="/static/js/components/acb-modal-shell.js?v=2"></script>
+  <script src="/static/js/components/acb-empty-state.js?v=2"></script>
+  <script src="/static/js/components/acb-icon-button.js?v=2"></script>
+  <script src="/static/js/components/acb-filter-actions.js?v=2"></script>
+  <script src="/static/js/components/acb-filter-row.js?v=2"></script>
+  <script src="/static/js/components/acb-thread-filter-shell.js?v=2"></script>
+  <script src="/static/js/components/acb-thread-context-menu.js?v=2"></script>
+  <script src="/static/js/components/acb-thread-header.js?v=2"></script>
+  <script src="/static/js/components/acb-thread-item.js?v=2"></script>
+  <script src="/static/js/components/acb-compose-shell.js?v=3"></script>
+  <script src="/static/js/components/acb-agent-status-shell.js?v=2"></script>
+  <script src="/static/js/shared-threads.js?v=2"></script>
+  <script src="/static/js/shared-agent-status.js?v=2"></script>
+  <script src="/static/js/components/acb-agent-status-item.js?v=2"></script>
+  <script src="/static/js/shared-agents.js?v=2"></script>
+  <script src="/static/js/shared-chat.js?v=2"></script>
+  <script src="/static/js/shared-tooltip.js?v=2"></script>
+  <script>
     // ==============================================================================================
     // State
     // ==============================================================================================
-  let activeThreadId = null;
+    let activeThreadId = null;
     let activeThreadStatus = 'discuss';
-  let lastSeq = 0;
+    let lastSeq = 0;
     let typingTimers = {};   // agent_id -> timer
     let isConnected = false;
     let contextMenuThread = null;
@@ -1243,7 +1861,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       const model = String(agent.model ?? 'Unknown').trim() || 'Unknown';
       const token = String(agent.token ?? '').trim();
       const prompt = getResumePromptForAgent(agentId, alias, token);
-      
+
       // Disable resume button if no thread is selected
       const resumeButtonState = activeThreadId ? '' : 'disabled';
       const resumeButtonStyle = activeThreadId ? '' : 'style="opacity:0.5;cursor:not-allowed;"';
@@ -1336,31 +1954,31 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       es.onopen = () => setConnected(true);
       es.onerror = () => { setConnected(false); setTimeout(startSSE, 3000); es.close(); };
 
-    es.onmessage = async (e) => {
-      const ev = JSON.parse(e.data);
-      const p = ev.payload;
+      es.onmessage = async (e) => {
+        const ev = JSON.parse(e.data);
+        const p = ev.payload;
 
-    if (ev.type === 'msg.new') {
-      if (p.thread_id === activeThreadId) await loadNewMessages();
-      await refreshThreads();  // update sidebar counts
-    }
-    if (ev.type === 'thread.new' || ev.type === 'thread.state' || ev.type === 'thread.closed' || ev.type === 'thread.archived' || ev.type === 'thread.deleted') {
-      await refreshThreads();
-      if (ev.type === 'thread.deleted' && p.thread_id === activeThreadId) {
-        activeThreadId = null;
-        document.getElementById('msg-pane').innerHTML = '';
-        const hdr = document.getElementById('thread-header');
-        if (hdr) hdr.textContent = '';
-      }
-    }
-    if (ev.type === 'agent.online' || ev.type === 'agent.offline') {
-      await refreshAgents();
-      }
-      if (ev.type === 'agent.typing' && p.thread_id === activeThreadId) {
-        if (p.is_typing) showTyping(p.agent_id);
-        else hideTyping(p.agent_id);
-      }
-    };
+        if (ev.type === 'msg.new') {
+          if (p.thread_id === activeThreadId) await loadNewMessages();
+          await refreshThreads();  // update sidebar counts
+        }
+        if (ev.type === 'thread.new' || ev.type === 'thread.state' || ev.type === 'thread.closed' || ev.type === 'thread.archived' || ev.type === 'thread.deleted') {
+          await refreshThreads();
+          if (ev.type === 'thread.deleted' && p.thread_id === activeThreadId) {
+            activeThreadId = null;
+            document.getElementById('msg-pane').innerHTML = '';
+            const hdr = document.getElementById('thread-header');
+            if (hdr) hdr.textContent = '';
+          }
+        }
+        if (ev.type === 'agent.online' || ev.type === 'agent.offline') {
+          await refreshAgents();
+        }
+        if (ev.type === 'agent.typing' && p.thread_id === activeThreadId) {
+          if (p.is_typing) showTyping(p.agent_id);
+          else hideTyping(p.agent_id);
+        }
+      };
       return window.AcbSSE.startSSE({
         getActiveThreadId: () => activeThreadId,
         onMsgNew: async () => loadNewMessages(),
@@ -1372,7 +1990,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         },
         setConnected,
       });
-  }
+    }
 
     function setConnected(v) {
       isConnected = v;
@@ -1389,271 +2007,271 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     // ==============================================================================================
     async function api(path, opts = {}) {
       return window.AcbApi.api(path, opts);
-  }
+    }
 
     // ==============================================================================================
     // Threads
     // ==============================================================================================
-  async function refreshThreads() {
-    return window.AcbThreads.refreshThreads({
-      api,
-      getSelectedStatuses: () => selectedThreadStatuses,
-      getActiveThreadId: () => activeThreadId,
-      resetThreadSelection,
-      onSelectThread: selectThread,
-      onOpenContextMenu: openThreadContextMenu,
-      esc,
-      timeAgo,
-      updateThreadFilterButton,
-    });
-  }
+    async function refreshThreads() {
+      return window.AcbThreads.refreshThreads({
+        api,
+        getSelectedStatuses: () => selectedThreadStatuses,
+        getActiveThreadId: () => activeThreadId,
+        resetThreadSelection,
+        onSelectThread: selectThread,
+        onOpenContextMenu: openThreadContextMenu,
+        esc,
+        timeAgo,
+        updateThreadFilterButton,
+      });
+    }
 
-  function toggleThreadFilterPanel(event) {
-    return window.AcbThreads.toggleThreadFilterPanel(event);
-  }
+    function toggleThreadFilterPanel(event) {
+      return window.AcbThreads.toggleThreadFilterPanel(event);
+    }
 
-  function hideThreadFilterPanel() {
-    return window.AcbThreads.hideThreadFilterPanel();
-  }
+    function hideThreadFilterPanel() {
+      return window.AcbThreads.hideThreadFilterPanel();
+    }
 
-  function selectedStatusListFromUI() {
-    return window.AcbThreads.selectedStatusListFromUI();
-  }
+    function selectedStatusListFromUI() {
+      return window.AcbThreads.selectedStatusListFromUI();
+    }
 
-  function onThreadFilterChange() {
-    const selected = selectedStatusListFromUI();
-    if (!selected.length) {
+    function onThreadFilterChange() {
+      const selected = selectedStatusListFromUI();
+      if (!selected.length) {
+        document.querySelectorAll('#thread-filter-panel input[data-status]').forEach((cb) => {
+          const status = cb.getAttribute('data-status');
+          cb.checked = NORMAL_THREAD_STATUSES.includes(status);
+        });
+        selectedThreadStatuses = new Set(NORMAL_THREAD_STATUSES);
+      } else {
+        selectedThreadStatuses = new Set(selected);
+      }
+      refreshThreads();
+    }
+
+    function selectAllThreadStatuses() {
+      document.querySelectorAll('#thread-filter-panel input[data-status]').forEach(cb => cb.checked = true);
+      onThreadFilterChange();
+    }
+
+    function selectNormalThreadStatuses() {
       document.querySelectorAll('#thread-filter-panel input[data-status]').forEach((cb) => {
         const status = cb.getAttribute('data-status');
         cb.checked = NORMAL_THREAD_STATUSES.includes(status);
       });
-      selectedThreadStatuses = new Set(NORMAL_THREAD_STATUSES);
-    } else {
-      selectedThreadStatuses = new Set(selected);
+      onThreadFilterChange();
     }
-    refreshThreads();
-  }
 
-  function selectAllThreadStatuses() {
-    document.querySelectorAll('#thread-filter-panel input[data-status]').forEach(cb => cb.checked = true);
-    onThreadFilterChange();
-  }
+    function updateThreadFilterButton() {
+      return window.AcbThreads.updateThreadFilterButton(
+        ALL_THREAD_STATUSES,
+        NORMAL_THREAD_STATUSES,
+        selectedThreadStatuses
+      );
+    }
 
-  function selectNormalThreadStatuses() {
-    document.querySelectorAll('#thread-filter-panel input[data-status]').forEach((cb) => {
-      const status = cb.getAttribute('data-status');
-      cb.checked = NORMAL_THREAD_STATUSES.includes(status);
-    });
-    onThreadFilterChange();
-  }
+    async function selectThread(id, topic, status) {
+      activeThreadId = id;
+      activeThreadStatus = status;
+      lastSeq = 0;
+      activeThreadLastSeenMs.clear();
 
-  function updateThreadFilterButton() {
-    return window.AcbThreads.updateThreadFilterButton(
-      ALL_THREAD_STATUSES,
-      NORMAL_THREAD_STATUSES,
-      selectedThreadStatuses
-    );
-  }
+      // Sidebar highlight
+      document.querySelectorAll('.thread-item').forEach(el => el.classList.remove('active'));
+      const ti = document.getElementById(`ti-${id}`);
+      if (ti) ti.classList.add('active');
 
-  async function selectThread(id, topic, status) {
-    activeThreadId = id;
-    activeThreadStatus = status;
-    lastSeq = 0;
-    activeThreadLastSeenMs.clear();
+      // Header
+      document.getElementById('thread-header').style.display = 'flex';
+      document.getElementById('thread-title').textContent = topic;
+      document.getElementById('compose').classList.add('visible');
 
-    // Sidebar highlight
-    document.querySelectorAll('.thread-item').forEach(el => el.classList.remove('active'));
-    const ti = document.getElementById(`ti-${id}`);
-    if (ti) ti.classList.add('active');
+      // Clear messages
+      const box = document.getElementById('messages');
+      box.innerHTML = '';
 
-    // Header
-    document.getElementById('thread-header').style.display = 'flex';
-    document.getElementById('thread-title').textContent = topic;
-    document.getElementById('compose').classList.add('visible');
+      // Load history
+      const msgs = await api(`/api/threads/${id}/messages?after_seq=0&limit=300&include_system_prompt=1`) || [];
+      rebuildActiveThreadParticipants(msgs);
+      msgs.forEach(appendBubble);
+      updateOnlinePresence();
+      await updateStatusBar();
+      if (msgs.length) lastSeq = msgs[msgs.length - 1].seq;
+      scrollBottom(false);
+    }
 
-    // Clear messages
-    const box = document.getElementById('messages');
-    box.innerHTML = '';
-
-    // Load history
-    const msgs = await api(`/api/threads/${id}/messages?after_seq=0&limit=300&include_system_prompt=1`) || [];
-    rebuildActiveThreadParticipants(msgs);
-    msgs.forEach(appendBubble);
-    updateOnlinePresence();
-    await updateStatusBar();
-    if (msgs.length) lastSeq = msgs[msgs.length - 1].seq;
-    scrollBottom(false);
-  }
-
-  async function loadNewMessages() {
-    if (!activeThreadId) return;
-    const msgs = await api(`/api/threads/${activeThreadId}/messages?after_seq=${lastSeq}&limit=100`) || [];
-    msgs.forEach((m) => {
-      const key = getAgentPresenceKey(m);
-      const label = getAgentDisplayName(m);
-      if (key) recordThreadAgentActivity(key, label, m.created_at);
-    });
-    msgs.forEach(appendBubble);
-    updateOnlinePresence();
-    await updateStatusBar();
-    msgs.forEach(m => { lastSeq = Math.max(lastSeq, m.seq); });
-    if (msgs.length) scrollBottom(true);
-  }
+    async function loadNewMessages() {
+      if (!activeThreadId) return;
+      const msgs = await api(`/api/threads/${activeThreadId}/messages?after_seq=${lastSeq}&limit=100`) || [];
+      msgs.forEach((m) => {
+        const key = getAgentPresenceKey(m);
+        const label = getAgentDisplayName(m);
+        if (key) recordThreadAgentActivity(key, label, m.created_at);
+      });
+      msgs.forEach(appendBubble);
+      updateOnlinePresence();
+      await updateStatusBar();
+      msgs.forEach(m => { lastSeq = Math.max(lastSeq, m.seq); });
+      if (msgs.length) scrollBottom(true);
+    }
 
     async function closeThread(threadId = activeThreadId) {
-    return window.AcbThreads.closeThread({
-      threadId,
-      api,
-      refreshThreads,
-    });
-  }
-
-  function openThreadContextMenu(event, thread) {
-    contextMenuThread = window.AcbThreads.openThreadContextMenu(event, thread);
-  }
-
-  function hideThreadContextMenu() {
-    contextMenuThread = window.AcbThreads.hideThreadContextMenu();
-  }
-
-  async function deleteThreadFromMenu() {
-    if (!contextMenuThread) return;
-    const { id, topic } = contextMenuThread;
-    hideThreadContextMenu();
-
-    document.getElementById('delete-thread-topic').textContent = topic || id;
-    document.getElementById('delete-thread-meta').textContent = '';
-
-    const dlg = document.getElementById('delete-thread-dialog');
-    dlg.returnValue = '';
-    dlg.showModal();
-
-    function onDialogClick(e) {
-      const btn = e.target.closest('button[value]');
-      if (!btn) return;
-      dlg.close(btn.value);
+      return window.AcbThreads.closeThread({
+        threadId,
+        api,
+        refreshThreads,
+      });
     }
-    dlg.addEventListener('click', onDialogClick, { once: true });
-    await new Promise(resolve => dlg.addEventListener('close', resolve, { once: true }));
-    dlg.removeEventListener('click', onDialogClick);
 
-    if (dlg.returnValue !== 'delete') return;
+    function openThreadContextMenu(event, thread) {
+      contextMenuThread = window.AcbThreads.openThreadContextMenu(event, thread);
+    }
 
-    const result = await api(`/api/threads/${id}`, { method: 'DELETE' });
-    if (!result || result.ok !== true) return;
+    function hideThreadContextMenu() {
+      contextMenuThread = window.AcbThreads.hideThreadContextMenu();
+    }
 
-    if (activeThreadId === id) {
+    async function deleteThreadFromMenu() {
+      if (!contextMenuThread) return;
+      const { id, topic } = contextMenuThread;
+      hideThreadContextMenu();
+
+      document.getElementById('delete-thread-topic').textContent = topic || id;
+      document.getElementById('delete-thread-meta').textContent = '';
+
+      const dlg = document.getElementById('delete-thread-dialog');
+      dlg.returnValue = '';
+      dlg.showModal();
+
+      function onDialogClick(e) {
+        const btn = e.target.closest('button[value]');
+        if (!btn) return;
+        dlg.close(btn.value);
+      }
+      dlg.addEventListener('click', onDialogClick, { once: true });
+      await new Promise(resolve => dlg.addEventListener('close', resolve, { once: true }));
+      dlg.removeEventListener('click', onDialogClick);
+
+      if (dlg.returnValue !== 'delete') return;
+
+      const result = await api(`/api/threads/${id}`, { method: 'DELETE' });
+      if (!result || result.ok !== true) return;
+
+      if (activeThreadId === id) {
+        activeThreadId = null;
+        document.getElementById('msg-pane').innerHTML = '';
+        const hdr = document.getElementById('thread-header');
+        if (hdr) hdr.textContent = '';
+      }
+      await refreshThreads();
+    }
+
+    async function archiveThreadFromMenu() {
+      return window.AcbThreads.archiveThreadFromMenu({
+        getContextMenuThread: () => contextMenuThread,
+        hideThreadContextMenu,
+        api,
+        getActiveThreadId: () => activeThreadId,
+        resetThreadSelection,
+        refreshThreads,
+      });
+    }
+
+    async function unarchiveThreadFromMenu() {
+      return window.AcbThreads.unarchiveThreadFromMenu({
+        getContextMenuThread: () => contextMenuThread,
+        hideThreadContextMenu,
+        api,
+        getActiveThreadId: () => activeThreadId,
+        resetThreadSelection,
+        refreshThreads,
+      });
+    }
+
+    async function closeThreadFromMenu() {
+      return window.AcbThreads.closeThreadFromMenu({
+        getContextMenuThread: () => contextMenuThread,
+        hideThreadContextMenu,
+        closeThread,
+      });
+    }
+
+    function resetThreadSelection() {
       activeThreadId = null;
-      document.getElementById('msg-pane').innerHTML = '';
-      const hdr = document.getElementById('thread-header');
-      if (hdr) hdr.textContent = '';
+      activeThreadStatus = 'discuss';
+      lastSeq = 0;
+      activeThreadLastSeenMs.clear();
+
+      document.querySelectorAll('.thread-item').forEach(el => el.classList.remove('active'));
+      document.getElementById('thread-header').style.display = 'none';
+      document.getElementById('compose').classList.remove('visible');
+      document.getElementById('messages').innerHTML = EMPTY_STATE_TEMPLATE;
+      updateOnlinePresence();
     }
-    await refreshThreads();
-  }
-
-  async function archiveThreadFromMenu() {
-    return window.AcbThreads.archiveThreadFromMenu({
-      getContextMenuThread: () => contextMenuThread,
-      hideThreadContextMenu,
-      api,
-      getActiveThreadId: () => activeThreadId,
-      resetThreadSelection,
-      refreshThreads,
-    });
-  }
-
-  async function unarchiveThreadFromMenu() {
-    return window.AcbThreads.unarchiveThreadFromMenu({
-      getContextMenuThread: () => contextMenuThread,
-      hideThreadContextMenu,
-      api,
-      getActiveThreadId: () => activeThreadId,
-      resetThreadSelection,
-      refreshThreads,
-    });
-  }
-
-  async function closeThreadFromMenu() {
-    return window.AcbThreads.closeThreadFromMenu({
-      getContextMenuThread: () => contextMenuThread,
-      hideThreadContextMenu,
-      closeThread,
-    });
-  }
-
-  function resetThreadSelection() {
-    activeThreadId = null;
-    activeThreadStatus = 'discuss';
-    lastSeq = 0;
-    activeThreadLastSeenMs.clear();
-
-    document.querySelectorAll('.thread-item').forEach(el => el.classList.remove('active'));
-    document.getElementById('thread-header').style.display = 'none';
-    document.getElementById('compose').classList.remove('visible');
-    document.getElementById('messages').innerHTML = EMPTY_STATE_TEMPLATE;
-    updateOnlinePresence();
-  }
 
     // ==============================================================================================
     // Messages
     // ==============================================================================================
 
-  // ---- Color palette: 12 distinct, accessible hues ----------------------------------------------------
-  const AUTHOR_PALETTE = [
-    '#60a5fa', // blue
-    '#34d399', // emerald
-    '#f472b6', // pink
-    '#fb923c', // orange
-    '#a78bfa', // purple
-    '#22d3ee', // cyan
-    '#facc15', // yellow
-    '#f87171', // red
-    '#4ade80', // green
-    '#38bdf8', // sky
-    '#e879f9', // fuchsia
-    '#a3e635', // lime
-  ];
-  const HUMAN_COLOR = '#fb923c'; // warm orange ΓÇö always human
-  const SYSTEM_COLOR = '#fbbf24'; // amber  ΓÇö system events
+    // ---- Color palette: 12 distinct, accessible hues ----------------------------------------------------
+    const AUTHOR_PALETTE = [
+      '#60a5fa', // blue
+      '#34d399', // emerald
+      '#f472b6', // pink
+      '#fb923c', // orange
+      '#a78bfa', // purple
+      '#22d3ee', // cyan
+      '#facc15', // yellow
+      '#f87171', // red
+      '#4ade80', // green
+      '#38bdf8', // sky
+      '#e879f9', // fuchsia
+      '#a3e635', // lime
+    ];
+    const HUMAN_COLOR = '#fb923c'; // warm orange ΓÇö always human
+    const SYSTEM_COLOR = '#fbbf24'; // amber  ΓÇö system events
 
-  // Cache so the same author always gets the same color in a session
-  const _colorCache = {};
+    // Cache so the same author always gets the same color in a session
+    const _colorCache = {};
 
-  function authorColor(author) {
-    if (author === 'human') return HUMAN_COLOR;
-    if (author === 'system') return SYSTEM_COLOR;
-    if (_colorCache[author]) return _colorCache[author];
-    // Stable hash ΓåÆ palette index
-    let h = 0;
-    for (let i = 0; i < author.length; i++) h = (Math.imul(31, h) + author.charCodeAt(i)) | 0;
-    const color = AUTHOR_PALETTE[Math.abs(h) % AUTHOR_PALETTE.length];
-    _colorCache[author] = color;
-    return color;
-  }
+    function authorColor(author) {
+      if (author === 'human') return HUMAN_COLOR;
+      if (author === 'system') return SYSTEM_COLOR;
+      if (_colorCache[author]) return _colorCache[author];
+      // Stable hash ΓåÆ palette index
+      let h = 0;
+      for (let i = 0; i < author.length; i++) h = (Math.imul(31, h) + author.charCodeAt(i)) | 0;
+      const color = AUTHOR_PALETTE[Math.abs(h) % AUTHOR_PALETTE.length];
+      _colorCache[author] = color;
+      return color;
+    }
 
-  function fmtTime(iso) {
-    return window.AcbUtils.fmtTime(iso);
-  }
+    function fmtTime(iso) {
+      return window.AcbUtils.fmtTime(iso);
+    }
 
-  function normalizeMessageText(raw) {
-    return window.AcbMessageRenderer.normalizeMessageText(raw);
-  }
+    function normalizeMessageText(raw) {
+      return window.AcbMessageRenderer.normalizeMessageText(raw);
+    }
 
-  function tokenizeMessage(rawText) {
-    return window.AcbMessageRenderer.tokenizeMessage(rawText);
-  }
+    function tokenizeMessage(rawText) {
+      return window.AcbMessageRenderer.tokenizeMessage(rawText);
+    }
 
-  function parseInlineCodeSegments(line) {
-    return window.AcbMessageRenderer.parseInlineCodeSegments(line);
-  }
+    function parseInlineCodeSegments(line) {
+      return window.AcbMessageRenderer.parseInlineCodeSegments(line);
+    }
 
-  function renderTextWithInlineCode(containerEl, text) {
-    return window.AcbMessageRenderer.renderTextWithInlineCode(containerEl, text);
-  }
+    function renderTextWithInlineCode(containerEl, text) {
+      return window.AcbMessageRenderer.renderTextWithInlineCode(containerEl, text);
+    }
 
-  function renderMessageContent(containerEl, rawText) {
-    return window.AcbMessageRenderer.renderMessageContent(containerEl, rawText);
-  }
+    function renderMessageContent(containerEl, rawText) {
+      return window.AcbMessageRenderer.renderMessageContent(containerEl, rawText);
+    }
 
     function appendBubble(m) {
       const box = document.getElementById('messages');
@@ -1702,7 +2320,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       const bubbleEl = row.querySelector('.bubble-v2');
       if (bubbleEl) {
         renderMessageContent(bubbleEl, m.content);
-        
+
         // Render images if any
         let images = null;
         console.log(`[Bubble] Message metadata:`, m.metadata, `Type: ${typeof m.metadata}`);
@@ -1723,7 +2341,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         } else {
           console.log(`[Bubble] No metadata in message`);
         }
-        
+
         if (images && Array.isArray(images) && images.length > 0) {
           console.log(`[Bubble] Rendering ${images.length} images`);
           const imgContainer = document.createElement('div');
@@ -1765,7 +2383,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       box.appendChild(row);
     }
 
-      // ---- Typing indicator ----------------------------------------------------------------------------------------------------------
+    // ---- Typing indicator ----------------------------------------------------------------------------------------------------------
     function showTyping(agentId) {
       const box = document.getElementById('messages');
       let el = document.getElementById(`typing-${agentId}`);
@@ -1801,67 +2419,67 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     // Compose
     // ==============================================================================================
     async function sendMessage() {
-    const input = document.getElementById("compose-input");
-    const author = document.getElementById("compose-author").value.trim() || "human";
-    const acb = document.querySelector('acb-compose-shell');
+      const input = document.getElementById("compose-input");
+      const author = document.getElementById("compose-author").value.trim() || "human";
+      const acb = document.querySelector('acb-compose-shell');
 
-    // Extract text content
-    let content = '';
-    for (const node of input.childNodes) {
-      if (node.nodeType === 3) {
-        content += node.textContent;
-      } else if (node.nodeType === 1 && !node.getAttribute('data-mention-id')) {
-        content += node.textContent;
+      // Extract text content
+      let content = '';
+      for (const node of input.childNodes) {
+        if (node.nodeType === 3) {
+          content += node.textContent;
+        } else if (node.nodeType === 1 && !node.getAttribute('data-mention-id')) {
+          content += node.textContent;
+        }
+      }
+      content = content.trim();
+
+      // Get uploaded images
+      const images = acb?.uploadedImages || [];
+
+      if ((!content && images.length === 0) || !activeThreadId) return;
+
+      // Extract mentions
+      const mentions = [];
+      for (const child of input.childNodes) {
+        if (child.nodeType === 1 && child.getAttribute && child.getAttribute('data-mention-id')) {
+          mentions.push(child.getAttribute('data-mention-id'));
+        }
+      }
+
+      updateOnlinePresence();
+      input.innerHTML = '';
+      const messageBar = document.getElementById("mentions-bar");
+      if (messageBar) messageBar.style.display = 'none';
+      if (acb && acb.uploadedImages) acb.uploadedImages = [];
+      if (acb && acb.renderImagePreview) acb.renderImagePreview();
+
+      const payload = {
+        author,
+        role: "user",
+        content,
+        mentions: mentions.length > 0 ? mentions : undefined,
+        images: images.length > 0 ? images : undefined
+      };
+
+      const m = await api(`/api/threads/${activeThreadId}/messages`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+      if (m) {
+        lastSeq = Math.max(lastSeq, m.seq);
+        appendBubble({ ...m, created_at: new Date().toISOString() });
+        scrollBottom(true);
       }
     }
-    content = content.trim();
 
-    // Get uploaded images
-    const images = acb?.uploadedImages || [];
-
-    if ((!content && images.length === 0) || !activeThreadId) return;
-
-    // Extract mentions
-    const mentions = [];
-    for (const child of input.childNodes) {
-      if (child.nodeType === 1 && child.getAttribute && child.getAttribute('data-mention-id')) {
-        mentions.push(child.getAttribute('data-mention-id'));
+    function handleKey(e) {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
       }
     }
-
-    updateOnlinePresence();
-    input.innerHTML = '';
-    const messageBar = document.getElementById("mentions-bar");
-    if (messageBar) messageBar.style.display = 'none';
-    if (acb && acb.uploadedImages) acb.uploadedImages = [];
-    if (acb && acb.renderImagePreview) acb.renderImagePreview();
-
-    const payload = {
-      author,
-      role: "user",
-      content,
-      mentions: mentions.length > 0 ? mentions : undefined,
-      images: images.length > 0 ? images : undefined
-    };
-
-    const m = await api(`/api/threads/${activeThreadId}/messages`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-
-    if (m) {
-      lastSeq = Math.max(lastSeq, m.seq);
-      appendBubble({ ...m, created_at: new Date().toISOString() });
-      scrollBottom(true);
-    }
-  }
-
-  function handleKey(e) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  }
 
     function autoResize(el) {
     }
@@ -1869,209 +2487,209 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     // ==============================================================================================
     // Agents
     // ==============================================================================================
-  async function refreshAgents() {
-    const agents = await api('/api/agents') || [];
-    currentAgents = agents;
-    
-    const agentListEl = document.getElementById('agent-status-list');
-    if (!agentListEl) return;
-    
-    agentListEl.innerHTML = '';
-    
-    agents.forEach(agent => {
-      const item = document.createElement('div');
-      item.className = 'agent-status-item';
-      
-      const state = getAgentState(agent);
-      const emoji = getStateEmoji(state);
-      
-      item.innerHTML = `
+    async function refreshAgents() {
+      const agents = await api('/api/agents') || [];
+      currentAgents = agents;
+
+      const agentListEl = document.getElementById('agent-status-list');
+      if (!agentListEl) return;
+
+      agentListEl.innerHTML = '';
+
+      agents.forEach(agent => {
+        const item = document.createElement('div');
+        item.className = 'agent-status-item';
+
+        const state = getAgentState(agent);
+        const emoji = getStateEmoji(state);
+
+        item.innerHTML = `
         <div class="agent-status-emoji">${emoji}</div>
         <div class="agent-status-text">
           <div class="agent-alias">${agent.display_name || agent.name}</div>
           <div class="agent-state">${state}</div>
         </div>
       `;
-      
-      if (agent.is_online) {
-        item.addEventListener('mouseenter', () => showAgentTooltip(item, agent));
-        item.addEventListener('mouseleave', () => scheduleAgentTooltipHide());
-      }
-      
-      agentListEl.appendChild(item);
-    });
-    
-    updateOnlinePresence();
-  }
 
-        // ==============================================================================================
-        // Helper: Escape HTML
-        // ==============================================================================================
-        function escapeHtml(t) {
-          return window.AcbUtils.escapeHtml(t);
+        if (agent.is_online) {
+          item.addEventListener('mouseenter', () => showAgentTooltip(item, agent));
+          item.addEventListener('mouseleave', () => scheduleAgentTooltipHide());
         }
 
-        // ==============================================================================================
-        // Agent Status Bar Update
-        // ==============================================================================================
-        async function updateStatusBar() {
-          const allAgents = await api('/api/agents') || [];
-          currentAgents = allAgents; // Cache for tooltip lookups
-          const container = document.getElementById('agent-status-list');
-          if (!container) {
-            return;
-          }
-          
-          let participants = [];
-          let isThreadMode = false;  // Track if showing thread-specific agents
-          
-          // If a thread is selected, show agents in that thread
-          if (activeThreadId) {
-            // Σ╗Äσ╜ôσëìthreadτÜäµ╢êµü»Σ╕¡µÅÉσÅûµëÇµ£ëσÅéΣ╕Äagents∩╝êµîëauthor_id∩╝ë
-            const participantIdMap = new Map();  // id -> agentµò░µì«
-            const msgArea = document.getElementById('messages');
-            if (msgArea) {
-              const rows = msgArea.querySelectorAll('[data-author-id]');
-              rows.forEach(row => {
-                const authorId = row.getAttribute('data-author-id');
-                if (authorId && authorId !== 'system' && authorId !== 'human' && !participantIdMap.has(authorId)) {
-                  // µƒÑµë╛Φ»Ñauthor_idσ»╣σ║öτÜäagent
-                  const agent = allAgents.find(a => (a.id === authorId || a.agent_id === authorId));
-                  if (agent) {
-                    participantIdMap.set(authorId, agent);
-                  } else {
-                    // σì│Σ╜┐agentΣ╕ìσ£¿allAgentsΣ╕¡∩╝îΣ╣ƒσê¢σ╗║Σ╕ÇΣ╕¬τª╗τ║┐Φí¿τñ║
-                    participantIdMap.set(authorId, {
-                      id: authorId,
-                      display_name: authorId,
-                      name: authorId,
-                      is_online: false,
-                    });
-                  }
-                }
-              });
+        agentListEl.appendChild(item);
+      });
+
+      updateOnlinePresence();
+    }
+
+    // ==============================================================================================
+    // Helper: Escape HTML
+    // ==============================================================================================
+    function escapeHtml(t) {
+      return window.AcbUtils.escapeHtml(t);
+    }
+
+    // ==============================================================================================
+    // Agent Status Bar Update
+    // ==============================================================================================
+    async function updateStatusBar() {
+      const allAgents = await api('/api/agents') || [];
+      currentAgents = allAgents; // Cache for tooltip lookups
+      const container = document.getElementById('agent-status-list');
+      if (!container) {
+        return;
+      }
+
+      let participants = [];
+      let isThreadMode = false;  // Track if showing thread-specific agents
+
+      // If a thread is selected, show agents in that thread
+      if (activeThreadId) {
+        // Σ╗Äσ╜ôσëìthreadτÜäµ╢êµü»Σ╕¡µÅÉσÅûµëÇµ£ëσÅéΣ╕Äagents∩╝êµîëauthor_id∩╝ë
+        const participantIdMap = new Map();  // id -> agentµò░µì«
+        const msgArea = document.getElementById('messages');
+        if (msgArea) {
+          const rows = msgArea.querySelectorAll('[data-author-id]');
+          rows.forEach(row => {
+            const authorId = row.getAttribute('data-author-id');
+            if (authorId && authorId !== 'system' && authorId !== 'human' && !participantIdMap.has(authorId)) {
+              // µƒÑµë╛Φ»Ñauthor_idσ»╣σ║öτÜäagent
+              const agent = allAgents.find(a => (a.id === authorId || a.agent_id === authorId));
+              if (agent) {
+                participantIdMap.set(authorId, agent);
+              } else {
+                // σì│Σ╜┐agentΣ╕ìσ£¿allAgentsΣ╕¡∩╝îΣ╣ƒσê¢σ╗║Σ╕ÇΣ╕¬τª╗τ║┐Φí¿τñ║
+                participantIdMap.set(authorId, {
+                  id: authorId,
+                  display_name: authorId,
+                  name: authorId,
+                  is_online: false,
+                });
+              }
             }
-            participants = Array.from(participantIdMap.values());
-            isThreadMode = participants.length > 0;  // Only thread mode if we have participants
-          }
-          
-          // If no thread selected or no participants in thread, fall back to showing all non-offline agents
-          if (!isThreadMode) {
-            participants = allAgents.filter(a => {
-              const state = getAgentState(a);
-              return state !== 'Offline';
-            });
-            isThreadMode = false;  // Global mode - no thread context
-          }
-          
-          // µÄÆσ║Å∩╝Üσ£¿τ║┐Σ╝ÿσàê∩╝îτä╢σÉÄµîëµ£ÇσÉÄµ┤╗σè¿µù╢Θù┤µÄÆσ║Å
-          participants.sort((a, b) => {
-            if (a.is_online !== b.is_online) {
-              return a.is_online ? -1 : 1;  // σ£¿τ║┐Σ╝ÿσàê
-            }
-            if (a.is_online && b.is_online) {
-              const timeA = a.last_activity_time ? new Date(a.last_activity_time) : new Date(0);
-              const timeB = b.last_activity_time ? new Date(b.last_activity_time) : new Date(0);
-              return timeB - timeA;  // µ£ÇΦ┐æµ┤╗σè¿Σ╝ÿσàê
-            }
-            return 0;
           });
-          
-          container.innerHTML = '';
-          
-          if (participants.length === 0) {
-            container.innerHTML = '<div style="color:var(--text-3);font-size:11px;padding:4px 12px;">No active agents</div>';
-            return;
-          }
-          
-          participants.forEach(a => {
-            const state = getAgentState(a);
-            const emoji = getStateEmoji(state);
-            const label = String(a.display_name ?? a.name ?? '').trim() || 'Unknown';
-            const offlineTime = getOfflineTime(a);
-            const offlineDisplay = offlineTime ? ` (${offlineTime})` : '';
-            const isLongOffline = isOfflineMoreThanHour(a);
-            
-            const item = document.createElement('div');
-            item.className = 'agent-status-item';
-            
-            // Compress display if offline > 1 hour: just emoji + single char
-            if (isLongOffline) {
-              const compressedChar = getCompressedOfflineChar(offlineTime);
-              item.innerHTML = `
+        }
+        participants = Array.from(participantIdMap.values());
+        isThreadMode = participants.length > 0;  // Only thread mode if we have participants
+      }
+
+      // If no thread selected or no participants in thread, fall back to showing all non-offline agents
+      if (!isThreadMode) {
+        participants = allAgents.filter(a => {
+          const state = getAgentState(a);
+          return state !== 'Offline';
+        });
+        isThreadMode = false;  // Global mode - no thread context
+      }
+
+      // µÄÆσ║Å∩╝Üσ£¿τ║┐Σ╝ÿσàê∩╝îτä╢σÉÄµîëµ£ÇσÉÄµ┤╗σè¿µù╢Θù┤µÄÆσ║Å
+      participants.sort((a, b) => {
+        if (a.is_online !== b.is_online) {
+          return a.is_online ? -1 : 1;  // σ£¿τ║┐Σ╝ÿσàê
+        }
+        if (a.is_online && b.is_online) {
+          const timeA = a.last_activity_time ? new Date(a.last_activity_time) : new Date(0);
+          const timeB = b.last_activity_time ? new Date(b.last_activity_time) : new Date(0);
+          return timeB - timeA;  // µ£ÇΦ┐æµ┤╗σè¿Σ╝ÿσàê
+        }
+        return 0;
+      });
+
+      container.innerHTML = '';
+
+      if (participants.length === 0) {
+        container.innerHTML = '<div style="color:var(--text-3);font-size:11px;padding:4px 12px;">No active agents</div>';
+        return;
+      }
+
+      participants.forEach(a => {
+        const state = getAgentState(a);
+        const emoji = getStateEmoji(state);
+        const label = String(a.display_name ?? a.name ?? '').trim() || 'Unknown';
+        const offlineTime = getOfflineTime(a);
+        const offlineDisplay = offlineTime ? ` (${offlineTime})` : '';
+        const isLongOffline = isOfflineMoreThanHour(a);
+
+        const item = document.createElement('div');
+        item.className = 'agent-status-item';
+
+        // Compress display if offline > 1 hour: just emoji + single char
+        if (isLongOffline) {
+          const compressedChar = getCompressedOfflineChar(offlineTime);
+          item.innerHTML = `
                 <div class="agent-status-emoji">${emoji}</div>
                 <div class="agent-status-text-compact">${compressedChar}</div>
               `;
-            } else {
-              // Remove thread info display to keep agent list clean
-              item.innerHTML = `
+        } else {
+          // Remove thread info display to keep agent list clean
+          item.innerHTML = `
                 <div class="agent-status-emoji">${emoji}</div>
                 <div class="agent-status-text">
                   <div class="agent-alias">${escapeHtml(label)}</div>
                   <div class="agent-state">${state}${offlineDisplay}</div>
                 </div>
               `;
-            }
-            
-            // τ╗æσ«Üagent tooltipΣ║ñΣ║Æ
-            if (a && a.id) {
-              bindAgentTooltipEvents(item, a);
-            }
-            container.appendChild(item);
-          });
-        }
-        
-        function getAgentState(agent) {
-          // Σ╝ÿσàêΣ╜┐τö¿last_activity_timeσêñµû¡τè╢µÇü∩╝îΦÇîΘ¥₧is_online∩╝êσÉÄΦÇàσƒ║Σ║ÄheartbeatΦ╢àµù╢∩╝ë
-          const activityTime = agent.last_activity_time ? new Date(agent.last_activity_time) : null;
-          const now = new Date();
-          
-          if (!activityTime) {
-            // σ«îσà¿µ▓íµ£ëµ┤╗σè¿Φ«░σ╜ò
-            return agent.is_online ? 'Waiting' : 'Offline';
-          }
-          
-          const secondsAgo = (now - activityTime) / 1000;
-          
-          // µá╣µì«µ┤╗σè¿τ▒╗σ₧ïσÆîµù╢Θù┤σêñµû¡τè╢µÇü
-          if (agent.last_activity === 'msg_wait' && secondsAgo < 60) return 'Waiting';
-          if (secondsAgo < 30) return 'Active';
-          if (secondsAgo < 300) return 'Idle';  // 5σêåΘÆƒσåàµ£ëµ┤╗σè¿τ«ù Idle
-          
-          // Φ╢àΦ┐ç5σêåΘÆƒµ▓íµ┤╗σè¿Σ╕öis_online=falseµëìµÿ╛τñ║Offline
-          return agent.is_online ? 'Idle' : 'Offline';
         }
 
-        function getOfflineTime(agent) {
-          return window.AcbAgentStatus.getOfflineTime(agent);
+        // τ╗æσ«Üagent tooltipΣ║ñΣ║Æ
+        if (a && a.id) {
+          bindAgentTooltipEvents(item, a);
         }
+        container.appendChild(item);
+      });
+    }
 
-        function isOfflineMoreThanHour(agent) {
-          return window.AcbAgentStatus.isOfflineMoreThanHour(agent);
-        }
+    function getAgentState(agent) {
+      // Σ╝ÿσàêΣ╜┐τö¿last_activity_timeσêñµû¡τè╢µÇü∩╝îΦÇîΘ¥₧is_online∩╝êσÉÄΦÇàσƒ║Σ║ÄheartbeatΦ╢àµù╢∩╝ë
+      const activityTime = agent.last_activity_time ? new Date(agent.last_activity_time) : null;
+      const now = new Date();
 
-        function getCompressedOfflineChar(offlineTimeStr) {
-          return window.AcbAgentStatus.getCompressedOfflineChar(offlineTimeStr);
-        }
-        
-        
-        function getStateEmoji(state) {
-          const map = { 'Offline': '⚫', 'Waiting': '⏳', 'Active': '🟢', 'Idle': '🌙' };
-          return map[state] || 'Γ¥ô';
-        }
+      if (!activityTime) {
+        // σ«îσà¿µ▓íµ£ëµ┤╗σè¿Φ«░σ╜ò
+        return agent.is_online ? 'Waiting' : 'Offline';
+      }
 
-        // ==============================================================================================
-        // Sidebar tabs
-        // ==============================================================================================
-        function switchTab(tab) {
-          // Only threads tab is available now
-          if (tab !== 'threads') return;
-          // Control filter visibility
-          const filterWrap = document.getElementById('thread-filter-wrap');
-          if (filterWrap) {
-            filterWrap.style.display = '';
-          }
-        }
+      const secondsAgo = (now - activityTime) / 1000;
+
+      // µá╣µì«µ┤╗σè¿τ▒╗σ₧ïσÆîµù╢Θù┤σêñµû¡τè╢µÇü
+      if (agent.last_activity === 'msg_wait' && secondsAgo < 60) return 'Waiting';
+      if (secondsAgo < 30) return 'Active';
+      if (secondsAgo < 300) return 'Idle';  // 5σêåΘÆƒσåàµ£ëµ┤╗σè¿τ«ù Idle
+
+      // Φ╢àΦ┐ç5σêåΘÆƒµ▓íµ┤╗σè¿Σ╕öis_online=falseµëìµÿ╛τñ║Offline
+      return agent.is_online ? 'Idle' : 'Offline';
+    }
+
+    function getOfflineTime(agent) {
+      return window.AcbAgentStatus.getOfflineTime(agent);
+    }
+
+    function isOfflineMoreThanHour(agent) {
+      return window.AcbAgentStatus.isOfflineMoreThanHour(agent);
+    }
+
+    function getCompressedOfflineChar(offlineTimeStr) {
+      return window.AcbAgentStatus.getCompressedOfflineChar(offlineTimeStr);
+    }
+
+
+    function getStateEmoji(state) {
+      const map = { 'Offline': '⚫', 'Waiting': '⏳', 'Active': '🟢', 'Idle': '🌙' };
+      return map[state] || 'Γ¥ô';
+    }
+
+    // ==============================================================================================
+    // Sidebar tabs
+    // ==============================================================================================
+    function switchTab(tab) {
+      // Only threads tab is available now
+      if (tab !== 'threads') return;
+      // Control filter visibility
+      const filterWrap = document.getElementById('thread-filter-wrap');
+      if (filterWrap) {
+        filterWrap.style.display = '';
+      }
+    }
 
     // ==============================================================================================
     // Modal
@@ -2084,9 +2702,9 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       return window.AcbModals.closeThreadModal(e);
     }
 
-  async function submitModal() {
-    return window.AcbModals.submitThreadModal({ api, refreshThreads, selectThread });
-  }
+    async function submitModal() {
+      return window.AcbModals.submitThreadModal({ api, refreshThreads, selectThread });
+    }
 
     // ==============================================================================================
     // Extras: thread state & close (REST shims)
@@ -2104,17 +2722,17 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     // renderMarkdown and inlineMd functions are now in shared-message-renderer.js module
     // Access them via window.AcbMessageRenderer.renderMarkdown() and window.AcbMessageRenderer.inlineMd()
 
-      function scrollBottom(smooth = false) {
+    function scrollBottom(smooth = false) {
       const box = document.getElementById('messages');
       if (!box) return;
 
-        // Use setTimeout to ensure DOM updates and layout are fully applied
-        // before attempting to scroll to the bottom.
-        setTimeout(() => {
+      // Use setTimeout to ensure DOM updates and layout are fully applied
+      // before attempting to scroll to the bottom.
+      setTimeout(() => {
         // Force synchronous layout so scrollHeight is accurate
         void box.offsetHeight;
         if (smooth) {
-          console.log('Scrolling to bottom',{ top: box.scrollHeight, behavior: 'smooth' });
+          console.log('Scrolling to bottom', { top: box.scrollHeight, behavior: 'smooth' });
           box.scrollTo({ top: box.scrollHeight, behavior: 'smooth' });
         } else {
           box.scrollTop = box.scrollHeight;
@@ -2126,20 +2744,21 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       return window.AcbUtils.timeAgo(iso);
     }
 
-  // ==============================================================================================
-  // Settings Settings
-  // ==============================================================================================
-  async function openSettingsModal() {
-    return window.AcbModals.openSettingsModal(api);
-  }
+    // ==============================================================================================
+    // Settings Settings
+    // ==============================================================================================
+    async function openSettingsModal() {
+      return window.AcbModals.openSettingsModal(api);
+    }
 
-  function closeSettingsModal(e) {
-    return window.AcbModals.closeSettingsModal(e);
-  }
+    function closeSettingsModal(e) {
+      return window.AcbModals.closeSettingsModal(e);
+    }
 
-  async function submitSettings() {
-    return window.AcbModals.submitSettings(api);
-  }
-</script>
+    async function submitSettings() {
+      return window.AcbModals.submitSettings(api);
+    }
+  </script>
 </body>
+
 </html>
