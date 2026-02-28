@@ -28,6 +28,7 @@ from starlette.routing import Mount
 from src.config import HOST, PORT, get_config_dict, save_config_dict
 from src.db.database import get_db, close_db
 from src.db import crud
+from src.db.crud import RateLimitExceeded
 from src.config import THREAD_TIMEOUT_ENABLED, THREAD_TIMEOUT_MINUTES, THREAD_TIMEOUT_SWEEP_INTERVAL
 from src.mcp_server import server as mcp_server, _session_language
 from src.content_filter import ContentFilterError
@@ -416,6 +417,16 @@ async def api_post_message(thread_id: str, body: MessageCreate):
         raise HTTPException(status_code=400, detail={"error": "Content blocked by filter", "pattern": e.pattern_name})
     except asyncio.TimeoutError:
         raise HTTPException(status_code=503, detail="Database operation timeout")
+
+    except RateLimitExceeded as e:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=429,
+            content={"error": "Rate limit exceeded", "limit": e.limit, "window": e.window, "retry_after": e.retry_after},
+            headers={"Retry-After": str(e.retry_after)},
+        )
+
+
     
     # Return the full message with metadata
     result = {"id": m.id, "seq": m.seq, "author": m.author,
@@ -428,6 +439,7 @@ async def api_post_message(thread_id: str, body: MessageCreate):
         result["metadata"] = None
     
     return result
+
 
 
 # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ

@@ -21,6 +21,7 @@ if "src.db.models" in sys.modules:
 if "src.db.crud" in sys.modules:
     importlib.reload(sys.modules["src.db.crud"])
 from src.db import crud
+from src.db.crud import RateLimitExceeded
 from src.db.models import Message
 import src.mcp_server
 from src.config import BUS_VERSION, HOST, PORT, MSG_WAIT_TIMEOUT
@@ -226,6 +227,7 @@ async def handle_thread_get(db, arguments: dict[str, Any]) -> list[types.TextCon
     }))]
 
 async def handle_msg_post(db, arguments: dict[str, Any]) -> list[types.TextContent]:
+
     try:
         msg = await crud.msg_post(
             db,
@@ -235,6 +237,13 @@ async def handle_msg_post(db, arguments: dict[str, Any]) -> list[types.TextConte
             role=arguments.get("role", "user"),
             metadata=arguments.get("metadata"),
         )
+    except RateLimitExceeded as e:
+        return [types.TextContent(type="text", text=json.dumps({
+            "error": "Rate limit exceeded",
+            "limit": e.limit,
+            "window": e.window,
+            "retry_after": e.retry_after,
+        }))]
     except ContentFilterError as e:
         return [types.TextContent(type="text", text=json.dumps({
             "error": "Content blocked by filter",
