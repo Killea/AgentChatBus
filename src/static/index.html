@@ -2509,12 +2509,9 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         isThreadMode = participants.length > 0;  // Only thread mode if we have participants
       }
 
-      // If no thread selected or no participants in thread, fall back to showing all non-offline agents
+      // If no thread selected or no participants in thread, show all agents
       if (!isThreadMode) {
-        participants = allAgents.filter(a => {
-          const state = getAgentState(a);
-          return state !== 'Offline';
-        });
+        participants = allAgents;
         isThreadMode = false;  // Global mode - no thread context
       }
 

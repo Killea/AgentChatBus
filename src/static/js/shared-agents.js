@@ -170,7 +170,8 @@
     }
 
     if (!isThreadMode) {
-      participants = allAgents.filter((a) => getAgentState(a) !== "Offline");
+      // Show all agents (both online and offline)
+      participants = allAgents;
       isThreadMode = false;
     }
 
