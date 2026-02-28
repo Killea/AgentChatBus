@@ -94,54 +94,6 @@
     return segs;
   }
 
-  function renderTextWithMarkdown(containerEl, text) {
-    const htmlStr = renderMarkdownToHTML(text);
-    containerEl.insertAdjacentHTML("beforeend", htmlStr);
-  }
-
-  function renderMessageContent(containerEl, rawText) {
-    containerEl.textContent = "";
-    const tokens = tokenizeMessage(rawText);
-    for (const tok of tokens) {
-      if (tok.type === "code_block") {
-        const wrap = document.createElement("div");
-        wrap.className = "code-block";
-
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "code-copy";
-        btn.textContent = "Copy";
-        btn.setAttribute("aria-label", "Copy code");
-
-        const pre = document.createElement("pre");
-        const code = document.createElement("code");
-        if (tok.lang) code.setAttribute("data-lang", tok.lang);
-        const codeText = tok.code || "";
-        code.textContent = codeText;
-        pre.appendChild(code);
-
-        btn.addEventListener("click", async (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const original = btn.textContent;
-          const ok = await window.AcbUtils.copyTextWithFallback(codeText);
-          btn.textContent = ok ? "Copied" : "Failed";
-          if (ok) btn.disabled = true;
-          setTimeout(() => {
-            btn.textContent = original;
-            btn.disabled = false;
-          }, 1200);
-        });
-
-        wrap.appendChild(btn);
-        wrap.appendChild(pre);
-        containerEl.appendChild(wrap);
-      } else {
-        renderTextWithMarkdown(containerEl, tok.text);
-      }
-    }
-  }
-
   function esc(s) {
     if (window.AcbUtils && window.AcbUtils.esc) return window.AcbUtils.esc(s);
     return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -155,7 +107,7 @@
       .replace(/~~(.+?)~~/g, '<del>$1</del>');
   }
 
-  function renderMarkdown(raw) {
+  function renderMarkdownToHTML(raw) {
     const s = String(raw ?? '');
     const lines = s.split('\n');
     const out = [];
@@ -258,6 +210,54 @@
     }
 
     return out.join('\n');
+  }
+
+  function renderTextWithMarkdown(containerEl, text) {
+    const htmlStr = renderMarkdownToHTML(text);
+    containerEl.insertAdjacentHTML("beforeend", htmlStr);
+  }
+
+  function renderMessageContent(containerEl, rawText) {
+    containerEl.textContent = "";
+    const tokens = tokenizeMessage(rawText);
+    for (const tok of tokens) {
+      if (tok.type === "code_block") {
+        const wrap = document.createElement("div");
+        wrap.className = "code-block";
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "code-copy";
+        btn.textContent = "Copy";
+        btn.setAttribute("aria-label", "Copy code");
+
+        const pre = document.createElement("pre");
+        const code = document.createElement("code");
+        if (tok.lang) code.setAttribute("data-lang", tok.lang);
+        const codeText = tok.code || "";
+        code.textContent = codeText;
+        pre.appendChild(code);
+
+        btn.addEventListener("click", async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const original = btn.textContent;
+          const ok = await window.AcbUtils.copyTextWithFallback(codeText);
+          btn.textContent = ok ? "Copied" : "Failed";
+          if (ok) btn.disabled = true;
+          setTimeout(() => {
+            btn.textContent = original;
+            btn.disabled = false;
+          }, 1200);
+        });
+
+        wrap.appendChild(btn);
+        wrap.appendChild(pre);
+        containerEl.appendChild(wrap);
+      } else {
+        renderTextWithMarkdown(containerEl, tok.text);
+      }
+    }
   }
 
   window.AcbMessageRenderer = {
