@@ -102,7 +102,11 @@ async def init_schema(db: aiosqlite.Connection) -> None:
             capabilities    TEXT,
             registered_at   TEXT NOT NULL,
             last_heartbeat  TEXT NOT NULL,
-            token           TEXT NOT NULL
+            token           TEXT NOT NULL,
+            display_name    TEXT,
+            alias_source    TEXT,
+            last_activity   TEXT,
+            last_activity_time TEXT
         );
 
         -- ----------------------------------------------------------------
