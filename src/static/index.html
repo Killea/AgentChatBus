@@ -1534,6 +1534,9 @@
       .agent-tip-actions button:hover {
         border-color: var(--accent);
       }
+    }
+
+  }
   </style>
 </head>
 
@@ -1588,7 +1591,7 @@
       <!-- Agent Status Bar -->
       <div id="agent-status-bar">
         <div id="agent-status-list"></div>
-        <div id="agent-status-info">ℹ️Å</div>
+        <div id="agent-status-info">ℹ️</div>
       </div>
     </div>
   </div>
@@ -1631,7 +1634,7 @@
     <div id="settings-modal"
       style="background: var(--bg-card); border: 1px solid var(--border-light); border-radius: 14px; padding: 28px; width: 440px; max-width: 90vw; box-shadow: var(--shadow); animation: modal-in .2s ease;"
       onclick="event.stopPropagation()">
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 18px; color: var(--text-1)">⚙️Å MCP Server Settings
+      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 18px; color: var(--text-1)">⚙️ MCP Server Settings
       </h3>
 
       <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Host</label>
@@ -1663,7 +1666,7 @@
 
   <div id="agent-tooltip" aria-hidden="true"></div>
 
-  <div id="agent-status-info-tooltip" class="">
+  <!-- <div id="agent-status-info-tooltip" class="">
     <div class="state-item"><span class="state-emoji">🟢</span> <strong>Active:</strong> Agent has activity within 30
       seconds</div>
     <div class="state-item"><span class="state-emoji">🌙</span> <strong>Idle:</strong> Agent has activity within 5
@@ -1672,14 +1675,12 @@
       (within 60 seconds)</div>
     <div class="state-item"><span class="state-emoji">⚫</span> <strong>Offline:</strong> Agent has no recent activity
       and is not heartbeating</div>
-  </div>
+  </div> -->
 
-  <acb-empty-state></acb-empty-state>
-  </div>
 
   <acb-compose-shell></acb-compose-shell>
   <!-- Agent Status Bar -->
-  <acb-agent-status-shell></acb-agent-status-shell>
+  <!-- <acb-agent-status-shell></acb-agent-status-shell> -->
   </div>
   </div>
 
@@ -1819,8 +1820,8 @@
       return `@${displayName}
 Please resume this agent session with saved credentials.
 1) Call agent_resume(agent_id, token) with your credentials.
-2) If resume fails ΓåÆ check token validity and retry.
-3) On success ΓåÆ post confirmation message.
+2) If resume fails ΓÆ check token validity and retry.
+3) On success ΓÆ post confirmation message.
 4) Begin msg_wait loop to listen for incoming messages.
 
 Agent ID: ${agentId}
@@ -2241,7 +2242,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       if (author === 'human') return HUMAN_COLOR;
       if (author === 'system') return SYSTEM_COLOR;
       if (_colorCache[author]) return _colorCache[author];
-      // Stable hash ΓåÆ palette index
+      // Stable hash ΓÆ palette index
       let h = 0;
       for (let i = 0; i < author.length; i++) h = (Math.imul(31, h) + author.charCodeAt(i)) | 0;
       const color = AUTHOR_PALETTE[Math.abs(h) % AUTHOR_PALETTE.length];
@@ -2545,7 +2546,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
 
       // If a thread is selected, show agents in that thread
       if (activeThreadId) {
-        // Σ╗Äσ╜ôσëìthreadτÜäµ╢êµü»Σ╕¡µÅÉσÅûµëÇµ£ëσÅéΣ╕Äagents∩╝êµîëauthor_id∩╝ë
+        // Σ╗Äσ╜ôσëìthreadτÜäµ╢êµü»Σ╕¡µÉσûµëÇµ£ëσéΣ╕Äagents∩╝êµîëauthor_id∩╝ë
         const participantIdMap = new Map();  // id -> agentµò░µì«
         const msgArea = document.getElementById('messages');
         if (msgArea) {
@@ -2582,7 +2583,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         isThreadMode = false;  // Global mode - no thread context
       }
 
-      // µÄÆσ║Å∩╝Üσ£¿τ║┐Σ╝ÿσàê∩╝îτä╢σÉÄµîëµ£ÇσÉÄµ┤╗σè¿µù╢Θù┤µÄÆσ║Å
+      // µÄÆσ║∩╝Üσ£¿τ║┐Σ╝ÿσàê∩╝îτä╢σÉÄµîëµ£ÇσÉÄµ┤╗σè¿µù╢Θù┤µÄÆσ║
       participants.sort((a, b) => {
         if (a.is_online !== b.is_online) {
           return a.is_online ? -1 : 1;  // σ£¿τ║┐Σ╝ÿσàê
@@ -2654,9 +2655,9 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       // µá╣µì«µ┤╗σè¿τ▒╗σ₧ïσÆîµù╢Θù┤σêñµû¡τè╢µÇü
       if (agent.last_activity === 'msg_wait' && secondsAgo < 60) return 'Waiting';
       if (secondsAgo < 30) return 'Active';
-      if (secondsAgo < 300) return 'Idle';  // 5σêåΘÆƒσåàµ£ëµ┤╗σè¿τ«ù Idle
+      if (secondsAgo < 300) return 'Idle';  // 5σêΘÆƒσàµ£ëµ┤╗σè¿τ«ù Idle
 
-      // Φ╢àΦ┐ç5σêåΘÆƒµ▓íµ┤╗σè¿Σ╕öis_online=falseµëìµÿ╛τñ║Offline
+      // Φ╢àΦ┐ç5σêΘÆƒµ▓íµ┤╗σè¿Σ╕öis_online=falseµëìµÿ╛τñ║Offline
       return agent.is_online ? 'Idle' : 'Offline';
     }
 
