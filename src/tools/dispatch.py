@@ -6,17 +6,171 @@ without dropping connections.
 import json
 import asyncio
 import logging
+import base64
+import mimetypes
+from pathlib import Path
 from typing import Any
 
 import mcp.types as types
 
 from src.db.database import get_db
+import sys
+import importlib
+if "src.db.models" in sys.modules:
+    importlib.reload(sys.modules["src.db.models"])
+if "src.db.crud" in sys.modules:
+    importlib.reload(sys.modules["src.db.crud"])
 from src.db import crud
 from src.db.crud import RateLimitExceeded
+from src.db.models import Message
 import src.mcp_server
 from src.config import BUS_VERSION, HOST, PORT, MSG_WAIT_TIMEOUT
+from src.content_filter import ContentFilterError
+import os
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_json_loads(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, (dict, list)):
+        return value
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    try:
+        return json.loads(value)
+    except Exception:
+        return None
+
+
+def _strip_data_url(value: str) -> tuple[str | None, str | None]:
+    """Parse a data URL like 'data:image/png;base64,AAAA' and return (mime, data)."""
+    if not isinstance(value, str):
+        return None, None
+    if not value.startswith("data:"):
+        return None, None
+    header, sep, payload = value.partition(",")
+    if not sep:
+        return None, None
+    mime_part = header[5:]  # strip 'data:'
+    if ";" in mime_part:
+        mime_part = mime_part.split(";", 1)[0]
+    mime_part = mime_part.strip() or None
+    payload = payload.strip() or None
+    return mime_part, payload
+
+
+def _url_to_local_upload_path(url: str) -> Path | None:
+    """Map '/static/uploads/...' URLs to local files under src/static/uploads."""
+    if not isinstance(url, str):
+        return None
+    if not url.startswith("/static/uploads/"):
+        return None
+
+    rel = url[len("/static/uploads/"):]
+    
+    # dispatch.py is in src/tools/.
+    # So Path(__file__).resolve().parent is src/tools/
+    # parent[0] is src/, parent[1] is project root
+    tools_dir = Path(__file__).resolve().parent
+    src_dir = tools_dir.parent  # src/
+    uploads_root = src_dir / "static" / "uploads"
+    
+    candidate = (uploads_root / rel).resolve()
+
+    # Validate that candidate is within uploads_root
+    try:
+        candidate.relative_to(uploads_root)
+    except ValueError:
+        return None
+
+    return candidate
+
+
+def _message_to_blocks(m: Message) -> list[types.Content]:
+    author = m.author_name or m.author
+    created = m.created_at.isoformat() if getattr(m, "created_at", None) else ""
+    blocks: list[types.Content] = [
+        types.TextContent(
+            type="text",
+            text=f"[{m.seq}] {author} ({m.role}) {created}",
+        )
+    ]
+
+    if m.content:
+        blocks.append(types.TextContent(type="text", text=m.content))
+
+    meta = _safe_json_loads(m.metadata)
+    if isinstance(meta, dict):
+        attachments = meta.get("attachments")
+        if attachments is None:
+            attachments = meta.get("images")  # Web UI format: list of {"url": "/static/uploads/...", "name": "..."}
+        if attachments is None:
+            attachments = meta.get("image")
+
+        if isinstance(attachments, dict):
+            attachments = [attachments]
+
+        if isinstance(attachments, list):
+            for att in attachments:
+                if not isinstance(att, dict):
+                    continue
+                kind = (att.get("type") or att.get("kind") or "").lower()
+                mime_type = att.get("mimeType") or att.get("mime_type")
+                data = att.get("data") or att.get("base64") or att.get("b64") or att.get("data_url")
+                url = att.get("url") or att.get("src")
+
+                if isinstance(data, str):
+                    inferred_mime, stripped = _strip_data_url(data)
+                    if stripped is not None:
+                        data = stripped
+                        if not mime_type and inferred_mime:
+                            mime_type = inferred_mime
+
+                if not mime_type and kind == "image":
+                    mime_type = "image/png"
+
+                if not data:
+                    # Support URL-backed uploads from web UI metadata, e.g. {"url": "/static/uploads/.."}
+                    if isinstance(url, str):
+                        local_path = _url_to_local_upload_path(url)
+                        if local_path and local_path.exists():
+                            try:
+                                raw = local_path.read_bytes()
+                                data = base64.b64encode(raw).decode("ascii")
+                                guessed_mime = mimetypes.guess_type(local_path.name)[0]
+                                if not mime_type and guessed_mime:
+                                    mime_type = guessed_mime
+                                logger.info(f"[_message_to_blocks] Loaded image from {url}: {len(data)} bytes, mime={mime_type}")
+                            except Exception as e:
+                                logger.warning(f"[_message_to_blocks] Failed to read {local_path}: {e}")
+                                data = None
+
+                    # If still no embeddable bytes, keep image reference visible as text.
+                    if not data and isinstance(url, str):
+                        blocks.append(types.TextContent(type="text", text=f"[image] {url}"))
+                        continue
+
+                    if not data:
+                        continue
+                if kind and kind != "image" and not (mime_type and str(mime_type).startswith("image/")):
+                    continue
+                if mime_type and not str(mime_type).startswith("image/"):
+                    continue
+
+                blocks.append(
+                    types.ImageContent(
+                        type="image",
+                        data=str(data),
+                        mimeType=str(mime_type or "image/png"),
+                    )
+                )
+
+    return blocks
 
 async def handle_bus_get_config(db, arguments: dict[str, Any]) -> list[types.TextContent]:
     session_lang = src.mcp_server._session_language.get()
@@ -27,7 +181,7 @@ async def handle_bus_get_config(db, arguments: dict[str, Any]) -> list[types.Tex
         "language_source":    source,
         "language_note": (
             f"Please respond in {effective_lang} whenever possible. "
-            "This is a soft preference — use your best judgement."
+            "This is a soft preference ΓÇö use your best judgement."
         ),
         "bus_name": "AgentChatBus",
         "version":  BUS_VERSION,
@@ -51,6 +205,16 @@ async def handle_thread_list(db, arguments: dict[str, Any]) -> list[types.TextCo
          "created_at": t.created_at.isoformat()} for t in threads
     ]))]
 
+async def handle_thread_delete(db, arguments: dict[str, Any]) -> list[types.TextContent]:
+    if not arguments.get("confirm"):
+        return [types.TextContent(type="text", text=json.dumps({
+            "error": "Deletion aborted: confirm must be true. This action is irreversible.",
+        }))]
+    result = await crud.thread_delete(db, arguments["thread_id"])
+    if result is None:
+        return [types.TextContent(type="text", text=json.dumps({"error": "Thread not found"}))]
+    return [types.TextContent(type="text", text=json.dumps({"ok": True, "deleted": result}))]
+
 async def handle_thread_get(db, arguments: dict[str, Any]) -> list[types.TextContent]:
     t = await crud.thread_get(db, arguments["thread_id"])
     if t is None:
@@ -63,14 +227,16 @@ async def handle_thread_get(db, arguments: dict[str, Any]) -> list[types.TextCon
     }))]
 
 async def handle_msg_post(db, arguments: dict[str, Any]) -> list[types.TextContent]:
-    msg = await crud.msg_post(
-        db,
-        thread_id=arguments["thread_id"],
-        author=arguments["author"],
-        content=arguments["content"],
-        role=arguments.get("role", "user"),
-        metadata=arguments.get("metadata"),
-    )
+
+    try:
+        msg = await crud.msg_post(
+            db,
+            thread_id=arguments["thread_id"],
+            author=arguments["author"],
+            content=arguments["content"],
+            role=arguments.get("role", "user"),
+            metadata=arguments.get("metadata"),
+        )
     except RateLimitExceeded as e:
         return [types.TextContent(type="text", text=json.dumps({
             "error": "Rate limit exceeded",
@@ -78,11 +244,17 @@ async def handle_msg_post(db, arguments: dict[str, Any]) -> list[types.TextConte
             "window": e.window,
             "retry_after": e.retry_after,
         }))]
+    except ContentFilterError as e:
+        return [types.TextContent(type="text", text=json.dumps({
+            "error": "Content blocked by filter",
+            "pattern": e.pattern_name,
+        }))]
+
     return [types.TextContent(type="text", text=json.dumps({
         "msg_id": msg.id, "seq": msg.seq,
     }))]
 
-async def handle_msg_list(db, arguments: dict[str, Any]) -> list[types.TextContent]:
+async def handle_msg_list(db, arguments: dict[str, Any]) -> list[types.Content]:
     msgs = await crud.msg_list(
         db,
         thread_id=arguments["thread_id"],
@@ -90,13 +262,21 @@ async def handle_msg_list(db, arguments: dict[str, Any]) -> list[types.TextConte
         limit=arguments.get("limit", 100),
         include_system_prompt=arguments.get("include_system_prompt", True),
     )
+
+    return_format = arguments.get("return_format", "blocks")
+    if return_format == "blocks":
+        blocks: list[types.Content] = []
+        for m in msgs:
+            blocks.extend(_message_to_blocks(m))
+        return blocks
+
     return [types.TextContent(type="text", text=json.dumps([
         {"msg_id": m.id, "author": m.author, "author_id": m.author_id, "author_name": m.author_name, "role": m.role,
-         "content": m.content, "seq": m.seq, "created_at": m.created_at.isoformat()}
+         "content": m.content, "seq": m.seq, "created_at": m.created_at.isoformat(), "metadata": m.metadata}
         for m in msgs
     ]))]
 
-async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.TextContent]:
+async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.Content]:
     thread_id = arguments["thread_id"]
     after_seq = arguments["after_seq"]
     timeout_s = arguments.get("timeout_ms", MSG_WAIT_TIMEOUT * 1000) / 1000.0
@@ -131,9 +311,16 @@ async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.TextConte
     except asyncio.TimeoutError:
         msgs = []
 
+    return_format = arguments.get("return_format", "blocks")
+    if return_format == "blocks":
+        blocks: list[types.Content] = []
+        for m in msgs:
+            blocks.extend(_message_to_blocks(m))
+        return blocks
+
     return [types.TextContent(type="text", text=json.dumps([
         {"msg_id": m.id, "author": m.author, "author_id": m.author_id, "author_name": m.author_name, "role": m.role,
-         "content": m.content, "seq": m.seq, "created_at": m.created_at.isoformat()}
+         "content": m.content, "seq": m.seq, "created_at": m.created_at.isoformat(), "metadata": m.metadata}
         for m in msgs
     ]))]
 
@@ -223,6 +410,7 @@ TOOLS_DISPATCH = {
     "bus_get_config": handle_bus_get_config,
     "thread_create": handle_thread_create,
     "thread_list": handle_thread_list,
+    "thread_delete": handle_thread_delete,
     "thread_get": handle_thread_get,
     "msg_post": handle_msg_post,
     "msg_list": handle_msg_list,
@@ -235,7 +423,7 @@ TOOLS_DISPATCH = {
     "agent_set_typing": handle_agent_set_typing,
 }
 
-async def dispatch_tool(db, name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
+async def dispatch_tool(db, name: str, arguments: dict[str, Any]) -> list[types.Content]:
     handler = TOOLS_DISPATCH.get(name)
     if handler:
         return await handler(db, arguments)

@@ -43,7 +43,7 @@ _current_agent_id: ContextVar[str | None] = ContextVar("current_agent_id", defau
 _current_agent_token: ContextVar[str | None] = ContextVar("current_agent_token", default=None)
 
 # Connection-level agent registry.
-# Maps session_id → {"agent_id": ..., "token": ...}
+# Maps session_id ΓÆ {"agent_id": ..., "token": ...}
 # Populated when agent_register/resume is called, used by msg_wait for auto-tracking.
 _connection_agents: dict[str, dict[str, str]] = {}
 
@@ -75,14 +75,14 @@ def get_connection_agent() -> tuple[str | None, str | None]:
 server = Server("AgentChatBus")
 
 
-# ═════════════════════════════════════════════
+# ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 # TOOLS
-# ═════════════════════════════════════════════
+# ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 
 @server.list_tools()
 async def list_tools() -> list[types.Tool]:
     return [
-        # ── Thread Management ──────────────────
+        # ΓöÇΓöÇ Thread Management ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         types.Tool(
             name="thread_create",
             description="Create a new conversation thread (topic / task context) on the bus.",
@@ -113,6 +113,25 @@ async def list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
+            name="thread_delete",
+            description=(
+                "Permanently delete a thread and ALL its messages. IRREVERSIBLE — data cannot be recovered. "
+                "Prefer thread_archive for reversible removal. "
+                "Requires confirm=true to proceed."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "description": "ID of the thread to delete."},
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "Must be true to proceed. Safeguard against accidental deletion.",
+                    },
+                },
+                "required": ["thread_id", "confirm"],
+            },
+        ),
+        types.Tool(
             name="thread_get",
             description="Get details of a single thread by ID.",
             inputSchema={
@@ -123,7 +142,7 @@ async def list_tools() -> list[types.Tool]:
         ),
 
 
-        # ── Messaging ─────────────────────────
+        # ΓöÇΓöÇ Messaging ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         types.Tool(
             name="msg_post",
             description="Post a message to a thread. Returns the new message ID and global seq number.",
@@ -134,6 +153,11 @@ async def list_tools() -> list[types.Tool]:
                     "author":    {"type": "string", "description": "Agent ID, 'system', or 'human'."},
                     "content":   {"type": "string"},
                     "role":      {"type": "string", "enum": ["user", "assistant", "system"], "default": "user"},
+                    "mentions":  {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of agent IDs to mention in this message."
+                    },
                     "metadata":  {"type": "object"},
                 },
                 "required": ["thread_id", "author", "content"],
@@ -148,6 +172,16 @@ async def list_tools() -> list[types.Tool]:
                     "thread_id": {"type": "string"},
                     "after_seq": {"type": "integer", "default": 0, "description": "Return messages with seq > this value."},
                     "limit":     {"type": "integer", "default": 100},
+                    "return_format": {
+                        "type": "string",
+                        "enum": ["json", "blocks"],
+                        "default": "blocks",
+                        "description": (
+                            "Return format for tool result content. "
+                            "'blocks' returns native MCP content blocks (TextContent/ImageContent...). "
+                            "'json' returns a single JSON-encoded text payload (legacy)."
+                        ),
+                    },
                     "include_system_prompt": {
                         "type": "boolean",
                         "default": True,
@@ -172,6 +206,16 @@ async def list_tools() -> list[types.Tool]:
                     "thread_id":   {"type": "string"},
                     "after_seq":   {"type": "integer"},
                     "timeout_ms":  {"type": "integer", "default": 300000, "description": "Max wait in milliseconds."},
+                    "return_format": {
+                        "type": "string",
+                        "enum": ["json", "blocks"],
+                        "default": "blocks",
+                        "description": (
+                            "Return format for tool result content. "
+                            "'blocks' returns native MCP content blocks (TextContent/ImageContent...). "
+                            "'json' returns a single JSON-encoded text payload (legacy)."
+                        ),
+                    },
                     "agent_id":    {"type": "string", "description": "Optional: your agent ID for activity tracking."},
                     "token":       {"type": "string", "description": "Optional: your agent token for verification."},
                 },
@@ -179,12 +223,12 @@ async def list_tools() -> list[types.Tool]:
             },
         ),
 
-        # ── Agent Identity & Presence ──────────
+        # ΓöÇΓöÇ Agent Identity & Presence ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         types.Tool(
             name="agent_register",
             description=(
                 "Register an agent onto the bus. The display name is auto-generated as "
-                "'IDE (Model)' — e.g. 'Cursor (GPT-4)'. If the same IDE+Model pair is already "
+                "'IDE (Model)' ΓÇö e.g. 'Cursor (GPT-4)'. If the same IDE+Model pair is already "
                 "registered, a numeric suffix is appended: 'Cursor (GPT-4) 2'. "
                 "Optional `display_name` can be provided as a human-friendly alias. "
                 "Returns agent_id and a secret token for subsequent calls."
@@ -218,7 +262,7 @@ async def list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="agent_resume",
-            description="Resume a previously registered agent session using saved agent_id and token. Preserves all identity fields (name, alias, etc.). Returns agent details with online status. Fails if agent_id not found or token invalid—provide correct credentials and retry.",
+            description="Resume a previously registered agent session using saved agent_id and token. Preserves all identity fields (name, alias, etc.). Returns agent details with online status. Fails if agent_id not found or token invalidΓÇöprovide correct credentials and retry.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -259,7 +303,7 @@ async def list_tools() -> list[types.Tool]:
             },
         ),
 
-        # ── Bus config ────────────────────────────
+        # ΓöÇΓöÇ Bus config ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         types.Tool(
             name="bus_get_config",
             description=(
@@ -267,7 +311,7 @@ async def list_tools() -> list[types.Tool]:
                 "Agents SHOULD call this once at startup. "
                 "The most important field is `preferred_language`: agents are expected to "
                 "try to communicate in that language whenever possible. "
-                "This is a SOFT recommendation — no enforcement is done by the server. "
+                "This is a SOFT recommendation ΓÇö no enforcement is done by the server. "
                 "If not configured by the operator, defaults to 'English'."
             ),
             inputSchema={"type": "object", "properties": {}},
@@ -276,7 +320,7 @@ async def list_tools() -> list[types.Tool]:
 
 
 @server.call_tool()
-async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
+async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.Content]:
     db = await get_db()
 
     import importlib
@@ -291,9 +335,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
     return await sys.modules["src.tools.dispatch"].dispatch_tool(db, name, arguments)
 
 
-# ═════════════════════════════════════════════
+# ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 # RESOURCES
-# ═════════════════════════════════════════════
+# ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 
 @server.list_resources()
 async def list_resources() -> list[types.Resource]:
@@ -358,7 +402,7 @@ async def read_resource(uri: types.AnyUrl) -> str:
             "language_source":    "url_param" if session_lang else "default",
             "language_note": (
                 f"Please respond in {effective_lang} whenever possible. "
-                "This is a soft preference — use your best judgement."
+                "This is a soft preference ΓÇö use your best judgement."
             ),
             "bus_name": "AgentChatBus",
             "version":  BUS_VERSION,
@@ -420,9 +464,9 @@ async def read_resource(uri: types.AnyUrl) -> str:
     return f"Unknown resource URI: {uri_str}"
 
 
-# ═════════════════════════════════════════════
+# ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 # PROMPTS
-# ═════════════════════════════════════════════
+# ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 
 @server.list_prompts()
 async def list_prompts() -> list[types.Prompt]:
