@@ -7,6 +7,7 @@ appropriate HTTP status codes (503 Service Unavailable).
 
 import asyncio
 import pytest
+import warnings
 from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
@@ -32,6 +33,15 @@ def client():
     return TestClient(app)
 
 
+# Suppress RuntimeWarnings from mocking async functions
+@pytest.fixture(autouse=True)
+def suppress_runtime_warnings():
+    """Suppress RuntimeWarnings caused by mocking async functions."""
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=RuntimeWarning)
+        yield
+
+
 # ─────────────────────────────────────────────
 # Test timeout behavior
 # ─────────────────────────────────────────────
@@ -55,14 +65,16 @@ async def test_api_threads_timeout_on_get_db():
 async def test_api_threads_timeout_on_thread_list():
     """Test that API returns 503 when thread_list() times out."""
     mock_db = AsyncMock()
-    
-    with patch("asyncio.wait_for") as mock_wait_for:
-        # First call succeeds (get_db), second call times out (thread_list)
-        mock_wait_for.side_effect = [
-            mock_db,  # get_db returns successfully
-            asyncio.TimeoutError(),  # thread_list times out
-        ]
-        
+
+    async def mock_wait_for_impl(coro, timeout):
+        # First call (get_db) returns mock_db
+        if "get_db" in str(coro):
+            return mock_db
+        # Second call (thread_list) times out
+        else:
+            raise asyncio.TimeoutError()
+
+    with patch("asyncio.wait_for", side_effect=mock_wait_for_impl):
         try:
             await api_threads()
             pytest.fail("Expected HTTPException with 503")
@@ -74,9 +86,10 @@ async def test_api_threads_timeout_on_thread_list():
 @pytest.mark.asyncio
 async def test_api_agents_timeout():
     """Test that /api/agents returns 503 on timeout."""
-    with patch("asyncio.wait_for") as mock_wait_for:
-        mock_wait_for.side_effect = asyncio.TimeoutError()
-        
+    async def mock_wait_for_impl(coro, timeout):
+        raise asyncio.TimeoutError()
+
+    with patch("asyncio.wait_for", side_effect=mock_wait_for_impl):
         try:
             await api_agents()
             pytest.fail("Expected HTTPException with 503")
@@ -95,7 +108,7 @@ async def test_api_threads_success():
     mock_db = AsyncMock()
     import datetime
     now = datetime.datetime.now()
-    
+
     mock_threads = [
         Thread(
             id="thread-1",
@@ -107,26 +120,23 @@ async def test_api_threads_success():
             metadata=None,
         )
     ]
-    
-    with patch("asyncio.wait_for") as mock_wait_for:
-        # Both calls succeed
-        async def mock_wait_for_side_effect(*args, **kwargs):
-            # Return the mocked value based on argument order
-            if len(args) > 0:
-                arg = args[0]
-                # Check if it's the first call (get_db) or second call (thread_list)
-                if hasattr(arg, '__name__') and 'get_db' in str(arg):
-                    return mock_db
-                else:
-                    return mock_threads
+
+    call_count = [0]
+
+    async def mock_wait_for_impl(coro, timeout):
+        call_count[0] += 1
+        # First call (get_db) returns mock_db
+        if call_count[0] == 1:
+            return mock_db
+        # Second call (thread_list) returns mock_threads
+        else:
             return mock_threads
-        
-        mock_wait_for.side_effect = mock_wait_for_side_effect
-        
+
+    with patch("asyncio.wait_for", side_effect=mock_wait_for_impl):
         # Since api_threads is an async function that returns a list,
         # we need to test the actual return value
         result = await api_threads()
-        
+
         # Verify result is a list with expected structure
         assert isinstance(result, list)
         if result:
@@ -141,7 +151,7 @@ async def test_api_agents_success():
     mock_db = AsyncMock()
     import datetime
     now = datetime.datetime.now()
-    
+
     mock_agents = [
         AgentInfo(
             id="agent-1",
@@ -156,18 +166,14 @@ async def test_api_agents_success():
             token="test-token",
         )
     ]
-    
-    with patch("asyncio.wait_for") as mock_wait_for:
-        async def mock_wait_for_side_effect(*args, **kwargs):
-            # Return the mocked value based on argument order
-            if len(args) > 0:
-                return mock_agents if mock_agents else mock_db
-            return mock_agents
-        
-        mock_wait_for.side_effect = mock_wait_for_side_effect
-        
+
+    async def mock_wait_for_impl(coro, timeout):
+        # Return mock_agents for agent_list calls
+        return mock_agents
+
+    with patch("asyncio.wait_for", side_effect=mock_wait_for_impl):
         result = await api_agents()
-        
+
         assert isinstance(result, list)
         if result:
             assert "id" in result[0]
@@ -192,10 +198,10 @@ def test_api_threads_http_endpoint(client: TestClient):
     """Integration test: GET /api/threads returns 200 or 503 depending on DB."""
     # This will only work if the AgentChatBus server is running
     response = client.get("/api/threads")
-    
+
     # Accept either 200 (success) or 503 (timeout) — depends on server state
     assert response.status_code in [200, 503], f"Unexpected status: {response.status_code}"
-    
+
     if response.status_code == 200:
         assert isinstance(response.json(), list)
     else:
@@ -205,9 +211,9 @@ def test_api_threads_http_endpoint(client: TestClient):
 def test_api_agents_http_endpoint(client: TestClient):
     """Integration test: GET /api/agents returns 200 or 503 depending on DB."""
     response = client.get("/api/agents")
-    
+
     assert response.status_code in [200, 503], f"Unexpected status: {response.status_code}"
-    
+
     if response.status_code == 200:
         assert isinstance(response.json(), list)
     else:
