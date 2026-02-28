@@ -2086,6 +2086,9 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
 
     function openThreadContextMenu(event, thread) {
       contextMenuThread = window.AcbThreads.openThreadContextMenu(event, thread);
+      // 保存右键点击的位置，用于确认对话框定位
+      contextMenuThread._clickX = event.clientX;
+      contextMenuThread._clickY = event.clientY;
     }
 
     function hideThreadContextMenu() {
@@ -2094,7 +2097,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
 
     async function deleteThreadFromMenu() {
       if (!contextMenuThread) return;
-      const { id, topic } = contextMenuThread;
+      const { id, topic, _clickX, _clickY } = contextMenuThread;
       hideThreadContextMenu();
 
       const confirmDialog = document.getElementById('confirm-dialog');
@@ -2104,7 +2107,9 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         title: 'Delete thread',
         message: `Permanently delete <strong>${esc(topic || id)}</strong>? This cannot be undone.`,
         confirmText: 'Delete',
-        confirmClass: 'btn-destructive'
+        confirmClass: 'btn-destructive',
+        x: _clickX,
+        y: _clickY
       });
 
       if (!confirmed) return;
