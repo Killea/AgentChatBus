@@ -1,8 +1,0 @@
-{
-  "copilot-cli": {
-    "name": "Copilot CLI",
-    "description": "GitHub Copilot Command Line Interface",
-    "invoke_command": "copilot --resume={session_id} -i \"Welcome to the thread! Please introduce yourself, then type exit to quit.\"",
-    "enabled": true
-  }
-}

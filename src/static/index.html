@@ -967,32 +967,6 @@ body[data-theme="light"] .msg-row.message-has-mentions .bubble-v2 {
         tip.addEventListener('mouseleave', () => scheduleAgentTooltipHide());
         tip.addEventListener('click', async (e) => {
           e.stopPropagation();
-          const inviteBtn = e.target.closest('button[data-invite-agent]');
-          if (inviteBtn) {
-            if (inviteBtn.disabled) {
-              const old = inviteBtn.textContent;
-              inviteBtn.textContent = 'Select a thread first';
-              setTimeout(() => { inviteBtn.textContent = old; }, 1200);
-              return;
-            }
-            const agentName = inviteBtn.getAttribute('data-invite-agent');
-            const old = inviteBtn.textContent;
-            inviteBtn.textContent = 'Inviting...';
-            inviteBtn.style.opacity = '0.5';
-            inviteBtn.style.pointerEvents = 'none';
-            try {
-              const res = await window.AcbApi.inviteAgent(agentName, activeThreadId);
-              inviteBtn.textContent = (res && res.ok) ? 'Invited!' : 'Invite failed';
-            } catch (err) {
-              inviteBtn.textContent = 'Error';
-            }
-            setTimeout(() => {
-              inviteBtn.textContent = old;
-              inviteBtn.style.opacity = '1';
-              inviteBtn.style.pointerEvents = 'auto';
-            }, 2000);
-            return;
-          }
 
           const btn = e.target.closest('button[data-copy]');
           if (!btn) return;
@@ -1108,10 +1082,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         <pre class="agent-tip-prompt">${esc(prompt)}</pre>
         <div class="agent-tip-actions">
           <button type="button" data-copy="agent-id" data-copy-value="${esc(agentId)}">Copy Agent ID</button>
-          ${agent.is_invitable
-          ? '<button type="button" data-invite-agent="' + esc(agent.name) + '" ' + resumeButtonState + ' ' + resumeButtonStyle + ' title="' + (activeThreadId ? '' : 'Select a thread first') + '">Invite (' + esc(agent.name) + ')</button>'
-          : '<button type="button" data-copy="resume" data-copy-value="' + esc(prompt) + '" ' + resumeButtonState + ' ' + resumeButtonStyle + ' title="' + (activeThreadId ? '' : 'Select a thread first') + '">Copy Resume Prompt</button>'
-          }
+          <button type="button" data-copy="resume" data-copy-value="${esc(prompt)}" ${resumeButtonState} ${resumeButtonStyle} title="${activeThreadId ? '' : 'Select a thread first'}">Copy Resume Prompt</button>
         </div>`;
 
       window.AcbTooltip.showRich(anchorEl, html, {

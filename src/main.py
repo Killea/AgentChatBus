@@ -287,56 +287,22 @@ async def api_upload_image(request: Request):
 
 @app.get("/api/agents")
 async def api_agents():
-    from src.tools.dispatch import _load_available_agents
     try:
         db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
         agents = await asyncio.wait_for(crud.agent_list(db), timeout=DB_TIMEOUT)
     except asyncio.TimeoutError:
         raise HTTPException(status_code=503, detail="Database operation timeout")
 
-    available_config = _load_available_agents()
-    
     result = []
-    # keep track of agents seen in DB by name
-    seen_names = set()
-
     for a in agents:
-        cfg = available_config.get(a.name)
-        is_invitable = cfg is not None and cfg.get("enabled", False)
-        # It's available if it's currently online, or if it can be invited
-        is_available = a.is_online or is_invitable
-        seen_names.add(a.name)
         result.append({
             "id": a.id, "name": a.name, "display_name": a.display_name, "alias_source": a.alias_source,
             "description": a.description, "ide": a.ide, "model": a.model,
             "is_online": a.is_online, "last_heartbeat": a.last_heartbeat.isoformat(),
             "last_activity": a.last_activity,
             "last_activity_time": a.last_activity_time.isoformat() if a.last_activity_time else None,
-            "token": a.token,
-            "is_invitable": is_invitable,
-            "is_available": is_available
+            "token": a.token
         })
-
-    # Add available agents not yet in DB
-    import datetime
-    for aname, cfg in available_config.items():
-        if aname not in seen_names and cfg.get("enabled", False):
-            result.append({
-                "id": f"dummy-{aname}",
-                "name": aname,
-                "display_name": cfg.get("display_name", aname),
-                "alias_source": "auto",
-                "description": cfg.get("description", ""),
-                "ide": "cli",
-                "model": "unknown",
-                "is_online": False,
-                "last_heartbeat": datetime.datetime.fromtimestamp(0, datetime.timezone.utc).isoformat(),
-                "last_activity": "offline",
-                "last_activity_time": None,
-                "token": "",
-                "is_invitable": True,
-                "is_available": True
-            })
 
     return result
 
@@ -453,9 +419,6 @@ class AgentToken(BaseModel):
     agent_id: str
     token: str
 
-class AgentInvite(BaseModel):
-    agent_name: str
-    thread_id: str
 
 @app.post("/api/agents/register", status_code=200)
 async def api_agent_register(body: AgentRegister):
@@ -532,26 +495,7 @@ async def api_agent_unregister(body: AgentToken):
         raise HTTPException(status_code=401, detail="Invalid agent_id/token")
     return {"ok": ok}
 
-@app.post("/api/agents/invite", status_code=200)
-async def api_agent_invite(body: AgentInvite):
-    from src.tools.dispatch import handle_agent_invite
-    try:
-        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
-        res = await asyncio.wait_for(
-            handle_agent_invite(db, {"agent_name": body.agent_name, "thread_id": body.thread_id}),
-            timeout=DB_TIMEOUT
-        )
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=503, detail="Database operation timeout")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-        
-    if res and len(res) > 0:
-        data = json.loads(res[0].text)
-        if not data.get("ok"):
-            raise HTTPException(status_code=400, detail=data.get("reason", "Unknown error"))
-        return data
-    raise HTTPException(status_code=500, detail="No response from tool")
+
 
 
 

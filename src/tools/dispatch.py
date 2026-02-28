@@ -26,114 +26,6 @@ import src.mcp_server
 from src.config import BUS_VERSION, HOST, PORT, MSG_WAIT_TIMEOUT
 import os
 
-def _load_available_agents():
-    config_path = Path(os.path.join(Path(__file__).resolve().parent.parent.parent, "config", "available-agents.json"))
-    if config_path.exists():
-        try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, dict):
-                    if "agents" in data and isinstance(data["agents"], list):
-                        return {a["name"]: a for a in data["agents"] if isinstance(a, dict) and "name" in a}
-                    return data
-                return {}
-        except Exception as e:
-            logger.warning(f"Failed to load available-agents.json: {e}")
-    return {}
-
-async def handle_agent_invite(db, arguments: dict[str, Any]) -> list[types.TextContent]:
-    import uuid
-    agent_name = arguments.get("agent_name")
-    thread_id = arguments.get("thread_id")
-    available_agents = _load_available_agents()
-    agent_cfg = available_agents.get(agent_name)
-    if not agent_cfg or not agent_cfg.get("enabled", False):
-        return [types.TextContent(type="text", text=json.dumps({
-            "ok": False,
-            "agent_name": agent_name,
-            "reason": "Agent not found or not enabled.",
-            "command_executed": None
-        }))]
-    
-    cmd = agent_cfg["invoke_command"].replace("{thread_id}", str(thread_id))
-    cmd = cmd.replace("{session_id}", uuid.uuid4().hex)
-    cmd = cmd.replace("{bus_address}", f"http://{HOST}:{PORT}")
-
-    # Build a robust execution path for Copilot CLI invites.
-    # If this is the Copilot CLI, construct a prompt that instructs Copilot how to join the thread.
-    timeout_s = int(agent_cfg.get("timeout_seconds", 30))
-
-    # If agent is copilot-cli, produce a detailed prompt guiding it to use the MCP and join the thread.
-    if agent_name.lower().startswith("copilot"):
-        safe_thread = str(thread_id)
-        prompt_lines = [
-            f"请使用 agentchatbus 工具（MCP）参加讨论。进入 \"{safe_thread}\" Thread。Thread 必须严格相等，不得进入相似 Thread。如果不存在，你可以创建，但不能创建新的标题。请先注册并且可以先发一条信息。",
-            "步骤：",
-            "1) 如果你还没有注册，请用 agentchatbus 工具注册一个新 agent，显示名如 'Copilot CLI (invited)'。",
-            "2) 加入 topic 精确为上述字符串的 thread。如果 thread 不存在，创建它（标题必须完全一致）。",
-            "3) 加入后，发送一条简短的自我介绍消息，说明你是被 invite 进来的，并描述你的能力。",
-            "4) 用 JSON 回复结果，如：{\"joined\": true, \"thread\": \"BusR0222\", \"notes\": \"已注册并发送介绍\"}。",
-            "注意：必须严格匹配 thread topic，不要选择相似的。未经其它 agent 明确同意，不要做任何破坏性文件编辑。",
-            f"MCP endpoint: http://{HOST}:{PORT}。完成后请退出。"
-        ]
-        prompt = "\n".join(prompt_lines)
-
-        import uuid as _uuid
-        tmp_fn = f"copilot_invite_{_uuid.uuid4().hex}.txt"
-        tmp_path = Path.cwd() / tmp_fn
-        safe_prompt = prompt.replace('"', '\\"')
-        cmd = 'copilot -i "{}" > "{}" 2>&1; Get-Content "{}"'.format(safe_prompt, tmp_path, tmp_path)
-
-    logger.info(f"[agent_invite] Invoking CLI agent: {cmd}")
-
-    async def _run_and_capture(cmd_str: str, timeout: int):
-        try:
-            proc = await asyncio.create_subprocess_shell(
-                cmd_str,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            try:
-                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-            except asyncio.TimeoutError:
-                proc.kill()
-                await proc.wait()
-                return False, b"", b"Process timed out"
-
-            return True, stdout or b"", stderr or b""
-        except Exception as e:
-            return False, b"", str(e).encode()
-
-    ok, out_b, err_b = await _run_and_capture(cmd, timeout_s)
-    out = out_b.decode(errors="ignore").strip()
-    err = err_b.decode(errors="ignore").strip()
-
-    if not ok:
-        reason = f"Invite failed or timed out: {err}" if err else "Invite failed or timed out"
-        logger.error(f"[agent_invite] {agent_name} error: {reason}")
-        return [types.TextContent(type="text", text=json.dumps({
-            "ok": False,
-            "agent_name": agent_name,
-            "reason": reason,
-            "command_executed": cmd,
-            "stdout": out,
-            "stderr": err,
-        }))]
-
-    # Success: return captured output for debugging and further processing
-    logger.info(f"[agent_invite] {agent_name} stdout: {out}")
-    if err:
-        logger.warning(f"[agent_invite] {agent_name} stderr: {err}")
-
-    return [types.TextContent(type="text", text=json.dumps({
-        "ok": True,
-        "agent_name": agent_name,
-        "reason": "Invite command executed and output captured.",
-        "command_executed": cmd,
-        "stdout": out,
-        "stderr": err,
-    }))]
-
 logger = logging.getLogger(__name__)
 
 
@@ -333,41 +225,7 @@ async def handle_msg_post(db, arguments: dict[str, Any]) -> list[types.TextConte
         metadata=arguments.get("metadata"),
     )
 
-    mentions = arguments.get("mentions")
-    if mentions and isinstance(mentions, list):
-        import datetime
-        from src.config import AGENT_HEARTBEAT_TIMEOUT
-        for aid in mentions:
-            if not isinstance(aid, str):
-                continue
-            try:
-                async with db.execute("SELECT resume_command, last_heartbeat FROM agents WHERE id = ?", (aid,)) as cur:
-                    row = await cur.fetchone()
-                if row and row["resume_command"]:
-                    # Check if agent is considered offline
-                    last_hb = datetime.datetime.fromisoformat(row["last_heartbeat"])
-                    elapsed = (datetime.datetime.now(datetime.timezone.utc) - last_hb).total_seconds()
-                    if elapsed > AGENT_HEARTBEAT_TIMEOUT:
-                        cmd = row["resume_command"].replace("{thread_id}", thread_id)
-                        logger.info(f"[msg_post] Auto-waking offline CLI agent {aid[:8]} with command: {cmd}")
-                        
-                        async def _run_and_log(cmd_str: str, aid_str: str):
-                            try:
-                                proc = await asyncio.create_subprocess_shell(
-                                    cmd_str, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-                                )
-                                stdout, stderr = await proc.communicate()
-                                if proc.returncode != 0:
-                                    err_msg = stderr.decode(errors="ignore").strip()
-                                    logger.error(f"[msg_post] Agent {aid_str} wake up failed (exit {proc.returncode}): {err_msg}")
-                                else:
-                                    logger.info(f"[msg_post] Agent {aid_str} wake up command finished successfully.")
-                            except Exception as e:
-                                logger.error(f"[msg_post] Error executing wake up command for {aid_str}: {e}")
-                                
-                        asyncio.create_task(_run_and_log(cmd, aid))
-            except Exception as e:
-                logger.warning(f"[msg_post] Failed to process auto-wake for agent {aid}: {e}")
+
 
     return [types.TextContent(type="text", text=json.dumps({
         "msg_id": msg.id, "seq": msg.seq,
@@ -451,7 +309,6 @@ async def handle_agent_register(db, arguments: dict[str, Any]) -> list[types.Tex
         description=arguments.get("description", ""),
         capabilities=arguments.get("capabilities"),
         display_name=arguments.get("display_name"),
-        resume_command=arguments.get("resume_command"),
     )
     src.mcp_server._current_agent_id.set(agent.id)
     src.mcp_server._current_agent_token.set(agent.token)
@@ -465,7 +322,6 @@ async def handle_agent_register(db, arguments: dict[str, Any]) -> list[types.Tex
         "token": agent.token,
         "last_activity": agent.last_activity,
         "last_activity_time": agent.last_activity_time.isoformat() if agent.last_activity_time else None,
-        "resume_command": agent.resume_command,
     }))]
 
 async def handle_agent_heartbeat(db, arguments: dict[str, Any]) -> list[types.TextContent]:
@@ -541,7 +397,6 @@ TOOLS_DISPATCH = {
     "agent_unregister": handle_agent_unregister,
     "agent_list": handle_agent_list,
     "agent_set_typing": handle_agent_set_typing,
-    "agent_invite": handle_agent_invite,
 }
 
 async def dispatch_tool(db, name: str, arguments: dict[str, Any]) -> list[types.Content]:

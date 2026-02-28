@@ -225,7 +225,6 @@ async def list_tools() -> list[types.Tool]:
                     "capabilities": {"type": "array", "items": {"type": "string"},
                                      "description": "List of capability tags, e.g. ['code', 'review']."},
                     "display_name": {"type": "string", "description": "Optional human-friendly alias shown in UI and message labels."},
-                    "resume_command": {"type": "string", "description": "Optional shell command to execute to resume or auto-wake this agent if offline."},
                 },
                 "required": ["ide", "model"],
             },
@@ -282,29 +281,6 @@ async def list_tools() -> list[types.Tool]:
                     "is_typing":  {"type": "boolean"},
                 },
                 "required": ["thread_id", "agent_id", "is_typing"],
-            },
-        ),
-        types.Tool(
-            name="agent_invite",
-            description=(
-                "Invite a local CLI agent to join a thread. "
-                "The agent will be spawned with the configured invoke_command. "
-                "This is an explicit, human-driven action (not automatic). "
-                "The agent itself manages its session and connection lifecycle."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "agent_name": {
-                        "type": "string",
-                        "description": "Name of the agent from config (e.g. 'copilot-cli')"
-                    },
-                    "thread_id": {
-                        "type": "string",
-                        "description": "UUID of the thread to invite the agent to"
-                    },
-                },
-                "required": ["agent_name", "thread_id"],
             },
         ),
 

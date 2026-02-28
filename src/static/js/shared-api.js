@@ -12,15 +12,7 @@
     }
   }
 
-  async function inviteAgent(agentName, threadId) {
-    return api("/api/agents/invite", {
-      method: "POST",
-      body: JSON.stringify({ agent_name: agentName, thread_id: threadId }),
-    });
-  }
-
   window.AcbApi = {
     api,
-    inviteAgent,
   };
 })();

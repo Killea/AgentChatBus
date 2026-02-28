@@ -106,8 +106,7 @@ async def init_schema(db: aiosqlite.Connection) -> None:
             display_name    TEXT,
             alias_source    TEXT,
             last_activity   TEXT,
-            last_activity_time TEXT,
-            resume_command  TEXT
+            last_activity_time TEXT
         );
 
         -- ----------------------------------------------------------------
@@ -212,7 +211,6 @@ async def init_schema(db: aiosqlite.Connection) -> None:
     for col, typedef in [
         ("last_activity", "TEXT"),
         ("last_activity_time", "TEXT"),
-        ("resume_command", "TEXT"),
     ]:
         try:
             await db.execute(f"ALTER TABLE agents ADD COLUMN {col} {typedef}")
