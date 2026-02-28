@@ -943,9 +943,8 @@ body[data-theme="light"] .ctx-divider {
   <div id="status-dot"></div>
   <div class="status-label" id="status-label">Connected</div>
   <button id="btn-theme-toggle" type="button" onclick="toggleTheme()">Light</button>
-  <button id="btn-new-thread" onclick="openModal()">∩╝ï New Thread</button>
   <button id="btn-settings" type="button" onclick="openSettingsModal()" title="MCP Server Settings"
-    style="background: transparent; border: 1px solid var(--border-light); border-radius: 8px; font-size: 16px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-1); margin-left: 8px; transition: background 0.15s;">ΓÜÖ∩╕Å</button>
+    style="background: transparent; border: 1px solid var(--border-light); border-radius: 8px; font-size: 16px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-1); margin-left: 8px; transition: background 0.15s;">⚙️</button>
   <acb-icon-button button-id="btn-theme-toggle" label="Light" action="toggleTheme"></acb-icon-button>
   <button id="btn-new-thread" onclick="openModal()">＋ New Thread</button>
   <acb-icon-button button-id="btn-settings" label="⚙️" action="openSettingsModal" title="MCP Server Settings" aria-label="MCP Server Settings"></acb-icon-button>
@@ -1511,47 +1510,25 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
               });
           msgs.forEach(appendBubble);
           updateOnlinePresence();
-          await updateStatusBar();  // µû░µ╢êµü»σÅ»Φâ╜µ£ëµû░agents∩╝îµ¢┤µû░τè╢µÇüµáÅ
-          msgs.forEach(m => { lastSeq = Math.max(lastSeq, m.seq); });  // always advance cursor
+          await updateStatusBar();
+          msgs.forEach(m => { lastSeq = Math.max(lastSeq, m.seq); });
           if (msgs.length) scrollBottom(true);
         }
-    return window.AcbChat.selectThread({
-      id,
-      topic,
-      status,
-      setActiveThread: (threadId, threadStatus) => {
-        activeThreadId = threadId;
-        activeThreadStatus = threadStatus;
-      },
-      clearThreadParticipants: () => activeThreadLastSeenMs.clear(),
-      api,
-      rebuildActiveThreadParticipants,
-      appendBubble,
-      updateOnlinePresence,
-      updateStatusBar,
-      setLastSeq: (next) => {
-        lastSeq = typeof next === 'function' ? next(lastSeq) : next;
-      },
-      scrollBottom,
-    });
   }
 
   async function loadNewMessages() {
-    return window.AcbChat.loadNewMessages({
-      getActiveThreadId: () => activeThreadId,
-      getLastSeq: () => lastSeq,
-      api,
-      getAgentPresenceKey,
-      getAgentDisplayName,
-      recordThreadAgentActivity,
-      appendBubble,
-      updateOnlinePresence,
-      updateStatusBar,
-      setLastSeq: (next) => {
-        lastSeq = typeof next === 'function' ? next(lastSeq) : next;
-      },
-      scrollBottom,
+    if (!activeThreadId) return;
+    const msgs = await api(`/api/threads/${activeThreadId}/messages?after_seq=${lastSeq}&limit=100`) || [];
+    msgs.forEach((m) => {
+      const key = getAgentPresenceKey(m);
+      const label = getAgentDisplayName(m);
+      if (key) recordThreadAgentActivity(key, label, m.created_at);
     });
+    msgs.forEach(appendBubble);
+    updateOnlinePresence();
+    await updateStatusBar();
+    msgs.forEach(m => { lastSeq = Math.max(lastSeq, m.seq); });
+    if (msgs.length) scrollBottom(true);
   }
 
     async function closeThread(threadId = activeThreadId) {
