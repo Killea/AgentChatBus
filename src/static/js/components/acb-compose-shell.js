@@ -38,7 +38,8 @@
       const mentions = [];
       for (const child of input.childNodes) {
         if (child.nodeType === 1 && child.getAttribute && child.getAttribute('data-mention-id')) {
-          mentions.push(child.getAttribute('data-mention-id'));
+          const label = child.getAttribute('data-mention-label') || child.getAttribute('data-mention-id').slice(0, 8);
+          mentions.push(label);
         }
       }
       return mentions;
@@ -173,11 +174,15 @@
       if (acb) {
         const input = acb.querySelector('#compose-input');
         if (input) {
+          const agentId = row.dataset.agentId;
+          const agentLabel = row.dataset.agentLabel || agentId.slice(0, 8);
+
           const mentionSpan = document.createElement('span');
-          mentionSpan.setAttribute('data-mention-id', row.dataset.agentId);
+          mentionSpan.setAttribute('data-mention-id', agentId);
+          mentionSpan.setAttribute('data-mention-label', agentLabel);
           mentionSpan.contentEditable = 'false';
           mentionSpan.style.cssText = 'background: rgba(59,130,246,0.2); color: #3b82f6; padding: 2px 6px; border-radius: 4px; margin: 0 4px; font-weight: 500; border: 1px solid #3b82f6; display: inline-block;';
-          mentionSpan.textContent = `@${row.dataset.agentId.slice(0, 8)}`;
+          mentionSpan.textContent = `@${agentLabel}`;
 
           input.appendChild(mentionSpan);
           input.appendChild(document.createTextNode(' '));

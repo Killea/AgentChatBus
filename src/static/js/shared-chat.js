@@ -98,7 +98,7 @@
     for (const node of input.childNodes) {
       if (node.nodeType === 3) {
         content += node.textContent;
-      } else if (node.nodeType === 1 && !node.getAttribute('data-mention-id')) {
+      } else if (node.nodeType === 1) {
         content += node.textContent;
       }
     }
