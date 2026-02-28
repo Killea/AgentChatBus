@@ -1183,31 +1183,16 @@ body[data-theme="light"] .ctx-divider {
       `;
 
       infoEl.addEventListener('mouseenter', () => {
-        clearTimeout(infoTooltipHideTimer);
-        
-        // Update tooltip content
-        let tooltipHtml = `
-          <div style="padding:8px 12px;"><div style="font-size:12px;color:var(--text-2);margin-bottom:6px;">Status Legend:</div>
-            <div class="state-item"><span class="state-emoji">🟢</span> <strong>Active:</strong> Activity within 30s</div>
-            <div class="state-item"><span class="state-emoji">🌙</span> <strong>Idle:</strong> Activity within 5m</div>
-            <div class="state-item"><span class="state-emoji">⏳</span> <strong>Waiting:</strong> Waiting for response (&lt;60s)</div>
-            <div class="state-item"><span class="state-emoji">⚫</span> <strong>Offline:</strong> No recent activity</div>
-          </div>
-        `;
-        infoTooltip.innerHTML = tooltipHtml;
-        
-        infoTooltip.classList.add('visible');
-        setTimeout(positionInfoTooltip, 0);
-      });
-      infoEl.addEventListener('mouseleave', () => {
-        infoTooltipHideTimer = setTimeout(() => infoTooltip.classList.remove('visible'), 200);
         window.AcbTooltip.showRich(infoEl, tooltipHtml, {
           interactive: false,
           maxWidth: '340px',
           className: 'acb-tooltip-info',
         });
       });
-      infoEl.addEventListener('mouseleave', () => window.AcbTooltip.scheduleHide(120));
+
+      infoEl.addEventListener('mouseleave', () => {
+        window.AcbTooltip.scheduleHide(120);
+      });
     })();
 
     function getResumePromptForAgent(agentId, displayName, token) {
