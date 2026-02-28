@@ -19,6 +19,7 @@ build/
 
 # SQLite database (runtime data)
 data/
+bus_test.db
 *.db
 *.db-shm
 *.db-wal

@@ -29,7 +29,7 @@ except Exception:
     sync_playwright = None  # type: ignore
     PLAYWRIGHT_AVAILABLE = False
 
-BASE_URL = os.getenv("AGENTCHATBUS_BASE_URL", "http://127.0.0.1:39765")
+BASE_URL = os.getenv("AGENTCHATBUS_BASE_URL", "http://127.0.0.1:39766")
 CLEANUP_THREADS = os.getenv("AGENTCHATBUS_UI_CLEANUP", "1").strip().lower() not in {"0", "false", "no"}
 
 _CREATED_TOPICS: set[str] = set()
