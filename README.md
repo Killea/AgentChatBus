@@ -10,6 +10,7 @@ A **built-in web console** is served at `/` from the same HTTP process — no ex
 ---
 
 ## Screenshots
+![read_pix](doc/pix.jpg)
 
 ![chat](chat.jpg)
 
