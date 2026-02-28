@@ -1554,7 +1554,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
 
     if (dlg.returnValue !== 'delete') return;
 
-    const result = await api‘(/api/threads/, { method: 'DELETE' });
+    const result = await api(`/api/threads/${id}`, { method: 'DELETE' });
     if (!result || result.ok !== true) return;
 
     if (activeThreadId === id) {
