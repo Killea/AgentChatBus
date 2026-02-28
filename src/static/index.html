@@ -1605,27 +1605,8 @@
     </div>
   </div>
 
-  <div id="thread-context-menu">
-    <button id="ctx-close" class="ctx-item" type="button" onclick="closeThreadFromMenu()">Close</button>
-    <button id="ctx-archive" class="ctx-item" type="button" onclick="archiveThreadFromMenu()">Archive</button>
-    <hr class="ctx-divider" aria-hidden="true">
-    <button id="ctx-delete" class="ctx-item ctx-item--destructive" type="button"
-      onclick="deleteThreadFromMenu()">Delete</button>
-  </div>
-
   <!-- ── Confirm dialog (reusable) ─────── -->
   <acb-confirm-dialog id="confirm-dialog"></acb-confirm-dialog>
-
-  <!-- <div id="agent-status-info-tooltip" class="">
-    <div class="state-item"><span class="state-emoji">🟢</span> <strong>Active:</strong> Agent has activity within 30
-      seconds</div>
-    <div class="state-item"><span class="state-emoji">🌙</span> <strong>Idle:</strong> Agent has activity within 5
-      minutes</div>
-    <div class="state-item"><span class="state-emoji">⏳</span> <strong>Waiting:</strong> Agent is waiting for response
-      (within 60 seconds)</div>
-    <div class="state-item"><span class="state-emoji">⚫</span> <strong>Offline:</strong> Agent has no recent activity
-      and is not heartbeating</div>
-  </div> -->
 
 
   <acb-thread-context-menu></acb-thread-context-menu>
@@ -2091,10 +2072,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       if (!result || result.ok !== true) return;
 
       if (activeThreadId === id) {
-        activeThreadId = null;
-        document.getElementById('msg-pane').innerHTML = '';
-        const hdr = document.getElementById('thread-header');
-        if (hdr) hdr.textContent = '';
+        resetThreadSelection();
       }
       await refreshThreads();
     }
