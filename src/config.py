@@ -29,8 +29,8 @@ else:
 	# Installed package mode normally runs outside repository checkout.
 	DB_PATH = str(_user_default_db)
 
-# HTTP server
-HOST = os.getenv("AGENTCHATBUS_HOST", config_data.get("HOST", "0.0.0.0"))
+# HTTP server - default to localhost only for security
+HOST = os.getenv("AGENTCHATBUS_HOST", config_data.get("HOST", "127.0.0.1"))
 PORT = int(os.getenv("AGENTCHATBUS_PORT", config_data.get("PORT", "39765")))
 
 # Agent heartbeat timeout (seconds). Agents missing this window are marked offline.
