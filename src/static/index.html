@@ -1492,7 +1492,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
             <span class="msg-author-label" style="color:${color}">${esc(authorLabel)}</span>
             <span class="msg-time-label">seq ${m.seq} · ${fmtTime(m.created_at)}</span>
           </div>
-          <div class="bubble-v2" style="border-color:${color}55;${isHuman ? 'border-right-color' : 'border-left-color'}:${color}">${window.AcbMessageRenderer.renderMarkdown(m.content)}</div>
+          <div class="bubble-v2" style="border-color:${color}55;${isHuman ? 'border-right-color' : 'border-left-color'}:${color}"></div>
         </div>`;
 
       const bubbleEl = row.querySelector('.bubble-v2');

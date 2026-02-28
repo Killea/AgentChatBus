@@ -94,22 +94,9 @@
     return segs;
   }
 
-  function renderTextWithInlineCode(containerEl, text) {
-    const lines = String(text ?? "").split("\n");
-    for (let li = 0; li < lines.length; li++) {
-      const segs = parseInlineCodeSegments(lines[li]);
-      for (const seg of segs) {
-        if (seg.type === "inline_code") {
-          const code = document.createElement("code");
-          code.className = "inline-code";
-          code.textContent = seg.text;
-          containerEl.appendChild(code);
-        } else {
-          containerEl.appendChild(document.createTextNode(seg.text));
-        }
-      }
-      if (li !== lines.length - 1) containerEl.appendChild(document.createElement("br"));
-    }
+  function renderTextWithMarkdown(containerEl, text) {
+    const htmlStr = renderMarkdownToHTML(text);
+    containerEl.insertAdjacentHTML("beforeend", htmlStr);
   }
 
   function renderMessageContent(containerEl, rawText) {
@@ -150,7 +137,7 @@
         wrap.appendChild(pre);
         containerEl.appendChild(wrap);
       } else {
-        renderTextWithInlineCode(containerEl, tok.text);
+        renderTextWithMarkdown(containerEl, tok.text);
       }
     }
   }
@@ -277,10 +264,10 @@
     normalizeMessageText,
     tokenizeMessage,
     parseInlineCodeSegments,
-    renderTextWithInlineCode,
+    renderTextWithMarkdown,
     renderMessageContent,
     esc,
     inlineMd,
-    renderMarkdown,
+    renderMarkdownToHTML,
   };
 })();
