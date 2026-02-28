@@ -1558,7 +1558,7 @@
     <!-- <button id="btn-settings" type="button" onclick="openSettingsModal()" title="MCP Server Settings"
       style="background: transparent; border: 1px solid var(--border-light); border-radius: 8px; font-size: 16px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-1); margin-left: 8px; transition: background 0.15s;">⚙️</button> -->
     <acb-icon-button button-id="btn-theme-toggle" label="Light" action="toggleTheme"></acb-icon-button>
-    <button id="btn-new-thread" onclick="openModal()">＋ New Thread</button>
+    <acb-icon-button button-id="btn-new-thread" label="＋ New Thread" action="openModal" title="Create new thread"></acb-icon-button>
     <acb-icon-button button-id="btn-settings" label="⚙️" action="openSettingsModal" title="MCP Server Settings"
       aria-label="MCP Server Settings"></acb-icon-button>
   </div>
@@ -1616,55 +1616,6 @@
       <button type="button" value="delete" class="btn-destructive">Delete</button>
     </menu>
   </dialog>
-
-  <!-- ---- New thread modal ---------------------------------------------- -->
-  <div id="modal-overlay" onclick="closeModal(event)">
-    <div id="modal">
-      <h3>✦ Create New Thread</h3>
-      <input id="modal-topic" type="text" placeholder="Thread topic…"
-        onkeydown="if(event.key==='Enter') submitModal()" />
-      <div class="modal-actions">
-        <button class="btn-secondary" onclick="closeModal()">Cancel</button>
-        <button class="btn-primary" onclick="submitModal()">Create</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ---- Settings modal -------------------------------------------------- -->
-  <div id="settings-modal-overlay" onclick="closeSettingsModal(event)"
-    style="display:none; position: fixed; inset: 0; background: rgba(0,0,0,.7); align-items: center; justify-content: center; z-index: 100; animation: fade-in .15s ease;">
-    <div id="settings-modal"
-      style="background: var(--bg-card); border: 1px solid var(--border-light); border-radius: 14px; padding: 28px; width: 440px; max-width: 90vw; box-shadow: var(--shadow); animation: modal-in .2s ease;"
-      onclick="event.stopPropagation()">
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 18px; color: var(--text-1)">⚙️ MCP Server Settings
-      </h3>
-
-      <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Host</label>
-      <input id="setting-host" type="text"
-        style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-1); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; margin-bottom: 16px;" />
-
-      <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Port</label>
-      <input id="setting-port" type="number"
-        style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-1); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; margin-bottom: 16px;" />
-
-      <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Agent Heartbeat Timeout
-        (s)</label>
-      <input id="setting-heartbeat" type="number"
-        style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-1); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; margin-bottom: 16px;" />
-
-      <label style="display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px;">Wait Timeout (s)</label>
-      <input id="setting-wait" type="number"
-        style="width: 100%; background: var(--bg-input); border: 1px solid var(--border-light); color: var(--text-1); border-radius: 10px; padding: 10px 14px; font-size: 14px; font-family: inherit; margin-bottom: 16px;" />
-
-      <div id="settings-message" style="font-size: 12px; color: var(--green); margin-bottom: 16px; display: none;">
-      </div>
-
-      <div class="modal-actions">
-        <button class="btn-secondary" onclick="closeSettingsModal()">Cancel</button>
-        <button class="btn-primary" onclick="submitSettings()">Save (Requires Restart)</button>
-      </div>
-    </div>
-  </div>
 
   <!-- <div id="agent-status-info-tooltip" class="">
     <div class="state-item"><span class="state-emoji">🟢</span> <strong>Active:</strong> Agent has activity within 30
