@@ -1484,36 +1484,20 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     // Header
     document.getElementById('thread-header').style.display = 'flex';
     document.getElementById('thread-title').textContent = topic;
-          document.getElementById('compose').classList.add('visible');
+    document.getElementById('compose').classList.add('visible');
 
-          // Clear messages
-          const box = document.getElementById('messages');
-          box.innerHTML = '';
+    // Clear messages
+    const box = document.getElementById('messages');
+    box.innerHTML = '';
 
-          // Load history
-          const msgs = await api(`/api/threads/${id}/messages?after_seq=0&limit=300&include_system_prompt=1`) || [];
-          rebuildActiveThreadParticipants(msgs);
-          msgs.forEach(appendBubble);
-          updateOnlinePresence();
-          await updateStatusBar();  // µ¢┤µû░τè╢µÇüµáÅµÿ╛τñ║Φ»ÑthreadτÜäµëÇµ£ëagents
-          if (msgs.length) lastSeq = msgs[msgs.length - 1].seq;
+    // Load history
+    const msgs = await api(`/api/threads/${id}/messages?after_seq=0&limit=300&include_system_prompt=1`) || [];
+    rebuildActiveThreadParticipants(msgs);
+    msgs.forEach(appendBubble);
+    updateOnlinePresence();
+    await updateStatusBar();
+    if (msgs.length) lastSeq = msgs[msgs.length - 1].seq;
     scrollBottom(false);
-        }
-
-        async function loadNewMessages() {
-          if (!activeThreadId) return;
-          const msgs = await api(`/api/threads/${activeThreadId}/messages?after_seq=${lastSeq}&limit=100`) || [];
-              msgs.forEach((m) => {
-                const key = getAgentPresenceKey(m);
-                const label = getAgentDisplayName(m);
-                if (key) recordThreadAgentActivity(key, label, m.created_at);
-              });
-          msgs.forEach(appendBubble);
-          updateOnlinePresence();
-          await updateStatusBar();
-          msgs.forEach(m => { lastSeq = Math.max(lastSeq, m.seq); });
-          if (msgs.length) scrollBottom(true);
-        }
   }
 
   async function loadNewMessages() {
@@ -1570,7 +1554,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
 
     if (dlg.returnValue !== 'delete') return;
 
-    const result = await api(/api/threads/, { method: 'DELETE' });
+    const result = await api‘(/api/threads/, { method: 'DELETE' });
     if (!result || result.ok !== true) return;
 
     if (activeThreadId === id) {
@@ -1832,41 +1816,107 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     // Compose
     // ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
     async function sendMessage() {
-    return window.AcbChat.sendMessage({
-      getActiveThreadId: () => activeThreadId,
-      updateOnlinePresence,
-      autoResize,
-      api,
-      setLastSeq: (next) => {
-        lastSeq = typeof next === 'function' ? next(lastSeq) : next;
-      },
-      appendBubble,
-      scrollBottom,
-    });
+    const input = document.getElementById("compose-input");
+    const author = document.getElementById("compose-author").value.trim() || "human";
+    const acb = document.querySelector('acb-compose-shell');
+
+    // Extract text content
+    let content = '';
+    for (const node of input.childNodes) {
+      if (node.nodeType === 3) {
+        content += node.textContent;
+      } else if (node.nodeType === 1 && !node.getAttribute('data-mention-id')) {
+        content += node.textContent;
+      }
+    }
+    content = content.trim();
+
+    // Get uploaded images
+    const images = acb?.uploadedImages || [];
+
+    if ((!content && images.length === 0) || !activeThreadId) return;
+
+    // Extract mentions
+    const mentions = [];
+    for (const child of input.childNodes) {
+      if (child.nodeType === 1 && child.getAttribute && child.getAttribute('data-mention-id')) {
+        mentions.push(child.getAttribute('data-mention-id'));
+      }
     }
 
+    updateOnlinePresence();
+    input.innerHTML = '';
+    const messageBar = document.getElementById("mentions-bar");
+    if (messageBar) messageBar.style.display = 'none';
+    if (acb && acb.uploadedImages) acb.uploadedImages = [];
+    if (acb && acb.renderImagePreview) acb.renderImagePreview();
+
+    const payload = {
+      author,
+      role: "user",
+      content,
+      mentions: mentions.length > 0 ? mentions : undefined,
+      images: images.length > 0 ? images : undefined
+    };
+
+    const m = await api(`/api/threads/${activeThreadId}/messages`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+
+    if (m) {
+      lastSeq = Math.max(lastSeq, m.seq);
+      appendBubble({ ...m, created_at: new Date().toISOString() });
+      scrollBottom(true);
+    }
+  }
+
   function handleKey(e) {
-    return window.AcbChat.handleKey(e, sendMessage);
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
   }
 
     function autoResize(el) {
-      return window.AcbUtils.autoResize(el);
     }
 
     // ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
     // Agents
     // ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
   async function refreshAgents() {
-    return window.AcbAgents.refreshAgents({
-      api,
-      hideAgentTooltip,
-      setCurrentAgents: (agents) => {
-        currentAgents = agents;
-      },
-      onlineAgentKeys,
-      onlineAgentLabelsByKey,
-      updateOnlinePresence,
+    const agents = await api('/api/agents') || [];
+    currentAgents = agents;
+    
+    const agentListEl = document.getElementById('agent-status-list');
+    if (!agentListEl) return;
+    
+    agentListEl.innerHTML = '';
+    
+    agents.forEach(agent => {
+      const item = document.createElement('div');
+      item.className = 'agent-status-item';
+      
+      const state = getAgentState(agent);
+      const emoji = getStateEmoji(state);
+      
+      item.innerHTML = `
+        <div class="agent-status-emoji">${emoji}</div>
+        <div class="agent-status-text">
+          <div class="agent-alias">${agent.display_name || agent.name}</div>
+          <div class="agent-state">${state}</div>
+        </div>
+      `;
+      
+      if (agent.is_online) {
+        item.addEventListener('mouseenter', () => showAgentTooltip(item, agent));
+        item.addEventListener('mouseleave', () => scheduleAgentTooltipHide());
+      }
+      
+      agentListEl.appendChild(item);
     });
+    
+    updateOnlinePresence();
   }
 
         // ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
