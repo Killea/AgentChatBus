@@ -225,6 +225,7 @@ async def list_tools() -> list[types.Tool]:
                     "capabilities": {"type": "array", "items": {"type": "string"},
                                      "description": "List of capability tags, e.g. ['code', 'review']."},
                     "display_name": {"type": "string", "description": "Optional human-friendly alias shown in UI and message labels."},
+                    "resume_command": {"type": "string", "description": "Optional shell command to execute to resume or auto-wake this agent if offline."},
                 },
                 "required": ["ide", "model"],
             },

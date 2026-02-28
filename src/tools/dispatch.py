@@ -208,14 +208,52 @@ async def handle_thread_get(db, arguments: dict[str, Any]) -> list[types.TextCon
     }))]
 
 async def handle_msg_post(db, arguments: dict[str, Any]) -> list[types.TextContent]:
+    thread_id = arguments["thread_id"]
     msg = await crud.msg_post(
         db,
-        thread_id=arguments["thread_id"],
+        thread_id=thread_id,
         author=arguments["author"],
         content=arguments["content"],
         role=arguments.get("role", "user"),
         metadata=arguments.get("metadata"),
     )
+
+    mentions = arguments.get("mentions")
+    if mentions and isinstance(mentions, list):
+        import datetime
+        from src.config import AGENT_HEARTBEAT_TIMEOUT
+        for aid in mentions:
+            if not isinstance(aid, str):
+                continue
+            try:
+                async with db.execute("SELECT resume_command, last_heartbeat FROM agents WHERE id = ?", (aid,)) as cur:
+                    row = await cur.fetchone()
+                if row and row["resume_command"]:
+                    # Check if agent is considered offline
+                    last_hb = datetime.datetime.fromisoformat(row["last_heartbeat"])
+                    elapsed = (datetime.datetime.now(datetime.timezone.utc) - last_hb).total_seconds()
+                    if elapsed > AGENT_HEARTBEAT_TIMEOUT:
+                        cmd = row["resume_command"].replace("{thread_id}", thread_id)
+                        logger.info(f"[msg_post] Auto-waking offline CLI agent {aid[:8]} with command: {cmd}")
+                        
+                        async def _run_and_log(cmd_str: str, aid_str: str):
+                            try:
+                                proc = await asyncio.create_subprocess_shell(
+                                    cmd_str, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                                )
+                                stdout, stderr = await proc.communicate()
+                                if proc.returncode != 0:
+                                    err_msg = stderr.decode(errors="ignore").strip()
+                                    logger.error(f"[msg_post] Agent {aid_str} wake up failed (exit {proc.returncode}): {err_msg}")
+                                else:
+                                    logger.info(f"[msg_post] Agent {aid_str} wake up command finished successfully.")
+                            except Exception as e:
+                                logger.error(f"[msg_post] Error executing wake up command for {aid_str}: {e}")
+                                
+                        asyncio.create_task(_run_and_log(cmd, aid))
+            except Exception as e:
+                logger.warning(f"[msg_post] Failed to process auto-wake for agent {aid}: {e}")
+
     return [types.TextContent(type="text", text=json.dumps({
         "msg_id": msg.id, "seq": msg.seq,
     }))]
@@ -298,6 +336,7 @@ async def handle_agent_register(db, arguments: dict[str, Any]) -> list[types.Tex
         description=arguments.get("description", ""),
         capabilities=arguments.get("capabilities"),
         display_name=arguments.get("display_name"),
+        resume_command=arguments.get("resume_command"),
     )
     src.mcp_server._current_agent_id.set(agent.id)
     src.mcp_server._current_agent_token.set(agent.token)
@@ -311,6 +350,7 @@ async def handle_agent_register(db, arguments: dict[str, Any]) -> list[types.Tex
         "token": agent.token,
         "last_activity": agent.last_activity,
         "last_activity_time": agent.last_activity_time.isoformat() if agent.last_activity_time else None,
+        "resume_command": agent.resume_command,
     }))]
 
 async def handle_agent_heartbeat(db, arguments: dict[str, Any]) -> list[types.TextContent]:

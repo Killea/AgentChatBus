@@ -102,7 +102,12 @@ async def init_schema(db: aiosqlite.Connection) -> None:
             capabilities    TEXT,
             registered_at   TEXT NOT NULL,
             last_heartbeat  TEXT NOT NULL,
-            token           TEXT NOT NULL
+            token           TEXT NOT NULL,
+            display_name    TEXT,
+            alias_source    TEXT,
+            last_activity   TEXT,
+            last_activity_time TEXT,
+            resume_command  TEXT
         );
 
         -- ----------------------------------------------------------------
@@ -207,6 +212,7 @@ async def init_schema(db: aiosqlite.Connection) -> None:
     for col, typedef in [
         ("last_activity", "TEXT"),
         ("last_activity_time", "TEXT"),
+        ("resume_command", "TEXT"),
     ]:
         try:
             await db.execute(f"ALTER TABLE agents ADD COLUMN {col} {typedef}")

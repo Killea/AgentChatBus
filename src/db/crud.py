@@ -334,6 +334,7 @@ async def agent_register(
     description: str = "",
     capabilities: Optional[list] = None,
     display_name: Optional[str] = None,
+    resume_command: Optional[str] = None,
 ) -> AgentInfo:
     """
     Register a new agent on the bus.
@@ -369,9 +370,9 @@ async def agent_register(
     clean_display_name = (display_name or "").strip() or name
     alias_source = "user" if (display_name or "").strip() else "auto"
     await db.execute(
-        "INSERT INTO agents (id, name, ide, model, description, capabilities, registered_at, last_heartbeat, token, display_name, alias_source, last_activity, last_activity_time) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (aid, name, ide, model, description, caps_json, now, now, token, clean_display_name, alias_source, "registered", now),
+        "INSERT INTO agents (id, name, ide, model, description, capabilities, registered_at, last_heartbeat, token, display_name, alias_source, last_activity, last_activity_time, resume_command) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (aid, name, ide, model, description, caps_json, now, now, token, clean_display_name, alias_source, "registered", now, resume_command),
     )
     await db.commit()
     await _emit_event(db, "agent.online", None, {"agent_id": aid, "name": name, "ide": ide, "model": model})
@@ -380,7 +381,8 @@ async def agent_register(
                      capabilities=caps_json, registered_at=_parse_dt(now),
                      last_heartbeat=_parse_dt(now), is_online=True, token=token,
                      display_name=clean_display_name, alias_source=alias_source,
-                     last_activity="registered", last_activity_time=_parse_dt(now))
+                     last_activity="registered", last_activity_time=_parse_dt(now),
+                     resume_command=resume_command)
 
 
 async def _set_agent_activity(
@@ -495,6 +497,7 @@ def _row_to_agent(row: aiosqlite.Row) -> AgentInfo:
         alias_source=alias_source,
         last_activity=last_activity,
         last_activity_time=last_activity_time,
+        resume_command=row["resume_command"] if "resume_command" in row.keys() else None,
     )
 
 
