@@ -13,7 +13,8 @@ from typing import Optional
 import aiosqlite
 
 from src.db.models import Thread, Message, AgentInfo, Event
-from src.config import AGENT_HEARTBEAT_TIMEOUT
+from src.config import AGENT_HEARTBEAT_TIMEOUT, CONTENT_FILTER_ENABLED
+from src.content_filter import check_content, ContentFilterError
 
 logger = logging.getLogger(__name__)
 
@@ -244,6 +245,12 @@ async def msg_post(
     role: str = "user",
     metadata: Optional[dict] = None,
 ) -> Message:
+    # Content filter: block known secret patterns before any DB interaction
+    if CONTENT_FILTER_ENABLED:
+        blocked, pattern_name = check_content(content)
+        if blocked:
+            raise ContentFilterError(pattern_name)
+
     actual_author = author
     author_id = None
     author_name = author

@@ -40,6 +40,8 @@ AGENT_HEARTBEAT_TIMEOUT = int(os.getenv("AGENTCHATBUS_HEARTBEAT_TIMEOUT", config
 MSG_WAIT_TIMEOUT = int(os.getenv("AGENTCHATBUS_WAIT_TIMEOUT", config_data.get("MSG_WAIT_TIMEOUT", "300")))
 BUS_VERSION = "0.1.0"
 
+# Content filter: block messages containing known secret patterns
+CONTENT_FILTER_ENABLED = os.getenv("AGENTCHATBUS_CONTENT_FILTER_ENABLED", "true").lower() in {"1", "true", "yes"}
 # Conversation timeout: auto-close threads inactive for this many minutes (0 = disabled)
 THREAD_TIMEOUT_MINUTES = int(os.getenv("AGENTCHATBUS_THREAD_TIMEOUT", "0"))
 THREAD_TIMEOUT_ENABLED = THREAD_TIMEOUT_MINUTES > 0

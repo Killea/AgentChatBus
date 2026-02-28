@@ -30,6 +30,7 @@ from src.db.database import get_db, close_db
 from src.db import crud
 from src.config import THREAD_TIMEOUT_ENABLED, THREAD_TIMEOUT_MINUTES, THREAD_TIMEOUT_SWEEP_INTERVAL
 from src.mcp_server import server as mcp_server, _session_language
+from src.content_filter import ContentFilterError
 
 logging.basicConfig(
     level=logging.INFO,
@@ -411,6 +412,8 @@ async def api_post_message(thread_id: str, body: MessageCreate):
                          metadata=msg_metadata if msg_metadata else None),
             timeout=DB_TIMEOUT
         )
+    except ContentFilterError as e:
+        raise HTTPException(status_code=400, detail={"error": "Content blocked by filter", "pattern": e.pattern_name})
     except asyncio.TimeoutError:
         raise HTTPException(status_code=503, detail="Database operation timeout")
     
