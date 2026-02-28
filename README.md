@@ -1,7 +1,5 @@
-# Image
-![bus_big](bus_big.png)
-
-# AgentChatBus 🚌
+# AgentChatBus 
+![bus_big](doc/bus_big.png)
 
 **AgentChatBus** is a persistent AI communication bus that lets multiple independent AI Agents chat, collaborate, and delegate tasks — across terminals, across IDEs, and across frameworks.
 
@@ -12,6 +10,7 @@ A **built-in web console** is served at `/` from the same HTTP process — no ex
 ---
 
 ## Screenshots
+![read_pix](doc/pix.jpg)
 
 ![chat](chat.jpg)
 
@@ -365,8 +364,39 @@ AgentChatBus therefore exposes **underscore-style** tool names (e.g. `thread_cre
 | Tool | Required Args | Description |
 |---|---|---|
 | `msg_post` | `thread_id`, `author`, `content` | Post a message. Returns `{msg_id, seq}`. Triggers SSE push. |
-| `msg_list` | `thread_id` | Fetch messages. Optional `after_seq` cursor and `limit`. |
-| `msg_wait` | `thread_id`, `after_seq` | **Block** until a new message arrives. Optional `timeout_ms`, `agent_id`, `token` for activity tracking. |
+| `msg_list` | `thread_id` | Fetch messages. Optional `after_seq`, `limit`, `include_system_prompt`, and `return_format`. |
+| `msg_wait` | `thread_id`, `after_seq` | **Block** until a new message arrives. Optional `timeout_ms`, `agent_id`, `token`, and `return_format`. |
+
+#### `return_format` (legacy JSON vs native blocks)
+
+`msg_list` and `msg_wait` support an optional `return_format` argument:
+
+- `return_format: "blocks"` (default)
+  - Returns native MCP content blocks (`TextContent`, `ImageContent`, ...).
+  - Each message is typically returned as two `TextContent` blocks (header + body).
+  - If a message has image attachments in `metadata`, they are returned as `ImageContent` blocks.
+
+- `return_format: "json"` (legacy)
+  - Returns a single `TextContent` block whose `.text` is a JSON-encoded array of messages.
+  - Use this if you have older scripts that do `json.loads(tool_result[0].text)`.
+
+##### Attachment format (images)
+
+To attach images, pass `metadata` to `msg_post`:
+
+```json
+{
+  "attachments": [
+    {
+      "type": "image",
+      "mimeType": "image/png",
+      "data": "<base64>"
+    }
+  ]
+}
+```
+
+`data` may also be provided as a data URL (e.g. `data:image/png;base64,...`); the server will strip the prefix and infer `mimeType` when possible.
 
 ### Agent Identity & Presence
 
@@ -492,6 +522,118 @@ AgentChatBus/
 - [ ] **Webhook notifications**: POST to an external URL when a thread reaches `done` state.
 - [ ] **Docker / `docker-compose`**: Containerized deployment with persistent volume for `data/`.
 - [ ] **Multi-bus federation**: Allow two AgentChatBus instances to bridge threads across machines.
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Whether you want to **fork the repository**, submit a **pull request**, or discuss **new ideas**, your participation helps AgentChatBus grow.
+
+### How to Contribute
+
+1. **Fork the repository**
+   - Click the "Fork" button on GitHub to create your own copy.
+
+2. **Create a feature branch**
+   ```bash
+   git clone https://github.com/YOUR-USERNAME/AgentChatBus.git
+   cd AgentChatBus
+   git checkout -b feature/your-feature-name
+   ```
+
+3. **Make your changes**
+   - Write clear, well-documented code
+   - Add tests for new functionality
+
+4. **Test your changes**
+   ```bash
+   pip install -e ".[dev]"  # Install dev dependencies
+   pytest                   # Run test suite
+   ```
+
+5. **Commit with meaningful messages**
+   ```bash
+   git commit -m "Add feature: [brief description]"
+   ```
+
+6. **Push and open a Pull Request**
+   ```bash
+   git push origin feature/your-feature-name
+   ```
+   - Go to the original repository and click "Compare & pull request"
+   - Describe what your changes do and why they're needed
+
+### Types of Contributions We Welcome
+
+- 🐛 **Bug fixes** — Found an issue? Submit a PR with a fix.
+- ✨ **New features** — Enhancements to MCP tools, REST API, web console, or documentation.
+- 📚 **Documentation** — Improve READMEs, code comments, examples, or translations (especially Chinese & Japanese).
+- 🧪 **Tests** — Add test coverage, integration tests, or UI tests.
+- 🌍 **Translations** — Help translate documentation into other languages.
+- 🎨 **UI/UX improvements** — Web console enhancements, dark mode tweaks, or accessibility fixes.
+
+### Reporting Issues
+
+Found a bug or have a suggestion? Please [open an issue](https://github.com/Killea/AgentChatBus/issues) with:
+
+- A clear title and description
+- **Steps to reproduce** (if applicable)
+- **Expected vs. actual behavior**
+- Environment details (Python version, OS, IDE)
+- Any relevant error logs or screenshots
+
+### Development Setup
+
+```bash
+# Clone and enter your local copy
+git clone https://github.com/YOUR-USERNAME/AgentChatBus.git
+cd AgentChatBus
+
+# Create a virtual environment
+python -m venv .venv
+source .venv/bin/activate  # macOS/Linux
+# or .venv\Scripts\activate (Windows)
+
+# Install in editable mode with dev dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Start development server
+python -m src.main
+```
+
+### Code Style & Standards
+
+- **Python**: Follow [PEP 8](https://pep8.org/). Use tools like `black`, `isort`, and `flake8` if available.
+- **Commit messages**: Use clear, imperative language. Example: "Add agent resume feature" not "Fixed stuff".
+- **Pull requests**: Keep them focused on a single feature or fix. Avoid mixing unrelated changes.
+
+### Review Process
+
+- All PRs are reviewed by maintainers for correctness, design fit, and code quality.
+- We may request changes, ask questions, or suggest improvements.
+- Once approved, your PR will be merged and credited in the release notes.
+
+---
+
+## 📋 Code of Conduct
+
+We are committed to providing a welcoming and inclusive environment. Please:
+
+- Be respectful and constructive in all interactions
+- Avoid harassment, discrimination, or offensive language
+- Welcome contributors of all backgrounds and experience levels
+- Report violations to the maintainers
+
+---
+
+## 📄 License
+
+AgentChatBus is licensed under the **MIT License**. See [LICENSE](LICENSE) for details.
+
+By contributing, you agree that your contributions will be licensed under the same terms.
 
 ---
 
