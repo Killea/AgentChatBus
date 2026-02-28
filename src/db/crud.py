@@ -40,9 +40,9 @@ def _parse_dt(s: str) -> datetime:
     return datetime.fromisoformat(s)
 
 
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # Sequence counter (global, bus-wide)
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 async def next_seq(db: aiosqlite.Connection) -> int:
     """Atomically increment and return the next global sequence number.
@@ -63,9 +63,9 @@ async def next_seq(db: aiosqlite.Connection) -> int:
     return row["val"]
 
 
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # Thread CRUD
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 async def thread_create(db: aiosqlite.Connection, topic: str, metadata: Optional[dict] = None, system_prompt: Optional[str] = None) -> Thread:
     # Atomic idempotency: use transaction to prevent race condition on concurrent creates with same topic
@@ -85,7 +85,7 @@ async def thread_create(db: aiosqlite.Connection, topic: str, metadata: Optional
         return Thread(id=tid, topic=topic, status="discuss", created_at=_parse_dt(now),
                       closed_at=None, summary=None, metadata=meta_json, system_prompt=system_prompt)
     except sqlite3.IntegrityError as e:
-        # UNIQUE constraint violation on threads.topic — another thread was created concurrently
+        # UNIQUE constraint violation on threads.topic ΓÇö another thread was created concurrently
         # Fetch and return the existing thread for idempotency
         logger.info(f"Thread '{topic}' creation raced (UNIQUE constraint), fetching existing: {e}")
         async with db.execute("SELECT * FROM threads WHERE topic = ? ORDER BY created_at DESC LIMIT 1", (topic,)) as cur:
@@ -175,6 +175,47 @@ async def thread_close(db: aiosqlite.Connection, thread_id: str, summary: Option
     return True
 
 
+async def thread_delete(db: aiosqlite.Connection, thread_id: str) -> dict | None:
+    """Permanently delete a thread and all its messages.
+
+    Returns a dict with audit info (thread_id, topic, message_count) on success,
+    or None if the thread does not exist.
+    Messages are deleted before the thread to satisfy the FK constraint.
+    Both deletes are wrapped in a single transaction with rollback on error.
+    """
+    async with db.execute("SELECT * FROM threads WHERE id = ?", (thread_id,)) as cur:
+        row = await cur.fetchone()
+    if row is None:
+        return None
+
+    topic = row["topic"]
+    async with db.execute(
+        "SELECT COUNT(*) AS cnt FROM messages WHERE thread_id = ?", (thread_id,)
+    ) as cur:
+        msg_count = (await cur.fetchone())["cnt"]
+
+    try:
+        await db.execute("DELETE FROM messages WHERE thread_id = ?", (thread_id,))
+        await db.execute("DELETE FROM threads WHERE id = ?", (thread_id,))
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    await _emit_event(db, "thread.deleted", thread_id, {
+        "thread_id": thread_id, "topic": topic, "message_count": msg_count,
+    })
+    logger.info(f"Thread deleted: {thread_id} '{topic}' ({msg_count} messages)")
+    return {"thread_id": thread_id, "topic": topic, "message_count": msg_count}
+
+
+async def thread_latest_seq(db: aiosqlite.Connection, thread_id: str) -> int:
+    """Return the highest seq number in the thread, or 0 if no messages exist yet."""
+    async with db.execute(
+        "SELECT MAX(seq) AS max_seq FROM messages WHERE thread_id = ?", (thread_id,)
+    ) as cur:
+        row = await cur.fetchone()
+    return row["max_seq"] or 0
 async def thread_delete(db: aiosqlite.Connection, thread_id: str) -> bool:
     """Hard-delete a thread and its dependent rows used by the web console tests."""
     async with db.execute("DELETE FROM messages WHERE thread_id = ?", (thread_id,)):
@@ -206,9 +247,9 @@ def _row_to_thread(row: aiosqlite.Row) -> Thread:
     )
 
 
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # Message CRUD
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 async def msg_post(
     db: aiosqlite.Connection,
@@ -323,9 +364,11 @@ def _row_to_message(row: aiosqlite.Row) -> Message:
     )
 
 
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # ─────────────────────────────────────────────
 # Agent registry
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 async def agent_register(
     db: aiosqlite.Connection,
@@ -338,9 +381,9 @@ async def agent_register(
     """
     Register a new agent on the bus.
 
-    The display `name` is auto-generated as ``ide (model)`` — e.g. "Cursor (GPT-4)".
+    The display `name` is auto-generated as ``ide (model)`` ΓÇö e.g. "Cursor (GPT-4)".
     If another agent with that exact base name is already registered, a numeric
-    suffix is appended: "Cursor (GPT-4) 2", "Cursor (GPT-4) 3", …
+    suffix is appended: "Cursor (GPT-4) 2", "Cursor (GPT-4) 3", ΓÇª
     This lets identical IDE+model pairs co-exist without confusion.
     """
     ide   = ide.strip()   or "Unknown IDE"
@@ -498,9 +541,9 @@ def _row_to_agent(row: aiosqlite.Row) -> AgentInfo:
     )
 
 
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # Event fan-out (for SSE)
-# ─────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 async def _emit_event(db: aiosqlite.Connection, event_type: str, thread_id: Optional[str], payload: dict) -> None:
     await db.execute(
