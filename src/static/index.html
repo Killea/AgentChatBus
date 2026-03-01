@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -567,20 +567,16 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       });
     }
 
-    async function copyThreadNameFromMenu() {
-      return window.AcbThreads.copyThreadNameFromMenu({
-        getContextMenuThread: () => contextMenuThread,
-        hideThreadContextMenu,
-        copyTextWithFallback: window.AcbUtils.copyTextWithFallback,
-      });
+    async function exportFromHeader() {
+      const topic = document.getElementById("thread-title")?.textContent || "";
+      await window.AcbThreads.exportThread({ threadId: activeThreadId, topic });
     }
 
-    async function copyJoinPromptFromMenu() {
-      return window.AcbThreads.copyJoinPromptFromMenu({
-        getContextMenuThread: () => contextMenuThread,
-        hideThreadContextMenu,
-        copyTextWithFallback: window.AcbUtils.copyTextWithFallback,
-      });
+    async function exportThreadFromMenu() {
+      if (!contextMenuThread) return;
+      const { id, topic } = contextMenuThread;
+      hideThreadContextMenu();
+      await window.AcbThreads.exportThread({ threadId: id, topic });
     }
 
     function resetThreadSelection() {
@@ -671,12 +667,26 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         row.classList.add('message-has-mentions');
       }
 
+      // Build metadata badges (handoff_target, stop_reason)
+      let handoffBadgeHtml = '';
+      let stopTagHtml = '';
+      if (metaObj) {
+        if (metaObj.handoff_target) {
+          handoffBadgeHtml = `<span class="handoff-badge" title="Handoff to: ${esc(metaObj.handoff_target)}">&#8594; ${esc(metaObj.handoff_target)}</span>`;
+        }
+        if (metaObj.stop_reason) {
+          const reasonClass = `stop-tag stop-tag-${esc(metaObj.stop_reason)}`;
+          handoffBadgeHtml += `<span class="${reasonClass}" title="Stop reason">${esc(metaObj.stop_reason)}</span>`;
+        }
+      }
+
       row.innerHTML = `
       <div class="msg-avatar" style="background:${bgAlpha};color:${color};border:1px solid ${color}44">${avatarEmoji}</div>
       <div class="msg-col">
         <div class="msg-header">
           <span class="msg-author-label" style="color:${color}">${esc(authorLabel)}</span>
           <span class="msg-time-label">seq ${m.seq} ${fmtTime(m.created_at)}</span>
+          ${handoffBadgeHtml}
         </div>
         <div class="bubble-v2" style="border-color:${color}55;${isHuman ? 'border-right-color' : 'border-left-color'}:${color}"></div>
       </div>`;

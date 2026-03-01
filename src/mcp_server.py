@@ -71,12 +71,6 @@ def get_connection_agent() -> tuple[str | None, str | None]:
         return agent_info["agent_id"], agent_info["token"]
     return None, None
 
-def clear_connection_agent(session_id: str) -> None:
-    """Clear agent identity for a session (call on SSE disconnect)."""
-    if session_id in _connection_agents:
-        agent_info = _connection_agents.pop(session_id)
-        logger.info(f"[clear_connection_agent] removed session {session_id[:8]}: agent_id={agent_info.get('agent_id')}")
-
 # Create the MCP server instance
 server = Server("AgentChatBus")
 
@@ -164,7 +158,26 @@ async def list_tools() -> list[types.Tool]:
                         "items": {"type": "string"},
                         "description": "List of agent IDs to mention in this message."
                     },
-                    "metadata":  {"type": "object"},
+                    "metadata":  {
+                        "type": "object",
+                        "description": "Structured message metadata for orchestration and routing.",
+                        "properties": {
+                            "handoff_target": {
+                                "type": "string",
+                                "description": "Agent ID that should handle this message next (triggers msg.handoff SSE event).",
+                            },
+                            "stop_reason": {
+                                "type": "string",
+                                "enum": ["convergence", "timeout", "error", "complete", "impasse"],
+                                "description": "Why the posting agent is ending its turn (triggers msg.stop SSE event).",
+                            },
+                            "attachments": {
+                                "type": "array",
+                                "items": {"type": "object"},
+                                "description": "File or image attachments.",
+                            },
+                        },
+                    },
                 },
                 "required": ["thread_id", "author", "content"],
             },
@@ -224,6 +237,10 @@ async def list_tools() -> list[types.Tool]:
                     },
                     "agent_id":    {"type": "string", "description": "Optional: your agent ID for activity tracking."},
                     "token":       {"type": "string", "description": "Optional: your agent token for verification."},
+                    "for_agent":   {
+                        "type": "string",
+                        "description": "Only return messages where metadata.handoff_target matches this agent ID. Useful for directed handoff routing.",
+                    },
                 },
                 "required": ["thread_id", "after_seq"],
             },
@@ -234,9 +251,11 @@ async def list_tools() -> list[types.Tool]:
             name="agent_register",
             description=(
                 "Register an agent onto the bus. The display name is auto-generated as "
-                "'IDE (Model)' ΓÇö e.g. 'Cursor (GPT-4)'. If the same IDE+Model pair is already "
+                "'IDE (Model)' — e.g. 'Cursor (GPT-4)'. If the same IDE+Model pair is already "
                 "registered, a numeric suffix is appended: 'Cursor (GPT-4) 2'. "
                 "Optional `display_name` can be provided as a human-friendly alias. "
+                "Use `capabilities` for simple string tags and `skills` for structured "
+                "A2A-compatible skill declarations. "
                 "Returns agent_id and a secret token for subsequent calls."
             ),
             inputSchema={
@@ -248,7 +267,22 @@ async def list_tools() -> list[types.Tool]:
                                      "description": "Model name, e.g. 'claude-3-5-sonnet-20241022', 'GPT-4'."},
                     "description":  {"type": "string", "description": "Optional short description of this agent's role."},
                     "capabilities": {"type": "array", "items": {"type": "string"},
-                                     "description": "List of capability tags, e.g. ['code', 'review']."},
+                                     "description": "Simple capability tags for fast matching, e.g. ['code', 'review', 'security']."},
+                    "skills": {
+                        "type": "array",
+                        "description": "Structured skill declarations (A2A AgentCard compatible). Each skill has id and name at minimum.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id":          {"type": "string", "description": "Machine-readable skill identifier, e.g. 'code-review'."},
+                                "name":        {"type": "string", "description": "Human-readable skill name."},
+                                "description": {"type": "string", "description": "What this skill does."},
+                                "tags":        {"type": "array", "items": {"type": "string"}, "description": "Additional tags for routing."},
+                                "examples":    {"type": "array", "items": {"type": "string"}, "description": "Example prompts this skill handles."},
+                            },
+                            "required": ["id", "name"],
+                        },
+                    },
                     "display_name": {"type": "string", "description": "Optional human-friendly alias shown in UI and message labels."},
                 },
                 "required": ["ide", "model"],
@@ -292,8 +326,49 @@ async def list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="agent_list",
-            description="List all registered agents and their online status.",
+            description=(
+                "List all registered agents with online status, capabilities, and skills. "
+                "Each entry includes `capabilities` (string tag array) and `skills` (structured A2A skill array) "
+                "when declared at registration or via `agent_update`."
+            ),
             inputSchema={"type": "object", "properties": {}},
+        ),
+        types.Tool(
+            name="agent_update",
+            description=(
+                "Update mutable agent metadata after registration. "
+                "Requires the original agent_id and token. "
+                "Only provided fields are modified; omitted fields are left unchanged. "
+                "Useful for adding or changing capabilities, skills, description, or display_name "
+                "without re-registering."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "agent_id":     {"type": "string", "description": "The agent's ID returned by agent_register."},
+                    "token":        {"type": "string", "description": "The secret token returned by agent_register."},
+                    "description":  {"type": "string", "description": "Updated description of this agent's role."},
+                    "display_name": {"type": "string", "description": "Updated human-friendly alias."},
+                    "capabilities": {"type": "array", "items": {"type": "string"},
+                                     "description": "Updated capability tags (replaces existing list)."},
+                    "skills": {
+                        "type": "array",
+                        "description": "Updated skill declarations — replaces the existing list.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id":          {"type": "string"},
+                                "name":        {"type": "string"},
+                                "description": {"type": "string"},
+                                "tags":        {"type": "array", "items": {"type": "string"}},
+                                "examples":    {"type": "array", "items": {"type": "string"}},
+                            },
+                            "required": ["id", "name"],
+                        },
+                    },
+                },
+                "required": ["agent_id", "token"],
+            },
         ),
         types.Tool(
             name="agent_set_typing",
@@ -422,6 +497,7 @@ async def read_resource(uri: types.AnyUrl) -> str:
         return json.dumps([
             {"agent_id": a.id, "name": a.name, "description": a.description,
              "capabilities": json.loads(a.capabilities) if a.capabilities else [],
+             "skills": json.loads(a.skills) if a.skills else [],
              "is_online": a.is_online}
             for a in agents
         ], indent=2)

@@ -267,11 +267,7 @@ async def msg_post(
     author_id = None
     author_name = author
 
-    # Try to find agent by ID, name, or display_name
-    async with db.execute(
-        "SELECT id, name FROM agents WHERE id = ? OR name = ? OR display_name = ?",
-        (author, author, author)
-    ) as cur:
+    async with db.execute("SELECT id, name FROM agents WHERE id = ?", (author,)) as cur:
         row = await cur.fetchone()
         if row:
             actual_author = row["name"]
@@ -321,6 +317,17 @@ async def msg_post(
         "msg_id": mid, "thread_id": thread_id, "author": author_name,
         "author_id": author_id, "role": role, "seq": seq, "content": content[:200],  # truncate for event payload
     })
+    if metadata:
+        if metadata.get("handoff_target"):
+            await _emit_event(db, "msg.handoff", thread_id, {
+                "msg_id": mid, "thread_id": thread_id,
+                "from_agent": author_name, "to_agent": metadata["handoff_target"],
+            })
+        if metadata.get("stop_reason"):
+            await _emit_event(db, "msg.stop", thread_id, {
+                "msg_id": mid, "thread_id": thread_id,
+                "agent": author_name, "reason": metadata["stop_reason"],
+            })
     logger.debug(f"Message posted: seq={seq} author={author_name} thread={thread_id}")
     return Message(
         id=mid, thread_id=thread_id, author=actual_author, role=role,
@@ -413,6 +420,7 @@ async def agent_register(
     description: str = "",
     capabilities: Optional[list] = None,
     display_name: Optional[str] = None,
+    skills: Optional[list] = None,
 ) -> AgentInfo:
     """
     Register a new agent on the bus.
@@ -445,12 +453,13 @@ async def agent_register(
     token = secrets.token_hex(32)
     now = _now()
     caps_json = json.dumps(capabilities) if capabilities else None
+    skills_json = json.dumps(skills) if skills else None
     clean_display_name = (display_name or "").strip() or name
     alias_source = "user" if (display_name or "").strip() else "auto"
     await db.execute(
-        "INSERT INTO agents (id, name, ide, model, description, capabilities, registered_at, last_heartbeat, token, display_name, alias_source, last_activity, last_activity_time) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (aid, name, ide, model, description, caps_json, now, now, token, clean_display_name, alias_source, "registered", now),
+        "INSERT INTO agents (id, name, ide, model, description, capabilities, skills, registered_at, last_heartbeat, token, display_name, alias_source, last_activity, last_activity_time) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (aid, name, ide, model, description, caps_json, skills_json, now, now, token, clean_display_name, alias_source, "registered", now),
     )
     await db.commit()
     await _emit_event(db, "agent.online", None, {"agent_id": aid, "name": name, "ide": ide, "model": model})
@@ -459,7 +468,8 @@ async def agent_register(
                      capabilities=caps_json, registered_at=_parse_dt(now),
                      last_heartbeat=_parse_dt(now), is_online=True, token=token,
                      display_name=clean_display_name, alias_source=alias_source,
-                     last_activity="registered", last_activity_time=_parse_dt(now))
+                     last_activity="registered", last_activity_time=_parse_dt(now),
+                     skills=skills_json)
 
 
 async def _set_agent_activity(
@@ -551,6 +561,70 @@ async def agent_list(db: aiosqlite.Connection) -> list[AgentInfo]:
     return [_row_to_agent(r) for r in rows]
 
 
+async def agent_get(db: aiosqlite.Connection, agent_id: str) -> Optional[AgentInfo]:
+    """Return a single agent by ID, or None if not found."""
+    async with db.execute("SELECT * FROM agents WHERE id = ?", (agent_id,)) as cur:
+        row = await cur.fetchone()
+    return _row_to_agent(row) if row else None
+
+
+async def agent_update(
+    db: aiosqlite.Connection,
+    agent_id: str,
+    token: str,
+    description: Optional[str] = None,
+    capabilities: Optional[list] = None,
+    skills: Optional[list] = None,
+    display_name: Optional[str] = None,
+) -> AgentInfo:
+    """
+    Update mutable agent metadata after registration.
+
+    Only the fields explicitly provided (not None) are modified.
+    Requires a valid token to prevent unauthorised updates.
+    """
+    async with db.execute("SELECT token FROM agents WHERE id = ?", (agent_id,)) as cur:
+        row = await cur.fetchone()
+    if row is None:
+        raise ValueError(f"Agent not found: {agent_id}")
+    if row["token"] != token:
+        raise ValueError("Invalid token for agent_update")
+
+    now = _now()
+    set_clauses: list[str] = ["last_activity = ?", "last_activity_time = ?"]
+    params: list = ["update", now]
+
+    if description is not None:
+        set_clauses.append("description = ?")
+        params.append(description)
+    if capabilities is not None:
+        set_clauses.append("capabilities = ?")
+        params.append(json.dumps(capabilities))
+    if skills is not None:
+        set_clauses.append("skills = ?")
+        params.append(json.dumps(skills))
+    if display_name is not None:
+        clean = display_name.strip()
+        set_clauses.append("display_name = ?")
+        params.append(clean)
+        set_clauses.append("alias_source = ?")
+        params.append("user" if clean else "auto")
+
+    params.append(agent_id)
+    await db.execute(
+        f"UPDATE agents SET {', '.join(set_clauses)} WHERE id = ?",
+        params,
+    )
+    await db.commit()
+
+    async with db.execute("SELECT * FROM agents WHERE id = ?", (agent_id,)) as cur:
+        updated = await cur.fetchone()
+    if updated is None:
+        raise ValueError("Agent not found after update")
+    logger.info(f"Agent updated: {agent_id}")
+    return _row_to_agent(updated)
+
+
 def _row_to_agent(row: aiosqlite.Row) -> AgentInfo:
     last_hb = _parse_dt(row["last_heartbeat"])
     elapsed = (datetime.now(timezone.utc) - last_hb).total_seconds()
@@ -592,6 +666,7 @@ def _row_to_agent(row: aiosqlite.Row) -> AgentInfo:
         alias_source=alias_source,
         last_activity=last_activity,
         last_activity_time=last_activity_time,
+        skills=row["skills"] if "skills" in row.keys() else None,
     )
 
 
@@ -685,3 +760,45 @@ async def events_delete_old(db: aiosqlite.Connection, max_age_seconds: int = 600
     await db.commit()
     if deleted > 0:
         logger.debug(f"Pruned {deleted} old events.")
+
+
+# ─────────────────────────────────────────────
+# Export
+# ─────────────────────────────────────────────
+
+async def thread_export_markdown(db: aiosqlite.Connection, thread_id: str) -> Optional[str]:
+    """Build a Markdown transcript for *thread_id*.
+
+    Returns the raw Markdown string, or None if the thread does not exist.
+    System-prompt messages are excluded from the transcript.
+    """
+    thread = await thread_get(db, thread_id)
+    if thread is None:
+        return None
+
+    msgs = await msg_list(db, thread_id, after_seq=0, limit=10000, include_system_prompt=False)
+
+    created_label = thread.created_at.strftime("%Y-%m-%d %H:%M UTC")
+    exported_label = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    lines: list[str] = [
+        f"# {thread.topic}",
+        "",
+        f"> **Status:** {thread.status} | **Created:** {created_label}",
+        f"> **Messages:** {len(msgs)} | **Exported:** {exported_label}",
+        "",
+        "---",
+        "",
+    ]
+
+    for m in msgs:
+        author = m.author_name or m.author
+        timestamp = m.created_at.strftime("%Y-%m-%d %H:%M UTC")
+        lines.append(f"### {author} — {timestamp}")
+        lines.append("")
+        lines.append(m.content)
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+    return "\n".join(lines)

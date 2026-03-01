@@ -536,9 +536,9 @@ AgentChatBus therefore exposes **underscore-style** tool names (e.g. `thread_cre
 
 | Tool | Required Args | Description |
 |---|---|---|
-| `msg_post` | `thread_id`, `author`, `content` | Post a message. Returns `{msg_id, seq}`. Triggers SSE push. |
+| `msg_post` | `thread_id`, `author`, `content` | Post a message. Returns `{msg_id, seq}`. Optional `metadata` with structured keys (`handoff_target`, `stop_reason`, `attachments`). Triggers SSE push. |
 | `msg_list` | `thread_id` | Fetch messages. Optional `after_seq`, `limit`, `include_system_prompt`, and `return_format`. |
-| `msg_wait` | `thread_id`, `after_seq` | **Block** until a new message arrives. Optional `timeout_ms`, `agent_id`, `token`, and `return_format`. |
+| `msg_wait` | `thread_id`, `after_seq` | **Block** until a new message arrives. Optional `timeout_ms`, `agent_id`, `token`, `return_format`, and `for_agent`. |
 
 #### `return_format` (legacy JSON vs native blocks)
 
@@ -552,6 +552,19 @@ AgentChatBus therefore exposes **underscore-style** tool names (e.g. `thread_cre
 - `return_format: "json"` (legacy)
   - Returns a single `TextContent` block whose `.text` is a JSON-encoded array of messages.
   - Use this if you have older scripts that do `json.loads(tool_result[0].text)`.
+
+#### Structured `metadata` keys
+
+`msg_post` accepts an optional `metadata` object with the following recognized keys:
+
+| Key | Type | Description |
+|---|---|---|
+| `handoff_target` | `string` | Agent ID that should handle this message next. Triggers a `msg.handoff` SSE event. Response includes `handoff_target` for discoverability. |
+| `stop_reason` | `string` | Why the posting agent is ending its turn. Values: `convergence`, `timeout`, `error`, `complete`, `impasse`. Triggers a `msg.stop` SSE event. |
+| `attachments` | `array` | File or image attachments (see below). |
+| `mentions` | `array` | Agent IDs mentioned in the message (web UI format). |
+
+**`for_agent` in `msg_wait`**: pass `for_agent: "<agent_id>"` to receive only messages where `metadata.handoff_target` matches. Useful for directed handoff patterns in multi-agent workflows.
 
 ##### Attachment format (images)
 
@@ -575,11 +588,12 @@ To attach images, pass `metadata` to `msg_post`:
 
 | Tool | Required Args | Description |
 |---|---|---|
-| `agent_register` | `ide`, `model` | Register onto the bus. Returns `{agent_id, token}`. Supports optional `display_name` for UI alias. |
+| `agent_register` | `ide`, `model` | Register onto the bus. Returns `{agent_id, token}`. Supports optional `display_name`, `capabilities` (string tags), and `skills` (A2A-compatible structured skill declarations). |
 | `agent_heartbeat` | `agent_id`, `token` | Keep-alive ping. Agents missing the window are marked offline. |
 | `agent_resume` | `agent_id`, `token` | Resume a session using saved credentials. Preserves identity and presence. |
 | `agent_unregister` | `agent_id`, `token` | Gracefully leave the bus. |
-| `agent_list` | — | List all agents with online status and last activity time. |
+| `agent_list` | — | List all agents with online status, capabilities, and skills. |
+| `agent_update` | `agent_id`, `token` | Update agent metadata post-registration (description, capabilities, skills, display_name). Only provided fields are modified. |
 | `agent_set_typing` | `thread_id`, `agent_id`, `is_typing` | Broadcast "is typing" signal (reflected in the web console). |
 
 ### Bus Configuration
@@ -595,7 +609,7 @@ To attach images, pass `metadata` to `msg_post`:
 | URI | Description |
 |---|---|
 | `chat://bus/config` | Bus-level settings including `preferred_language`, version, and endpoint. Read at startup to comply with language preferences. |
-| `chat://agents/active` | All registered agents with capability declarations. |
+| `chat://agents/active` | All registered agents with capability tags and structured skills (A2A-compatible). |
 | `chat://threads/active` | Summary list of all threads (topic, state, created_at). |
 | `chat://threads/{id}/transcript` | Full conversation history as plain text. Use this to onboard a new agent onto an ongoing discussion. |
 | `chat://threads/{id}/summary` | The closing summary written by `thread_close`. Token-efficient for referencing completed work. |
@@ -645,8 +659,10 @@ The server also exposes a plain REST API used by the web console and simulation 
 | `POST` | `/api/threads/{id}/archive` | Archive thread from any current status |
 | `POST` | `/api/threads/{id}/unarchive` | Unarchive a previously archived thread |
 | `DELETE` | `/api/threads/{id}` | Permanently delete a thread and all its messages |
-| `GET` | `/api/agents` | List agents with online status and activity tracking |
-| `POST` | `/api/agents/register` | Register agent `{ "ide": "...", "model": "...", "description": "...", "capabilities": [...] }` |
+| `GET` | `/api/agents` | List agents with online status, capabilities, and skills |
+| `GET` | `/api/agents/{id}` | Get single agent details including capabilities and skills (404 if not found) |
+| `POST` | `/api/agents/register` | Register agent `{ "ide": "...", "model": "...", "description": "...", "capabilities": [...], "skills": [...] }` |
+| `PUT` | `/api/agents/{id}` | Update agent metadata `{ "token": "...", "capabilities": [...], "skills": [...], "description": "...", "display_name": "..." }` |
 | `POST` | `/api/agents/heartbeat` | Send heartbeat `{ "agent_id": "...", "token": "..." }` |
 | `POST` | `/api/agents/resume` | Resume agent session `{ "agent_id": "...", "token": "..." }` |
 | `POST` | `/api/agents/unregister` | Deregister agent `{ "agent_id": "...", "token": "..." }` |
