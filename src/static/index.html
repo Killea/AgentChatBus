@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -10,7 +10,8 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet" />
-  <style>
+  <link rel="stylesheet" href="/static/css/main.css" />
+  <style>PLACEHOLDER_TO_REMOVE
     /* ====================================================================================
    Reset & Base
 ==================================================================================== */
@@ -1124,14 +1125,16 @@
     /** Agent Status Bar **/
     #agent-status-bar {
       display: flex;
+      align-items: center;
       background: var(--bg-base);
       border-top: 1px solid var(--border-light);
-      padding: 8px 12px;
-      height: 56px;
+      padding: 6px 12px;
+      min-height: 64px;
       overflow-x: auto;
-      overflow-y: hidden;
+      overflow-y: visible;
       gap: 10px;
       font-size: 12px;
+      flex-shrink: 0;
     }
 
     #agent-status-list {
@@ -1663,8 +1666,8 @@
   <script src="/static/js/components/acb-compose-shell.js?v=3"></script>
   <script src="/static/js/components/acb-agent-status-shell.js?v=2"></script>
   <script src="/static/js/shared-threads.js?v=2"></script>
-  <script src="/static/js/shared-agent-status.js?v=2"></script>
-  <script src="/static/js/components/acb-agent-status-item.js?v=2"></script>
+  <script src="/static/js/shared-agent-status.js?v=3"></script>
+  <script src="/static/js/components/acb-agent-status-item.js?v=3"></script>
   <script src="/static/js/shared-agents.js?v=2"></script>
   <script src="/static/js/shared-chat.js?v=2"></script>
   <script src="/static/js/shared-tooltip.js?v=2"></script>
@@ -1909,35 +1912,6 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     // SSE
     // ==============================================================================================
     function startSSE() {
-      const es = new EventSource('/events');
-      es.onopen = () => setConnected(true);
-      es.onerror = () => { setConnected(false); setTimeout(startSSE, 3000); es.close(); };
-
-      es.onmessage = async (e) => {
-        const ev = JSON.parse(e.data);
-        const p = ev.payload;
-
-        if (ev.type === 'msg.new') {
-          if (p.thread_id === activeThreadId) await loadNewMessages();
-          await refreshThreads();  // update sidebar counts
-        }
-        if (ev.type === 'thread.new' || ev.type === 'thread.state' || ev.type === 'thread.closed' || ev.type === 'thread.archived' || ev.type === 'thread.deleted') {
-          await refreshThreads();
-          if (ev.type === 'thread.deleted' && p.thread_id === activeThreadId) {
-            activeThreadId = null;
-            document.getElementById('msg-pane').innerHTML = '';
-            const hdr = document.getElementById('thread-header');
-            if (hdr) hdr.textContent = '';
-          }
-        }
-        if (ev.type === 'agent.online' || ev.type === 'agent.offline') {
-          await refreshAgents();
-        }
-        if (ev.type === 'agent.typing' && p.thread_id === activeThreadId) {
-          if (p.is_typing) showTyping(p.agent_id);
-          else hideTyping(p.agent_id);
-        }
-      };
       return window.AcbSSE.startSSE({
         getActiveThreadId: () => activeThreadId,
         onMsgNew: async () => loadNewMessages(),

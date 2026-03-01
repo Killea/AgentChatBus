@@ -28,7 +28,13 @@
     };
 
     es.onmessage = async (e) => {
-      const ev = JSON.parse(e.data);
+      let ev;
+      try {
+        ev = JSON.parse(e.data);
+      } catch (err) {
+        console.warn('[SSE] Failed to parse event data:', e.data, err);
+        return;
+      }
       const p = ev.payload || {};
       const activeThreadId = getActiveThreadId();
 
