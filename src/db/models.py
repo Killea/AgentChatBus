@@ -49,6 +49,7 @@ class AgentInfo:
     alias_source: Optional[str] = None    # 'auto' or 'user'
     last_activity: Optional[str] = None    # activity type: 'registered', 'heartbeat', 'msg_wait', 'msg_post', etc.
     last_activity_time: Optional[datetime] = None  # when the last activity occurred
+    skills: Optional[str] = None                   # JSON list of A2A-compatible skill declarations
 
 
 @dataclass
