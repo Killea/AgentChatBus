@@ -71,13 +71,6 @@ def get_connection_agent() -> tuple[str | None, str | None]:
         return agent_info["agent_id"], agent_info["token"]
     return None, None
 
-
-def clear_connection_agent(session_id: str) -> None:
-    """Clear agent identity for a session (call on SSE disconnect)."""
-    if session_id in _connection_agents:
-        agent_info = _connection_agents.pop(session_id)
-        logger.info(f"[clear_connection_agent] removed session {session_id[:8]}: agent_id={agent_info.get('agent_id')}")
-
 # Create the MCP server instance
 server = Server("AgentChatBus")
 
@@ -457,10 +450,13 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.Content]
 
     import importlib
     import sys
-    
-    # Dynamically reload the dispatch module on every tool call
+    from src.config import RELOAD_ENABLED
+
+    # Reload dispatch only in dev mode (hot-reload) — avoids arbitrary code
+    # execution risk in production where source files should be immutable.
     if "src.tools.dispatch" in sys.modules:
-        importlib.reload(sys.modules["src.tools.dispatch"])
+        if RELOAD_ENABLED:
+            importlib.reload(sys.modules["src.tools.dispatch"])
     else:
         import src.tools.dispatch
 

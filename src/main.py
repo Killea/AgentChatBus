@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Literal
 
 import uvicorn
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Header
 from starlette.responses import Response
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -25,7 +25,7 @@ from pydantic import BaseModel, ConfigDict
 from mcp.server.sse import SseServerTransport
 from starlette.routing import Mount
 
-from src.config import HOST, PORT, get_config_dict, save_config_dict
+from src.config import HOST, PORT, get_config_dict, save_config_dict, ADMIN_TOKEN
 from src.db.database import get_db, close_db
 from src.db import crud
 from src.db.crud import (
@@ -146,7 +146,7 @@ class _SseCompletedResponse:
 @app.get("/mcp/sse")
 async def mcp_sse_endpoint(request: Request):
     """MCP SSE endpoint consumed by MCP clients (Claude Desktop, Cursor, ΓÇª)."""
-    from src.mcp_server import init_session_id, clear_connection_agent
+    from src.mcp_server import init_session_id
     
     # Initialize unique session ID for this SSE connection
     session_id = init_session_id()
@@ -168,9 +168,6 @@ async def mcp_sse_endpoint(request: Request):
         # Most are normal disconnects (anyio.ClosedResourceError, CancelledErrorΓÇª).
         # Log at DEBUG to avoid polluting the terminal.
         logger.debug("MCP SSE session ended: %s: %s", type(exc).__name__, exc)
-    finally:
-        # Ensure per-connection agent mapping is cleaned when SSE disconnects.
-        clear_connection_agent(session_id)
     return _SseCompletedResponse()
 
 
@@ -254,6 +251,7 @@ async def api_threads(status: str | None = None, include_archived: bool = False)
 
 @app.get("/api/threads/{thread_id}/messages")
 async def api_messages(thread_id: str, after_seq: int = 0, limit: int = 200, include_system_prompt: bool = False):
+    limit = min(limit, 1000)  # server-side hard cap — prevents memory exhaustion
     try:
         db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
         t = await asyncio.wait_for(crud.thread_get(db, thread_id), timeout=DB_TIMEOUT)
@@ -284,6 +282,33 @@ async def api_messages(thread_id: str, after_seq: int = 0, limit: int = 200, inc
 
 UPLOAD_DIR = Path(__file__).resolve().parent / "static" / "uploads"
 
+# ── Image upload hardening (QW-01) ─────────────────────────────────────────
+# Max upload size: 5 MB. Prevents memory exhaustion / disk DoS.
+_MAX_IMAGE_BYTES = int(os.getenv("AGENTCHATBUS_MAX_IMAGE_BYTES", str(5 * 1024 * 1024)))
+
+# Allowlist of safe extensions mapped to their expected magic-byte signatures.
+# Only files whose first bytes match the declared extension are accepted.
+_ALLOWED_IMAGE_EXTS: dict[str, list[bytes]] = {
+    ".jpg":  [b"\xff\xd8\xff"],
+    ".jpeg": [b"\xff\xd8\xff"],
+    ".png":  [b"\x89PNG\r\n\x1a\n"],
+    ".gif":  [b"GIF87a", b"GIF89a"],
+    ".webp": [b"RIFF"],
+}
+
+
+def _ext_from_filename(filename: str) -> str:
+    """Return lowercase extension; map .jpe / .jfif → .jpg for uniformity."""
+    ext = Path(filename).suffix.lower()
+    return ".jpg" if ext in {".jpe", ".jfif"} else ext
+
+
+def _magic_bytes_ok(data: bytes, ext: str) -> bool:
+    """Return True if the first bytes of data match any known signature for ext."""
+    signatures = _ALLOWED_IMAGE_EXTS.get(ext, [])
+    return any(data[:len(sig)] == sig for sig in signatures)
+
+
 @app.post("/api/upload/image")
 async def api_upload_image(request: Request):
     """Upload an image and return its URL."""
@@ -292,27 +317,33 @@ async def api_upload_image(request: Request):
         file = form.get("file")
         if not file or not file.filename:
             raise HTTPException(status_code=400, detail="No file provided")
-        
-        # Validate file type
-        if not file.content_type.startswith("image/"):
-            raise HTTPException(status_code=400, detail="File must be an image")
-        
-        # Create upload directory if it doesn't exist
+
+        ext = _ext_from_filename(file.filename)
+        if ext not in _ALLOWED_IMAGE_EXTS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type '{ext}'. Allowed: {', '.join(_ALLOWED_IMAGE_EXTS)}",
+            )
+
+        # Read with size cap to prevent memory exhaustion
+        contents = await file.read(_MAX_IMAGE_BYTES + 1)
+        if len(contents) > _MAX_IMAGE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Maximum size is {_MAX_IMAGE_BYTES // (1024 * 1024)} MB",
+            )
+
+        # Verify magic bytes — guards against renamed executables / polyglots
+        if not _magic_bytes_ok(contents, ext):
+            raise HTTPException(status_code=400, detail="File content does not match its extension")
+
         UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-        
-        # Generate unique filename
-        ext = Path(file.filename).suffix or ".png"
         unique_name = f"{uuid.uuid4()}{ext}"
         file_path = UPLOAD_DIR / unique_name
-        
-        # Save file
-        contents = await file.read()
         with open(file_path, "wb") as f:
             f.write(contents)
-        
-        # Return URL
-        file_url = f"/static/uploads/{unique_name}"
-        return {"url": file_url, "name": file.filename}
+
+        return {"url": f"/static/uploads/{unique_name}", "name": file.filename}
     except HTTPException:
         raise
     except Exception as e:
@@ -365,7 +396,9 @@ class SettingsUpdate(BaseModel):
     MSG_WAIT_TIMEOUT: int | None = None
 
 @app.put("/api/settings")
-async def api_update_settings(body: SettingsUpdate):
+async def api_update_settings(body: SettingsUpdate, x_admin_token: str | None = Header(default=None)):
+    if ADMIN_TOKEN and x_admin_token != ADMIN_TOKEN:
+        raise HTTPException(status_code=401, detail="Invalid admin token")
     update_data = {k: v for k, v in body.model_dump().items() if v is not None}
     if update_data:
         save_config_dict(update_data)
@@ -389,6 +422,8 @@ class TemplateCreate(BaseModel):
     description: str | None = None
     system_prompt: str | None = None
     default_metadata: dict | None = None
+    agent_id: str | None = None  # optional — if provided with token, must match a registered agent
+    token: str | None = None     # optional — required only when agent_id is provided
 
 class MessageCreate(BaseModel):
     model_config = ConfigDict(
@@ -439,15 +474,9 @@ async def api_get_template(template_id: str):
         raise HTTPException(status_code=503, detail="Database operation timeout")
     if t is None:
         raise HTTPException(status_code=404, detail="Template not found")
-    default_metadata = None
-    if t.default_metadata:
-        try:
-            default_metadata = json.loads(t.default_metadata)
-        except (TypeError, ValueError):
-            default_metadata = t.default_metadata
     return {
         "id": t.id, "name": t.name, "description": t.description,
-        "system_prompt": t.system_prompt, "default_metadata": default_metadata,
+        "system_prompt": t.system_prompt, "default_metadata": t.default_metadata,
         "is_builtin": t.is_builtin, "created_at": t.created_at.isoformat(),
     }
 
@@ -456,6 +485,25 @@ async def api_get_template(template_id: str):
 async def api_create_template(body: TemplateCreate):
     try:
         db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+
+    # QW-06: if agent_id + token provided, verify they match a registered agent
+    if body.agent_id and body.token:
+        token_valid = await asyncio.wait_for(
+            crud.agent_verify_token(db, body.agent_id, body.token), timeout=DB_TIMEOUT
+        )
+        if not token_valid:
+            raise HTTPException(status_code=401, detail="Invalid agent_id or token")
+
+    # QW-07: apply content filter to system_prompt to block embedded secrets
+    if body.system_prompt:
+        from src.content_filter import check_content, ContentFilterError as _CFE
+        blocked, pattern = check_content(body.system_prompt)
+        if blocked:
+            raise HTTPException(status_code=400, detail={"error": "system_prompt blocked by content filter", "pattern": pattern})
+
+    try:
         t = await asyncio.wait_for(
             crud.template_create(
                 db,
@@ -507,6 +555,13 @@ async def api_sync_context(thread_id: str, body: SyncContextRequest | None = Non
 
 @app.post("/api/threads", status_code=201)
 async def api_create_thread(body: ThreadCreate):
+    # QW-07: apply content filter to system_prompt to block embedded secrets
+    if body.system_prompt:
+        from src.content_filter import check_content
+        blocked, pattern = check_content(body.system_prompt)
+        if blocked:
+            raise HTTPException(status_code=400, detail={"error": "system_prompt blocked by content filter", "pattern": pattern})
+
     try:
         db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
         t = await asyncio.wait_for(
@@ -521,7 +576,7 @@ async def api_create_thread(body: ThreadCreate):
             "template_id": t.template_id, "created_at": t.created_at.isoformat()}
 
 @app.post("/api/threads/{thread_id}/messages", status_code=201)
-async def api_post_message(thread_id: str, body: MessageCreate):
+async def api_post_message(thread_id: str, body: MessageCreate, x_agent_token: str | None = Header(default=None)):
     try:
         db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
         t = await asyncio.wait_for(crud.thread_get(db, thread_id), timeout=DB_TIMEOUT)
@@ -529,7 +584,25 @@ async def api_post_message(thread_id: str, body: MessageCreate):
         raise HTTPException(status_code=503, detail="Database operation timeout")
     if t is None:
         raise HTTPException(status_code=404, detail="Thread not found")
-        
+
+    # Vecteur B: prevent role escalation from human/anonymous senders
+    if body.role == "system" and body.author in ("human", ""):
+        raise HTTPException(status_code=400, detail="role 'system' is not allowed for human messages")
+
+    # Vecteur C: if author matches a known agent_id, require a valid token
+    try:
+        known_agent = await asyncio.wait_for(crud.agent_get(db, body.author), timeout=DB_TIMEOUT)
+    except asyncio.TimeoutError:
+        known_agent = None
+    if known_agent is not None:
+        if not x_agent_token:
+            raise HTTPException(status_code=401, detail="X-Agent-Token header required to post as a registered agent")
+        token_valid = await asyncio.wait_for(
+            crud.agent_verify_token(db, body.author, x_agent_token), timeout=DB_TIMEOUT
+        )
+        if not token_valid:
+            raise HTTPException(status_code=401, detail="Invalid agent token")
+
     msg_metadata = body.metadata or {}
     if body.mentions:
         msg_metadata["mentions"] = body.mentions
@@ -579,9 +652,10 @@ async def api_post_message(thread_id: str, body: MessageCreate):
         })
     except ContentFilterError as e:
         raise HTTPException(status_code=400, detail={"error": "Content blocked by filter", "pattern": e.pattern_name})
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except asyncio.TimeoutError:
         raise HTTPException(status_code=503, detail="Database operation timeout")
-
     except RateLimitExceeded as e:
         from fastapi.responses import JSONResponse
         return JSONResponse(
@@ -912,14 +986,14 @@ async def api_thread_export(thread_id: str):
     except asyncio.TimeoutError:
         raw_topic = thread_id
 
-    slug = re.sub(r"[^\w\-]", "-", raw_topic.lower())
-    slug = re.sub(r"-+", "-", slug).strip("-") or "thread"
+    slug = re.sub(r"[^\w\-]", "-", raw_topic.lower(), flags=re.ASCII)
+    slug = re.sub(r"-+", "-", slug, flags=re.ASCII).strip("-")[:80] or "thread"
     filename = f"{slug}.md"
 
     return PlainTextResponse(
         content=md,
         media_type="text/markdown; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": f"attachment; filename=\"{filename}\""},
     )
 
 

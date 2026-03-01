@@ -60,6 +60,8 @@ RELOAD_ENABLED = os.getenv("AGENTCHATBUS_RELOAD", "1") in {"1", "true", "yes"}
 # Expose per-thread resources in MCP server (default: false for cleaner MCP client UI)
 # When enabled, each thread gets transcript, summary (if closed), and state resources
 EXPOSE_THREAD_RESOURCES = os.getenv("AGENTCHATBUS_EXPOSE_THREAD_RESOURCES", "false").lower() in {"1", "true", "yes"}
+# Admin token for settings endpoint (optional — if unset, PUT /api/settings is unprotected)
+ADMIN_TOKEN: str | None = os.getenv("AGENTCHATBUS_ADMIN_TOKEN")
 
 def get_config_dict():
     return {
