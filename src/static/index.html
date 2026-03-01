@@ -2164,6 +2164,14 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     function appendBubble(m) {
       const box = document.getElementById('messages');
 
+      // ---- Deduplication check: prevent duplicate messages from appearing ---
+      const seq = String(m.seq);
+      const existingMsg = box.querySelector(`[data-seq="${seq}"]`);
+      if (existingMsg) {
+        console.warn(`[Deduplicate] Message seq ${seq} already exists in DOM, skipping.`);
+        return;
+      }
+
       // ---- System event (centered pill) --------------------------------------------------------------------------
       if (m.role === 'system' && m.author === 'system') {
         const pill = document.createElement('div');
