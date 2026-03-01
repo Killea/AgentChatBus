@@ -104,15 +104,19 @@
       }
 
       this._dialog.returnValue = '';
-      this._dialog.showModal();
 
       return new Promise((resolve) => {
         this._resolve = resolve;
-        this._dialog.addEventListener('close', () => {
+        
+        // Add close listener BEFORE showModal to ensure we catch the event
+        const onClose = () => {
           const confirmed = this._dialog.returnValue === 'confirm';
           this._resolve(confirmed);
           this._resolve = null;
-        }, { once: true });
+        };
+        
+        this._dialog.addEventListener('close', onClose, { once: true });
+        this._dialog.showModal();
       });
     }
 
