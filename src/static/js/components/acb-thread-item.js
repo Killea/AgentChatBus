@@ -69,11 +69,13 @@
       this.className = `thread-item${activeClass}`;
       this.id = `ti-${this._thread.id}`;
       this.setAttribute('data-thread-id', String(this._thread.id));
+      this.setAttribute('role', 'listitem');
+      this.setAttribute('aria-current', this._active ? 'true' : 'false');
       this.innerHTML = `
         <div class="ti-topic">${esc(this._thread.topic)}</div>
         <div class="ti-meta">
-          <span class="badge badge-${this._thread.status}">${this._thread.status}</span>
-          <span>${timeAgo(this._thread.created_at)}</span>
+          <span class="badge badge-${esc(this._thread.status)}">${esc(this._thread.status)}</span>
+          <span>${esc(timeAgo(this._thread.created_at))}</span>
         </div>`;
     }
   }

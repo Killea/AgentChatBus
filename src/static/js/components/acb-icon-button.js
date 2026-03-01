@@ -8,6 +8,11 @@
   }
 
   class AcbIconButton extends HTMLElement {
+    constructor() {
+      super();
+      this._boundClick = null;
+    }
+
     connectedCallback() {
       if (this.childElementCount > 0) return;
 
@@ -28,12 +33,19 @@
       const btn = this.querySelector('button');
       if (!btn || !action) return;
 
-      btn.addEventListener('click', () => {
+      this._boundClick = () => {
         const fn = window[action];
-        if (typeof fn === 'function') {
-          fn();
-        }
-      });
+        if (typeof fn === 'function') fn();
+      };
+      btn.addEventListener('click', this._boundClick);
+    }
+
+    disconnectedCallback() {
+      const btn = this.querySelector('button');
+      if (btn && this._boundClick) {
+        btn.removeEventListener('click', this._boundClick);
+        this._boundClick = null;
+      }
     }
   }
 
