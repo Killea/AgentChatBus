@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -20,10 +20,39 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Validate tag matches package version
+        run: |
+          python - <<'PY'
+          import os
+          import tomllib
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          if tag.startswith("v"):
+              tag = tag[1:]
+
+          with open("pyproject.toml", "rb") as f:
+              data = tomllib.load(f)
+
+          version = data["project"]["version"]
+          if tag != version:
+              raise SystemExit(
+                  f"Tag/version mismatch: tag={tag!r}, pyproject.version={version!r}"
+              )
+
+          print(f"Tag/version validated: {version}")
+          PY
+
       - name: Build distributions
         run: |
-          python -m pip install --upgrade pip build
+          python -m pip install --upgrade pip build twine
           python -m build
+          python -m twine check dist/*
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -32,3 +61,20 @@ jobs:
             dist/*.whl
             dist/*.tar.gz
           generate_release_notes: true
+
+  publish-pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    environment:
+      name: pypi
+    steps:
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
