@@ -8,9 +8,16 @@
     }
 
     const secondsAgo = (now - activityTime) / 1000;
-    if (agent.last_activity === "msg_wait" && secondsAgo < 60) return "Waiting";
-    if (secondsAgo < 30) return "Active";
-    if (secondsAgo < 300) return "Idle";
+    
+    if (agent.last_activity === "msg_wait" && secondsAgo < 60) {
+      return "Waiting";
+    }
+    if (secondsAgo < 30) {
+      return "Active";
+    }
+    if (secondsAgo < 300) {
+      return "Idle";
+    }
     return agent.is_online ? "Idle" : "Offline";
   }
 

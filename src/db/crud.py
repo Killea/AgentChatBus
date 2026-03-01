@@ -267,7 +267,11 @@ async def msg_post(
     author_id = None
     author_name = author
 
-    async with db.execute("SELECT id, name FROM agents WHERE id = ?", (author,)) as cur:
+    # Try to find agent by ID, name, or display_name
+    async with db.execute(
+        "SELECT id, name FROM agents WHERE id = ? OR name = ? OR display_name = ?",
+        (author, author, author)
+    ) as cur:
         row = await cur.fetchone()
         if row:
             actual_author = row["name"]

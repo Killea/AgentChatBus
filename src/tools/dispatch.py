@@ -290,21 +290,44 @@ async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.Content]:
     
     logger.info(f"[msg_wait] explicit: agent_id={explicit_agent_id}, connection: agent_id={connection_agent_id}, final_agent_id={agent_id}")
 
+    # Heartbeat interval: refresh every 20 seconds to stay online (AGENT_HEARTBEAT_TIMEOUT is 30s)
+    HEARTBEAT_INTERVAL = 20.0
+
+    async def _refresh_heartbeat():
+        """Refresh heartbeat to keep agent online during long wait."""
+        if agent_id and token:
+            try:
+                await crud.agent_msg_wait(db, agent_id, token)
+                logger.debug(f"[msg_wait] heartbeat refreshed for agent_id={agent_id}")
+            except Exception as e:
+                logger.warning(f"[msg_wait] Failed to refresh heartbeat for {agent_id}: {e}")
+
+    async def _poll():
+        """Poll for new messages, refreshing heartbeat periodically."""
+        last_heartbeat = asyncio.get_event_loop().time()
+        while True:
+            # Check for new messages
+            msgs = await crud.msg_list(db, thread_id, after_seq=after_seq, include_system_prompt=False)
+            if msgs:
+                return msgs
+            
+            # Refresh heartbeat if interval elapsed
+            now = asyncio.get_event_loop().time()
+            if now - last_heartbeat >= HEARTBEAT_INTERVAL:
+                await _refresh_heartbeat()
+                last_heartbeat = now
+            
+            await asyncio.sleep(0.5)
+
+    # Record initial activity
     if agent_id and token:
         try:
             result = await crud.agent_msg_wait(db, agent_id, token)
-            logger.info(f"[msg_wait] activity recorded: agent_id={agent_id}, result={result}")
+            logger.info(f"[msg_wait] initial activity recorded: agent_id={agent_id}, result={result}")
         except Exception as e:
             logger.warning(f"[msg_wait] Failed to record activity for {agent_id}: {e}")
     else:
         logger.warning(f"[msg_wait] No credentials available: agent_id={agent_id}, token={'***' if token else None}")
-
-    async def _poll():
-        while True:
-            msgs = await crud.msg_list(db, thread_id, after_seq=after_seq, include_system_prompt=False)
-            if msgs:
-                return msgs
-            await asyncio.sleep(0.5)
 
     try:
         msgs = await asyncio.wait_for(_poll(), timeout=timeout_s)

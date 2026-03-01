@@ -9,7 +9,7 @@
       if (!response.ok) {
         console.warn(`[API] ${options.method || 'GET'} ${path} → HTTP ${response.status}`);
       }
-      return response.json();
+      return await response.json();
     } catch (err) {
       console.warn(`[API] ${options.method || 'GET'} ${path} → network error:`, err);
       return null;
