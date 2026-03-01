@@ -95,7 +95,7 @@ pip install agentchatbus
 Optional: install a specific version:
 
 ```bash
-pip install "agentchatbus==0.1.0"
+pip install "agentchatbus==0.1.1"
 ```
 
 ### 2.1 — After pip install: how to run
@@ -145,8 +145,8 @@ After `agentchatbus` starts, endpoints are:
 If the shell cannot find commands after install, use module mode:
 
 ```bash
-python -m src.cli
-python -m src.stdio_main --lang English
+python -m agentchatbus.cli
+python -m agentchatbus.stdio_main --lang English
 ```
 
 Windows PowerShell example:
@@ -163,14 +163,70 @@ pip install agentchatbus
 agentchatbus --host 127.0.0.1 --port 39765
 ```
 
+### 2.2 — Windows PATH warning after `pip install`
+
+On Windows (especially Microsoft Store Python), you may see:
+
+```text
+WARNING: The scripts agentchatbus-stdio.exe and agentchatbus.exe are installed in '...\\Scripts' which is not on PATH.
+```
+
+This is a Python environment warning, not an AgentChatBus packaging bug.
+
+Recommended fixes:
+
+1. Use `pipx` and let it manage PATH automatically:
+
+```powershell
+pipx install agentchatbus
+pipx ensurepath
+```
+
+2. Add your user Scripts directory to PATH (PowerShell):
+
+```powershell
+$Scripts = python -c "import site, os; print(os.path.join(site.USER_BASE, 'Scripts'))"
+$Old = [Environment]::GetEnvironmentVariable("Path", "User")
+if ($Old -notlike "*$Scripts*") {
+  [Environment]::SetEnvironmentVariable("Path", "$Old;$Scripts", "User")
+}
+```
+
+Then open a new terminal and run:
+
+```powershell
+agentchatbus --help
+agentchatbus-stdio --help
+```
+
+If you prefer not to change PATH, module mode always works:
+
+```powershell
+python -m agentchatbus.cli
+python -m agentchatbus.stdio_main --lang English
+```
+
+### 2.3 — Startup methods at a glance
+
+| Method | Command | Best for | Notes |
+|---|---|---|---|
+| Package HTTP/SSE | `agentchatbus` | Installed users | Requires executable discovery via PATH |
+| Package stdio | `agentchatbus-stdio --lang English` | stdio clients | Run together with HTTP/SSE if needed |
+| Package module fallback | `python -m agentchatbus.cli` | PATH issues | No PATH dependency |
+| Package module fallback (stdio) | `python -m agentchatbus.stdio_main --lang English` | PATH issues | No PATH dependency |
+| Source HTTP/SSE | `python -m src.main` | Development | Runs directly from repo checkout |
+| Source stdio | `python stdio_main.py --lang English` | Development compatibility | Root shim delegates to `src.stdio_main` |
+| Repo scripts (Windows) | `.\scripts\restart127.0.0.1.ps1` | Local dev convenience | Expects repo-local `.venv` |
+| Repo scripts (Linux/Mac) | `bash scripts/restart-127.0.0.1.sh` | Local dev convenience | Expects repo-local `.venv` |
+
 Install from a GitHub Release wheel (alternative distribution path):
 
 ```bash
 # Example: install from local downloaded wheel file
-pip install dist/agentchatbus-0.1.0-py3-none-any.whl
+pip install dist/agentchatbus-0.1.1-py3-none-any.whl
 
 # Example: install directly from a GitHub Release URL
-pip install https://github.com/Killea/AgentChatBus/releases/download/v0.1.0/agentchatbus-0.1.0-py3-none-any.whl
+pip install https://github.com/Killea/AgentChatBus/releases/download/v0.1.1/agentchatbus-0.1.1-py3-none-any.whl
 ```
 
 ### 3 — Install (Source Mode, for development)
@@ -346,7 +402,7 @@ Any MCP-compatible client (e.g., Claude Desktop, Cursor, custom SDK) can connect
 
 This repository includes a release workflow at `.github/workflows/release.yml`.
 
-When you push a tag like `v0.1.0`, GitHub Actions will:
+When you push a tag like `v0.1.1`, GitHub Actions will:
 
 1. Build `sdist` and `wheel` via `python -m build`
 2. Create/Update a GitHub Release for that tag

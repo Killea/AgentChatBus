@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentchatbus"
-version = "0.1.0"
+version = "0.1.1"
 description = "Persistent multi-agent communication bus with MCP SSE + stdio transports"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -45,14 +45,14 @@ Repository = "https://github.com/Killea/AgentChatBus"
 Issues = "https://github.com/Killea/AgentChatBus/issues"
 
 [project.scripts]
-agentchatbus = "src.cli:main"
-agentchatbus-stdio = "src.stdio_main:run"
+agentchatbus = "agentchatbus.cli:main"
+agentchatbus-stdio = "agentchatbus.stdio_main:run"
 
 [tool.setuptools]
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["src*"]
+include = ["src*", "agentchatbus*"]
 
 [tool.setuptools.package-data]
 src = [
