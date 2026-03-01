@@ -58,12 +58,12 @@
   }
 
   function getCompressedOfflineChar(offlineTimeStr) {
-    if (!offlineTimeStr) return "?";
+    if (!offlineTimeStr) return "∞";
     const match = offlineTimeStr.match(/([hdmony]+)/);
     if (match) {
       return match[1].substring(0, 1);
     }
-    return "?";
+    return "~";
   }
 
   function getStateEmoji(state) {
