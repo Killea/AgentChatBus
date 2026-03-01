@@ -44,3 +44,9 @@ Thumbs.db
 
 # uploaded files
 src/static/uploads
+
+# node
+node_modules/
+frontend/dist/
+frontend/coverage/
+.npm/
