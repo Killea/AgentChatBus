@@ -18,6 +18,19 @@ class Thread:
     summary: Optional[str] = None
     metadata: Optional[str] = None  # JSON string for arbitrary extra data
     system_prompt: Optional[str] = None
+    template_id: Optional[str] = None   # Template used at creation (UP-18)
+
+
+@dataclass
+class ThreadTemplate:
+    """A reusable preset for thread creation (UP-18)."""
+    id: str
+    name: str
+    description: Optional[str]
+    system_prompt: Optional[str]
+    default_metadata: Optional[str]  # JSON string
+    created_at: datetime
+    is_builtin: bool
 
 
 @dataclass
@@ -41,7 +54,7 @@ class AgentInfo:
     ide: str               # e.g. "Cursor", "Claude Desktop", "CLI"
     model: str             # e.g. "GPT-4", "claude-3-5-sonnet-20241022"
     description: str
-    capabilities: Optional[str]   # JSON list of capability tags
+    capabilities: Optional[str]   # JSON list of capability tags e.g. '["code", "review"]'
     registered_at: datetime
     last_heartbeat: datetime
     is_online: bool               # derived: last_heartbeat within timeout window
@@ -50,6 +63,7 @@ class AgentInfo:
     alias_source: Optional[str] = None    # 'auto' or 'user'
     last_activity: Optional[str] = None    # activity type: 'registered', 'heartbeat', 'msg_wait', 'msg_post', etc.
     last_activity_time: Optional[datetime] = None  # when the last activity occurred
+    skills: Optional[str] = None          # JSON list of A2A-compatible skill objects (UP-15)
 
 
 @dataclass

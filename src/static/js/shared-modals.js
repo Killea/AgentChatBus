@@ -36,9 +36,46 @@
     return !!overlay && !!event && event.target === overlay;
   }
 
-  function openThreadModal() {
+  // Cache of available templates populated on first modal open
+  let _templates = null;
+
+  async function _loadTemplates(api) {
+    if (_templates) return _templates;
+    try {
+      const result = await api("/api/templates");
+      _templates = Array.isArray(result) ? result : [];
+    } catch {
+      _templates = [];
+    }
+    return _templates;
+  }
+
+  function _populateTemplateDropdown(templates) {
+    const sel = document.getElementById("modal-template");
+    if (!sel) return;
+    // Keep the first "No template" option, remove the rest
+    while (sel.options.length > 1) sel.remove(1);
+    for (const t of templates) {
+      const opt = document.createElement("option");
+      opt.value = t.id;
+      opt.textContent = t.name + (t.is_builtin ? "" : " ★");
+      opt.dataset.description = t.description || "";
+      sel.appendChild(opt);
+    }
+    sel.onchange = () => {
+      const desc = document.getElementById("modal-template-desc");
+      if (!desc) return;
+      const selected = sel.options[sel.selectedIndex];
+      desc.textContent = selected ? (selected.dataset.description || "") : "";
+    };
+  }
+
+  function openThreadModal(api) {
     setModalVisible("thread", true);
     setTimeout(() => document.getElementById("modal-topic").focus(), 100);
+    if (api) {
+      _loadTemplates(api).then((templates) => _populateTemplateDropdown(templates));
+    }
   }
 
   function closeThreadModal(e) {
@@ -53,11 +90,18 @@
     const topic = topicInput.value.trim();
     if (!topic) return;
 
+    const templateSel = document.getElementById("modal-template");
+    const template = templateSel ? templateSel.value || null : null;
+
     topicInput.value = "";
+    if (templateSel) templateSel.value = "";
+    const descEl = document.getElementById("modal-template-desc");
+    if (descEl) descEl.textContent = "";
     closeThreadModal();
+
     const t = await api("/api/threads", {
       method: "POST",
-      body: JSON.stringify({ topic }),
+      body: JSON.stringify({ topic, ...(template ? { template } : {}) }),
     });
     if (t) {
       await refreshThreads();

@@ -24,6 +24,13 @@
           <div id="modal" onclick="event.stopPropagation()">
             <h3>✦ Create New Thread</h3>
             <input id="modal-topic" type="text" placeholder="Thread topic..." onkeydown="if(event.key==='Enter') submitModal()" />
+            <div class="template-selector-wrap">
+              <label class="template-selector-label" for="modal-template">Template</label>
+              <select id="modal-template">
+                <option value="">No template</option>
+              </select>
+              <span id="modal-template-desc" class="template-description"></span>
+            </div>
             <div class="modal-actions">
               <button class="btn-secondary" onclick="closeModal()">Cancel</button>
               <button class="btn-primary" onclick="submitModal()">Create</button>
