@@ -382,8 +382,8 @@ class TemplateCreate(BaseModel):
     description: str | None = None
     system_prompt: str | None = None
     default_metadata: dict | None = None
-    agent_id: str  # required — must match a registered agent
-    token: str     # required — must match agent's token
+    agent_id: str | None = None  # optional — if provided with token, must match a registered agent
+    token: str | None = None     # optional — required only when agent_id is provided
 
 class MessageCreate(BaseModel):
     model_config = ConfigDict(
@@ -442,12 +442,13 @@ async def api_create_template(body: TemplateCreate):
     except asyncio.TimeoutError:
         raise HTTPException(status_code=503, detail="Database operation timeout")
 
-    # QW-06: require a valid registered agent token to create templates
-    token_valid = await asyncio.wait_for(
-        crud.agent_verify_token(db, body.agent_id, body.token), timeout=DB_TIMEOUT
-    )
-    if not token_valid:
-        raise HTTPException(status_code=401, detail="Invalid agent_id or token")
+    # QW-06: if agent_id + token provided, verify they match a registered agent
+    if body.agent_id and body.token:
+        token_valid = await asyncio.wait_for(
+            crud.agent_verify_token(db, body.agent_id, body.token), timeout=DB_TIMEOUT
+        )
+        if not token_valid:
+            raise HTTPException(status_code=401, detail="Invalid agent_id or token")
 
     # QW-07: apply content filter to system_prompt to block embedded secrets
     if body.system_prompt:

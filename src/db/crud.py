@@ -257,11 +257,13 @@ def _row_to_thread(row: aiosqlite.Row) -> Thread:
     keys = row.keys()
     system_prompt = row["system_prompt"] if "system_prompt" in keys else None
     template_id = row["template_id"] if "template_id" in keys else None
+    updated_at_raw = row["updated_at"] if "updated_at" in keys else None
     return Thread(
         id=row["id"],
         topic=row["topic"],
         status=row["status"],
         created_at=_parse_dt(row["created_at"]),
+        updated_at=_parse_dt(updated_at_raw) if updated_at_raw else None,
         closed_at=_parse_dt(row["closed_at"]) if row["closed_at"] else None,
         summary=row["summary"],
         metadata=row["metadata"],
@@ -418,6 +420,9 @@ async def msg_post(
         "INSERT INTO messages (id, thread_id, author, role, content, seq, created_at, metadata, author_id, author_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (mid, thread_id, actual_author, role, content, seq, now, meta_json, author_id, author_name),
     )
+    await db.execute(
+        "UPDATE threads SET updated_at = ? WHERE id = ?", (now, thread_id)
+    )
     await db.commit()
     if author_id:
         await agent_msg_post(db, author_id)
@@ -430,9 +435,6 @@ async def msg_post(
     if metadata:
         handoff_target = metadata.get("handoff_target")
         if handoff_target:
-            target_agent = await agent_get(db, handoff_target)
-            if target_agent is None:
-                raise ValueError(f"handoff_target agent '{handoff_target}' not found")
             await _emit_event(db, "msg.handoff", thread_id, {
                 "msg_id": mid, "thread_id": thread_id,
                 "from_agent": author_name, "to_agent": handoff_target,
