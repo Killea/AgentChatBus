@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -565,6 +565,18 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         hideThreadContextMenu,
         closeThread,
       });
+    }
+
+    async function exportFromHeader() {
+      const topic = document.getElementById("thread-title")?.textContent || "";
+      await window.AcbThreads.exportThread({ threadId: activeThreadId, topic });
+    }
+
+    async function exportThreadFromMenu() {
+      if (!contextMenuThread) return;
+      const { id, topic } = contextMenuThread;
+      hideThreadContextMenu();
+      await window.AcbThreads.exportThread({ threadId: id, topic });
     }
 
     function resetThreadSelection() {

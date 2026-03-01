@@ -1,4 +1,4 @@
-﻿/* ====================================================================================
+/* ====================================================================================
    Reset & Base
 ==================================================================================== */
 *,
@@ -558,6 +558,38 @@ body[data-theme="light"] .thread-item.context-highlight {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+#export-thread-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid var(--border-light);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background .15s, border-color .15s, color .15s;
+}
+
+#export-thread-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border);
+  color: var(--text-1);
+}
+
+body[data-theme="light"] #export-thread-btn {
+  color: #475569;
+}
+
+body[data-theme="light"] #export-thread-btn:hover {
+  background: #e8f0ff;
+  border-color: #93c5fd;
+  color: #1e40af;
 }
 
 #online-presence {

@@ -681,3 +681,45 @@ async def events_delete_old(db: aiosqlite.Connection, max_age_seconds: int = 600
     await db.commit()
     if deleted > 0:
         logger.debug(f"Pruned {deleted} old events.")
+
+
+# ─────────────────────────────────────────────
+# Export
+# ─────────────────────────────────────────────
+
+async def thread_export_markdown(db: aiosqlite.Connection, thread_id: str) -> Optional[str]:
+    """Build a Markdown transcript for *thread_id*.
+
+    Returns the raw Markdown string, or None if the thread does not exist.
+    System-prompt messages are excluded from the transcript.
+    """
+    thread = await thread_get(db, thread_id)
+    if thread is None:
+        return None
+
+    msgs = await msg_list(db, thread_id, after_seq=0, limit=10000, include_system_prompt=False)
+
+    created_label = thread.created_at.strftime("%Y-%m-%d %H:%M UTC")
+    exported_label = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    lines: list[str] = [
+        f"# {thread.topic}",
+        "",
+        f"> **Status:** {thread.status} | **Created:** {created_label}",
+        f"> **Messages:** {len(msgs)} | **Exported:** {exported_label}",
+        "",
+        "---",
+        "",
+    ]
+
+    for m in msgs:
+        author = m.author_name or m.author
+        timestamp = m.created_at.strftime("%Y-%m-%d %H:%M UTC")
+        lines.append(f"### {author} — {timestamp}")
+        lines.append("")
+        lines.append(m.content)
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+    return "\n".join(lines)

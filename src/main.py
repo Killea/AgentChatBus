@@ -19,7 +19,7 @@ from typing import Literal
 import uvicorn
 from fastapi import FastAPI, Request, HTTPException
 from starlette.responses import Response
-from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 from mcp.server.sse import SseServerTransport
@@ -661,6 +661,43 @@ async def api_thread_unarchive(thread_id: str):
     if not ok:
         raise HTTPException(status_code=404, detail="Thread not found")
     return {"ok": True}
+
+
+# ─────────────────────────────────────────────
+# Export
+# ─────────────────────────────────────────────
+
+@app.get("/api/threads/{thread_id}/export")
+async def api_thread_export(thread_id: str):
+    """Export a thread as a downloadable Markdown transcript."""
+    import re
+
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        md = await asyncio.wait_for(
+            crud.thread_export_markdown(db, thread_id),
+            timeout=DB_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+    if md is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    try:
+        t = await asyncio.wait_for(crud.thread_get(db, thread_id), timeout=DB_TIMEOUT)
+        raw_topic = t.topic if t else thread_id
+    except asyncio.TimeoutError:
+        raw_topic = thread_id
+
+    slug = re.sub(r"[^\w\-]", "-", raw_topic.lower())
+    slug = re.sub(r"-+", "-", slug).strip("-") or "thread"
+    filename = f"{slug}.md"
+
+    return PlainTextResponse(
+        content=md,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ─────────────────────────────────────────────
