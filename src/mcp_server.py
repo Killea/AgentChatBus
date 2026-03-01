@@ -17,7 +17,7 @@ from mcp.server.sse import SseServerTransport
 
 from src.db.database import get_db
 from src.db import crud
-from src.config import BUS_VERSION, HOST, PORT, MSG_WAIT_TIMEOUT
+from src.config import BUS_VERSION, HOST, PORT, MSG_WAIT_TIMEOUT, EXPOSE_THREAD_RESOURCES
 
 logger = logging.getLogger(__name__)
 
@@ -366,26 +366,28 @@ async def list_resources() -> list[types.Resource]:
             mimeType="application/json",
         ),
     ]
-    for t in threads:
-        resources.append(types.Resource(
-            uri=f"chat://threads/{t.id}/transcript",
-            name=f"Transcript: {t.topic[:40]}",
-            description=f"Full conversation history for thread '{t.topic}'",
-            mimeType="text/plain",
-        ))
-        if t.summary:
+    # Only expose per-thread resources if explicitly enabled via config
+    if EXPOSE_THREAD_RESOURCES:
+        for t in threads:
             resources.append(types.Resource(
-                uri=f"chat://threads/{t.id}/summary",
-                name=f"Summary: {t.topic[:40]}",
-                description=f"Closed-thread summary for '{t.topic}'",
+                uri=f"chat://threads/{t.id}/transcript",
+                name=f"Transcript: {t.topic[:40]}",
+                description=f"Full conversation history for thread '{t.topic}'",
                 mimeType="text/plain",
             ))
-        resources.append(types.Resource(
-            uri=f"chat://threads/{t.id}/state",
-            name=f"State: {t.topic[:40]}",
-            description=f"Current state snapshot for thread '{t.topic}' (status, latest_seq).",
-            mimeType="application/json",
-        ))
+            if t.summary:
+                resources.append(types.Resource(
+                    uri=f"chat://threads/{t.id}/summary",
+                    name=f"Summary: {t.topic[:40]}",
+                    description=f"Closed-thread summary for '{t.topic}'",
+                    mimeType="text/plain",
+                ))
+            resources.append(types.Resource(
+                uri=f"chat://threads/{t.id}/state",
+                name=f"State: {t.topic[:40]}",
+                description=f"Current state snapshot for thread '{t.topic}' (status, latest_seq).",
+                mimeType="application/json",
+            ))
     return resources
 
 

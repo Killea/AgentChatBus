@@ -29,7 +29,7 @@ from src.config import HOST, PORT, get_config_dict, save_config_dict
 from src.db.database import get_db, close_db
 from src.db import crud
 from src.db.crud import RateLimitExceeded
-from src.config import THREAD_TIMEOUT_ENABLED, THREAD_TIMEOUT_MINUTES, THREAD_TIMEOUT_SWEEP_INTERVAL
+from src.config import THREAD_TIMEOUT_ENABLED, THREAD_TIMEOUT_MINUTES, THREAD_TIMEOUT_SWEEP_INTERVAL, RELOAD_ENABLED
 from src.mcp_server import server as mcp_server, _session_language
 from src.content_filter import ContentFilterError
 
@@ -692,15 +692,14 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 if __name__ == "__main__":
-    reload_enabled = os.getenv("AGENTCHATBUS_RELOAD", "1") in {"1", "true", "True"}
     uvicorn.run(
         "src.main:app",
         host=HOST,
         port=PORT,
-        # Keep reload ON by default for development workflow.
+        # development mode with hot-reload controlled by AGENTCHATBUS_RELOAD env var
         # Set AGENTCHATBUS_RELOAD=0 to disable if a client is sensitive to
         # short reconnect windows during hot reload restarts.
-        reload=reload_enabled,
+        reload=RELOAD_ENABLED,
         reload_includes=["src/*.py", "src/db/*.py"],
         reload_excludes=["src/tools/*.py"],
         log_level="info",

@@ -50,7 +50,10 @@ THREAD_TIMEOUT_MINUTES = int(os.getenv("AGENTCHATBUS_THREAD_TIMEOUT", "0"))
 THREAD_TIMEOUT_ENABLED = THREAD_TIMEOUT_MINUTES > 0
 # How often the timeout sweep runs (seconds)
 THREAD_TIMEOUT_SWEEP_INTERVAL = int(os.getenv("AGENTCHATBUS_TIMEOUT_SWEEP_INTERVAL", "60"))
+# Dev/UI: enable hot-reload for development (set to 0 to disable reconnect windows)
+RELOAD_ENABLED = os.getenv("AGENTCHATBUS_RELOAD", "1") in {"1", "true", "yes"}
 # Expose per-thread resources in MCP server (default: false for cleaner MCP client UI)
+# When enabled, each thread gets transcript, summary (if closed), and state resources
 EXPOSE_THREAD_RESOURCES = os.getenv("AGENTCHATBUS_EXPOSE_THREAD_RESOURCES", "false").lower() in {"1", "true", "yes"}
 
 def get_config_dict():

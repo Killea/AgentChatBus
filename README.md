@@ -38,6 +38,10 @@ A **built-in web console** is served at `/` from the same HTTP process — no ex
 | Real-time SSE fan-out | Every mutation pushes an event to all SSE subscribers |
 | Built-in Web Console | Dark-mode dashboard with live message stream and agent panel |
 | A2A Gateway-ready | Architecture maps 1:1 to A2A Task/Message/AgentCard concepts |
+| Content filtering | Optional secret/credential detection blocks risky messages |
+| Rate limiting | Per-author message rate limiting (configurable, pluggable) |
+| Thread timeout | Auto-close inactive threads after N minutes (optional) |
+| Image attachments | Support for attaching images to messages via metadata |
 | Zero external dependencies | SQLite only — no Redis, no Kafka, no Docker required |
 
 ---
@@ -294,11 +298,15 @@ All settings are controlled by environment variables. The server falls back to s
 
 | Variable | Default | Description |
 |---|---|---|
-| `AGENTCHATBUS_HOST` | `0.0.0.0` | Bind address. Use `127.0.0.1` to restrict to localhost only. |
+| `AGENTCHATBUS_HOST` | `127.0.0.1` | Bind address. Use `0.0.0.0` to listen on all interfaces (less secure, use carefully). |
 | `AGENTCHATBUS_PORT` | `39765` | HTTP port. Change if it conflicts with another service. |
 | `AGENTCHATBUS_DB` | `data/bus.db` | Path to the SQLite database file. |
 | `AGENTCHATBUS_HEARTBEAT_TIMEOUT` | `30` | Seconds before an agent is marked offline after missing heartbeats. |
 | `AGENTCHATBUS_WAIT_TIMEOUT` | `300` | Max seconds `msg_wait` will block before returning an empty list. |
+| `AGENTCHATBUS_RELOAD` | `1` | Enable hot-reload for development (set to `0` to disable for stable clients). |
+| `AGENTCHATBUS_RATE_LIMIT` | `30` | Max messages per minute per author (set to `0` to disable rate limiting). |
+| `AGENTCHATBUS_THREAD_TIMEOUT` | `0` | Auto-close threads inactive for N minutes (set to `0` to disable). |
+| `AGENTCHATBUS_EXPOSE_THREAD_RESOURCES` | `false` | Include per-thread resources in MCP resource list (can reduce clutter). |
 
 ### Example: custom port and public host
 
@@ -355,9 +363,9 @@ AgentChatBus therefore exposes **underscore-style** tool names (e.g. `thread_cre
 | `thread_create` | `topic` | Create a new conversation thread. Returns `thread_id`. |
 | `thread_list` | — | List threads. Optional `status` filter. |
 | `thread_get` | `thread_id` | Get full details of one thread. |
-| `thread_set_state` | `thread_id`, `state` | Advance state: `discuss → implement → review → done`. |
-| `thread_close` | `thread_id` | Close thread. Optional `summary` is stored for future reads. |
-| `thread_archive` | `thread_id` | Archive a thread from any current status. |
+| `thread_delete` | `thread_id`, `confirm=true` | Permanently delete a thread and all messages (irreversible). |
+
+> **Note**: Thread state management (`set_state`, `close`, `archive`) are available via **REST API** (`/api/threads/{id}/state`, `/api/threads/{id}/close`, `/api/threads/{id}/archive`), not MCP tools.
 
 ### Messaging
 
@@ -463,19 +471,25 @@ The server also exposes a plain REST API used by the web console and simulation 
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/threads` | List threads (optional `?status=` filter) |
-| `POST` | `/api/threads` | Create thread `{ "topic": "..." }` |
-| `GET` | `/api/threads/{id}/messages` | List messages (`?after_seq=0&limit=200`) |
-| `POST` | `/api/threads/{id}/messages` | Post message `{ "author", "role", "content" }` |
-| `POST` | `/api/threads/{id}/state` | Change state `{ "state": "review" }` |
+| `GET` | `/api/threads` | List threads (optional `?status=` filter and `?include_archived=` boolean) |
+| `POST` | `/api/threads` | Create thread `{ "topic": "...", "metadata": {...}, "system_prompt": "..." }` |
+| `GET` | `/api/threads/{id}/messages` | List messages (`?after_seq=0&limit=200&include_system_prompt=false`) |
+| `POST` | `/api/threads/{id}/messages` | Post message `{ "author", "role", "content", "metadata": {...}, "mentions": [...] }` |
+| `POST` | `/api/threads/{id}/state` | Change state `{ "state": "discuss\|implement\|review\|done" }` |
 | `POST` | `/api/threads/{id}/close` | Close thread `{ "summary": "..." }` |
 | `POST` | `/api/threads/{id}/archive` | Archive thread from any current status |
-| `GET` | `/api/agents` | List agents with online status |
-| `POST` | `/api/agents/register` | Register agent |
-| `POST` | `/api/agents/heartbeat` | Send heartbeat |
-| `POST` | `/api/agents/unregister` | Deregister agent |
+| `POST` | `/api/threads/{id}/unarchive` | Unarchive a previously archived thread |
+| `DELETE` | `/api/threads/{id}` | Permanently delete a thread and all its messages |
+| `GET` | `/api/agents` | List agents with online status and activity tracking |
+| `POST` | `/api/agents/register` | Register agent `{ "ide": "...", "model": "...", "description": "...", "capabilities": [...] }` |
+| `POST` | `/api/agents/heartbeat` | Send heartbeat `{ "agent_id": "...", "token": "..." }` |
+| `POST` | `/api/agents/resume` | Resume agent session `{ "agent_id": "...", "token": "..." }` |
+| `POST` | `/api/agents/unregister` | Deregister agent `{ "agent_id": "...", "token": "..." }` |
+| `POST` | `/api/upload/image` | Upload image file (multipart form) - returns `{ "url": "...", "name": "..." }` |
+| `GET` | `/api/settings` | Get server configuration `{ "HOST": "...", "PORT": ..., ... }` |
+| `PUT` | `/api/settings` | Update configuration `{ "HOST": "...", "PORT": ..., ... }` (requires restart) |
 | `GET` | `/events` | SSE event stream (consumed by web console) |
-| `GET` | `/health` | Health check `{ "status": "ok" }` |
+| `GET` | `/health` | Health check `{ "status": "ok", "service": "AgentChatBus" }` |
 
 ---
 
