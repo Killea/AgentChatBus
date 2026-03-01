@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -10,7 +10,8 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet" />
-  <style>
+  <link rel="stylesheet" href="/static/css/main.css" />
+  <style>PLACEHOLDER_TO_REMOVE
     /* ====================================================================================
    Reset & Base
 ==================================================================================== */
@@ -1124,14 +1125,16 @@
     /** Agent Status Bar **/
     #agent-status-bar {
       display: flex;
+      align-items: center;
       background: var(--bg-base);
       border-top: 1px solid var(--border-light);
-      padding: 8px 12px;
-      height: 56px;
+      padding: 6px 12px;
+      min-height: 64px;
       overflow-x: auto;
-      overflow-y: hidden;
+      overflow-y: visible;
       gap: 10px;
       font-size: 12px;
+      flex-shrink: 0;
     }
 
     #agent-status-list {
@@ -1663,8 +1666,8 @@
   <script src="/static/js/components/acb-compose-shell.js?v=3"></script>
   <script src="/static/js/components/acb-agent-status-shell.js?v=2"></script>
   <script src="/static/js/shared-threads.js?v=2"></script>
-  <script src="/static/js/shared-agent-status.js?v=2"></script>
-  <script src="/static/js/components/acb-agent-status-item.js?v=2"></script>
+  <script src="/static/js/shared-agent-status.js?v=3"></script>
+  <script src="/static/js/components/acb-agent-status-item.js?v=3"></script>
   <script src="/static/js/shared-agents.js?v=2"></script>
   <script src="/static/js/shared-chat.js?v=2"></script>
   <script src="/static/js/shared-tooltip.js?v=2"></script>
@@ -1909,35 +1912,6 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     // SSE
     // ==============================================================================================
     function startSSE() {
-      const es = new EventSource('/events');
-      es.onopen = () => setConnected(true);
-      es.onerror = () => { setConnected(false); setTimeout(startSSE, 3000); es.close(); };
-
-      es.onmessage = async (e) => {
-        const ev = JSON.parse(e.data);
-        const p = ev.payload;
-
-        if (ev.type === 'msg.new') {
-          if (p.thread_id === activeThreadId) await loadNewMessages();
-          await refreshThreads();  // update sidebar counts
-        }
-        if (ev.type === 'thread.new' || ev.type === 'thread.state' || ev.type === 'thread.closed' || ev.type === 'thread.archived' || ev.type === 'thread.deleted') {
-          await refreshThreads();
-          if (ev.type === 'thread.deleted' && p.thread_id === activeThreadId) {
-            activeThreadId = null;
-            document.getElementById('msg-pane').innerHTML = '';
-            const hdr = document.getElementById('thread-header');
-            if (hdr) hdr.textContent = '';
-          }
-        }
-        if (ev.type === 'agent.online' || ev.type === 'agent.offline') {
-          await refreshAgents();
-        }
-        if (ev.type === 'agent.typing' && p.thread_id === activeThreadId) {
-          if (p.is_typing) showTyping(p.agent_id);
-          else hideTyping(p.agent_id);
-        }
-      };
       return window.AcbSSE.startSSE({
         getActiveThreadId: () => activeThreadId,
         onMsgNew: async () => loadNewMessages(),
@@ -2073,7 +2047,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
 
     function openThreadContextMenu(event, thread) {
       contextMenuThread = window.AcbThreads.openThreadContextMenu(event, thread);
-      // 保存右键点击的位置，用于确认对话框定位
+      // Store right-click position for confirm dialog positioning
       contextMenuThread._clickX = event.clientX;
       contextMenuThread._clickY = event.clientY;
     }
@@ -2244,27 +2218,20 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
 
         // Render images if any
         let images = null;
-        console.log(`[Bubble] Message metadata:`, m.metadata, `Type: ${typeof m.metadata}`);
         if (m.metadata) {
-          // Parse metadata if it's a string
           if (typeof m.metadata === 'string') {
             try {
               const meta = JSON.parse(m.metadata);
               images = meta.images;
-              console.log(`[Bubble] Parsed metadata as string, images:`, images);
             } catch (e) {
-              console.error(`[Bubble] Failed to parse metadata JSON:`, e);
+              console.warn(`[Bubble] Failed to parse metadata JSON:`, e);
             }
           } else if (typeof m.metadata === 'object') {
             images = m.metadata.images;
-            console.log(`[Bubble] Got metadata as object, images:`, images);
           }
-        } else {
-          console.log(`[Bubble] No metadata in message`);
         }
 
         if (images && Array.isArray(images) && images.length > 0) {
-          console.log(`[Bubble] Rendering ${images.length} images`);
           const imgContainer = document.createElement('div');
           imgContainer.style.cssText = 'display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;';
           images.forEach(img => {
@@ -2274,11 +2241,8 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
             imgEl.style.cssText = 'width: min(520px, 80vw); max-width: 100%; max-height: 70vh; border-radius: 8px; object-fit: contain; cursor: zoom-in; background: rgba(0,0,0,0.05);';
             imgEl.onclick = () => window.open(img.url, '_blank');
             imgContainer.appendChild(imgEl);
-            console.log(`[Bubble] Added image: ${img.url}`);
           });
           bubbleEl.appendChild(imgContainer);
-        } else {
-          console.log(`[Bubble] No images to render`);
         }
       }
 
@@ -2384,23 +2348,23 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     }
 
     function getAgentState(agent) {
-      // Σ╝ÿσàêΣ╜┐τö¿last_activity_timeσêñµû¡τè╢µÇü∩╝îΦÇîΘ¥₧is_online∩╝êσÉÄΦÇàσƒ║Σ║ÄheartbeatΦ╢àµù╢∩╝ë
+      // Prefer last_activity_time for state detection; is_online relies on heartbeat timeout
       const activityTime = agent.last_activity_time ? new Date(agent.last_activity_time) : null;
       const now = new Date();
 
       if (!activityTime) {
-        // σ«îσà¿µ▓íµ£ëµ┤╗σè¿Φ«░σ╜ò
+        // No activity record at all
         return agent.is_online ? 'Waiting' : 'Offline';
       }
 
       const secondsAgo = (now - activityTime) / 1000;
 
-      // µá╣µì«µ┤╗σè¿τ▒╗σ₧ïσÆîµù╢Θù┤σêñµû¡τè╢µÇü
+      // Determine state based on activity type and elapsed time
       if (agent.last_activity === 'msg_wait' && secondsAgo < 60) return 'Waiting';
       if (secondsAgo < 30) return 'Active';
-      if (secondsAgo < 300) return 'Idle';  // 5σêΘÆƒσàµ£ëµ┤╗σè¿τ«ù Idle
+      if (secondsAgo < 300) return 'Idle';  // active within 5 minutes → Idle
 
-      // Φ╢àΦ┐ç5σêΘÆƒµ▓íµ┤╗σè¿Σ╕öis_online=falseµëìµÿ╛τñ║Offline
+      // More than 5 minutes inactive and is_online=false → Offline
       return agent.is_online ? 'Idle' : 'Offline';
     }
 

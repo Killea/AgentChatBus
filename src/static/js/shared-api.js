@@ -6,8 +6,12 @@
         headers: { "Content-Type": "application/json" },
         ...options,
       });
+      if (!response.ok) {
+        console.warn(`[API] ${options.method || 'GET'} ${path} → HTTP ${response.status}`);
+      }
       return response.json();
-    } catch {
+    } catch (err) {
+      console.warn(`[API] ${options.method || 'GET'} ${path} → network error:`, err);
       return null;
     }
   }

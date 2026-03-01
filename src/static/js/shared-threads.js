@@ -143,7 +143,6 @@
     menu.style.left = `${Math.max(8, x)}px`;
     menu.style.top = `${Math.max(8, y)}px`;
 
-    // 高亮当前右键点击的 thread（使用临时高亮类）
     const threadItems = document.querySelectorAll('.thread-item');
     threadItems.forEach(item => {
       if (item.getAttribute('data-thread-id') === String(thread.id)) {
@@ -158,7 +157,6 @@
 
   function hideThreadContextMenu() {
     const menu = document.getElementById("thread-context-menu");
-    // 清除临时高亮
     const highlightedItems = document.querySelectorAll('.thread-item.context-highlight');
     highlightedItems.forEach(item => {
       item.classList.remove('context-highlight');

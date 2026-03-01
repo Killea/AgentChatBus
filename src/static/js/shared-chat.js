@@ -130,8 +130,6 @@
 
     if ((!content && images.length === 0) || !activeThreadId) return;
 
-    console.log(`[SendMessage] Sending message with ${mentions.length} mentions and ${images.length} images`);
-
     updateOnlinePresence();
     input.innerHTML = '';
     const messageBar = document.getElementById("mentions-bar");
@@ -147,17 +145,11 @@
       metadata: mentions.length > 0 ? { mention_labels: mentionLabels } : undefined,
       images: images.length > 0 ? images : undefined
     };
-    console.log(`[SendMessage] Payload:`, JSON.stringify(payload));
 
     const m = await api(`/api/threads/${activeThreadId}/messages`, {
       method: "POST",
       body: JSON.stringify(payload),
     });
-
-    console.log(`[SendMessage] Response:`, m);
-    if (m && m.metadata) {
-      console.log(`[SendMessage] Message metadata:`, m.metadata);
-    }
 
     if (m) {
       setLastSeq((prev) => Math.max(prev, m.seq));

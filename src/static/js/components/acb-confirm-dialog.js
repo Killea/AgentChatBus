@@ -44,21 +44,21 @@
       const dialogHeight = this._dialog.offsetHeight || 200;
       const padding = 16;
 
-      // 计算对话框位置，确保在视口内
+      // Compute dialog position, keeping it within the viewport
       let left = x;
       let top = y;
 
-      // 如果右侧超出视口，向左移动
+      // If the right edge overflows, shift left
       if (left + dialogWidth > window.innerWidth - padding) {
         left = window.innerWidth - dialogWidth - padding;
       }
 
-      // 如果底部超出视口，向上移动
+      // If the bottom edge overflows, shift up
       if (top + dialogHeight > window.innerHeight - padding) {
         top = window.innerHeight - dialogHeight - padding;
       }
 
-      // 确保不超出左边界和上边界
+      // Clamp to left and top boundaries
       left = Math.max(padding, left);
       top = Math.max(padding, top);
 
@@ -69,15 +69,15 @@
     }
 
     /**
-     * 显示确认对话框
-     * @param {Object} options - 配置选项
-     * @param {string} options.title - 对话框标题
-     * @param {string} options.message - 确认消息（支持 HTML）
-     * @param {string} options.confirmText - 确认按钮文本
-     * @param {string} options.confirmClass - 确认按钮样式类（如 btn-destructive）
-     * @param {number} options.x - 对话框显示的 X 坐标（可选）
-     * @param {number} options.y - 对话框显示的 Y 坐标（可选）
-     * @returns {Promise<boolean>} - 返回 Promise，用户确认返回 true，取消返回 false
+     * Show the confirm dialog and return a Promise resolving to the user's choice.
+     * @param {Object} options - Configuration options
+     * @param {string} options.title - Dialog title
+     * @param {string} options.message - Confirm message (supports HTML)
+     * @param {string} options.confirmText - Confirm button label
+     * @param {string} options.confirmClass - Confirm button CSS class (e.g. btn-destructive)
+     * @param {number} options.x - Optional X coordinate for dialog positioning
+     * @param {number} options.y - Optional Y coordinate for dialog positioning
+     * @returns {Promise<boolean>} Resolves to true if confirmed, false if cancelled
      */
     async show({ title = 'Confirm', message = '', confirmText = 'Confirm', confirmClass = 'btn-primary', x = null, y = null }) {
       if (!this._dialog) return false;
@@ -93,11 +93,10 @@
         confirmBtn.className = confirmClass;
       }
 
-      // 如果提供了位置参数，设置对话框位置
+      // Position dialog near the click if coordinates provided, otherwise center it
       if (x !== null && y !== null) {
         this._positionDialog(x, y);
       } else {
-        // 否则使用默认居中显示
         this._dialog.style.position = '';
         this._dialog.style.left = '';
         this._dialog.style.top = '';
