@@ -19,7 +19,8 @@
       if (!this._data) return;
 
       const {
-        emoji,
+        avatarEmoji,
+        stateEmoji,
         label,
         state,
         offlineDisplay,
@@ -34,18 +35,20 @@
 
       if (isLongOffline) {
         this.innerHTML = `
-          <div class="agent-status-emoji">${emoji}</div>
+          <div class="agent-status-emoji">${avatarEmoji}</div>
           <div class="agent-status-text-compact">${compressedChar}</div>
+          <div class="agent-status-state-emoji" title="${esc(state)}">${stateEmoji}</div>
         `;
         return;
       }
 
       this.innerHTML = `
-        <div class="agent-status-emoji">${emoji}</div>
+        <div class="agent-status-emoji">${avatarEmoji}</div>
         <div class="agent-status-text">
           <div class="agent-alias">${esc(label)}</div>
           <div class="agent-state">${state}${offlineDisplay}</div>
         </div>
+        <div class="agent-status-state-emoji" title="${esc(state)}">${stateEmoji}</div>
       `;
     }
   }

@@ -122,6 +122,27 @@ class TestConcurrentMessageSending:
 
 class TestConcurrentUserInteractions:
     """Tests for concurrent user interface interactions."""
+
+    @staticmethod
+    def _ensure_compose_visible(page: Page):
+        """Ensure there is an active thread so compose input is visible."""
+        page.wait_for_selector("#compose", state="attached", timeout=5000)
+
+        if page.locator(".thread-item").count() == 0:
+            page.evaluate(
+                """
+                () => fetch('/api/threads', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ topic: 'Concurrent UI thread' })
+                })
+                """
+            )
+            page.reload(wait_until="domcontentloaded")
+            page.wait_for_selector(".thread-item", timeout=5000)
+
+        page.locator(".thread-item").first.click()
+        page.wait_for_selector("#compose.visible", timeout=5000)
     
     def test_concurrent_004_rapid_thread_switching(self, page: Page):
         """Test rapidly switching between threads."""
@@ -142,8 +163,8 @@ class TestConcurrentUserInteractions:
     
     def test_concurrent_005_compose_and_receive(self, page: Page, sse_injector):
         """Test user composing while receiving messages."""
-        page.wait_for_selector(".compose-input", timeout=5000)
-        compose = page.locator(".compose-input")
+        self._ensure_compose_visible(page)
+        compose = page.locator("#compose-input")
         thread_id = "compose-receive-thread"
         
         # Act - Start typing while messages arrive
@@ -163,7 +184,7 @@ class TestConcurrentUserInteractions:
         
         # Assert - Compose should still have text
         page.wait_for_timeout(500)
-        assert "Starting message" in compose.input_value()
+        assert "Starting message" in compose.inner_text()
     
     def test_concurrent_006_settings_change_during_messaging(self, page: Page):
         """Test changing settings while receiving messages."""
@@ -221,8 +242,11 @@ class TestConcurrentNetworkOperations:
         # Act - Load threads while loading message history
         page.evaluate("""
         window.loadThreads?.();
-        window.selectThread?.({id: 'some-thread'});
         """)
+
+        # Select a thread via UI if available, matching real user behavior.
+        if page.locator(".thread-item").count() > 0:
+            page.locator(".thread-item").first.click()
         
         page.wait_for_timeout(1000)
         

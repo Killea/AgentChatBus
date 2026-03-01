@@ -697,9 +697,9 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: .02em;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0;
       margin-top: 2px;
     }
 
@@ -1185,6 +1185,15 @@
       color: var(--text-2);
       min-width: 16px;
       text-align: center;
+    }
+
+    .agent-status-state-emoji {
+      margin-left: auto;
+      font-size: 16px;
+      width: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     #agent-status-info {
@@ -2169,11 +2178,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       const isHuman = authorLabel.toLowerCase() === 'human';
       const authorKey = isHuman ? 'human' : (isSystem ? 'system' : String(m.author_id ?? authorLabel));
       const color = authorColor(authorKey);
-      let initials = authorLabel.slice(0, 2).toUpperCase();
-      if (!isHuman && !isSystem) {
-        const base = authorLabel.split('(')[0].trim().toUpperCase();
-        initials = base.substring(0, 3);
-      }
+      const avatarEmoji = window.AcbUtils?.getAgentAvatarEmoji ? window.AcbUtils.getAgentAvatarEmoji(authorKey) : '🤖';
       const bgAlpha = `${color}22`;  // ~13% alpha tint for avatar bg
 
       const row = document.createElement('div');
@@ -2192,7 +2197,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       }
 
       row.innerHTML = `
-      <div class="msg-avatar" style="background:${bgAlpha};color:${color};border:1px solid ${color}44">${initials}</div>
+      <div class="msg-avatar" style="background:${bgAlpha};color:${color};border:1px solid ${color}44">${avatarEmoji}</div>
       <div class="msg-col">
         <div class="msg-header">
           <span class="msg-author-label" style="color:${color}">${esc(authorLabel)}</span>
@@ -2273,13 +2278,12 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       let el = document.getElementById(`typing-${agentId}`);
       if (!el) {
         const color = authorColor(agentId);
-        const base = agentId.split('(')[0].trim().toUpperCase();
-        const initials = base.substring(0, 3);
+        const avatarEmoji = window.AcbUtils?.getAgentAvatarEmoji ? window.AcbUtils.getAgentAvatarEmoji(agentId) : '🤖';
         const row = document.createElement('div');
         row.className = 'msg-row msg-row-left';
         row.id = `typing-${agentId}`;
         row.innerHTML = `
-          <div class="msg-avatar" style="background:${color}22;color:${color};border:1px solid ${color}44">${initials}</div>
+          <div class="msg-avatar" style="background:${color}22;color:${color};border:1px solid ${color}44">${avatarEmoji}</div>
           <div class="msg-col">
             <div class="msg-header">
               <span class="msg-author-label" style="color:${color}">${esc(agentId)}</span>
@@ -2345,107 +2349,6 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     // ==============================================================================================
     function escapeHtml(t) {
       return window.AcbUtils.escapeHtml(t);
-    }
-
-    // ==============================================================================================
-    // Agent Status Bar Update
-    // ==============================================================================================
-    async function updateStatusBar() {
-      const allAgents = await api('/api/agents') || [];
-      currentAgents = allAgents; // Cache for tooltip lookups
-      const container = document.getElementById('agent-status-list');
-      if (!container) {
-        return;
-      }
-
-      let participants = [];
-      let isThreadMode = false;  // Track if showing thread-specific agents
-
-      // If a thread is selected, show agents in that thread
-      if (activeThreadId) {
-        // Σ╗Äσ╜ôσëìthreadτÜäµ╢êµü»Σ╕¡µÉσûµëÇµ£ëσéΣ╕Äagents∩╝êµîëauthor_id∩╝ë
-        const participantIdMap = new Map();  // id -> agentµò░µì«
-        const msgArea = document.getElementById('messages');
-        if (msgArea) {
-          const rows = msgArea.querySelectorAll('[data-author-id]');
-          rows.forEach(row => {
-            const authorId = row.getAttribute('data-author-id');
-            if (authorId && authorId !== 'system' && authorId !== 'human' && !participantIdMap.has(authorId)) {
-              // µƒÑµë╛Φ»Ñauthor_idσ»╣σ║öτÜäagent
-              const agent = allAgents.find(a => (a.id === authorId || a.agent_id === authorId));
-              if (agent) {
-                participantIdMap.set(authorId, agent);
-              } else {
-                // σì│Σ╜┐agentΣ╕ìσ£¿allAgentsΣ╕¡∩╝îΣ╣ƒσê¢σ╗║Σ╕ÇΣ╕¬τª╗τ║┐Φí¿τñ║
-                participantIdMap.set(authorId, {
-                  id: authorId,
-                  display_name: authorId,
-                  name: authorId,
-                  is_online: false,
-                });
-              }
-            }
-          });
-        }
-        participants = Array.from(participantIdMap.values());
-        isThreadMode = participants.length > 0;  // Only thread mode if we have participants
-      }
-
-      // If no thread selected or no participants in thread, show all agents
-      if (!isThreadMode) {
-        participants = allAgents;
-        isThreadMode = false;  // Global mode - no thread context
-      }
-
-      // µÄÆσ║∩╝Üσ£¿τ║┐Σ╝ÿσàê∩╝îτä╢σÉÄµîëµ£ÇσÉÄµ┤╗σè¿µù╢Θù┤µÄÆσ║
-      participants.sort((a, b) => {
-        if (a.is_online !== b.is_online) {
-          return a.is_online ? -1 : 1;  // σ£¿τ║┐Σ╝ÿσàê
-        }
-        if (a.is_online && b.is_online) {
-          const timeA = a.last_activity_time ? new Date(a.last_activity_time) : new Date(0);
-          const timeB = b.last_activity_time ? new Date(b.last_activity_time) : new Date(0);
-          return timeB - timeA;  // µ£ÇΦ┐æµ┤╗σè¿Σ╝ÿσàê
-        }
-        return 0;
-      });
-
-      container.innerHTML = '';
-
-      if (participants.length === 0) {
-        container.innerHTML = '<div style="color:var(--text-3);font-size:11px;padding:4px 12px;">No active agents</div>';
-        return;
-      }
-
-      participants.forEach(a => {
-        const state = getAgentState(a);
-        const emoji = getStateEmoji(state);
-        const label = String(a.display_name ?? a.name ?? '').trim() || 'Unknown';
-        const offlineTime = getOfflineTime(a);
-        const offlineDisplay = offlineTime ? ` (${offlineTime})` : '';
-        const isLongOffline = isOfflineMoreThanHour(a);
-
-        const compressedChar = getCompressedOfflineChar(offlineTime);
-        const item = document.createElement('acb-agent-status-item');
-        item.setData({
-          emoji,
-          label,
-          state,
-          offlineDisplay,
-          isLongOffline,
-          compressedChar,
-          escapeHtml,
-        });
-
-        // Set data-agent-id for click-to-mention functionality
-        if (a && a.id) {
-          item.dataset.agentId = a.id;
-          bindAgentTooltipEvents(item, a);
-        } else if (a && a.agent_id) {
-          item.dataset.agentId = a.agent_id;
-        }
-        container.appendChild(item);
-      });
     }
 
     function getAgentState(agent) {

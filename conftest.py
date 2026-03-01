@@ -18,6 +18,10 @@ BASE_URL = f"http://127.0.0.1:{TEST_PORT}"
 TEST_DB_PATH = os.path.join(os.path.dirname(__file__), "data", "bus_test.db")
 _SERVER_PROCESS = None
 
+# Script-style checks that are intended to run manually against a dedicated server
+# should not be collected by pytest's normal test discovery.
+collect_ignore = ["test_image_paste.py", "test_token_exposure.py"]
+
 
 @pytest.fixture(scope="session", autouse=True)
 def server():

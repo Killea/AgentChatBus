@@ -214,6 +214,33 @@ class SSEEventInjector:
 # ===========================
 
 @pytest.fixture
+def browser_context() -> Generator[BrowserContext, None, None]:
+    """Create a Playwright browser context for testing."""
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+    
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context()
+        yield context
+        context.close()
+        browser.close()
+
+
+@pytest.fixture
+def page(browser_context: BrowserContext) -> Generator[Page, None, None]:
+    """Create a Playwright page for testing."""
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+    
+    page = browser_context.new_page()
+    # Navigate to the base URL
+    page.goto(BASE_URL, wait_until="domcontentloaded")
+    yield page
+    page.close()
+
+
+@pytest.fixture
 def test_data() -> TestDataBuilder:
     """Provide test data builder."""
     return TestDataBuilder()
@@ -258,3 +285,6 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "agent: Agent status tests")
     config.addinivalue_line("markers", "concurrent: Concurrent agent tests")
     config.addinivalue_line("markers", "slow: Slow/performance tests")
+    config.addinivalue_line("markers", "edge: Edge case and boundary tests")
+    config.addinivalue_line("markers", "error: Error recovery tests")
+    config.addinivalue_line("markers", "ui: UI state and theming tests")

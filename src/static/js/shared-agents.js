@@ -200,7 +200,8 @@
 
     participants.forEach((a) => {
       const state = getAgentState(a);
-      const emoji = getStateEmoji(state);
+      const avatarEmoji = window.AcbUtils?.getAgentAvatarEmoji ? window.AcbUtils.getAgentAvatarEmoji(a) : "🤖";
+      const stateEmoji = getStateEmoji(state);
       const label = String(a.display_name ?? a.name ?? "").trim() || "Unknown";
       const offlineTime = getOfflineTime(a);
       const offlineDisplay = offlineTime ? ` (${offlineTime})` : "";
@@ -209,7 +210,8 @@
       const compressedChar = getCompressedOfflineChar(offlineTime);
       const item = document.createElement("acb-agent-status-item");
       item.setData({
-        emoji,
+        avatarEmoji,
+        stateEmoji,
         label,
         state,
         offlineDisplay,
