@@ -43,12 +43,12 @@
       }
 
       this.innerHTML = `
-        <div class="agent-status-emoji">${avatarEmoji}</div>
-        <div class="agent-status-text">
-          <div class="agent-alias">${esc(label)}</div>
-          <div class="agent-state">${state}${offlineDisplay}</div>
+        <div class="agent-status-emoji-row">
+          <div class="agent-status-emoji">${avatarEmoji}</div>
+          <span class="agent-status-separator-short">|</span>
+          <div class="agent-status-state-emoji" title="${esc(state)}">${stateEmoji}</div>
         </div>
-        <div class="agent-status-state-emoji" title="${esc(state)}">${stateEmoji}</div>
+        <div class="agent-state">${state}${offlineDisplay}</div>
       `;
     }
   }

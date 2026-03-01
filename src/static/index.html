@@ -1143,9 +1143,10 @@
 
     .agent-status-item {
       display: flex;
+      flex-direction: column;
       align-items: center;
-      gap: 6px;
-      padding: 4px 12px;
+      gap: 2px;
+      padding: 4px 8px;
       background: var(--bg-input);
       border: 1px solid var(--border-light);
       border-radius: 8px;
@@ -1153,6 +1154,12 @@
       flex-shrink: 0;
       font-size: 12px;
       color: var(--text-1);
+    }
+
+    .agent-status-emoji-row {
+      display: flex;
+      align-items: center;
+      gap: 2px;
     }
 
     .agent-status-emoji {
@@ -1175,8 +1182,20 @@
     }
 
     .agent-state {
-      font-size: 11px;
+      font-size: 10px;
       color: var(--text-2);
+      line-height: 1;
+    }
+
+    .agent-status-separator {
+      color: var(--text-3);
+      margin: 0 2px;
+    }
+
+    .agent-status-separator-short {
+      color: var(--text-3);
+      font-size: 12px;
+      line-height: 1;
     }
 
     .agent-status-text-compact {
@@ -1188,7 +1207,7 @@
     }
 
     .agent-status-state-emoji {
-      margin-left: auto;
+      margin-left: 0;
       font-size: 16px;
       width: 20px;
       display: flex;
