@@ -12,7 +12,7 @@ from typing import Optional
 
 import aiosqlite
 
-from src.db.models import Thread, Message, AgentInfo, Event
+from src.db.models import Thread, Message, AgentInfo, Event, ThreadTemplate
 from src.config import AGENT_HEARTBEAT_TIMEOUT, RATE_LIMIT_MSG_PER_MINUTE, RATE_LIMIT_ENABLED
 from src.config import AGENT_HEARTBEAT_TIMEOUT, CONTENT_FILTER_ENABLED
 from src.content_filter import check_content, ContentFilterError
@@ -80,25 +80,47 @@ async def next_seq(db: aiosqlite.Connection) -> int:
 # Thread CRUD
 # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
-async def thread_create(db: aiosqlite.Connection, topic: str, metadata: Optional[dict] = None, system_prompt: Optional[str] = None) -> Thread:
+async def thread_create(
+    db: aiosqlite.Connection,
+    topic: str,
+    metadata: Optional[dict] = None,
+    system_prompt: Optional[str] = None,
+    template: Optional[str] = None,
+) -> Thread:
+    # Resolve template defaults (UP-18): apply before caller overrides
+    template_id: Optional[str] = None
+    if template:
+        tmpl = await template_get(db, template)
+        if tmpl is None:
+            raise ValueError(f"Thread template '{template}' not found.")
+        template_id = tmpl.id
+        if system_prompt is None and tmpl.system_prompt:
+            system_prompt = tmpl.system_prompt
+        if metadata is None and tmpl.default_metadata:
+            try:
+                metadata = json.loads(tmpl.default_metadata)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
     # Atomic idempotency: use transaction to prevent race condition on concurrent creates with same topic
     # Strategy: try INSERT first, if UNIQUE constraint fails then SELECT the existing one
     tid = str(uuid.uuid4())
     now = _now()
     meta_json = json.dumps(metadata) if metadata else None
-    
+
     try:
         await db.execute(
-            "INSERT INTO threads (id, topic, status, created_at, updated_at, metadata, system_prompt) VALUES (?, ?, 'discuss', ?, ?, ?, ?)",
-            (tid, topic, now, now, meta_json, system_prompt),
+            "INSERT INTO threads (id, topic, status, created_at, updated_at, metadata, system_prompt, template_id) VALUES (?, ?, 'discuss', ?, ?, ?, ?, ?)",
+            (tid, topic, now, now, meta_json, system_prompt, template_id),
         )
         await db.commit()
         await _emit_event(db, "thread.new", tid, {"thread_id": tid, "topic": topic})
         logger.info(f"Thread created: {tid} '{topic}'")
         return Thread(id=tid, topic=topic, status="discuss", created_at=_parse_dt(now),
-                      updated_at=_parse_dt(now), closed_at=None, summary=None, metadata=meta_json, system_prompt=system_prompt)
+                      updated_at=_parse_dt(now), closed_at=None, summary=None, metadata=meta_json,
+                      system_prompt=system_prompt, template_id=template_id)
     except sqlite3.IntegrityError as e:
-        # UNIQUE constraint violation on threads.topic ΓÇö another thread was created concurrently
+        # UNIQUE constraint violation on threads.topic — another thread was created concurrently
         # Fetch and return the existing thread for idempotency
         logger.info(f"Thread '{topic}' creation raced (UNIQUE constraint), fetching existing: {e}")
         async with db.execute("SELECT * FROM threads WHERE topic = ? ORDER BY created_at DESC LIMIT 1", (topic,)) as cur:
@@ -234,8 +256,10 @@ async def thread_latest_seq(db: aiosqlite.Connection, thread_id: str) -> int:
 
 
 def _row_to_thread(row: aiosqlite.Row) -> Thread:
-    system_prompt = row["system_prompt"] if "system_prompt" in row.keys() else None
-    updated_at = _parse_dt(row["updated_at"]) if "updated_at" in row.keys() and row["updated_at"] else None
+    keys = row.keys()
+    system_prompt = row["system_prompt"] if "system_prompt" in keys else None
+    updated_at = _parse_dt(row["updated_at"]) if "updated_at" in keys and row["updated_at"] else None
+    template_id = row["template_id"] if "template_id" in keys else None
     return Thread(
         id=row["id"],
         topic=row["topic"],
@@ -246,7 +270,91 @@ def _row_to_thread(row: aiosqlite.Row) -> Thread:
         summary=row["summary"],
         metadata=row["metadata"],
         system_prompt=system_prompt,
+        template_id=template_id,
     )
+
+
+def _row_to_template(row: aiosqlite.Row) -> ThreadTemplate:
+    return ThreadTemplate(
+        id=row["id"],
+        name=row["name"],
+        description=row["description"],
+        system_prompt=row["system_prompt"],
+        default_metadata=row["default_metadata"],
+        created_at=_parse_dt(row["created_at"]),
+        is_builtin=bool(row["is_builtin"]),
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Thread Template CRUD (UP-18)
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def template_list(db: aiosqlite.Connection) -> list[ThreadTemplate]:
+    """List all thread templates (built-in + custom), ordered by is_builtin DESC then name."""
+    async with db.execute(
+        "SELECT * FROM thread_templates ORDER BY is_builtin DESC, name ASC"
+    ) as cur:
+        rows = await cur.fetchall()
+    return [_row_to_template(r) for r in rows]
+
+
+async def template_get(db: aiosqlite.Connection, template_id: str) -> Optional[ThreadTemplate]:
+    """Fetch a template by ID. Returns None if not found."""
+    async with db.execute(
+        "SELECT * FROM thread_templates WHERE id = ?", (template_id,)
+    ) as cur:
+        row = await cur.fetchone()
+    return _row_to_template(row) if row else None
+
+
+async def template_create(
+    db: aiosqlite.Connection,
+    id: str,
+    name: str,
+    description: Optional[str] = None,
+    system_prompt: Optional[str] = None,
+    default_metadata: Optional[dict] = None,
+) -> ThreadTemplate:
+    """Create a custom (non-builtin) thread template. Raises ValueError on duplicate ID."""
+    now = _now()
+    meta_json = json.dumps(default_metadata) if default_metadata else None
+    try:
+        await db.execute(
+            """
+            INSERT INTO thread_templates (id, name, description, system_prompt, default_metadata, created_at, is_builtin)
+            VALUES (?, ?, ?, ?, ?, ?, 0)
+            """,
+            (id, name, description, system_prompt, meta_json, now),
+        )
+        await db.commit()
+    except sqlite3.IntegrityError:
+        raise ValueError(f"Template with id '{id}' already exists.")
+    logger.info(f"Template created: {id} '{name}'")
+    return ThreadTemplate(
+        id=id,
+        name=name,
+        description=description,
+        system_prompt=system_prompt,
+        default_metadata=meta_json,
+        created_at=_parse_dt(now),
+        is_builtin=False,
+    )
+
+
+async def template_delete(db: aiosqlite.Connection, template_id: str) -> None:
+    """Delete a custom template. Raises ValueError if template is built-in or not found."""
+    async with db.execute(
+        "SELECT id, is_builtin FROM thread_templates WHERE id = ?", (template_id,)
+    ) as cur:
+        row = await cur.fetchone()
+    if row is None:
+        raise ValueError(f"Template '{template_id}' not found.")
+    if row["is_builtin"]:
+        raise ValueError(f"Template '{template_id}' is built-in and cannot be deleted.")
+    await db.execute("DELETE FROM thread_templates WHERE id = ?", (template_id,))
+    await db.commit()
+    logger.info(f"Template deleted: {template_id}")
 
 
 # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -271,11 +379,7 @@ async def msg_post(
     author_id = None
     author_name = author
 
-    # Try to find agent by ID, name, or display_name
-    async with db.execute(
-        "SELECT id, name FROM agents WHERE id = ? OR name = ? OR display_name = ?",
-        (author, author, author)
-    ) as cur:
+    async with db.execute("SELECT id, name FROM agents WHERE id = ?", (author,)) as cur:
         row = await cur.fetchone()
         if row:
             actual_author = row["name"]
@@ -330,6 +434,17 @@ async def msg_post(
         "msg_id": mid, "thread_id": thread_id, "author": author_name,
         "author_id": author_id, "role": role, "seq": seq, "content": content[:200],  # truncate for event payload
     })
+    if metadata:
+        if metadata.get("handoff_target"):
+            await _emit_event(db, "msg.handoff", thread_id, {
+                "msg_id": mid, "thread_id": thread_id,
+                "from_agent": author_name, "to_agent": metadata["handoff_target"],
+            })
+        if metadata.get("stop_reason"):
+            await _emit_event(db, "msg.stop", thread_id, {
+                "msg_id": mid, "thread_id": thread_id,
+                "agent": author_name, "reason": metadata["stop_reason"],
+            })
     logger.debug(f"Message posted: seq={seq} author={author_name} thread={thread_id}")
     return Message(
         id=mid, thread_id=thread_id, author=actual_author, role=role,
@@ -422,6 +537,7 @@ async def agent_register(
     description: str = "",
     capabilities: Optional[list] = None,
     display_name: Optional[str] = None,
+    skills: Optional[list] = None,
 ) -> AgentInfo:
     """
     Register a new agent on the bus.
@@ -454,12 +570,13 @@ async def agent_register(
     token = secrets.token_hex(32)
     now = _now()
     caps_json = json.dumps(capabilities) if capabilities else None
+    skills_json = json.dumps(skills) if skills else None
     clean_display_name = (display_name or "").strip() or name
     alias_source = "user" if (display_name or "").strip() else "auto"
     await db.execute(
-        "INSERT INTO agents (id, name, ide, model, description, capabilities, registered_at, last_heartbeat, token, display_name, alias_source, last_activity, last_activity_time) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (aid, name, ide, model, description, caps_json, now, now, token, clean_display_name, alias_source, "registered", now),
+        "INSERT INTO agents (id, name, ide, model, description, capabilities, skills, registered_at, last_heartbeat, token, display_name, alias_source, last_activity, last_activity_time) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (aid, name, ide, model, description, caps_json, skills_json, now, now, token, clean_display_name, alias_source, "registered", now),
     )
     await db.commit()
     await _emit_event(db, "agent.online", None, {"agent_id": aid, "name": name, "ide": ide, "model": model})
@@ -468,7 +585,8 @@ async def agent_register(
                      capabilities=caps_json, registered_at=_parse_dt(now),
                      last_heartbeat=_parse_dt(now), is_online=True, token=token,
                      display_name=clean_display_name, alias_source=alias_source,
-                     last_activity="registered", last_activity_time=_parse_dt(now))
+                     last_activity="registered", last_activity_time=_parse_dt(now),
+                     skills=skills_json)
 
 
 async def _set_agent_activity(
@@ -560,6 +678,70 @@ async def agent_list(db: aiosqlite.Connection) -> list[AgentInfo]:
     return [_row_to_agent(r) for r in rows]
 
 
+async def agent_get(db: aiosqlite.Connection, agent_id: str) -> Optional[AgentInfo]:
+    """Return a single agent by ID, or None if not found."""
+    async with db.execute("SELECT * FROM agents WHERE id = ?", (agent_id,)) as cur:
+        row = await cur.fetchone()
+    return _row_to_agent(row) if row else None
+
+
+async def agent_update(
+    db: aiosqlite.Connection,
+    agent_id: str,
+    token: str,
+    description: Optional[str] = None,
+    capabilities: Optional[list] = None,
+    skills: Optional[list] = None,
+    display_name: Optional[str] = None,
+) -> AgentInfo:
+    """
+    Update mutable agent metadata after registration.
+
+    Only the fields explicitly provided (not None) are modified.
+    Requires a valid token to prevent unauthorised updates.
+    """
+    async with db.execute("SELECT token FROM agents WHERE id = ?", (agent_id,)) as cur:
+        row = await cur.fetchone()
+    if row is None:
+        raise ValueError(f"Agent not found: {agent_id}")
+    if row["token"] != token:
+        raise ValueError("Invalid token for agent_update")
+
+    now = _now()
+    set_clauses: list[str] = ["last_activity = ?", "last_activity_time = ?"]
+    params: list = ["update", now]
+
+    if description is not None:
+        set_clauses.append("description = ?")
+        params.append(description)
+    if capabilities is not None:
+        set_clauses.append("capabilities = ?")
+        params.append(json.dumps(capabilities))
+    if skills is not None:
+        set_clauses.append("skills = ?")
+        params.append(json.dumps(skills))
+    if display_name is not None:
+        clean = display_name.strip()
+        set_clauses.append("display_name = ?")
+        params.append(clean)
+        set_clauses.append("alias_source = ?")
+        params.append("user" if clean else "auto")
+
+    params.append(agent_id)
+    await db.execute(
+        f"UPDATE agents SET {', '.join(set_clauses)} WHERE id = ?",
+        params,
+    )
+    await db.commit()
+
+    async with db.execute("SELECT * FROM agents WHERE id = ?", (agent_id,)) as cur:
+        updated = await cur.fetchone()
+    if updated is None:
+        raise ValueError("Agent not found after update")
+    logger.info(f"Agent updated: {agent_id}")
+    return _row_to_agent(updated)
+
+
 def _row_to_agent(row: aiosqlite.Row) -> AgentInfo:
     last_hb = _parse_dt(row["last_heartbeat"])
     elapsed = (datetime.now(timezone.utc) - last_hb).total_seconds()
@@ -601,6 +783,7 @@ def _row_to_agent(row: aiosqlite.Row) -> AgentInfo:
         alias_source=alias_source,
         last_activity=last_activity,
         last_activity_time=last_activity_time,
+        skills=row["skills"] if "skills" in row.keys() else None,
     )
 
 
@@ -694,3 +877,45 @@ async def events_delete_old(db: aiosqlite.Connection, max_age_seconds: int = 600
     await db.commit()
     if deleted > 0:
         logger.debug(f"Pruned {deleted} old events.")
+
+
+# ─────────────────────────────────────────────
+# Export
+# ─────────────────────────────────────────────
+
+async def thread_export_markdown(db: aiosqlite.Connection, thread_id: str) -> Optional[str]:
+    """Build a Markdown transcript for *thread_id*.
+
+    Returns the raw Markdown string, or None if the thread does not exist.
+    System-prompt messages are excluded from the transcript.
+    """
+    thread = await thread_get(db, thread_id)
+    if thread is None:
+        return None
+
+    msgs = await msg_list(db, thread_id, after_seq=0, limit=10000, include_system_prompt=False)
+
+    created_label = thread.created_at.strftime("%Y-%m-%d %H:%M UTC")
+    exported_label = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    lines: list[str] = [
+        f"# {thread.topic}",
+        "",
+        f"> **Status:** {thread.status} | **Created:** {created_label}",
+        f"> **Messages:** {len(msgs)} | **Exported:** {exported_label}",
+        "",
+        "---",
+        "",
+    ]
+
+    for m in msgs:
+        author = m.author_name or m.author
+        timestamp = m.created_at.strftime("%Y-%m-%d %H:%M UTC")
+        lines.append(f"### {author} — {timestamp}")
+        lines.append("")
+        lines.append(m.content)
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+    return "\n".join(lines)

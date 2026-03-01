@@ -19,7 +19,7 @@ from typing import Literal
 import uvicorn
 from fastapi import FastAPI, Request, HTTPException
 from starlette.responses import Response
-from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 from mcp.server.sse import SseServerTransport
@@ -162,7 +162,7 @@ async def mcp_sse_endpoint(request: Request):
         # Log at DEBUG to avoid polluting the terminal.
         logger.debug("MCP SSE session ended: %s: %s", type(exc).__name__, exc)
     finally:
-        # Clean up connection agent registry on disconnect
+        # Ensure per-connection agent mapping is cleaned when SSE disconnects.
         clear_connection_agent(session_id)
     return _SseCompletedResponse()
 
@@ -331,11 +331,14 @@ async def api_agents():
     except Exception:
         active_agent_ids = set()
 
+    import json as _json
     for a in agents:
         is_online = bool(a.is_online or (a.id in active_agent_ids))
         result.append({
             "id": a.id, "name": a.name, "display_name": a.display_name, "alias_source": a.alias_source,
             "description": a.description, "ide": a.ide, "model": a.model,
+            "capabilities": _json.loads(a.capabilities) if a.capabilities else [],
+            "skills": _json.loads(a.skills) if a.skills else [],
             "is_online": is_online, "last_heartbeat": a.last_heartbeat.isoformat(),
             "last_activity": a.last_activity,
             "last_activity_time": a.last_activity_time.isoformat() if a.last_activity_time else None
@@ -370,6 +373,15 @@ class ThreadCreate(BaseModel):
     topic: str
     metadata: dict | None = None
     system_prompt: str | None = None
+    template: str | None = None   # Template ID for defaults (UP-18)
+
+
+class TemplateCreate(BaseModel):
+    id: str
+    name: str
+    description: str | None = None
+    system_prompt: str | None = None
+    default_metadata: dict | None = None
 
 class MessageCreate(BaseModel):
     model_config = ConfigDict(
@@ -389,18 +401,94 @@ class MessageCreate(BaseModel):
     metadata: dict | None = None
     images: list[dict] | None = None  # [{url: str, name: str}, ...]
 
+@app.get("/api/templates")
+async def api_list_templates():
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        templates = await asyncio.wait_for(crud.template_list(db), timeout=DB_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+    return [
+        {
+            "id": t.id, "name": t.name, "description": t.description,
+            "is_builtin": t.is_builtin, "created_at": t.created_at.isoformat(),
+        }
+        for t in templates
+    ]
+
+
+@app.get("/api/templates/{template_id}")
+async def api_get_template(template_id: str):
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        t = await asyncio.wait_for(crud.template_get(db, template_id), timeout=DB_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+    if t is None:
+        raise HTTPException(status_code=404, detail="Template not found")
+    default_metadata = None
+    if t.default_metadata:
+        try:
+            default_metadata = json.loads(t.default_metadata)
+        except (TypeError, ValueError):
+            default_metadata = t.default_metadata
+    return {
+        "id": t.id, "name": t.name, "description": t.description,
+        "system_prompt": t.system_prompt, "default_metadata": default_metadata,
+        "is_builtin": t.is_builtin, "created_at": t.created_at.isoformat(),
+    }
+
+
+@app.post("/api/templates", status_code=201)
+async def api_create_template(body: TemplateCreate):
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        t = await asyncio.wait_for(
+            crud.template_create(
+                db,
+                id=body.id,
+                name=body.name,
+                description=body.description,
+                system_prompt=body.system_prompt,
+                default_metadata=body.default_metadata,
+            ),
+            timeout=DB_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {"id": t.id, "name": t.name, "description": t.description, "is_builtin": t.is_builtin}
+
+
+@app.delete("/api/templates/{template_id}", status_code=204)
+async def api_delete_template(template_id: str):
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        await asyncio.wait_for(crud.template_delete(db, template_id), timeout=DB_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+    except ValueError as e:
+        err = str(e)
+        if "not found" in err.lower():
+            raise HTTPException(status_code=404, detail=err)
+        raise HTTPException(status_code=403, detail=err)
+
+
 @app.post("/api/threads", status_code=201)
 async def api_create_thread(body: ThreadCreate):
     try:
         db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
         t = await asyncio.wait_for(
-            crud.thread_create(db, body.topic, body.metadata, body.system_prompt),
+            crud.thread_create(db, body.topic, body.metadata, body.system_prompt, template=body.template),
             timeout=DB_TIMEOUT
         )
     except asyncio.TimeoutError:
         raise HTTPException(status_code=503, detail="Database operation timeout")
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     return {"id": t.id, "topic": t.topic, "status": t.status, "system_prompt": t.system_prompt,
-            "created_at": t.created_at.isoformat()}
+            "template_id": t.template_id, "created_at": t.created_at.isoformat()}
 
 @app.post("/api/threads/{thread_id}/messages", status_code=201)
 async def api_post_message(thread_id: str, body: MessageCreate):
@@ -463,11 +551,75 @@ class AgentRegister(BaseModel):
     model: str
     description: str = ""
     capabilities: list[str] | None = None
+    skills: list[dict] | None = None
     display_name: str | None = None
 
 class AgentToken(BaseModel):
     agent_id: str
     token: str
+
+class AgentUpdate(BaseModel):
+    token: str
+    description: str | None = None
+    capabilities: list[str] | None = None
+    skills: list[dict] | None = None
+    display_name: str | None = None
+
+
+@app.get("/api/agents/{agent_id}")
+async def api_agent_get(agent_id: str):
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        a = await asyncio.wait_for(crud.agent_get(db, agent_id), timeout=DB_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+    if a is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    import json as _json
+    return {
+        "id": a.id, "name": a.name, "display_name": a.display_name, "alias_source": a.alias_source,
+        "description": a.description, "ide": a.ide, "model": a.model,
+        "capabilities": _json.loads(a.capabilities) if a.capabilities else [],
+        "skills": _json.loads(a.skills) if a.skills else [],
+        "is_online": a.is_online, "last_heartbeat": a.last_heartbeat.isoformat(),
+        "registered_at": a.registered_at.isoformat(),
+        "last_activity": a.last_activity,
+        "last_activity_time": a.last_activity_time.isoformat() if a.last_activity_time else None,
+    }
+
+
+@app.put("/api/agents/{agent_id}")
+async def api_agent_update(agent_id: str, body: AgentUpdate):
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        a = await asyncio.wait_for(
+            crud.agent_update(
+                db,
+                agent_id=agent_id,
+                token=body.token,
+                description=body.description,
+                capabilities=body.capabilities,
+                skills=body.skills,
+                display_name=body.display_name,
+            ),
+            timeout=DB_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+    except ValueError as e:
+        msg = str(e)
+        if "not found" in msg:
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=401, detail=msg)
+    import json as _json
+    return {
+        "ok": True,
+        "agent_id": a.id, "name": a.name, "display_name": a.display_name,
+        "description": a.description,
+        "capabilities": _json.loads(a.capabilities) if a.capabilities else [],
+        "skills": _json.loads(a.skills) if a.skills else [],
+        "last_activity": a.last_activity,
+    }
 
 
 @app.post("/api/agents/register", status_code=200)
@@ -482,17 +634,21 @@ async def api_agent_register(body: AgentRegister):
                 body.description,
                 body.capabilities,
                 body.display_name,
+                body.skills,
             ),
             timeout=DB_TIMEOUT
         )
     except asyncio.TimeoutError:
         raise HTTPException(status_code=503, detail="Database operation timeout")
+    import json as _json
     return {
         "agent_id": a.id,
         "name": a.name,
         "display_name": a.display_name,
         "alias_source": a.alias_source,
         "token": a.token,
+        "capabilities": _json.loads(a.capabilities) if a.capabilities else [],
+        "skills": _json.loads(a.skills) if a.skills else [],
     }
 
 @app.post("/api/agents/heartbeat")
@@ -664,6 +820,43 @@ async def api_thread_unarchive(thread_id: str):
     if not ok:
         raise HTTPException(status_code=404, detail="Thread not found")
     return {"ok": True}
+
+
+# ─────────────────────────────────────────────
+# Export
+# ─────────────────────────────────────────────
+
+@app.get("/api/threads/{thread_id}/export")
+async def api_thread_export(thread_id: str):
+    """Export a thread as a downloadable Markdown transcript."""
+    import re
+
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        md = await asyncio.wait_for(
+            crud.thread_export_markdown(db, thread_id),
+            timeout=DB_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+    if md is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    try:
+        t = await asyncio.wait_for(crud.thread_get(db, thread_id), timeout=DB_TIMEOUT)
+        raw_topic = t.topic if t else thread_id
+    except asyncio.TimeoutError:
+        raw_topic = thread_id
+
+    slug = re.sub(r"[^\w\-]", "-", raw_topic.lower())
+    slug = re.sub(r"-+", "-", slug).strip("-") or "thread"
+    filename = f"{slug}.md"
+
+    return PlainTextResponse(
+        content=md,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ─────────────────────────────────────────────

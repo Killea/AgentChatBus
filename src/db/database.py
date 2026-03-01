@@ -59,6 +59,68 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# ── Built-in thread templates (UP-18) ────────────────────────────────────────
+# All templates are 100% generic — no project-specific references.
+_BUILTIN_TEMPLATES = [
+    (
+        "code-review",
+        "Code Review",
+        "Structured code review focused on correctness, style, security, and performance.",
+        "You are participating in a structured code review. Focus on: correctness, "
+        "readability, security vulnerabilities, performance concerns, and adherence to "
+        "best practices. Be specific in your feedback — cite exact lines or patterns. "
+        "Distinguish blocking issues from suggestions.",
+        None,
+    ),
+    (
+        "security-audit",
+        "Security Audit",
+        "Security-focused review identifying vulnerabilities and risks.",
+        "You are conducting a security audit. Focus on: injection risks, "
+        "authentication/authorization flaws, data exposure, dependency vulnerabilities, "
+        "and insecure defaults. Rate findings by severity (critical/high/medium/low). "
+        "Propose concrete mitigations.",
+        None,
+    ),
+    (
+        "architecture",
+        "Architecture Discussion",
+        "Evaluate design decisions, trade-offs, and system structure.",
+        "You are in an architecture discussion. Evaluate design trade-offs, scalability, "
+        "maintainability, and separation of concerns. Consider both short-term pragmatism "
+        "and long-term extensibility. Present alternatives when disagreeing.",
+        None,
+    ),
+    (
+        "brainstorm",
+        "Brainstorm",
+        "Free-form ideation session. All ideas welcome, defer judgment.",
+        "You are in a brainstorming session. Generate diverse ideas without premature "
+        "criticism. Build on others' suggestions. Quantity over quality at this stage. "
+        "Flag ideas worth deeper exploration.",
+        None,
+    ),
+]
+
+
+async def _seed_builtin_templates(db: aiosqlite.Connection) -> None:
+    """Seed built-in templates if they don't already exist. Idempotent."""
+    for tid, name, description, system_prompt, default_metadata in _BUILTIN_TEMPLATES:
+        try:
+            await db.execute(
+                """
+                INSERT OR IGNORE INTO thread_templates
+                    (id, name, description, system_prompt, default_metadata, created_at, is_builtin)
+                VALUES (?, ?, ?, ?, ?, ?, 1)
+                """,
+                (tid, name, description, system_prompt, default_metadata, _now()),
+            )
+        except Exception as e:
+            logger.warning(f"Failed to seed template '{tid}': {e}")
+    await db.commit()
+    logger.debug(f"Built-in templates seeded ({len(_BUILTIN_TEMPLATES)} templates).")
+
+
 async def get_db() -> aiosqlite.Connection:
     """Return the shared async database connection, initializing it if needed."""
     global _db, _initializing
@@ -189,6 +251,20 @@ async def init_schema(db: aiosqlite.Connection) -> None:
             payload     TEXT NOT NULL,
             created_at  TEXT NOT NULL
         );
+
+        -- ----------------------------------------------------------------
+        -- Thread templates: reusable presets for thread creation (UP-18)
+        -- is_builtin = 1 for shipped templates, 0 for user-created.
+        -- ----------------------------------------------------------------
+        CREATE TABLE IF NOT EXISTS thread_templates (
+            id               TEXT PRIMARY KEY,
+            name             TEXT NOT NULL,
+            description      TEXT,
+            system_prompt    TEXT,
+            default_metadata TEXT,
+            created_at       TEXT NOT NULL,
+            is_builtin       INTEGER NOT NULL DEFAULT 0
+        );
     """)
     await db.commit()
 
@@ -281,6 +357,25 @@ async def init_schema(db: aiosqlite.Connection) -> None:
         ("last_activity_time", "TEXT"),
     ]:
         await _add_column_if_missing(db, "agents", col, typedef)
+
+    # Migration: Add skills for A2A-compatible agent capability declarations (UP-15)
+    try:
+        await db.execute("ALTER TABLE agents ADD COLUMN skills TEXT")
+        await db.commit()
+        logger.info("Migration: added column 'agents.skills'")
+    except Exception:
+        pass  # Column already exists — safe to ignore
+
+    # Migration: Add template_id to threads for template tracking (UP-18)
+    try:
+        await db.execute("ALTER TABLE threads ADD COLUMN template_id TEXT")
+        await db.commit()
+        logger.info("Migration: added column 'threads.template_id'")
+    except Exception:
+        pass  # Column already exists — safe to ignore
+
+    # Seed built-in thread templates (UP-18) — idempotent via INSERT OR IGNORE
+    await _seed_builtin_templates(db)
 
     # Record current schema version
     await db.execute(
