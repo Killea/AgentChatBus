@@ -567,6 +567,22 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       });
     }
 
+    async function copyThreadNameFromMenu() {
+      return window.AcbThreads.copyThreadNameFromMenu({
+        getContextMenuThread: () => contextMenuThread,
+        hideThreadContextMenu,
+        copyTextWithFallback: window.AcbUtils.copyTextWithFallback,
+      });
+    }
+
+    async function copyJoinPromptFromMenu() {
+      return window.AcbThreads.copyJoinPromptFromMenu({
+        getContextMenuThread: () => contextMenuThread,
+        hideThreadContextMenu,
+        copyTextWithFallback: window.AcbUtils.copyTextWithFallback,
+      });
+    }
+
     function resetThreadSelection() {
       activeThreadId = null;
       activeThreadStatus = 'discuss';
