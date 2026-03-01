@@ -32,6 +32,7 @@
       const esc = typeof escapeHtml === "function" ? escapeHtml : (v) => String(v ?? "");
 
       this.className = "agent-status-item";
+      this.dataset.state = String(state ?? "").trim().toLowerCase();
 
       if (isLongOffline) {
         this.innerHTML = `
