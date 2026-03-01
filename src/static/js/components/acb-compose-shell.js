@@ -61,29 +61,57 @@
     }
 
     async handlePaste(e) {
-      e.preventDefault();
-      const items = e.clipboardData?.items;
-      if (!items) return;
+      const clipboard = e.clipboardData;
+      const items = clipboard?.items;
+      if (!items || items.length === 0) return;
 
+      const imageFiles = [];
       for (const item of items) {
-        if (item.type.startsWith('image/')) {
+        if (item.type && item.type.startsWith('image/')) {
           const file = item.getAsFile();
-          if (file) await this.uploadImage(file);
-        } else if (item.type === 'text/plain') {
-          const text = await item.getAsString();
-          const input = document.getElementById("compose-input");
-          if (input) {
-            // Insert text directly into contenteditable
-            const textNode = document.createTextNode(text);
-            if (input.childNodes.length === 0) {
-              input.appendChild(textNode);
-            } else {
-              input.appendChild(textNode);
-            }
-            input.focus();
-          }
+          if (file) imageFiles.push(file);
         }
       }
+
+      // Only intercept when images exist; otherwise keep native text paste behavior.
+      if (imageFiles.length === 0) {
+        return;
+      }
+
+      e.preventDefault();
+
+      for (const file of imageFiles) {
+        await this.uploadImage(file);
+      }
+
+      // For mixed clipboard content, keep text by inserting plain text manually.
+      const text = clipboard.getData('text/plain');
+      if (text) {
+        this.insertTextAtCursor(text);
+      }
+    }
+
+    insertTextAtCursor(text) {
+      const input = this.querySelector('#compose-input');
+      if (!input || !text) return;
+
+      input.focus();
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) {
+        input.appendChild(document.createTextNode(text));
+        return;
+      }
+
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+      const textNode = document.createTextNode(text);
+      range.insertNode(textNode);
+
+      // Move caret to after inserted text.
+      range.setStartAfter(textNode);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
     }
 
     handleDrop(e) {
