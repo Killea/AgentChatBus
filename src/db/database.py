@@ -395,22 +395,6 @@ async def init_schema(db: aiosqlite.Connection) -> None:
     # Seed built-in thread templates (UP-18) — idempotent via INSERT OR IGNORE
     await _seed_builtin_templates(db)
 
-    # Migration: Add skills for A2A-compatible agent capability declarations (UP-15)
-    try:
-        await db.execute("ALTER TABLE agents ADD COLUMN skills TEXT")
-        await db.commit()
-        logger.info("Migration: added column 'agents.skills'")
-    except Exception:
-        pass  # Column already exists -- safe to ignore
-
-    # Migration: Add skills for A2A-compatible agent capability declarations (UP-15)
-    try:
-        await db.execute("ALTER TABLE agents ADD COLUMN skills TEXT")
-        await db.commit()
-        logger.info("Migration: added column 'agents.skills'")
-    except Exception:
-        pass  # Column already exists — safe to ignore
-
     # Record current schema version
     await db.execute(
         "INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES (?, ?)",

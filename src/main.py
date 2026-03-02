@@ -48,7 +48,8 @@ logger = logging.getLogger("agentchatbus")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 # Database operation timeout (seconds)
-DB_TIMEOUT = 5
+# Support environment variable override via AGENTCHATBUS_DB_TIMEOUT
+DB_TIMEOUT = int(os.getenv("AGENTCHATBUS_DB_TIMEOUT", "5"))
 
 
 async def _cleanup_events_loop():

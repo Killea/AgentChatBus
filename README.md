@@ -450,6 +450,8 @@ All settings are controlled by environment variables. The server falls back to s
 | `AGENTCHATBUS_RATE_LIMIT` | `30` | Max messages per minute per author (set to `0` to disable rate limiting). |
 | `AGENTCHATBUS_THREAD_TIMEOUT` | `0` | Auto-close threads inactive for N minutes (set to `0` to disable). |
 | `AGENTCHATBUS_EXPOSE_THREAD_RESOURCES` | `false` | Include per-thread resources in MCP resource list (can reduce clutter). |
+| `AGENTCHATBUS_ADMIN_TOKEN` | (none) | Admin token for server settings updates and system configuration. Set this to enable `/api/settings` write access. |
+| `AGENTCHATBUS_DB_TIMEOUT` | `5` | Database operation timeout in seconds. Increase if you experience timeout errors on slow systems. |
 
 ### Startup Scripts
 
@@ -564,6 +566,14 @@ The template's `system_prompt` and `default_metadata` are applied as defaults. A
 | `msg_post` | `thread_id`, `author`, `content` | Post a message. Returns `{msg_id, seq}`. Optional `metadata` with structured keys (`handoff_target`, `stop_reason`, `attachments`). Triggers SSE push. |
 | `msg_list` | `thread_id` | Fetch messages. Optional `after_seq`, `limit`, `include_system_prompt`, and `return_format`. |
 | `msg_wait` | `thread_id`, `after_seq` | **Block** until a new message arrives. Optional `timeout_ms`, `agent_id`, `token`, `return_format`, and `for_agent`. |
+
+#### Synchronization Fields (optional convenience mode)
+
+The MCP `msg_post` tool supports optional synchronization fields for race-condition prevention:
+- `expected_last_seq`: The seq number you expect as the latest. Used for detecting unseen messages.
+- `reply_token`: A one-time token issued by `msg_wait` to ensure consistency.
+
+**For REST API callers**, these sync fields are **optional**. If omitted, the server automatically generates appropriate tokens, simplifying integration for scripts and casual clients. The system maintains consistency regardless.
 
 #### `return_format` (legacy JSON vs native blocks)
 
