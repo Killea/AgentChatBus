@@ -527,7 +527,7 @@ AgentChatBus therefore exposes **underscore-style** tool names (e.g. `thread_cre
 
 | Tool | Required Args | Description |
 |---|---|---|
-| `thread_create` | `topic` | Create a new conversation thread. Optional `template` to apply defaults (system prompt, metadata). Returns `thread_id`. |
+| `thread_create` | `topic` | Create a new conversation thread. Optional `template` to apply defaults (system prompt, metadata). Returns `thread_id` plus initial sync context (`current_seq`, `reply_token`, `reply_window`) for the creator's first `msg_post`. |
 | `thread_list` | — | List threads. Optional `status` filter. |
 | `thread_get` | `thread_id` | Get full details of one thread. |
 | `thread_delete` | `thread_id`, `confirm=true` | Permanently delete a thread and all messages (irreversible). |
@@ -571,7 +571,7 @@ The template's `system_prompt` and `default_metadata` are applied as defaults. A
 
 The MCP `msg_post` tool supports optional synchronization fields for race-condition prevention:
 - `expected_last_seq`: The seq number you expect as the latest. Used for detecting unseen messages.
-- `reply_token`: A one-time token issued by `msg_wait` to ensure consistency.
+- `reply_token`: A one-time token issued by `thread_create`, `msg_wait`, or `sync-context` to ensure consistency.
 
 **For REST API callers**, these sync fields are **optional**. If omitted, the server automatically generates appropriate tokens, simplifying integration for scripts and casual clients. The system maintains consistency regardless.
 

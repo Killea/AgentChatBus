@@ -3,6 +3,8 @@
     id,
     topic,
     status,
+    initialSyncContext,
+    setThreadSyncContext,
     setActiveThread,
     clearThreadParticipants,
     api,
@@ -15,6 +17,9 @@
   }) {
     setActiveThread(id, status);
     window.currentThreadId = id;  // Set global currentThreadId for modals
+    if (setThreadSyncContext) {
+      setThreadSyncContext(id, initialSyncContext || null);
+    }
     setLastSeq(0);
     clearThreadParticipants();
 
@@ -82,6 +87,8 @@
 
   async function sendMessage({
     getActiveThreadId,
+    getThreadSyncContext,
+    setThreadSyncContext,
     updateOnlinePresence,
     autoResize,
     api,
@@ -147,10 +154,13 @@
       images: images.length > 0 ? images : undefined
     };
 
-    const sync = await api(`/api/threads/${activeThreadId}/sync-context`, {
-      method: "POST",
-      body: JSON.stringify({}),
-    });
+    let sync = getThreadSyncContext ? getThreadSyncContext(activeThreadId) : null;
+    if (!sync || typeof sync.current_seq !== "number" || !sync.reply_token) {
+      sync = await api(`/api/threads/${activeThreadId}/sync-context`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+    }
     if (!sync || typeof sync.current_seq !== "number" || !sync.reply_token) {
       return;
     }
@@ -163,6 +173,9 @@
     });
 
     if (m) {
+      if (setThreadSyncContext) {
+        setThreadSyncContext(activeThreadId, null);
+      }
       setLastSeq((prev) => Math.max(prev, m.seq));
       appendBubble({ ...m, created_at: new Date().toISOString() });
       scrollBottom(true);

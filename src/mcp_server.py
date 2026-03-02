@@ -102,7 +102,11 @@ async def list_tools() -> list[types.Tool]:
         # ΓöÇΓöÇ Thread Management ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         types.Tool(
             name="thread_create",
-            description="Create a new conversation thread (topic / task context) on the bus.",
+            description=(
+                "Create a new conversation thread (topic / task context) on the bus. "
+                "Returns thread details plus initial sync context "
+                "(`current_seq`, `reply_token`, `reply_window`) for the creator's first msg_post."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -193,7 +197,7 @@ async def list_tools() -> list[types.Tool]:
                     },
                     "reply_token": {
                         "type": "string",
-                        "description": "Strict sync field. Unconsumed reply token from msg_wait.",
+                        "description": "Strict sync field. Unconsumed reply token from thread_create/msg_wait/sync-context.",
                     },
                     "role":      {"type": "string", "enum": ["user", "assistant", "system"], "default": "user"},
                     "priority":  {

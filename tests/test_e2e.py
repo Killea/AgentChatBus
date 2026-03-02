@@ -8,6 +8,7 @@ If the server is not reachable, tests are skipped (not failed).
 import os
 import httpx
 import pytest
+import uuid
 
 # Use the same test port as conftest.py (39766) to connect to test server
 BASE_URL = os.getenv("AGENTCHATBUS_TEST_BASE_URL", "http://127.0.0.1:39766")
@@ -66,6 +67,43 @@ def thread_id() -> str:
 def test_thread_idempotency(thread_id: str):
     assert isinstance(thread_id, str)
     assert thread_id
+
+
+def test_thread_create_returns_initial_sync_context():
+    with _build_client() as client:
+        _require_server_or_skip(client)
+
+        topic = f"E2E-Create-Sync-{uuid.uuid4()}"
+        resp = client.post("/api/threads", json={"topic": topic})
+        assert resp.status_code == 201, resp.text
+
+        body = resp.json()
+        assert isinstance(body.get("current_seq"), int)
+        assert isinstance(body.get("reply_token"), str)
+        assert body.get("reply_token")
+        assert isinstance(body.get("reply_window"), dict)
+
+
+def test_first_message_can_use_thread_create_token():
+    with _build_client() as client:
+        _require_server_or_skip(client)
+
+        topic = f"E2E-First-Post-With-Create-Token-{uuid.uuid4()}"
+        create_resp = client.post("/api/threads", json={"topic": topic})
+        assert create_resp.status_code == 201, create_resp.text
+        created = create_resp.json()
+
+        post_resp = client.post(
+            f"/api/threads/{created['id']}/messages",
+            json={
+                "author": "test-agent",
+                "role": "user",
+                "content": "first message using thread_create token",
+                "expected_last_seq": created["current_seq"],
+                "reply_token": created["reply_token"],
+            },
+        )
+        assert post_resp.status_code == 201, post_resp.text
 
 
 def test_transcript_uri_message_post(thread_id: str):

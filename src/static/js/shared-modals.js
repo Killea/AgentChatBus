@@ -110,8 +110,16 @@
       body: JSON.stringify({ topic, ...(template ? { template } : {}) }),
     });
     if (t) {
+      const syncContext =
+        typeof t.current_seq === "number" && t.reply_token
+          ? {
+              current_seq: t.current_seq,
+              reply_token: t.reply_token,
+              reply_window: t.reply_window || null,
+            }
+          : null;
       await refreshThreads();
-      selectThread(t.id, t.topic, t.status);
+      selectThread(t.id, t.topic, t.status, syncContext);
     }
   }
 

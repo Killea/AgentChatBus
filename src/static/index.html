@@ -113,6 +113,7 @@
     const onlineAgentLabelsByKey = new Map();
     const activeThreadLastSeenMs = new Map();
     const activeThreadLabelsByKey = new Map();
+    const threadSyncContexts = new Map();
     const THREAD_ACTIVITY_WINDOW_MS = 120000;
     const ALL_THREAD_STATUSES = ['discuss', 'implement', 'review', 'done', 'closed', 'archived'];
     const NORMAL_THREAD_STATUSES = ['discuss', 'implement', 'review', 'done', 'closed'];
@@ -504,12 +505,21 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       );
     }
 
-    async function selectThread(id, topic, status) {
+    async function selectThread(id, topic, status, initialSyncContext = null) {
       // Close mobile sidebar when selecting thread
       closeMobileSidebar();
       
       return window.AcbChat.selectThread({
         id, topic, status,
+        initialSyncContext,
+        setThreadSyncContext: (threadId, syncContext) => {
+          if (!threadId) return;
+          if (syncContext && typeof syncContext.current_seq === 'number' && syncContext.reply_token) {
+            threadSyncContexts.set(threadId, syncContext);
+            return;
+          }
+          threadSyncContexts.delete(threadId);
+        },
         setActiveThread: (id, status) => { activeThreadId = id; activeThreadStatus = status; },
         api,
         rebuildActiveThreadParticipants,
@@ -520,6 +530,11 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         clearThreadParticipants: () => activeThreadLastSeenMs.clear(),
         scrollBottom,
       });
+    }
+
+    function getThreadSyncContext(threadId = activeThreadId) {
+      if (!threadId) return null;
+      return threadSyncContexts.get(threadId) || null;
     }
 
     async function loadNewMessages() {
@@ -644,6 +659,9 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     }
 
     function resetThreadSelection() {
+      if (activeThreadId) {
+        threadSyncContexts.delete(activeThreadId);
+      }
       activeThreadId = null;
       activeThreadStatus = 'discuss';
       lastSeq = 0;
@@ -887,6 +905,15 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     async function sendMessage() {
       return window.AcbChat.sendMessage({
         getActiveThreadId: () => activeThreadId,
+        getThreadSyncContext,
+        setThreadSyncContext: (threadId, syncContext) => {
+          if (!threadId) return;
+          if (syncContext && typeof syncContext.current_seq === 'number' && syncContext.reply_token) {
+            threadSyncContexts.set(threadId, syncContext);
+            return;
+          }
+          threadSyncContexts.delete(threadId);
+        },
         updateOnlinePresence,
         api,
         setLastSeq: (fn) => { lastSeq = (typeof fn === 'function' ? fn(lastSeq) : fn); },

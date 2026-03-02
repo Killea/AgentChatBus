@@ -224,9 +224,14 @@ async def handle_thread_create(db, arguments: dict[str, Any]) -> list[types.Text
             if agent_info:
                 await crud.thread_settings_set_creator_admin(db, result.id, agent_id, agent_info.name)
     
+    token_payload = await crud.issue_reply_token(db, thread_id=result.id, agent_id=agent_id)
+
     return [types.TextContent(type="text", text=json.dumps({
         "thread_id": result.id, "topic": result.topic, "status": result.status,
         "system_prompt": result.system_prompt, "template_id": result.template_id,
+        "current_seq": token_payload["current_seq"],
+        "reply_token": token_payload["reply_token"],
+        "reply_window": token_payload["reply_window"],
     }))]
 
 

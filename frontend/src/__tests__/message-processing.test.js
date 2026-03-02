@@ -159,4 +159,82 @@ describe('shared-chat (real implementation)', () => {
       expect(document.getElementById('messages')?.classList.contains('loading-history')).toBe(false);
     });
   });
+
+  describe('sendMessage', () => {
+    function setupComposeDom() {
+      document.body.innerHTML = `
+        <div id="compose-input" contenteditable="true"></div>
+        <input id="compose-author" value="human" />
+        <div id="mentions-bar" style="display:block"></div>
+      `;
+      const input = document.getElementById('compose-input');
+      input.textContent = 'hello from compose';
+      const shell = document.createElement('acb-compose-shell');
+      shell.uploadedImages = [];
+      shell.renderImagePreview = vi.fn();
+      document.body.appendChild(shell);
+    }
+
+    it('uses cached sync context without calling sync-context endpoint', async () => {
+      setupComposeDom();
+
+      const api = vi.fn(async (path, opts) => {
+        if (path.endsWith('/messages')) {
+          const payload = JSON.parse(opts.body);
+          expect(payload.expected_last_seq).toBe(12);
+          expect(payload.reply_token).toBe('token-from-create');
+          return { id: 'm13', seq: 13, content: payload.content };
+        }
+        throw new Error(`Unexpected API call: ${path}`);
+      });
+
+      const setThreadSyncContext = vi.fn();
+      const appendBubble = vi.fn();
+
+      await window.AcbChat.sendMessage({
+        getActiveThreadId: () => 'thread-a',
+        getThreadSyncContext: () => ({ current_seq: 12, reply_token: 'token-from-create', reply_window: null }),
+        setThreadSyncContext,
+        updateOnlinePresence: vi.fn(),
+        api,
+        setLastSeq: vi.fn(),
+        appendBubble,
+        scrollBottom: vi.fn(),
+      });
+
+      expect(api).toHaveBeenCalledTimes(1);
+      expect(api.mock.calls[0][0]).toBe('/api/threads/thread-a/messages');
+      expect(setThreadSyncContext).toHaveBeenCalledWith('thread-a', null);
+      expect(appendBubble).toHaveBeenCalledTimes(1);
+    });
+
+    it('falls back to sync-context when cached sync context is missing', async () => {
+      setupComposeDom();
+
+      const api = vi.fn(async (path) => {
+        if (path.endsWith('/sync-context')) {
+          return { current_seq: 2, reply_token: 'token-from-sync' };
+        }
+        if (path.endsWith('/messages')) {
+          return { id: 'm3', seq: 3, content: 'hello from compose' };
+        }
+        throw new Error(`Unexpected API call: ${path}`);
+      });
+
+      await window.AcbChat.sendMessage({
+        getActiveThreadId: () => 'thread-b',
+        getThreadSyncContext: () => null,
+        setThreadSyncContext: vi.fn(),
+        updateOnlinePresence: vi.fn(),
+        api,
+        setLastSeq: vi.fn(),
+        appendBubble: vi.fn(),
+        scrollBottom: vi.fn(),
+      });
+
+      expect(api).toHaveBeenCalledTimes(2);
+      expect(api.mock.calls[0][0]).toBe('/api/threads/thread-b/sync-context');
+      expect(api.mock.calls[1][0]).toBe('/api/threads/thread-b/messages');
+    });
+  });
 });
