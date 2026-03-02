@@ -851,12 +851,18 @@ async def api_create_thread(body: ThreadCreate):
             crud.thread_create(db, body.topic, body.metadata, body.system_prompt, template=body.template),
             timeout=DB_TIMEOUT
         )
+        sync = await asyncio.wait_for(
+            crud.issue_reply_token(db, thread_id=t.id),
+            timeout=DB_TIMEOUT,
+        )
     except asyncio.TimeoutError:
         raise HTTPException(status_code=503, detail="Database operation timeout")
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return {"id": t.id, "topic": t.topic, "status": t.status, "system_prompt": t.system_prompt,
-            "template_id": t.template_id, "created_at": t.created_at.isoformat()}
+            "template_id": t.template_id, "created_at": t.created_at.isoformat(),
+            "current_seq": sync["current_seq"], "reply_token": sync["reply_token"],
+            "reply_window": sync["reply_window"]}
 
 @app.post("/api/threads/{thread_id}/messages", status_code=201)
 async def api_post_message(thread_id: str, body: MessageCreate, x_agent_token: str | None = Header(default=None)):
