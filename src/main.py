@@ -228,9 +228,8 @@ async def _admin_coordinator_loop() -> None:
                 
                 try:
                     participant_count = len(participating_online_agents)
-                    # Coordination prompts are only meaningful when at least two online
-                    # participants are involved in the thread.
-                    if participant_count < 2:
+                    # Trigger prompt when at least one online participant remains.
+                    if participant_count < 1:
                         continue
 
                     # Current admin is creator-admin first, then auto-assigned admin.
