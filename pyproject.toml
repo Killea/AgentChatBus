@@ -69,3 +69,6 @@ filterwarnings = [
     "ignore::RuntimeWarning",
     "ignore::pytest.PytestUnraisableExceptionWarning"
 ]
+markers = [
+    "integration: marks tests that require a running AgentChatBus server (deselect with -m 'not integration')",
+]

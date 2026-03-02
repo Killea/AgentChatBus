@@ -145,28 +145,28 @@ async def test_api_threads_success():
         )
     ]
 
-    call_count = [0]
+    async def mock_wait_for_get_db(coro, timeout):
+        return mock_db
 
-    async def mock_wait_for_impl(coro, timeout):
-        call_count[0] += 1
-        # First call (get_db) returns mock_db
-        if call_count[0] == 1:
-            return mock_db
-        # Second call (thread_list) returns mock_threads
-        else:
-            return mock_threads
+    async def mock_gather(*coros):
+        return (mock_threads, len(mock_threads))
 
-    with patch("asyncio.wait_for", side_effect=mock_wait_for_impl):
-        # Since api_threads is an async function that returns a list,
+    with patch("asyncio.wait_for", side_effect=mock_wait_for_get_db), \
+         patch("asyncio.gather", side_effect=mock_gather):
+        # Since api_threads is an async function that returns an envelope dict,
         # we need to test the actual return value
         result = await api_threads()
 
-        # Verify result is a list with expected structure
-        assert isinstance(result, list)
-        if result:
-            assert "id" in result[0]
-            assert "topic" in result[0]
-            assert "status" in result[0]
+        # Verify result is an envelope dict with expected structure (UP-20)
+        assert isinstance(result, dict)
+        assert "threads" in result
+        assert "total" in result
+        assert "has_more" in result
+        assert "next_cursor" in result
+        if result["threads"]:
+            assert "id" in result["threads"][0]
+            assert "topic" in result["threads"][0]
+            assert "status" in result["threads"][0]
 
 
 @pytest.mark.asyncio
@@ -227,7 +227,11 @@ def test_api_threads_http_endpoint(client: TestClient):
     assert response.status_code in [200, 503], f"Unexpected status: {response.status_code}"
 
     if response.status_code == 200:
-        assert isinstance(response.json(), list)
+        # Response is now an envelope dict with 'threads', 'total', 'has_more', 'next_cursor' (UP-20)
+        data = response.json()
+        assert isinstance(data, dict)
+        assert "threads" in data
+        assert isinstance(data["threads"], list)
     else:
         assert "timeout" in response.json().get("detail", "").lower()
 

@@ -6,14 +6,16 @@ Uses a separate port and database to avoid conflicts with production server.
 """
 import os
 import signal
+import sys
 import time
 import subprocess
 from pathlib import Path
 import httpx
 import pytest
 
-# Use a different port for testing (39766) to avoid conflicts with production (39765)
-TEST_PORT = 39766
+# Use a dedicated test port separate from the production port (39766) to avoid conflicts.
+# See UP-20 / Integration Testing — Port Conflict Resolution in agentchatbus-upstream-improvements.md
+TEST_PORT = 39769
 BASE_URL = f"http://127.0.0.1:{TEST_PORT}"
 # Use a separate test database
 TEST_DB_PATH = os.path.join(os.path.dirname(__file__), "data", "bus_test.db")
@@ -84,21 +86,30 @@ def server():
     test_env["AGENTCHATBUS_DB"] = TEST_DB_PATH
     test_env["AGENTCHATBUS_RELOAD"] = "0"  # Disable reload for tests
     
-    # Check if test server is already running on test port
+    # Check if a compatible test server is already running on the test port.
+    # Verify /health returns 200 AND GET /api/threads?limit=1 returns an envelope
+    # with a "threads" key (UP-20 pagination support). This prevents reusing a stale
+    # server that returns a flat array (pre-UP-20 behaviour).
     try:
         with httpx.Client(base_url=BASE_URL, timeout=5) as client:
-            resp = client.get("/api/threads")
-            if resp.status_code < 500:
+            health = client.get("/health")
+            threads_resp = client.get("/api/threads?limit=1")
+            if (
+                health.status_code == 200
+                and threads_resp.status_code < 500
+                and isinstance(threads_resp.json(), dict)
+                and "threads" in threads_resp.json()
+            ):
                 yield
                 return
     except Exception:
         pass
-    
+
     # Start the server with test configuration
     print(f"\nStarting AgentChatBus test server at {BASE_URL}...")
     print(f"Using test database: {TEST_DB_PATH}")
     _SERVER_PROCESS = subprocess.Popen(
-        ["python", "-m", "src.main"],
+        [sys.executable, "-m", "src.main"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,

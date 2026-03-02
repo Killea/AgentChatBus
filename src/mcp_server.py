@@ -116,7 +116,11 @@ async def list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="thread_list",
-            description="List threads, optionally filtered by status.",
+            description=(
+                "List threads, optionally filtered by status. "
+                "Supports cursor pagination via `limit` and `before`. "
+                "Returns an envelope with `threads`, `total`, `has_more`, and `next_cursor`."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -126,6 +130,19 @@ async def list_tools() -> list[types.Tool]:
                         "type": "boolean",
                         "default": False,
                         "description": "If true and no status filter is provided, include archived threads.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Max threads to return. 0 means all (no limit). Hard cap: 200.",
+                    },
+                    "before": {
+                        "type": "string",
+                        "description": (
+                            "Pagination cursor: ISO datetime string. "
+                            "Returns threads created strictly before this timestamp. "
+                            "Pass `next_cursor` from a previous response to fetch the next page."
+                        ),
                     },
                 },
             },

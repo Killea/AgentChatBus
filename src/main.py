@@ -366,17 +366,53 @@ async def global_sse_stream(request: Request):
 # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 @app.get("/api/threads")
-async def api_threads(status: str | None = None, include_archived: bool = False):
+async def api_threads(
+    status: str | None = None,
+    include_archived: bool = False,
+    limit: int = 0,
+    before: str | None = None,
+):
+    """List threads with optional cursor pagination.
+
+    - `limit`: max threads to return (0 = all, hard cap 200).
+    - `before`: ISO datetime cursor — returns threads created before this timestamp.
+      Use `next_cursor` from a previous response to fetch the next page.
+    """
+    if limit > 0:
+        limit = min(limit, 200)
+    if before:
+        # URL-decode: '+' in timezone offset (e.g. +00:00) is decoded as space by HTTP
+        # query param parsers. Normalize it back before parsing.
+        before = before.replace(" ", "+")
+        try:
+            datetime.fromisoformat(before)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid 'before' cursor: must be an ISO datetime string")
     try:
         db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
-        threads = await asyncio.wait_for(
-            crud.thread_list(db, status=status, include_archived=include_archived),
-            timeout=DB_TIMEOUT
+        threads, total = await asyncio.gather(
+            asyncio.wait_for(
+                crud.thread_list(db, status=status, include_archived=include_archived, limit=limit, before=before),
+                timeout=DB_TIMEOUT,
+            ),
+            asyncio.wait_for(
+                crud.thread_count(db, status=status, include_archived=include_archived),
+                timeout=DB_TIMEOUT,
+            ),
         )
     except asyncio.TimeoutError:
         raise HTTPException(status_code=503, detail="Database operation timeout")
-    return [{"id": t.id, "topic": t.topic, "status": t.status, "system_prompt": t.system_prompt,
-             "created_at": t.created_at.isoformat()} for t in threads]
+    has_more = limit > 0 and len(threads) == limit
+    return {
+        "threads": [
+            {"id": t.id, "topic": t.topic, "status": t.status, "system_prompt": t.system_prompt,
+             "created_at": t.created_at.isoformat()}
+            for t in threads
+        ],
+        "total": total,
+        "has_more": has_more,
+        "next_cursor": threads[-1].created_at.isoformat() if has_more else None,
+    }
 
 
 @app.get("/api/threads/{thread_id}/messages")

@@ -209,25 +209,75 @@ async def thread_list(
     db: aiosqlite.Connection,
     status: Optional[str] = None,
     include_archived: bool = False,
+    limit: int = 0,
+    before: Optional[str] = None,
 ) -> list[Thread]:
+    """List threads with optional cursor pagination.
+
+    Args:
+        db: Database connection.
+        status: Filter by lifecycle status. If set, overrides include_archived.
+        include_archived: When True and status is None, include archived threads.
+        limit: Maximum number of threads to return. 0 means no limit (all threads).
+               Hard cap: 200.
+        before: Keyset cursor — ISO datetime string. Returns threads whose
+                created_at is strictly less than this value (exclusive upper bound).
+                Pass the `next_cursor` from a previous response to page forward.
+    """
+    effective_limit = min(limit, 200) if limit > 0 else 0
+
+    clauses: list[str] = []
+    params: list[object] = []
+
     if status:
-        async with db.execute(
-            "SELECT * FROM threads WHERE status = ? ORDER BY created_at DESC",
-            (status,),
-        ) as cur:
-            rows = await cur.fetchall()
-        return [_row_to_thread(r) for r in rows]
+        clauses.append("status = ?")
+        params.append(status)
+    elif not include_archived:
+        clauses.append("status != 'archived'")
 
-    if include_archived:
-        async with db.execute("SELECT * FROM threads ORDER BY created_at DESC") as cur:
-            rows = await cur.fetchall()
-        return [_row_to_thread(r) for r in rows]
+    if before:
+        clauses.append("created_at < ?")
+        params.append(before)
 
-    async with db.execute(
-        "SELECT * FROM threads WHERE status != 'archived' ORDER BY created_at DESC"
-    ) as cur:
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    sql = f"SELECT * FROM threads {where} ORDER BY created_at DESC"
+
+    if effective_limit > 0:
+        sql += " LIMIT ?"
+        params.append(effective_limit)
+
+    async with db.execute(sql, params) as cur:
         rows = await cur.fetchall()
     return [_row_to_thread(r) for r in rows]
+
+
+async def thread_count(
+    db: aiosqlite.Connection,
+    status: Optional[str] = None,
+    include_archived: bool = False,
+) -> int:
+    """Return total thread count matching the given filters (without pagination).
+
+    Args:
+        db: Database connection.
+        status: Filter by lifecycle status. If set, overrides include_archived.
+        include_archived: When True and status is None, include archived threads.
+    """
+    clauses: list[str] = []
+    params: list[object] = []
+
+    if status:
+        clauses.append("status = ?")
+        params.append(status)
+    elif not include_archived:
+        clauses.append("status != 'archived'")
+
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    sql = f"SELECT COUNT(*) FROM threads {where}"
+
+    async with db.execute(sql, params) as cur:
+        row = await cur.fetchone()
+    return row[0] if row else 0
 
 
 async def thread_set_state(db: aiosqlite.Connection, thread_id: str, state: str) -> bool:

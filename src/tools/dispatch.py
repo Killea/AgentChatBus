@@ -275,15 +275,26 @@ async def handle_template_create(db, arguments: dict[str, Any]) -> list[types.Te
 
 async def handle_thread_list(db, arguments: dict[str, Any]) -> list[types.TextContent]:
     try:
-        threads = await crud.thread_list(
-            db,
-            status=arguments.get("status"),
-            include_archived=arguments.get("include_archived", False),
+        status = arguments.get("status")
+        include_archived = arguments.get("include_archived", False)
+        limit = arguments.get("limit", 0)
+        before = arguments.get("before")
+
+        threads, total = await asyncio.gather(
+            crud.thread_list(db, status=status, include_archived=include_archived, limit=limit, before=before),
+            crud.thread_count(db, status=status, include_archived=include_archived),
         )
-        return [types.TextContent(type="text", text=json.dumps([
-            {"thread_id": t.id, "topic": t.topic, "status": t.status,
-             "created_at": t.created_at.isoformat()} for t in threads
-        ]))]
+        has_more = limit > 0 and len(threads) == limit
+        return [types.TextContent(type="text", text=json.dumps({
+            "threads": [
+                {"thread_id": t.id, "topic": t.topic, "status": t.status,
+                 "created_at": t.created_at.isoformat()}
+                for t in threads
+            ],
+            "total": total,
+            "has_more": has_more,
+            "next_cursor": threads[-1].created_at.isoformat() if has_more else None,
+        }))]
     except Exception as e:
         logger.error(f"thread_list failed: {e}")
         return [types.TextContent(type="text", text=json.dumps({

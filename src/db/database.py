@@ -344,7 +344,15 @@ async def init_schema(db: aiosqlite.Connection) -> None:
         logger.info("Migration: added UNIQUE INDEX on 'threads.topic' for idempotency")
     except Exception as e:
         logger.error(f"UNIQUE INDEX on threads.topic may already exist or conflict: {e}")
-        
+
+    # Add index on threads.created_at for efficient keyset pagination (UP-20)
+    try:
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_threads_created_at ON threads(created_at)")
+        await db.commit()
+        logger.info("Migration: added INDEX on 'threads.created_at' for cursor pagination")
+    except Exception as e:
+        logger.error(f"INDEX on threads.created_at failed: {e}")
+
     for col, typedef in [
         ("ide",   "TEXT NOT NULL DEFAULT ''"),
         ("model", "TEXT NOT NULL DEFAULT ''"),
