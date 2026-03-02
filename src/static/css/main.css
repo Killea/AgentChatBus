@@ -756,6 +756,36 @@ body[data-theme="light"] #export-thread-btn:hover {
   color: var(--text-3);
 }
 
+/* Subtle tail metadata for agent-authored messages. */
+.msg-tail-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  padding: 0 2px;
+  font-size: 14px;
+  color: color-mix(in srgb, var(--text-3) 85%, transparent);
+  opacity: 0.62;
+  user-select: none;
+}
+
+.msg-tail-emoji {
+  font-size: 11px;
+  line-height: 1;
+  filter: grayscale(18%) brightness(0.86);
+  opacity: 0.9;
+}
+
+.msg-tail-name,
+.msg-tail-time,
+.msg-tail-dot {
+  line-height: 1;
+}
+
+.msg-row-right .msg-tail-meta {
+  justify-content: flex-end;
+}
+
 /* UP-17: Structured metadata indicators */
 .handoff-badge {
   display: inline-block;
@@ -1939,6 +1969,10 @@ acb-confirm-dialog .confirm-actions {
 
   .msg-time-label {
     font-size: 10px;
+  }
+
+  .msg-tail-meta {
+    font-size: 9px;
   }
 
   .bubble-v2 {

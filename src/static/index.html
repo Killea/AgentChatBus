@@ -90,6 +90,7 @@
   <script src="/static/js/components/acb-thread-context-menu.js?v=2"></script>
   <script src="/static/js/components/acb-thread-header.js?v=2"></script>
   <script src="/static/js/components/acb-thread-item.js?v=2"></script>
+  <script src="/static/js/components/acb-message-tail-meta.js?v=1"></script>
   <script src="/static/js/components/acb-compose-shell.js?v=3"></script>
   <script src="/static/js/components/acb-agent-status-shell.js?v=2"></script>
   <script src="/static/js/shared-threads.js?v=2"></script>
@@ -733,6 +734,8 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       const color = authorColor(authorKey);
       const avatarEmoji = window.AcbUtils?.getAgentAvatarEmoji ? window.AcbUtils.getAgentAvatarEmoji(authorKey) : '🤖';
       const bgAlpha = `${color}22`;  // ~13% alpha tint for avatar bg
+      const isAgentMessage = !isHuman && !isSystem;
+      const sentAtLabel = fmtTime(m.created_at);
 
       const row = document.createElement('div');
       row.className = `msg-row ${isHuman ? 'msg-row-right' : 'msg-row-left'}`;
@@ -779,8 +782,19 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
           ${handoffBadgeHtml}
         </div>
         <div class="bubble-v2" style="border-color:${color}55;${isHuman ? 'border-right-color' : 'border-left-color'}:${color}"></div>
+        ${isAgentMessage ? '<acb-message-tail-meta></acb-message-tail-meta>' : ''}
         <div class="msg-reactions"></div>
       </div>`;
+
+      const tailMetaEl = row.querySelector('acb-message-tail-meta');
+      if (tailMetaEl && typeof tailMetaEl.setData === 'function') {
+        tailMetaEl.setData({
+          visible: true,
+          emoji: avatarEmoji,
+          name: authorLabel,
+          timeLabel: sentAtLabel,
+        });
+      }
 
       const bubbleEl = row.querySelector('.bubble-v2');
       if (bubbleEl) {
