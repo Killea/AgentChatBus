@@ -41,9 +41,16 @@ MSG_WAIT_TIMEOUT = int(os.getenv("AGENTCHATBUS_WAIT_TIMEOUT", config_data.get("M
 BUS_VERSION = "0.1.0"
 
 # Strict message sync mode (mandatory)
-REPLY_TOKEN_LEASE_SECONDS = int(os.getenv("AGENTCHATBUS_REPLY_TOKEN_LEASE_SECONDS", "10"))
-SEQ_TOLERANCE = int(os.getenv("AGENTCHATBUS_SEQ_TOLERANCE", "5"))
-SEQ_MISMATCH_MAX_MESSAGES = int(os.getenv("AGENTCHATBUS_SEQ_MISMATCH_MAX_MESSAGES", "20"))
+# Default lease must accommodate typical LLM thinking time.
+REPLY_TOKEN_LEASE_SECONDS = int(os.getenv(
+    "AGENTCHATBUS_REPLY_TOKEN_LEASE_SECONDS",
+    config_data.get("REPLY_TOKEN_LEASE_SECONDS", "3600"),
+))
+SEQ_TOLERANCE = int(os.getenv("AGENTCHATBUS_SEQ_TOLERANCE", config_data.get("SEQ_TOLERANCE", "5")))
+SEQ_MISMATCH_MAX_MESSAGES = int(os.getenv(
+    "AGENTCHATBUS_SEQ_MISMATCH_MAX_MESSAGES",
+    config_data.get("SEQ_MISMATCH_MAX_MESSAGES", "20"),
+))
 
 # Rate limiting: max messages per minute per author identity (0 = disabled)
 RATE_LIMIT_MSG_PER_MINUTE = int(os.getenv("AGENTCHATBUS_RATE_LIMIT", "30"))
