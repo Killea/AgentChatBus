@@ -1370,3 +1370,137 @@ async def thread_export_markdown(db: aiosqlite.Connection, thread_id: str) -> Op
         lines.append("")
 
     return "\n".join(lines)
+
+
+# ─────────────────────────────────────────────
+# Metrics (UP-22)
+# ─────────────────────────────────────────────
+
+async def get_bus_metrics(db: aiosqlite.Connection) -> dict:
+    """Return a snapshot of bus-level observability metrics.
+
+    All queries are read-only aggregates over existing tables — no schema
+    changes required.  The result is a plain dict suitable for JSON serialisation.
+
+    Fields
+    ------
+    threads.total          : total thread count across all statuses
+    threads.by_status      : count per status value
+    messages.total         : total message count (all threads)
+    messages.rate          : message count in the last 1 / 5 / 15 minutes
+    messages.avg_latency_ms: average inter-message interval (ms) in threads that
+                             had at least two messages in the last 15 minutes.
+                             null when no such threads exist.
+    messages.stop_reasons  : count per stop_reason value from UP-17 metadata.
+                             Only messages that carry a non-null stop_reason are
+                             counted; the five canonical reasons are always
+                             present (with 0 as default).
+    agents.total           : total registered agent count
+    agents.online          : agents whose last_heartbeat is within the
+                             AGENT_HEARTBEAT_TIMEOUT window
+    """
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+
+    # ── Thread counts ────────────────────────────────────────────────────────
+    threads_by_status: dict[str, int] = {}
+    async with db.execute("SELECT status, COUNT(*) AS cnt FROM threads GROUP BY status") as cur:
+        async for row in cur:
+            threads_by_status[row["status"]] = row["cnt"]
+    threads_total = sum(threads_by_status.values())
+
+    # ── Message total ────────────────────────────────────────────────────────
+    async with db.execute("SELECT COUNT(*) AS cnt FROM messages") as cur:
+        row = await cur.fetchone()
+    messages_total = row["cnt"] if row else 0
+
+    # ── Message rates (1m / 5m / 15m) ───────────────────────────────────────
+    cutoffs = {
+        "last_1m":  (now - timedelta(minutes=1)).isoformat(),
+        "last_5m":  (now - timedelta(minutes=5)).isoformat(),
+        "last_15m": (now - timedelta(minutes=15)).isoformat(),
+    }
+    message_rate: dict[str, int] = {}
+    for key, cutoff in cutoffs.items():
+        async with db.execute(
+            "SELECT COUNT(*) AS cnt FROM messages WHERE created_at >= ?", (cutoff,)
+        ) as cur:
+            row = await cur.fetchone()
+        message_rate[key] = row["cnt"] if row else 0
+
+    # ── Inter-message latency (avg ms, threads active in last 15 min) ────────
+    # Uses LAG() window function (SQLite >= 3.25.0) to compute time gaps
+    # between consecutive messages within each thread, then averages them.
+    # Only considers threads that had activity in the last 15 minutes to keep
+    # the metric relevant to current bus load.
+    cutoff_15m = cutoffs["last_15m"]
+    avg_latency_ms: Optional[float] = None
+    try:
+        lag_sql = """
+            WITH gaps AS (
+                SELECT
+                    (julianday(created_at) - julianday(
+                        LAG(created_at) OVER (PARTITION BY thread_id ORDER BY seq)
+                    )) * 86400000.0 AS gap_ms
+                FROM messages
+                WHERE thread_id IN (
+                    SELECT DISTINCT thread_id FROM messages WHERE created_at >= ?
+                )
+            )
+            SELECT AVG(gap_ms) AS avg_gap FROM gaps WHERE gap_ms IS NOT NULL
+        """
+        async with db.execute(lag_sql, (cutoff_15m,)) as cur:
+            row = await cur.fetchone()
+        if row and row["avg_gap"] is not None:
+            avg_latency_ms = round(row["avg_gap"], 1)
+    except Exception:
+        # Defensive: if the window query fails for any reason, degrade gracefully
+        avg_latency_ms = None
+
+    # ── stop_reason distribution (UP-17) ─────────────────────────────────────
+    canonical_reasons = ("convergence", "timeout", "complete", "error", "impasse")
+    stop_reasons: dict[str, int] = {r: 0 for r in canonical_reasons}
+    async with db.execute(
+        """
+        SELECT json_extract(metadata, '$.stop_reason') AS reason, COUNT(*) AS cnt
+        FROM messages
+        WHERE json_extract(metadata, '$.stop_reason') IS NOT NULL
+        GROUP BY reason
+        """
+    ) as cur:
+        async for row in cur:
+            reason = row["reason"]
+            stop_reasons[reason] = stop_reasons.get(reason, 0) + row["cnt"]
+
+    # ── Agent counts ─────────────────────────────────────────────────────────
+    agents_total = 0
+    agents_online = 0
+    heartbeat_cutoff = (
+        now - timedelta(seconds=AGENT_HEARTBEAT_TIMEOUT)
+    ).isoformat()
+    async with db.execute("SELECT COUNT(*) AS cnt FROM agents") as cur:
+        row = await cur.fetchone()
+    agents_total = row["cnt"] if row else 0
+    async with db.execute(
+        "SELECT COUNT(*) AS cnt FROM agents WHERE last_heartbeat >= ?",
+        (heartbeat_cutoff,),
+    ) as cur:
+        row = await cur.fetchone()
+    agents_online = row["cnt"] if row else 0
+
+    return {
+        "threads": {
+            "total": threads_total,
+            "by_status": threads_by_status,
+        },
+        "messages": {
+            "total": messages_total,
+            "rate": message_rate,
+            "avg_latency_ms": avg_latency_ms,
+            "stop_reasons": stop_reasons,
+        },
+        "agents": {
+            "total": agents_total,
+            "online": agents_online,
+        },
+    }

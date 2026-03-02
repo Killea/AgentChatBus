@@ -6,6 +6,7 @@ Uses a separate port and database to avoid conflicts with production server.
 """
 import os
 import signal
+import sys
 import time
 import subprocess
 from pathlib import Path
@@ -84,11 +85,14 @@ def server():
     test_env["AGENTCHATBUS_DB"] = TEST_DB_PATH
     test_env["AGENTCHATBUS_RELOAD"] = "0"  # Disable reload for tests
     
-    # Check if test server is already running on test port
+    # Check if a compatible test server is already running on the test port.
+    # We verify /health returns 200 AND /api/metrics exists (status < 500) to
+    # avoid reusing a stale or production server that lacks new endpoints.
     try:
         with httpx.Client(base_url=BASE_URL, timeout=5) as client:
-            resp = client.get("/api/threads")
-            if resp.status_code < 500:
+            health = client.get("/health")
+            metrics = client.get("/api/metrics")
+            if health.status_code == 200 and metrics.status_code < 500:
                 yield
                 return
     except Exception:
@@ -97,8 +101,11 @@ def server():
     # Start the server with test configuration
     print(f"\nStarting AgentChatBus test server at {BASE_URL}...")
     print(f"Using test database: {TEST_DB_PATH}")
+    # Use sys.executable so the test server runs with the same Python interpreter
+    # (and venv) as the test process itself, ensuring local source changes are
+    # picked up rather than a stale installed package.
     _SERVER_PROCESS = subprocess.Popen(
-        ["python", "-m", "src.main"],
+        [sys.executable, "-m", "src.main"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
