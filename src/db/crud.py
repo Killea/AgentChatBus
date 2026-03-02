@@ -300,26 +300,20 @@ async def thread_latest_seq(db: aiosqlite.Connection, thread_id: str) -> int:
     return row["max_seq"] or 0
 
 
-async def _expire_old_reply_tokens(db: aiosqlite.Connection) -> None:
-    now = _now()
-    await db.execute(
-        "UPDATE reply_tokens SET status = 'expired' "
-        "WHERE status = 'issued' AND expires_at <= ?",
-        (now,),
-    )
-    await db.commit()
-
-
 async def issue_reply_token(
     db: aiosqlite.Connection,
     thread_id: str,
     agent_id: Optional[str] = None,
 ) -> dict:
-    """Issue a short-lived reply token bound to a thread (and optionally an agent)."""
-    await _expire_old_reply_tokens(db)
+    """Issue a reply token bound to a thread (and optionally an agent).
+
+    NOTE: Reply tokens are single-use (consumed on successful msg_post) but do not expire.
+    """
     token = secrets.token_urlsafe(24)
     issued_at = _now()
-    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=REPLY_TOKEN_LEASE_SECONDS)).isoformat()
+    # Kept for backwards-compatibility with existing schema/clients.
+    # Tokens are treated as non-expiring, so we set expires_at far in the future.
+    expires_at = "9999-12-31T23:59:59+00:00"
     await db.execute(
         "INSERT INTO reply_tokens (token, thread_id, agent_id, issued_at, expires_at, consumed_at, status) "
         "VALUES (?, ?, ?, ?, ?, NULL, 'issued')",
@@ -532,7 +526,6 @@ async def msg_post(
     if missing_fields:
         raise MissingSyncFieldsError(missing_fields)
 
-    await _expire_old_reply_tokens(db)
     async with db.execute(
         "SELECT token, thread_id, agent_id, expires_at, consumed_at, status "
         "FROM reply_tokens WHERE token = ?",
@@ -546,8 +539,9 @@ async def msg_post(
         raise ReplyTokenInvalidError(reply_token)
     if token_row["status"] == "consumed":
         raise ReplyTokenReplayError(reply_token, token_row["consumed_at"])
-    if token_row["status"] == "expired":
-        raise ReplyTokenExpiredError(reply_token, token_row["expires_at"])
+
+    # Token expiration is intentionally not enforced. For legacy DBs that already
+    # have tokens marked as 'expired', treat them the same as 'issued'.
 
     token_agent_id = token_row["agent_id"]
     if token_agent_id and author_id and token_agent_id != author_id:
