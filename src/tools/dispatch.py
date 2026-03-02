@@ -342,6 +342,7 @@ async def handle_msg_post(db, arguments: dict[str, Any]) -> list[types.TextConte
             role=arguments.get("role", "user"),
             metadata=arguments.get("metadata"),
             priority=arguments.get("priority", "normal"),
+            reply_to_msg_id=arguments.get("reply_to_msg_id"),
         )
     except MissingSyncFieldsError as e:
         return [types.TextContent(type="text", text=json.dumps({
@@ -386,9 +387,19 @@ async def handle_msg_post(db, arguments: dict[str, Any]) -> list[types.TextConte
             "error": "Content blocked by filter",
             "pattern": e.pattern_name,
         }))]
+    except ValueError as e:
+        return [types.TextContent(type="text", text=json.dumps({
+            "error": "INVALID_ARGUMENT",
+            "detail": str(e),
+        }))]
 
     meta = _safe_json_loads(msg.metadata)
-    result: dict[str, Any] = {"msg_id": msg.id, "seq": msg.seq, "priority": msg.priority}
+    result: dict[str, Any] = {
+        "msg_id": msg.id,
+        "seq": msg.seq,
+        "priority": msg.priority,
+        "reply_to_msg_id": msg.reply_to_msg_id,
+    }
     if isinstance(meta, dict):
         if meta.get("handoff_target"):
             result["handoff_target"] = meta["handoff_target"]
@@ -429,6 +440,7 @@ async def handle_msg_list(db, arguments: dict[str, Any]) -> list[types.Content]:
             "created_at": m.created_at.isoformat(),
             "metadata": m.metadata,
             "priority": m.priority,
+            "reply_to_msg_id": m.reply_to_msg_id,
             "reactions": reactions_map.get(m.id, []),
         }
         for m in msgs

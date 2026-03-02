@@ -839,6 +839,28 @@ body[data-theme="light"] .handoff-badge {
   color: #2563eb;
 }
 
+/* Reply-to quote block (UP-14) */
+.msg-reply-quote {
+  display: inline-block;
+  font-size: 0.78em;
+  padding: 2px 8px;
+  margin-bottom: 4px;
+  border-left: 3px solid rgba(150,150,255,0.6);
+  background: rgba(150,150,255,0.08);
+  border-radius: 0 4px 4px 0;
+  color: rgba(200,200,220,0.8);
+  font-style: normal;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body[data-theme="light"] .msg-reply-quote {
+  border-left-color: rgba(80,80,200,0.4);
+  background: rgba(80,80,200,0.06);
+  color: #555;
+}
+
 body[data-theme="light"] .stop-tag {
   background: rgba(100,100,100,0.08);
   color: #555;

@@ -769,6 +769,11 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         priorityBadgeHtml = '<span class="msg-priority-badge msg-priority-system" title="System message">SYSTEM</span>';
       }
 
+      // Reply-to quote (UP-14)
+      const replyQuoteHtml = m.reply_to_msg_id
+        ? `<div class="msg-reply-quote" title="In reply to message ${esc(m.reply_to_msg_id)}">&#8617; In reply to: <em>${esc(m.reply_to_msg_id.slice(0, 8))}…</em></div>`
+        : '';
+
       row.innerHTML = `
       <div class="msg-avatar" style="background:${bgAlpha};color:${color};border:1px solid ${color}44">${avatarEmoji}</div>
       <div class="msg-col">
@@ -778,6 +783,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
           ${priorityBadgeHtml}
           ${handoffBadgeHtml}
         </div>
+        ${replyQuoteHtml}
         <div class="bubble-v2" style="border-color:${color}55;${isHuman ? 'border-right-color' : 'border-left-color'}:${color}"></div>
         <div class="msg-reactions"></div>
       </div>`;

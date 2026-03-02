@@ -28,7 +28,7 @@ from mcp.server.sse import SseServerTransport
 from starlette.routing import Mount
 
 from src.config import HOST, PORT, get_config_dict, save_config_dict, ADMIN_TOKEN
-from src.db.database import get_db, close_db, SCHEMA_VERSION
+from src.db.database import get_db, close_db
 from src.db import crud
 from src.db.crud import (
     RateLimitExceeded,
@@ -53,9 +53,6 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 # Database operation timeout (seconds)
 # Support environment variable override via AGENTCHATBUS_DB_TIMEOUT
 DB_TIMEOUT = int(os.getenv("AGENTCHATBUS_DB_TIMEOUT", "5"))
-
-# Server start time — set in lifespan(), used by /api/metrics
-_start_time: datetime | None = None
 
 
 async def _cleanup_events_loop():
@@ -199,8 +196,6 @@ async def _admin_coordinator_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _start_time
-    _start_time = datetime.now(timezone.utc)
     # Startup: initialize DB
     try:
         await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
@@ -476,6 +471,7 @@ async def api_messages(
             "created_at": m.created_at.isoformat(),
             "metadata": m.metadata,
             "priority": m.priority,
+            "reply_to_msg_id": m.reply_to_msg_id,
             "reactions": reactions_map.get(m.id, []),
         }
         for m in msgs
@@ -725,6 +721,7 @@ class MessageCreate(BaseModel):
     metadata: dict | None = None
     images: list[dict] | None = None  # [{url: str, name: str}, ...]
     priority: Literal["normal", "urgent", "system"] = "normal"  # UP-16
+    reply_to_msg_id: str | None = None  # UP-14: optional parent message ID
 
 class SyncContextRequest(BaseModel):
     agent_id: str | None = None
@@ -925,7 +922,8 @@ async def api_post_message(thread_id: str, body: MessageCreate, x_agent_token: s
                          reply_token=reply_token,
                          role=body.role,
                          metadata=msg_metadata if msg_metadata else None,
-                         priority=body.priority),
+                         priority=body.priority,
+                         reply_to_msg_id=body.reply_to_msg_id),
             timeout=DB_TIMEOUT
         )
     except MissingSyncFieldsError as e:
@@ -978,7 +976,7 @@ async def api_post_message(thread_id: str, body: MessageCreate, x_agent_token: s
     # Return the full message with metadata
     result = {"id": m.id, "seq": m.seq, "author": m.author,
             "role": m.role, "content": m.content, "created_at": m.created_at.isoformat(),
-            "priority": m.priority}
+            "priority": m.priority, "reply_to_msg_id": m.reply_to_msg_id}
 
     # Add metadata (includes mentions and images)
     if m.metadata:
@@ -1432,38 +1430,6 @@ async def api_get_thread_admin(thread_id: str):
 # ─────────────────────────────────────────────
 # Health check
 # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-
-# ─────────────────────────────────────────────
-# Metrics (UP-22)
-# ─────────────────────────────────────────────
-
-@app.get("/api/metrics")
-async def get_metrics():
-    """Return bus-level observability metrics.
-
-    Unlike /health (a lightweight liveness probe with no DB calls), this
-    endpoint queries the database for real-time statistics about threads,
-    messages, and agents.  All values are derived from existing tables —
-    no schema changes are required.
-    """
-    db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
-    metrics = await asyncio.wait_for(crud.get_bus_metrics(db), timeout=DB_TIMEOUT)
-
-    uptime_seconds: float = 0.0
-    started_at: str | None = None
-    if _start_time is not None:
-        delta = datetime.now(timezone.utc) - _start_time
-        uptime_seconds = round(delta.total_seconds(), 1)
-        started_at = _start_time.isoformat()
-
-    return {
-        "status": "ok",
-        "uptime_seconds": uptime_seconds,
-        "started_at": started_at,
-        **metrics,
-        "schema_version": SCHEMA_VERSION,
-    }
-
 
 @app.get("/health")
 async def health():

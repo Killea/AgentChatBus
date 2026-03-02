@@ -87,11 +87,13 @@ def server():
     test_env["AGENTCHATBUS_RELOAD"] = "0"  # Disable reload for tests
     
     # Check if a compatible test server is already running on the test port.
-    # Verify /health + all new endpoints from UP-13+16, UP-20, UP-22:
+    # Verify /health + all new endpoints from UP-13+16, UP-20, UP-22, UP-14:
     # - /api/metrics (UP-22): must return 200
     # - /api/threads?limit=1 (UP-20 pagination): must return dict with "threads" key
     # - /api/messages/nonexistent/reactions (UP-13+16): must return 404 with "Message" in detail
     #   (an old server without reactions route returns 404 "Not Found" — FastAPI generic default)
+    # - GET /api/threads/{id}/messages (UP-14): response items must have "reply_to_msg_id" key
+    #   We create a temp thread and check the field is present in the messages response.
     try:
         with httpx.Client(base_url=BASE_URL, timeout=5) as client:
             health = client.get("/health")
@@ -102,6 +104,23 @@ def server():
                 json={"agent_id": "test", "reaction": "test"},
             )
             react_detail = react_check.json().get("detail", "") if react_check.status_code == 404 else ""
+            # UP-14: create a temp thread and check reply_to_msg_id field in messages response
+            reply_field_ok = False
+            thread_resp = client.post("/api/threads", json={"topic": "__compat_check__", "status": "discuss"})
+            if thread_resp.status_code in (200, 201):
+                tid = thread_resp.json().get("id", "")
+                if tid:
+                    msgs_resp = client.get(f"/api/threads/{tid}/messages")
+                    if msgs_resp.status_code == 200:
+                        msgs_data = msgs_resp.json()
+                        # Empty list is OK — field present means server supports UP-14
+                        # We check by posting a message and reading back
+                        msg_resp = client.post(
+                            f"/api/threads/{tid}/messages",
+                            json={"author": "compat-check", "content": "ping", "role": "user"},
+                        )
+                        if msg_resp.status_code in (200, 201):
+                            reply_field_ok = "reply_to_msg_id" in msg_resp.json()
             if (
                 health.status_code == 200
                 and metrics_resp.status_code == 200
@@ -110,6 +129,7 @@ def server():
                 and "threads" in threads_resp.json()
                 and react_check.status_code == 404
                 and "Message" in str(react_detail)
+                and reply_field_ok
             ):
                 yield
                 return

@@ -231,6 +231,10 @@ async def list_tools() -> list[types.Tool]:
                             },
                         },
                     },
+                    "reply_to_msg_id": {
+                        "type": "string",
+                        "description": "Optional ID of the message being replied to. Must belong to the same thread. Triggers a msg.reply SSE event.",
+                    },
                 },
                 "required": ["thread_id", "author", "content", "expected_last_seq", "reply_token"],
             },
