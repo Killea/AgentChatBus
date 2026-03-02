@@ -5,15 +5,22 @@ import pytest
 import asyncio
 import json
 import uuid
+import aiosqlite
 from datetime import datetime, timedelta, timezone
 from src.db import crud
-from src.db.database import get_db
+from src.db.database import init_schema
 
 
 @pytest.fixture
 async def db():
-    """Return a fresh database connection."""
-    return await get_db()
+    """Return an isolated in-memory database connection per test."""
+    conn = await aiosqlite.connect(":memory:")
+    conn.row_factory = aiosqlite.Row
+    await init_schema(conn)
+    try:
+        yield conn
+    finally:
+        await conn.close()
 
 
 async def create_test_thread(db):

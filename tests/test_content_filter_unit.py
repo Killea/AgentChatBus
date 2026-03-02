@@ -6,13 +6,14 @@ Uses an in-memory SQLite database.
 import asyncio
 import os
 import pytest
+import aiosqlite
 
-# Use an in-memory DB for unit tests
-os.environ["AGENTCHATBUS_DB"] = ":memory:"
 os.environ["AGENTCHATBUS_CONTENT_FILTER_ENABLED"] = "true"
 
 from src.content_filter import check_content, ContentFilterError, SECRET_PATTERNS
 from src.config import CONTENT_FILTER_ENABLED
+from src.db.database import init_schema
+from src.db import crud
 
 
 # ─────────────────────────────────────────────
@@ -90,79 +91,47 @@ class TestCheckContent:
 async def test_crud_msg_post_blocks_aws_key():
     """
     Verify that crud.msg_post raises ContentFilterError for AWS keys.
-    Uses the shared DB singleton — creates a thread first.
+    Uses an isolated in-memory DB.
     """
-    # Force fresh DB for this test
-    os.environ["AGENTCHATBUS_DB"] = "data/test_unit_cf.db"
+    db = await aiosqlite.connect(":memory:")
+    db.row_factory = aiosqlite.Row
+    await init_schema(db)
+    try:
+        thread = await crud.thread_create(db, "unit-test-cf-thread")
+        sync = await crud.issue_reply_token(db, thread_id=thread.id)
 
-    # Reset singleton so it picks up the new DB path
-    import src.db.database as dbmod
-    if dbmod._db is not None:
-        await dbmod.close_db()
-        dbmod._db = None
-
-    from src.db.database import get_db
-    from src.db import crud
-
-    db = await get_db()
-    thread = await crud.thread_create(db, "unit-test-cf-thread")
-    sync = await crud.issue_reply_token(db, thread_id=thread.id)
-
-    with pytest.raises(ContentFilterError) as exc_info:
-        await crud.msg_post(
-            db,
-            thread.id,
-            "human",
-            "AKIAIOSFODNN7EXAMPLE123",
-            expected_last_seq=sync["current_seq"],
-            reply_token=sync["reply_token"],
-        )
-    assert "AWS" in exc_info.value.pattern_name
-
-    # Cleanup
-    await dbmod.close_db()
-    dbmod._db = None
-    # Remove test DB files
-    import pathlib
-    for f in pathlib.Path("data").glob("test_unit_cf*"):
-        try:
-            f.unlink()
-        except Exception:
-            pass
+        with pytest.raises(ContentFilterError) as exc_info:
+            await crud.msg_post(
+                db,
+                thread.id,
+                "human",
+                "AKIAIOSFODNN7EXAMPLE123",
+                expected_last_seq=sync["current_seq"],
+                reply_token=sync["reply_token"],
+            )
+        assert "AWS" in exc_info.value.pattern_name
+    finally:
+        await db.close()
 
 
 @pytest.mark.asyncio
 async def test_crud_msg_post_allows_normal():
     """Normal content must pass through without error."""
-    os.environ["AGENTCHATBUS_DB"] = "data/test_unit_cf2.db"
-
-    import src.db.database as dbmod
-    if dbmod._db is not None:
-        await dbmod.close_db()
-        dbmod._db = None
-
-    from src.db.database import get_db
-    from src.db import crud
-
-    db = await get_db()
-    thread = await crud.thread_create(db, "unit-test-normal-thread")
-    sync = await crud.issue_reply_token(db, thread_id=thread.id)
-    msg = await crud.msg_post(
-        db,
-        thread.id,
-        "human",
-        "This looks like a solid implementation.",
-        expected_last_seq=sync["current_seq"],
-        reply_token=sync["reply_token"],
-    )
-    assert msg.seq > 0
-    assert msg.content == "This looks like a solid implementation."
-
-    await dbmod.close_db()
-    dbmod._db = None
-    import pathlib
-    for f in pathlib.Path("data").glob("test_unit_cf2*"):
-        try:
-            f.unlink()
-        except Exception:
-            pass
+    db = await aiosqlite.connect(":memory:")
+    db.row_factory = aiosqlite.Row
+    await init_schema(db)
+    try:
+        thread = await crud.thread_create(db, "unit-test-normal-thread")
+        sync = await crud.issue_reply_token(db, thread_id=thread.id)
+        msg = await crud.msg_post(
+            db,
+            thread.id,
+            "human",
+            "This looks like a solid implementation.",
+            expected_last_seq=sync["current_seq"],
+            reply_token=sync["reply_token"],
+        )
+        assert msg.seq > 0
+        assert msg.content == "This looks like a solid implementation."
+    finally:
+        await db.close()

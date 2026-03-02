@@ -6,8 +6,10 @@ import asyncio
 import json
 from pathlib import Path
 import pytest
+import aiosqlite
 
-import src.db.database as dbmod
+from src.db.database import init_schema
+from src.db import crud
 
 
 @pytest.mark.asyncio
@@ -18,9 +20,6 @@ async def test_image_flow():
     import sys
     sys.path.insert(0, str(Path(__file__).parent))
     
-    from src.db.database import get_db
-    from src.db import crud
-    
     print("="*60)
     print("Testing Image Upload and Message Metadata Flow")
     print("="*60)
@@ -28,7 +27,9 @@ async def test_image_flow():
     # Get database connection
     print("\n1. Initializing database...")
     try:
-        db = await get_db()
+        db = await aiosqlite.connect(":memory:")
+        db.row_factory = aiosqlite.Row
+        await init_schema(db)
         print("   Database connected")
     except Exception as e:
         pytest.fail(f"Error connecting to database: {e}")
@@ -99,7 +100,7 @@ async def test_image_flow():
     print("Test Complete")
     print("="*60)
     try:
-        await dbmod.close_db()
+        await db.close()
     except Exception:
         pass
 

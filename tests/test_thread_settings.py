@@ -5,20 +5,25 @@ import pytest
 import asyncio
 import json
 import uuid
+import aiosqlite
 from datetime import datetime, timedelta, timezone
 from src.db import crud
-from src.db.database import get_db
+from src.db.database import init_schema
 
 
 @pytest.fixture
 async def db_with_thread():
     """Create a test thread and return db + thread_id."""
-    db = await get_db()
+    db = await aiosqlite.connect(":memory:")
+    db.row_factory = aiosqlite.Row
+    await init_schema(db)
     # Use unique thread_id to ensure test isolation
     topic = f"test-thread-settings-{uuid.uuid4().hex[:8]}"
     thread = await crud.thread_create(db, topic=topic)
-    yield db, thread.id
-    # Cleanup (optional)
+    try:
+        yield db, thread.id
+    finally:
+        await db.close()
 
 
 @pytest.mark.asyncio

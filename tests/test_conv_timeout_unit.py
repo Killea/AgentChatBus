@@ -1,18 +1,13 @@
 """
 Unit tests for UP-02: Conversation Timeout.
 Tests thread_timeout_sweep() without requiring a running server.
-
-Design note: DB_PATH is fixed at import time, so we use unique thread topics
-to avoid cross-test state pollution.
 """
-import os
 import asyncio
 import pytest
+import aiosqlite
 from datetime import datetime, timezone, timedelta
 import src.db.crud as crud_mod
-import src.db.database as dbmod
-
-os.environ["AGENTCHATBUS_DB"] = "data/test_timeout_unit.db"
+from src.db.database import init_schema
 
 
 from contextlib import asynccontextmanager
@@ -20,25 +15,13 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def db_context():
-    # Always close any existing connection and open a new one for isolation
+    db = await aiosqlite.connect(":memory:")
+    db.row_factory = aiosqlite.Row
+    await init_schema(db)
     try:
-        await dbmod.close_db()
-    except Exception:
-        pass
-    db = await dbmod.get_db()
-    try:
-        # Clean up any existing test data
-        await db.execute("DELETE FROM events WHERE thread_id IN (SELECT id FROM threads WHERE topic LIKE 'timeout-%')")
-        await db.execute("DELETE FROM reply_tokens WHERE thread_id IN (SELECT id FROM threads WHERE topic LIKE 'timeout-%')")
-        await db.execute("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE topic LIKE 'timeout-%')")
-        await db.execute("DELETE FROM threads WHERE topic LIKE 'timeout-%'")
-        await db.commit()
         yield db
     finally:
-        try:
-            await dbmod.close_db()
-        except Exception:
-            pass
+        await db.close()
 
 
 # ─────────────────────────────────────────────
@@ -63,16 +46,6 @@ async def _get_thread_status(db, thread_id: str) -> str:
     async with db.execute("SELECT status FROM threads WHERE id = ?", (thread_id,)) as cur:
         row = await cur.fetchone()
     return row["status"] if row else "not_found"
-
-
-async def _get_db():
-    # Always close any existing connection and open a new one for isolation
-    try:
-        await dbmod.close_db()
-    except Exception:
-        pass
-    db = await dbmod.get_db()
-    return dbmod._db
 
 
 async def _post_message(db, thread_id: str, author: str, content: str, role: str = "user"):

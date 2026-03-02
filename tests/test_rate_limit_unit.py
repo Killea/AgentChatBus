@@ -1,17 +1,11 @@
 """
 Unit tests for UP-03: Rate Limiting.
 Tests the rate limit logic and CRUD integration without requiring a running server.
-
-Design note: DB_PATH is fixed at import time in database.py, so we use unique
-author names per test to avoid cross-test state pollution.
 """
-import os
 import pytest
+import aiosqlite
 import src.db.crud as crud_mod
-import src.db.database as dbmod
-
-# Use an isolated test DB for all rate-limit unit tests
-os.environ["AGENTCHATBUS_DB"] = "data/test_rl_unit.db"
+from src.db.database import init_schema
 
 
 # NOTE: Per-test DB cleanup is performed explicitly in each async test's
@@ -23,24 +17,11 @@ os.environ["AGENTCHATBUS_DB"] = "data/test_rl_unit.db"
 # ─────────────────────────────────────────────
 
 async def _get_db():
-    """Return a fresh DB connection for the calling test.
-
-    To avoid cross-test connection/state leakage we close any existing
-    connection and re-open a new one on each call. Tests are responsible for
-    closing the connection (see finally blocks below).
-    """
-    try:
-        await dbmod.close_db()
-    except Exception:
-        pass
-    db = await dbmod.get_db()
-    # Clean up any existing test data from rate limit tests
-    await db.execute("DELETE FROM events WHERE thread_id IN (SELECT id FROM threads WHERE topic LIKE 'rl-%')")
-    await db.execute("DELETE FROM reply_tokens WHERE thread_id IN (SELECT id FROM threads WHERE topic LIKE 'rl-%')")
-    await db.execute("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE topic LIKE 'rl-%')")
-    await db.execute("DELETE FROM threads WHERE topic LIKE 'rl-%'")
-    await db.commit()
-    return dbmod._db
+    """Return an isolated in-memory DB connection for the calling test."""
+    db = await aiosqlite.connect(":memory:")
+    db.row_factory = aiosqlite.Row
+    await init_schema(db)
+    return db
 
 
 async def _post_message(db, thread_id: str, author: str, content: str):
@@ -113,7 +94,7 @@ async def test_rate_limit_allows_within_limit():
     finally:
         _restore_rate_limit(*orig)
         try:
-            await dbmod.close_db()
+            await db.close()
         except Exception:
             pass
 
@@ -135,7 +116,7 @@ async def test_rate_limit_blocks_on_exceed():
     finally:
         _restore_rate_limit(*orig)
         try:
-            await dbmod.close_db()
+            await db.close()
         except Exception:
             pass
 
@@ -157,7 +138,7 @@ async def test_rate_limit_scopes_per_author():
     finally:
         _restore_rate_limit(*orig)
         try:
-            await dbmod.close_db()
+            await db.close()
         except Exception:
             pass
 
@@ -174,7 +155,7 @@ async def test_rate_limit_normal_single_message():
     finally:
         _restore_rate_limit(*orig)
         try:
-            await dbmod.close_db()
+            await db.close()
         except Exception:
             pass
 
@@ -192,6 +173,6 @@ async def test_rate_limit_zero_disables():
     finally:
         _restore_rate_limit(*orig)
         try:
-            await dbmod.close_db()
+            await db.close()
         except Exception:
             pass
