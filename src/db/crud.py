@@ -28,6 +28,75 @@ from src.content_filter import check_content, ContentFilterError
 logger = logging.getLogger(__name__)
 
 
+def _quote_ident(name: str) -> str:
+    """Quote SQL identifiers from trusted schema metadata.
+
+    Allows only ASCII letters/digits/underscore and non-digit first char.
+    """
+    if not name:
+        raise ValueError("Empty identifier")
+    if not (name[0].isalpha() or name[0] == "_"):
+        raise ValueError(f"Invalid identifier start: {name}")
+    if not all(ch.isalnum() or ch == "_" for ch in name):
+        raise ValueError(f"Invalid identifier: {name}")
+    return f'"{name}"'
+
+
+async def _delete_fk_dependents_for_thread(
+    db: aiosqlite.Connection,
+    thread_id: str,
+    *,
+    referenced_table: str,
+) -> None:
+    """Delete rows in tables that FK-reference `referenced_table`.
+
+    This keeps thread_delete resilient when new FK-linked tables are added.
+    """
+    async with db.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+    ) as cur:
+        table_rows = await cur.fetchall()
+
+    targets: list[tuple[str, str]] = []
+    for tr in table_rows:
+        table_name = tr["name"]
+        if table_name == referenced_table:
+            continue
+        try:
+            pragma_sql = f"PRAGMA foreign_key_list({_quote_ident(table_name)})"
+            async with db.execute(pragma_sql) as cur:
+                fk_rows = await cur.fetchall()
+        except Exception:
+            continue
+
+        for fk in fk_rows:
+            if fk["table"] == referenced_table:
+                targets.append((table_name, fk["from"]))
+
+    # De-duplicate while preserving stable order.
+    seen: set[tuple[str, str]] = set()
+    deduped: list[tuple[str, str]] = []
+    for item in targets:
+        if item in seen:
+            continue
+        seen.add(item)
+        deduped.append(item)
+
+    for table_name, fk_col in deduped:
+        qt = _quote_ident(table_name)
+        qc = _quote_ident(fk_col)
+        if referenced_table == "messages":
+            await db.execute(
+                f"DELETE FROM {qt} WHERE {qc} IN (SELECT id FROM messages WHERE thread_id = ?)",
+                (thread_id,),
+            )
+        elif referenced_table == "threads":
+            await db.execute(
+                f"DELETE FROM {qt} WHERE {qc} = ?",
+                (thread_id,),
+            )
+
+
 def _row_get(row: sqlite3.Row, key: str, default=None):
     """Safely get a column from a sqlite3.Row, returning default if column doesn't exist.
     
@@ -357,8 +426,9 @@ async def thread_delete(db: aiosqlite.Connection, thread_id: str) -> dict | None
     Returns a dict with audit info (thread_id, topic, message_count) on success,
     or None if the thread does not exist.
     
-    All dependent records (events, reactions, messages, reply_tokens, thread_settings) are deleted first to satisfy
-    FK constraints. All deletes are wrapped in a single transaction with rollback on error.
+    All dependent records are deleted first to satisfy FK constraints.
+    The cleanup discovers FK-linked tables dynamically so new schema additions
+    do not silently break thread deletion behavior.
     """
     async with db.execute("SELECT * FROM threads WHERE id = ?", (thread_id,)) as cur:
         row = await cur.fetchone()
@@ -374,12 +444,12 @@ async def thread_delete(db: aiosqlite.Connection, thread_id: str) -> dict | None
     try:
         # Delete dependent records first (satisfy FK constraints)
         await db.execute("DELETE FROM events WHERE thread_id = ?", (thread_id,))
-        # reactions -> messages FK
-        await db.execute(
-            "DELETE FROM reactions WHERE message_id IN (SELECT id FROM messages WHERE thread_id = ?)",
-            (thread_id,),
-        )
+        # Remove rows in tables FK-linked to messages before deleting messages.
+        await _delete_fk_dependents_for_thread(db, thread_id, referenced_table="messages")
         await db.execute("DELETE FROM messages WHERE thread_id = ?", (thread_id,))
+        # Remove rows in tables FK-linked directly to threads.
+        await _delete_fk_dependents_for_thread(db, thread_id, referenced_table="threads")
+        # Defensive explicit cleanup for non-FK-linked rows.
         await db.execute("DELETE FROM reply_tokens WHERE thread_id = ?", (thread_id,))
         await db.execute("DELETE FROM thread_settings WHERE thread_id = ?", (thread_id,))
         # Finally delete the thread itself
