@@ -188,6 +188,25 @@ def test_thread_agents_endpoint_returns_thread_scoped_participants_only():
         assert agent_b_id not in ids_b
 
 
+def test_thread_agents_not_found_includes_runtime_diagnostics():
+    with _build_client() as client:
+        _require_server_or_skip(client)
+        missing_thread_id = str(uuid.uuid4())
+
+        resp = client.get(f"/api/threads/{missing_thread_id}/agents")
+        assert resp.status_code == 404, resp.text
+
+        payload = resp.json()
+        detail = payload.get("detail")
+        assert isinstance(detail, dict)
+        assert detail.get("message") == "Thread not found"
+        assert detail.get("thread_id") == missing_thread_id
+        assert isinstance(detail.get("pid"), int)
+        assert detail.get("port") is not None
+        assert isinstance(detail.get("db_path"), str)
+        assert detail.get("db_path")
+
+
 def test_admin_decision_source_message_is_single_use():
     with _build_client() as client:
         _require_server_or_skip(client)

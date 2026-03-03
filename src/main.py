@@ -27,7 +27,7 @@ from pydantic import BaseModel, ConfigDict
 from mcp.server.sse import SseServerTransport
 from starlette.routing import Mount
 
-from src.config import HOST, PORT, get_config_dict, save_config_dict, ADMIN_TOKEN
+from src.config import HOST, PORT, DB_PATH, get_config_dict, save_config_dict, ADMIN_TOKEN
 from src.db.database import get_db, close_db, SCHEMA_VERSION
 from src.db import crud
 from src.db.crud import (
@@ -164,6 +164,18 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 # Database operation timeout (seconds)
 # Support environment variable override via AGENTCHATBUS_DB_TIMEOUT
 DB_TIMEOUT = int(os.getenv("AGENTCHATBUS_DB_TIMEOUT", "5"))
+
+
+def _runtime_diag_payload() -> dict[str, object]:
+    """Return runtime diagnostics for error payloads.
+
+    Intentionally enabled in default mode to help diagnose multi-instance/path mismatches.
+    """
+    return {
+        "pid": os.getpid(),
+        "port": PORT,
+        "db_path": DB_PATH,
+    }
 
 # Server start time — set in lifespan(), used by /api/metrics (UP-22)
 _start_time: datetime | None = None
@@ -1057,10 +1069,24 @@ async def api_thread_agents(thread_id: str):
         db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
         t = await asyncio.wait_for(crud.thread_get(db, thread_id), timeout=DB_TIMEOUT)
         if t is None:
-            raise HTTPException(status_code=404, detail="Thread not found")
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "message": "Thread not found",
+                    "thread_id": thread_id,
+                    **_runtime_diag_payload(),
+                },
+            )
         agents = await asyncio.wait_for(crud.thread_agents_list(db, thread_id), timeout=DB_TIMEOUT)
     except asyncio.TimeoutError:
-        raise HTTPException(status_code=503, detail="Database operation timeout")
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "message": "Database operation timeout",
+                "thread_id": thread_id,
+                **_runtime_diag_payload(),
+            },
+        )
 
     import json as _json
     result = []
