@@ -219,8 +219,13 @@ async def _admin_coordinator_loop() -> None:
             online_agents = [a for a in all_agents if a.is_online]
             online_agent_ids = {a.id for a in online_agents}
 
+            wait_states_by_thread = await asyncio.wait_for(
+                crud.thread_wait_states_grouped(db),
+                timeout=DB_TIMEOUT,
+            )
+
             # Check each thread that has agents in wait state
-            for thread_id, wait_states in list(_thread_agent_wait_states.items()):
+            for thread_id, wait_states in list(wait_states_by_thread.items()):
                 if not wait_states:
                     continue
 
@@ -398,7 +403,10 @@ async def _admin_coordinator_loop() -> None:
                         timeout=DB_TIMEOUT,
                     )
 
-                    clear_thread_wait_state(thread_id)
+                    await asyncio.wait_for(
+                        crud.thread_wait_clear_thread(db, thread_id),
+                        timeout=DB_TIMEOUT,
+                    )
 
                     logger.info(
                         "Sent admin confirmation prompt for thread %s: candidate=%s online_count=%s",
@@ -862,25 +870,16 @@ async def api_agents():
         raise HTTPException(status_code=503, detail="Database operation timeout")
 
     result = []
-    # Consider active SSE connections as a sign the agent is online even if the
-    # DB heartbeat is slightly stale. mcp_server maintains a per-session mapping
-    # of connected agents which we consult here to reflect live connections in
-    # the `/api/agents` response.
-    try:
-        active_agent_ids = {v.get("agent_id") for v in mcp_server._connection_agents.values() if v.get("agent_id")}
-    except Exception:
-        active_agent_ids = set()
 
     import json as _json
     for a in agents:
-        is_online = bool(a.is_online or (a.id in active_agent_ids))
         result.append({
             "id": a.id, "name": a.name, "display_name": a.display_name, "alias_source": a.alias_source,
             "description": a.description, "ide": a.ide, "model": a.model,
             "emoji": _agent_emoji(a.id),
             "capabilities": _json.loads(a.capabilities) if a.capabilities else [],
             "skills": _json.loads(a.skills) if a.skills else [],
-            "is_online": is_online, "last_heartbeat": a.last_heartbeat.isoformat(),
+            "is_online": bool(a.is_online), "last_heartbeat": a.last_heartbeat.isoformat(),
             "last_activity": a.last_activity,
             "last_activity_time": a.last_activity_time.isoformat() if a.last_activity_time else None
         })
@@ -899,15 +898,9 @@ async def api_thread_agents(thread_id: str):
     except asyncio.TimeoutError:
         raise HTTPException(status_code=503, detail="Database operation timeout")
 
-    try:
-        active_agent_ids = {v.get("agent_id") for v in mcp_server._connection_agents.values() if v.get("agent_id")}
-    except Exception:
-        active_agent_ids = set()
-
     import json as _json
     result = []
     for a in agents:
-        is_online = bool(a.is_online or (a.id in active_agent_ids))
         result.append({
             "id": a.id,
             "name": a.name,
@@ -919,7 +912,7 @@ async def api_thread_agents(thread_id: str):
             "emoji": _agent_emoji(a.id),
             "capabilities": _json.loads(a.capabilities) if a.capabilities else [],
             "skills": _json.loads(a.skills) if a.skills else [],
-            "is_online": is_online,
+            "is_online": bool(a.is_online),
             "last_heartbeat": a.last_heartbeat.isoformat(),
             "last_activity": a.last_activity,
             "last_activity_time": a.last_activity_time.isoformat() if a.last_activity_time else None,
@@ -1460,15 +1453,16 @@ async def api_agent_kick(agent_id: str):
     if agent is None:
         raise HTTPException(status_code=404, detail="Agent not found")
     
-    # Step 1: Remove from all thread msg_wait states (interrupt long polls)
-    threads_interrupted = []
-    for thread_id in list(_thread_agent_wait_states.keys()):
-        if agent_id in _thread_agent_wait_states[thread_id]:
-            _thread_agent_wait_states[thread_id].pop(agent_id, None)
-            threads_interrupted.append(thread_id)
-            logger.info(f"[kick] Removed agent {agent_id} from msg_wait on thread {thread_id}")
-        if not _thread_agent_wait_states[thread_id]:
-            del _thread_agent_wait_states[thread_id]
+    # Step 1: Remove from shared DB msg_wait states (cross-process safe)
+    try:
+        threads_interrupted = await asyncio.wait_for(
+            crud.thread_wait_remove_agent(db, agent_id),
+            timeout=DB_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+    for thread_id in threads_interrupted:
+        logger.info(f"[kick] Removed agent {agent_id} from msg_wait on thread {thread_id}")
     
     # Step 2: Remove from MCP connection registry (disconnect SSE/MCP sessions)
     import uuid

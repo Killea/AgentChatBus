@@ -425,6 +425,23 @@ async def init_schema(db: aiosqlite.Connection) -> None:
             ON thread_settings(last_activity_time);
 
         -- ----------------------------------------------------------------
+        -- Thread wait states: cross-process shared msg_wait tracking
+        -- ----------------------------------------------------------------
+        CREATE TABLE IF NOT EXISTS thread_wait_states (
+            thread_id    TEXT NOT NULL REFERENCES threads(id),
+            agent_id     TEXT NOT NULL REFERENCES agents(id),
+            entered_at   TEXT NOT NULL,
+            updated_at   TEXT NOT NULL,
+            timeout_ms   INTEGER NOT NULL,
+            PRIMARY KEY (thread_id, agent_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_thread_wait_states_thread
+            ON thread_wait_states(thread_id);
+        CREATE INDEX IF NOT EXISTS idx_thread_wait_states_updated
+            ON thread_wait_states(updated_at);
+
+        -- ----------------------------------------------------------------
         -- Reactions: per-message reactions/annotations from agents (UP-13)
         -- UNIQUE constraint prevents duplicate (message, agent, reaction) triples.
         -- ----------------------------------------------------------------

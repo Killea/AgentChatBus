@@ -441,8 +441,7 @@ async def handle_msg_post(db, arguments: dict[str, Any]) -> list[types.TextConte
         
         # Agent posted a message - exit wait state for this thread
         if connection_agent_id:
-            from src.main import agent_exit_wait
-            agent_exit_wait(thread_id, connection_agent_id)
+            await crud.thread_wait_exit(db, thread_id, connection_agent_id)
     except MissingSyncFieldsError as e:
         return [types.TextContent(type="text", text=json.dumps({
             "error": "MISSING_SYNC_FIELDS",
@@ -618,10 +617,22 @@ async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.Content]:
 
     logger.info(f"[msg_wait] explicit: agent_id={explicit_agent_id}, connection: agent_id={connection_agent_id}, final_agent_id={agent_id}, for_agent={for_agent}")
 
-    # Track agent entering msg_wait state for coordination timeout detection
+    # Track agent entering msg_wait state for coordination timeout detection.
+    #
+    # Cross-process note:
+    # - msg_wait may run inside stdio_main.py worker processes, while the
+    #   admin coordinator loop runs in the HTTP server process (src.main).
+    # - Process-local memory (for example module-level dicts) is NOT shared
+    #   across those processes, so using in-memory wait state can miss events.
+    # - We therefore persist wait state in SQLite (thread_wait_states), which
+    #   gives all processes a single source of truth.
+    #
+    # Semantics:
+    # - entering msg_wait writes/refreshes (thread_id, agent_id)
+    # - receiving a message or posting a message removes that wait marker
+    # - coordinator reads DB markers to evaluate timeout conditions
     if agent_id:
-        from src.main import agent_enter_wait
-        agent_enter_wait(thread_id, agent_id, timeout_ms)
+        await crud.thread_wait_enter(db, thread_id, agent_id, timeout_ms)
 
     # Refresh every 20 seconds to stay online during long-poll waits.
     HEARTBEAT_INTERVAL = 20.0
@@ -649,10 +660,12 @@ async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.Content]:
             raw_msgs = await crud.msg_list(db, thread_id, after_seq=after_seq, include_system_prompt=False)
             msgs = [m for m in raw_msgs if not _is_human_only_message(m)]
             if msgs:
-                # Agent received messages - exit wait state
+                # Agent received messages - exit wait state.
+                # This must be a DB write (not local-memory mutation) so any
+                # process observing wait state sees that this agent is no longer
+                # waiting on this thread.
                 if agent_id:
-                    from src.main import agent_exit_wait
-                    agent_exit_wait(thread_id, agent_id)
+                    await crud.thread_wait_exit(db, thread_id, agent_id)
                 if for_agent:
                     filtered = [m for m in msgs if _metadata_targets(m, for_agent)]
                     if filtered:

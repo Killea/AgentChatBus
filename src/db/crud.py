@@ -507,6 +507,76 @@ async def issue_reply_token(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Thread wait states (cross-process shared)
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def thread_wait_enter(
+    db: aiosqlite.Connection,
+    thread_id: str,
+    agent_id: str,
+    timeout_ms: int,
+) -> None:
+    now = _now()
+    await db.execute(
+        """
+        INSERT INTO thread_wait_states (thread_id, agent_id, entered_at, updated_at, timeout_ms)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(thread_id, agent_id)
+        DO UPDATE SET entered_at = excluded.entered_at,
+                      updated_at = excluded.updated_at,
+                      timeout_ms = excluded.timeout_ms
+        """,
+        (thread_id, agent_id, now, now, timeout_ms),
+    )
+    await db.commit()
+
+
+async def thread_wait_exit(
+    db: aiosqlite.Connection,
+    thread_id: str,
+    agent_id: str,
+) -> None:
+    await db.execute(
+        "DELETE FROM thread_wait_states WHERE thread_id = ? AND agent_id = ?",
+        (thread_id, agent_id),
+    )
+    await db.commit()
+
+
+async def thread_wait_clear_thread(db: aiosqlite.Connection, thread_id: str) -> None:
+    await db.execute("DELETE FROM thread_wait_states WHERE thread_id = ?", (thread_id,))
+    await db.commit()
+
+
+async def thread_wait_remove_agent(db: aiosqlite.Connection, agent_id: str) -> list[str]:
+    async with db.execute(
+        "SELECT DISTINCT thread_id FROM thread_wait_states WHERE agent_id = ?",
+        (agent_id,),
+    ) as cur:
+        rows = await cur.fetchall()
+    thread_ids = [r["thread_id"] for r in rows]
+    await db.execute("DELETE FROM thread_wait_states WHERE agent_id = ?", (agent_id,))
+    await db.commit()
+    return thread_ids
+
+
+async def thread_wait_states_grouped(db: aiosqlite.Connection) -> dict[str, dict[str, dict]]:
+    async with db.execute(
+        "SELECT thread_id, agent_id, entered_at, timeout_ms FROM thread_wait_states"
+    ) as cur:
+        rows = await cur.fetchall()
+    grouped: dict[str, dict[str, dict]] = {}
+    for row in rows:
+        thread_id = row["thread_id"]
+        agent_id = row["agent_id"]
+        grouped.setdefault(thread_id, {})[agent_id] = {
+            "entered_at": _parse_dt(row["entered_at"]),
+            "timeout_ms": int(row["timeout_ms"]),
+        }
+    return grouped
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Thread Settings CRUD
 # ─────────────────────────────────────────────────────────────────────────────
 

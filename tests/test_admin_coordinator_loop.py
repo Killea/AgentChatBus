@@ -30,20 +30,21 @@ class _SleepBreaker:
 @pytest.mark.asyncio
 async def test_admin_coordinator_single_agent_emits_confirmation_and_human_notice(monkeypatch):
     db = await _setup_db()
-    original_states = dict(app_main._thread_agent_wait_states)
     try:
         thread = await crud.thread_create(db, "single-agent-intervention")
         agent = await crud.agent_register(db, ide="VS Code", model="GPT-5.3-Codex")
 
         await crud.thread_settings_update(db, thread.id, timeout_seconds=30)
 
-        app_main._thread_agent_wait_states.clear()
-        app_main._thread_agent_wait_states[thread.id] = {
-            agent.id: {
-                "entered_at": datetime.now(timezone.utc) - timedelta(seconds=120),
-                "timeout_ms": 120000,
-            }
-        }
+        old_entered = (datetime.now(timezone.utc) - timedelta(seconds=120)).isoformat()
+        await db.execute(
+            """
+            INSERT INTO thread_wait_states (thread_id, agent_id, entered_at, updated_at, timeout_ms)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (thread.id, agent.id, old_entered, old_entered, 120000),
+        )
+        await db.commit()
 
         sleep_breaker = _SleepBreaker()
         monkeypatch.setattr(app_main.asyncio, "sleep", sleep_breaker)
@@ -72,15 +73,12 @@ async def test_admin_coordinator_single_agent_emits_confirmation_and_human_notic
             for m in msgs
         )
     finally:
-        app_main._thread_agent_wait_states.clear()
-        app_main._thread_agent_wait_states.update(original_states)
         await db.close()
 
 
 @pytest.mark.asyncio
 async def test_admin_coordinator_multi_agent_emits_confirmation_without_switch(monkeypatch):
     db = await _setup_db()
-    original_states = dict(app_main._thread_agent_wait_states)
     try:
         thread = await crud.thread_create(db, "multi-agent-intervention")
         admin = await crud.agent_register(db, ide="VS Code", model="GPT-5.3-Codex")
@@ -116,17 +114,22 @@ async def test_admin_coordinator_multi_agent_emits_confirmation_without_switch(m
         )
         await crud.thread_settings_update(db, thread.id, timeout_seconds=30)
 
-        app_main._thread_agent_wait_states.clear()
-        app_main._thread_agent_wait_states[thread.id] = {
-            admin.id: {
-                "entered_at": datetime.now(timezone.utc) - timedelta(seconds=120),
-                "timeout_ms": 120000,
-            },
-            peer.id: {
-                "entered_at": datetime.now(timezone.utc) - timedelta(seconds=120),
-                "timeout_ms": 120000,
-            },
-        }
+        old_entered = (datetime.now(timezone.utc) - timedelta(seconds=120)).isoformat()
+        await db.execute(
+            """
+            INSERT INTO thread_wait_states (thread_id, agent_id, entered_at, updated_at, timeout_ms)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (thread.id, admin.id, old_entered, old_entered, 120000),
+        )
+        await db.execute(
+            """
+            INSERT INTO thread_wait_states (thread_id, agent_id, entered_at, updated_at, timeout_ms)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (thread.id, peer.id, old_entered, old_entered, 120000),
+        )
+        await db.commit()
 
         sleep_breaker = _SleepBreaker()
         monkeypatch.setattr(app_main.asyncio, "sleep", sleep_breaker)
@@ -157,6 +160,4 @@ async def test_admin_coordinator_multi_agent_emits_confirmation_without_switch(m
             for m in msgs
         )
     finally:
-        app_main._thread_agent_wait_states.clear()
-        app_main._thread_agent_wait_states.update(original_states)
         await db.close()
