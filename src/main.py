@@ -7,6 +7,7 @@ Starts a FastAPI HTTP server that:
   3. Provides a simple SSE broadcast endpoint at /events for the web console
 """
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -96,14 +97,59 @@ def clear_thread_wait_state(thread_id: str) -> None:
     _thread_agent_wait_states.pop(thread_id, None)
 
 
-_ADMIN_EMOJIS = ["🤖", "🛠️", "🧠", "📡", "🧭", "⚙️"]
+_AGENT_EMOJIS = [
+    # animals
+    "🦊", "🐼", "🐸", "🐙", "🦄", "🐯", "🦁", "🐵", "🐧", "🐢",
+    "🦉", "🐳", "🐝", "🦋", "🪲", "🦀", "🐞", "🦎", "🐊", "🐠",
+    "🐬", "🦖", "🦒", "🦓", "🦔", "🦦", "🦥", "🦩", "🐘", "🦛",
+    "🐨", "🐹", "🐰", "🐮", "🐷", "🐔", "🐧",
+    # plants & nature
+    "🌵", "🌲", "🌴", "🌿", "🍄", "🪴", "🍀",
+    # food
+    "🍉", "🍓", "🍒", "🍍", "🥑", "🌽", "🍕", "🍣", "🍜", "🍪",
+    "🍩", "🍫",
+    # objects & tools
+    "⚡", "🔥", "💡", "🔭", "🧪", "🧬", "🧭", "🪐", "🛰️", "📡",
+    "🔧", "🛠️", "🧰", "🧲", "🧯", "🔒", "🔑", "📌", "📎", "📚",
+    "🗺️", "🧠",
+    # games & music
+    "🎯", "🧩", "🎲", "♟️", "🎸", "🎧", "🎷",
+    # travel & misc
+    "🚲", "🛶", "🏄", "🧳", "🏺", "🪁", "🪄", "🧵", "🧶", "🪙", "🗝️",
+]
 
 
 def _agent_emoji(agent_id: str | None) -> str:
     if not agent_id:
         return "❔"
-    idx = abs(hash(agent_id)) % len(_ADMIN_EMOJIS)
-    return _ADMIN_EMOJIS[idx]
+    normalized = str(agent_id).strip().lower()
+    if not normalized:
+        return "❔"
+    digest = hashlib.sha256(normalized.encode("utf-8")).digest()
+    idx = int.from_bytes(digest[:8], "big", signed=False) % len(_AGENT_EMOJIS)
+    return _AGENT_EMOJIS[idx]
+
+
+def _author_emoji(author_id: str | None, author_name: str | None, role: str | None) -> str:
+    role_key = str(role or "").strip().lower()
+    if role_key == "system":
+        return "⚙️"
+
+    author_id_key = str(author_id or "").strip()
+    if author_id_key:
+        lowered = author_id_key.lower()
+        if lowered == "human":
+            return "👤"
+        if lowered == "system":
+            return "⚙️"
+        return _agent_emoji(author_id_key)
+
+    name_key = str(author_name or "").strip().lower()
+    if name_key == "human":
+        return "👤"
+    if name_key == "system":
+        return "⚙️"
+    return "🤖"
 
 
 def _agent_label(agent: object | None, fallback_id: str | None = None) -> str:
@@ -607,6 +653,7 @@ async def api_messages(
             "author": m.author,
             "author_id": m.author_id,
             "author_name": m.author_name,
+            "author_emoji": _author_emoji(m.author_id, m.author_name, m.role),
             "role": m.role,
             "content": m.content,
             "seq": m.seq,
@@ -793,6 +840,7 @@ async def api_agents():
         result.append({
             "id": a.id, "name": a.name, "display_name": a.display_name, "alias_source": a.alias_source,
             "description": a.description, "ide": a.ide, "model": a.model,
+            "emoji": _agent_emoji(a.id),
             "capabilities": _json.loads(a.capabilities) if a.capabilities else [],
             "skills": _json.loads(a.skills) if a.skills else [],
             "is_online": is_online, "last_heartbeat": a.last_heartbeat.isoformat(),
@@ -1136,6 +1184,9 @@ async def api_post_message(thread_id: str, body: MessageCreate, x_agent_token: s
     
     # Return the full message with metadata
     result = {"id": m.id, "seq": m.seq, "author": m.author,
+            "author_id": m.author_id,
+            "author_name": m.author_name,
+            "author_emoji": _author_emoji(m.author_id, m.author_name, m.role),
             "role": m.role, "content": m.content, "created_at": m.created_at.isoformat(),
             "priority": m.priority, "reply_to_msg_id": m.reply_to_msg_id}
 
@@ -1186,6 +1237,7 @@ async def api_agent_get(agent_id: str):
     return {
         "id": a.id, "name": a.name, "display_name": a.display_name, "alias_source": a.alias_source,
         "description": a.description, "ide": a.ide, "model": a.model,
+        "emoji": _agent_emoji(a.id),
         "capabilities": _json.loads(a.capabilities) if a.capabilities else [],
         "skills": _json.loads(a.skills) if a.skills else [],
         "is_online": a.is_online, "last_heartbeat": a.last_heartbeat.isoformat(),
@@ -1222,6 +1274,7 @@ async def api_agent_update(agent_id: str, body: AgentUpdate):
     return {
         "ok": True,
         "agent_id": a.id, "name": a.name, "display_name": a.display_name,
+        "emoji": _agent_emoji(a.id),
         "description": a.description,
         "capabilities": _json.loads(a.capabilities) if a.capabilities else [],
         "skills": _json.loads(a.skills) if a.skills else [],
@@ -1255,6 +1308,7 @@ async def api_agent_register(body: AgentRegister, response: Response):
         "name": a.name,
         "display_name": a.display_name,
         "alias_source": a.alias_source,
+        "emoji": _agent_emoji(a.id),
         "token": a.token,
         "capabilities": _json.loads(a.capabilities) if a.capabilities else [],
         "skills": _json.loads(a.skills) if a.skills else [],
@@ -1294,6 +1348,7 @@ async def api_agent_resume(body: AgentToken, response: Response):
         "name": a.name,
         "display_name": a.display_name,
         "alias_source": a.alias_source,
+        "emoji": _agent_emoji(a.id),
         "is_online": a.is_online,
         "last_heartbeat": a.last_heartbeat.isoformat(),
     }
@@ -1571,9 +1626,11 @@ async def api_get_thread_settings(thread_id: str):
         "last_activity_time": settings.last_activity_time.isoformat(),
         "auto_assigned_admin_id": settings.auto_assigned_admin_id,
         "auto_assigned_admin_name": settings.auto_assigned_admin_name,
+        "auto_assigned_admin_emoji": _agent_emoji(settings.auto_assigned_admin_id) if settings.auto_assigned_admin_id else None,
         "admin_assignment_time": settings.admin_assignment_time.isoformat() if settings.admin_assignment_time else None,
         "creator_admin_id": settings.creator_admin_id,
         "creator_admin_name": settings.creator_admin_name,
+        "creator_admin_emoji": _agent_emoji(settings.creator_admin_id) if settings.creator_admin_id else None,
         "creator_assignment_time": settings.creator_assignment_time.isoformat() if settings.creator_assignment_time else None,
         "created_at": settings.created_at.isoformat(),
         "updated_at": settings.updated_at.isoformat(),
@@ -1644,9 +1701,11 @@ async def api_update_thread_settings(thread_id: str, body: ThreadSettingsUpdate)
         "last_activity_time": settings.last_activity_time.isoformat(),
         "auto_assigned_admin_id": settings.auto_assigned_admin_id,
         "auto_assigned_admin_name": settings.auto_assigned_admin_name,
+        "auto_assigned_admin_emoji": _agent_emoji(settings.auto_assigned_admin_id) if settings.auto_assigned_admin_id else None,
         "admin_assignment_time": settings.admin_assignment_time.isoformat() if settings.admin_assignment_time else None,
         "creator_admin_id": settings.creator_admin_id,
         "creator_admin_name": settings.creator_admin_name,
+        "creator_admin_emoji": _agent_emoji(settings.creator_admin_id) if settings.creator_admin_id else None,
         "creator_assignment_time": settings.creator_assignment_time.isoformat() if settings.creator_assignment_time else None,
         "created_at": settings.created_at.isoformat(),
         "updated_at": settings.updated_at.isoformat(),
@@ -1673,6 +1732,7 @@ async def api_get_thread_admin(thread_id: str):
         return {
             "admin_id": settings.creator_admin_id,
             "admin_name": settings.creator_admin_name,
+            "admin_emoji": _agent_emoji(settings.creator_admin_id),
             "admin_type": "creator",
             "assigned_at": settings.creator_assignment_time.isoformat() if settings.creator_assignment_time else None,
         }
@@ -1681,11 +1741,12 @@ async def api_get_thread_admin(thread_id: str):
         return {
             "admin_id": settings.auto_assigned_admin_id,
             "admin_name": settings.auto_assigned_admin_name,
+            "admin_emoji": _agent_emoji(settings.auto_assigned_admin_id),
             "admin_type": "auto_assigned",
             "assigned_at": settings.admin_assignment_time.isoformat() if settings.admin_assignment_time else None,
         }
     
-    return {"admin_id": None, "admin_name": None, "admin_type": None, "assigned_at": None}
+    return {"admin_id": None, "admin_name": None, "admin_emoji": None, "admin_type": None, "assigned_at": None}
 
 
 @app.post("/api/threads/{thread_id}/admin/decision")

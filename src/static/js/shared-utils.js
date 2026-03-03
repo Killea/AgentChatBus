@@ -1,110 +1,4 @@
 (function () {
-  // NOTE: Avatar emojis must not look like status indicators.
-  // Avoid: colored circles/dots, hourglass/clock, moon, etc.
-  const AGENT_AVATAR_EMOJI_POOL = [
-    // animals
-    "🦊",
-    "🐼",
-    "🐸",
-    "🐙",
-    "🦄",
-    "🐯",
-    "🦁",
-    "🐵",
-    "🐧",
-    "🐢",
-    "🦉",
-    "🐳",
-    "🐝",
-    "🦋",
-    "🪲",
-    "🦀",
-    "🐞",
-    "🦎",
-    "🐊",
-    "🐠",
-    "🐬",
-    "🦖",
-    "🦒",
-    "🦓",
-    "🦔",
-    "🦦",
-    "🦥",
-    "🦩",
-    "🐘",
-    "🦛",
-    "🐨",
-    "🐹",
-    "🐰",
-    "🐮",
-    "🐷",
-    "🐔",
-    "🐧",
-    // plants & nature (avoid moon)
-    "🌵",
-    "🌲",
-    "🌴",
-    "🌿",
-    "🍄",
-    "🪴",
-    "🍀",
-    // food
-    "🍉",
-    "🍓",
-    "🍒",
-    "🍍",
-    "🥑",
-    "🌽",
-    "🍕",
-    "🍣",
-    "🍜",
-    "🍪",
-    "🍩",
-    "🍫",
-    // objects & tools
-    "⚡",
-    "🔥",
-    "💡",
-    "🔭",
-    "🧪",
-    "🧬",
-    "🧭",
-    "🪐",
-    "🛰️",
-    "📡",
-    "🔧",
-    "🛠️",
-    "🧰",
-    "🧲",
-    "🧯",
-    "🔒",
-    "🔑",
-    "📌",
-    "📎",
-    "📚",
-    "🗺️",
-    "🧠",
-    // games & music
-    "🎯",
-    "🧩",
-    "🎲",
-    "♟️",
-    "🎸",
-    "🎧",
-    "🎷",
-    // travel & misc
-    "🚲",
-    "🛶",
-    "🏄",
-    "🧳",
-    "🏺",
-    "🪁",
-    "🪄",
-    "🧵",
-    "🧶",
-    "🪙",
-    "🗝️",
-  ];
 
   function escapeHtml(text) {
     const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
@@ -179,28 +73,18 @@
   const SYSTEM_COLOR = "#fbbf24"; // amber — system events
   const _colorCache = {};
 
-  function stableHash32(value) {
-    const s = String(value ?? "");
-    let h = 0;
-    for (let i = 0; i < s.length; i++) {
-      h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-    }
-    return h >>> 0;
-  }
+  function getBackendAgentEmoji(input) {
+    const provided =
+      input && typeof input === "object"
+        ? String(input.emoji || input.author_emoji || "").trim()
+        : "";
+    if (provided) return provided;
 
-  function getAgentAvatarEmoji(input) {
-    const key =
-      typeof input === "string"
-        ? String(input).trim()
-        : String(input?.id ?? input?.agent_id ?? input?.name ?? input?.display_name ?? "").trim();
-
-    if (!key) return "🤖";
+    const key = typeof input === "string" ? String(input).trim() : "";
     const lower = key.toLowerCase();
     if (lower === "human") return "👤";
     if (lower === "system") return "⚙️";
-
-    const idx = stableHash32(key) % AGENT_AVATAR_EMOJI_POOL.length;
-    return AGENT_AVATAR_EMOJI_POOL[idx] || "🤖";
+    return "🤖";
   }
 
   function authorColor(author) {
@@ -233,7 +117,7 @@
     autoResize,
     copyTextWithFallback,
     authorColor,
-    getAgentAvatarEmoji,
+    getBackendAgentEmoji,
     shouldGroupWithPrevious,
   };
 })();

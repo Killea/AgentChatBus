@@ -77,10 +77,10 @@
 
   <script src="/static/js/shared-api.js?v=2"></script>
   <script src="/static/js/shared-theme.js?v=2"></script>
-  <script src="/static/js/shared-utils.js?v=2"></script>
+  <script src="/static/js/shared-utils.js?v=3"></script>
   <script src="/static/js/shared-message-renderer.js?v=2"></script>
   <script src="/static/js/shared-sse.js?v=2"></script>
-  <script src="/static/js/shared-modals.js?v=2"></script>
+  <script src="/static/js/shared-modals.js?v=3"></script>
   <script src="/static/js/components/acb-modal-shell.js?v=2"></script>
   <script src="/static/js/components/acb-empty-state.js?v=2"></script>
   <script src="/static/js/components/acb-icon-button.js?v=2"></script>
@@ -97,7 +97,7 @@
   <script src="/static/js/shared-threads.js?v=2"></script>
   <script src="/static/js/shared-agent-status.js?v=2"></script>
   <script src="/static/js/components/acb-agent-status-item.js?v=2"></script>
-  <script src="/static/js/shared-agents.js?v=2"></script>
+  <script src="/static/js/shared-agents.js?v=3"></script>
   <script src="/static/js/shared-chat.js?v=2"></script>
   <script src="/static/js/shared-tooltip.js?v=2"></script>
   <script src="/static/js/components/acb-confirm-dialog.js?v=2"></script>
@@ -798,7 +798,9 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       const isHuman = authorLabel.toLowerCase() === 'human';
       const authorKey = isHuman ? 'human' : (isSystem ? 'system' : String(m.author_id ?? authorLabel));
       const color = authorColor(authorKey);
-      const avatarEmoji = window.AcbUtils?.getAgentAvatarEmoji ? window.AcbUtils.getAgentAvatarEmoji(authorKey) : '🤖';
+      const avatarEmoji = String(m.author_emoji || '').trim()
+        || String(currentAgents?.find((a) => a.id === String(m.author_id ?? ''))?.emoji || '').trim()
+        || (isHuman ? '👤' : (isSystem ? '⚙️' : '🤖'));
       const bgAlpha = `${color}22`;  // ~13% alpha tint for avatar bg
       const isAgentMessage = !isHuman && !isSystem;
       const sentAtLabel = fmtTime(m.created_at);
@@ -957,7 +959,8 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       let el = document.getElementById(`typing-${agentId}`);
       if (!el) {
         const color = authorColor(agentId);
-        const avatarEmoji = window.AcbUtils?.getAgentAvatarEmoji ? window.AcbUtils.getAgentAvatarEmoji(agentId) : '🤖';
+        const agentEmoji = String(currentAgents?.find((a) => a.id === agentId)?.emoji || '').trim();
+        const avatarEmoji = agentEmoji || '🤖';
         const row = document.createElement('div');
         row.className = 'msg-row msg-row-left';
         row.id = `typing-${agentId}`;

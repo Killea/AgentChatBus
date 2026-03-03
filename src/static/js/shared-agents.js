@@ -217,7 +217,7 @@
 
     participants.forEach((a) => {
       const state = getAgentState(a);
-      const avatarEmoji = window.AcbUtils?.getAgentAvatarEmoji ? window.AcbUtils.getAgentAvatarEmoji(a) : "🤖";
+      const avatarEmoji = String(a?.emoji || "").trim() || "🤖";
       const stateEmoji = getStateEmoji(state);
       const label = String(a.display_name ?? a.name ?? "").trim() || "Unknown";
       const offlineTime = getOfflineTime(a);

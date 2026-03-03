@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import '../../../src/static/js/shared-utils.js';
 
-const { escapeHtml, esc, fmtTime, timeAgo, authorColor, getAgentAvatarEmoji } = window.AcbUtils;
+const { escapeHtml, esc, fmtTime, timeAgo, authorColor, getBackendAgentEmoji } = window.AcbUtils;
 
 describe('shared-utils (real implementation)', () => {
   it('escapeHtml escapes special characters', () => {
@@ -39,13 +39,11 @@ describe('shared-utils (real implementation)', () => {
     expect(authorColor('agent-a')).toBe(authorColor('agent-a'));
   });
 
-  it('getAgentAvatarEmoji is deterministic and handles reserved identities', () => {
-    expect(getAgentAvatarEmoji('human')).toBe('👤');
-    expect(getAgentAvatarEmoji('system')).toBe('⚙️');
-
-    const avatar1 = getAgentAvatarEmoji('agent-a');
-    const avatar2 = getAgentAvatarEmoji({ id: 'agent-a' });
-    expect(avatar1).toBeTruthy();
-    expect(avatar2).toBeTruthy();
+  it('getBackendAgentEmoji prefers backend emoji and keeps reserved identity fallback', () => {
+    expect(getBackendAgentEmoji({ id: 'agent-a', emoji: '🧠' })).toBe('🧠');
+    expect(getBackendAgentEmoji('human')).toBe('👤');
+    expect(getBackendAgentEmoji('system')).toBe('⚙️');
+    expect(getBackendAgentEmoji('agent-a')).toBe('🤖');
+    expect(getBackendAgentEmoji({ id: 'agent-a' })).toBe('🤖');
   });
 });

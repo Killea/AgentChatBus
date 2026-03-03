@@ -3,6 +3,7 @@ import pytest
 
 from src.db import crud
 from src.db.database import init_schema
+from src.main import _agent_emoji
 
 
 async def _post_message(db, thread_id: str, author: str, content: str, role: str = "user", metadata: dict | None = None):
@@ -105,3 +106,11 @@ async def test_agent_thread_create_updates_activity():
     assert refreshed.last_heartbeat is not None, "last_heartbeat should be set"
 
     await db.close()
+
+
+def test_agent_emoji_mapping_is_deterministic_and_normalized():
+    agent_id = "AbC-123"
+    emoji1 = _agent_emoji(agent_id)
+    emoji2 = _agent_emoji(agent_id)
+    assert emoji1 == emoji2
+    assert emoji1 == _agent_emoji("  abc-123  ")

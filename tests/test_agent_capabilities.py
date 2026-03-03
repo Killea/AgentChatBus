@@ -304,6 +304,13 @@ def test_api_register_returns_skills(registered_agent):
     assert registered_agent["skills"][0]["id"] == "up15-skill"
 
 
+def test_api_register_returns_emoji(registered_agent):
+    """POST /api/agents/register returns backend-generated emoji."""
+    assert "emoji" in registered_agent
+    assert isinstance(registered_agent["emoji"], str)
+    assert registered_agent["emoji"]
+
+
 def test_api_agents_includes_capabilities(registered_agent):
     """GET /api/agents includes capabilities for every agent."""
     with _build_client() as client:
@@ -333,6 +340,20 @@ def test_api_agents_includes_skills(registered_agent):
         assert matched["skills"][0]["id"] == "up15-skill"
 
 
+def test_api_agents_includes_emoji(registered_agent):
+    """GET /api/agents includes emoji and it matches register payload for same agent."""
+    with _build_client() as client:
+        _require_server_or_skip(client)
+        r = client.get("/api/agents")
+        assert r.status_code == 200
+        agents = r.json()
+        agent_id = registered_agent["agent_id"]
+        matched = next((a for a in agents if a["id"] == agent_id), None)
+        assert matched is not None
+        assert "emoji" in matched
+        assert matched["emoji"] == registered_agent["emoji"]
+
+
 def test_api_agent_get_by_id(registered_agent):
     """GET /api/agents/{id} returns single agent with capabilities and skills."""
     with _build_client() as client:
@@ -344,6 +365,7 @@ def test_api_agent_get_by_id(registered_agent):
         assert data["id"] == agent_id
         assert data["capabilities"] == ["test", "up15"]
         assert data["skills"][0]["id"] == "up15-skill"
+        assert data["emoji"] == registered_agent["emoji"]
         assert "registered_at" in data
 
 

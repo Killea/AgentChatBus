@@ -182,6 +182,20 @@
     document.getElementById("thread-settings-message").style.display = "none";
     setModalVisible("thread-settings", true);
 
+    let agentEmojiById = new Map();
+    try {
+      const agentsRes = await api("/api/agents");
+      if (Array.isArray(agentsRes)) {
+        agentEmojiById = new Map(
+          agentsRes
+            .map((a) => [String(a?.id || "").trim(), String(a?.emoji || "").trim()])
+            .filter(([id, emoji]) => id && emoji)
+        );
+      }
+    } catch (err) {
+      console.warn("Unable to load agent emoji map:", err);
+    }
+
     try {
       const res = await api(`/api/threads/${threadId}/settings`);
       if (res) {
@@ -193,13 +207,6 @@
       console.error("Error loading thread settings:", err);
     }
 
-    const getAvatarEmoji = (key) => {
-      if (window.AcbUtils && typeof window.AcbUtils.getAgentAvatarEmoji === "function") {
-        return window.AcbUtils.getAgentAvatarEmoji(key);
-      }
-      return "🤖";
-    };
-
     // Load current admin info
     try {
       const adminRes = await api(`/api/threads/${threadId}/admin`);
@@ -208,8 +215,8 @@
         const currentAdminEl = document.getElementById("ts-current-admin");
         const adminLabel = adminRes.admin_name || adminRes.admin_id;
         if (adminLabel) {
-          const adminKey = adminRes.admin_id || adminLabel;
-          const emoji = getAvatarEmoji(adminKey);
+          const adminId = String(adminRes.admin_id || "").trim();
+          const emoji = (adminId ? agentEmojiById.get(adminId) : "") || String(adminRes.admin_emoji || "").trim() || "🤖";
           const typeLabel = adminRes.admin_type === "creator" ? " (Creator)" : " (Auto-assigned)";
           currentAdminEl.textContent = `${emoji} ${adminLabel}${typeLabel}`;
         } else {
@@ -225,8 +232,8 @@
       const settingsRes = await api(`/api/threads/${threadId}/settings`);
       const creatorAdminEl = document.getElementById("ts-creator-admin");
       if (settingsRes && settingsRes.creator_admin_name) {
-        const creatorKey = settingsRes.creator_admin_id || settingsRes.creator_admin_name;
-        const emoji = getAvatarEmoji(creatorKey);
+        const creatorId = String(settingsRes.creator_admin_id || "").trim();
+        const emoji = (creatorId ? agentEmojiById.get(creatorId) : "") || String(settingsRes.creator_admin_emoji || "").trim() || "🤖";
         creatorAdminEl.textContent = `${emoji} ${settingsRes.creator_admin_name}`;
       } else {
         creatorAdminEl.textContent = "None";
