@@ -1261,7 +1261,8 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
 
       box.appendChild(row);
       if (window.AcbNavSidebar) window.AcbNavSidebar.onNewMessage();
-    } ----------------------------------------------------------------------------------------------------------
+    }
+    // ---- Typing indicator ----------------------------------------------------------------------------------------------------------
     function showTyping(agentId) {
       const box = document.getElementById('messages');
       let el = document.getElementById(`typing-${agentId}`);
