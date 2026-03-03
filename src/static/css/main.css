@@ -1123,18 +1123,31 @@ body[data-theme="light"] .bubble-v2 code {
 .msg-sys-admin-timeout {
   align-self: center;
   width: min(760px, 92%);
+}
+
+.msg-sys-admin-timeout-card {
+  width: min(760px, 100%);
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(245, 158, 11, .24);
+  border-radius: 14px;
+  background: rgba(245, 158, 11, .05);
 }
 
-.msg-sys-event-admin-timeout {
-  max-width: 100%;
+.msg-sys-admin-timeout-main {
+  align-self: stretch;
+  padding: 0;
+  color: #fbbf24;
+  font-size: 12px;
+  font-style: italic;
+  text-align: center;
+  line-height: 1.45;
 }
 
-.msg-sys-admin-timeout-note {
-  width: min(760px, 100%);
+.msg-sys-admin-timeout-note-inline {
+  width: 100%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1168,7 +1181,16 @@ body[data-theme="light"] .bubble-v2 code {
   max-width: 90ch;
 }
 
-body[data-theme="light"] .msg-sys-admin-timeout-note {
+body[data-theme="light"] .msg-sys-admin-timeout-card {
+  border-color: rgba(217, 119, 6, .28);
+  background: rgba(217, 119, 6, .06);
+}
+
+body[data-theme="light"] .msg-sys-admin-timeout-main {
+  color: #b45309;
+}
+
+body[data-theme="light"] .msg-sys-admin-timeout-note-inline {
   border-color: rgba(217, 119, 6, .28);
   background: rgba(217, 119, 6, .06);
   color: #92400e;
@@ -1316,6 +1338,38 @@ body[data-theme="light"] .msg-sys-prompt-body {
   margin-bottom: 8px;
 }
 
+.msg-sys-admin-human-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(245, 158, 11, .24);
+  border-radius: 10px;
+  background: rgba(245, 158, 11, .05);
+  color: var(--text-2);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.msg-sys-admin-human-note-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid rgba(245, 158, 11, .45);
+  color: #fbbf24;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.msg-sys-admin-human-note-text {
+  max-width: 88ch;
+}
+
 .msg-sys-admin-actions {
   display: flex;
   gap: 8px;
@@ -1359,6 +1413,17 @@ body[data-theme="light"] .msg-sys-prompt-body {
 body[data-theme="light"] .msg-sys-admin-card {
   background: rgba(217, 119, 6, .08);
   border-color: rgba(217, 119, 6, .32);
+}
+
+body[data-theme="light"] .msg-sys-admin-human-note {
+  border-color: rgba(217, 119, 6, .28);
+  background: rgba(217, 119, 6, .06);
+  color: #92400e;
+}
+
+body[data-theme="light"] .msg-sys-admin-human-note-icon {
+  border-color: rgba(217, 119, 6, .42);
+  color: #b45309;
 }
 
 .bubble-meta {

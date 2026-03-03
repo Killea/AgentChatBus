@@ -10,7 +10,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet" />
-  <link rel="stylesheet" href="/static/css/main.css" />
+  <link rel="stylesheet" href="/static/css/main.css?v=2" />
 </head>
 
 <body>
@@ -91,7 +91,7 @@
   <script src="/static/js/components/acb-thread-header.js?v=2"></script>
   <script src="/static/js/components/acb-thread-item.js?v=2"></script>
   <script src="/static/js/components/acb-message-tail-meta.js?v=1"></script>
-  <script src="/static/js/components/acb-admin-switch-card.js?v=1"></script>
+  <script src="/static/js/components/acb-admin-switch-card.js?v=2"></script>
   <script src="/static/js/components/acb-compose-shell.js?v=3"></script>
   <script src="/static/js/components/acb-agent-status-shell.js?v=2"></script>
   <script src="/static/js/shared-threads.js?v=2"></script>
@@ -754,23 +754,27 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
           wrapper.className = 'msg-sys-admin-timeout';
           wrapper.setAttribute('data-seq', String(m.seq));
 
-          const pill = document.createElement('div');
-          pill.className = 'msg-sys-event msg-sys-event-admin-timeout';
+          const card = document.createElement('div');
+          card.className = 'msg-sys-admin-timeout-card';
+
+          const main = document.createElement('div');
+          main.className = 'msg-sys-admin-timeout-main';
           const sentAt = fmtTime(m.created_at);
-          pill.textContent = sentAt ? `${sentAt}  ${m.content}` : m.content;
+          main.textContent = sentAt ? `${sentAt}  ${m.content}` : m.content;
           if (m.created_at) {
-            pill.title = `sent at ${m.created_at}`;
+            main.title = `sent at ${m.created_at}`;
           }
 
           const note = document.createElement('div');
-          note.className = 'msg-sys-admin-timeout-note';
+          note.className = 'msg-sys-admin-timeout-note-inline';
           note.innerHTML = `
             <span class="msg-sys-admin-timeout-note-icon" aria-hidden="true">i</span>
             <span class="msg-sys-admin-timeout-note-text">This notice is visible only to human participants. Agents cannot read or receive this message.</span>
           `;
 
-          wrapper.appendChild(pill);
-          wrapper.appendChild(note);
+          card.appendChild(main);
+          card.appendChild(note);
+          wrapper.appendChild(card);
           box.appendChild(wrapper);
           return;
         }

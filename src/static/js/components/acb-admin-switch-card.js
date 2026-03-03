@@ -123,13 +123,22 @@
         ? `Online participants at trigger time: ${onlineCount}.`
         : "Online participants at trigger time: unavailable.";
       const visibilityText = visibility === "human_only"
-        ? "Visibility: human only (agents cannot read this card)."
+        ? "Visibility: human only. Agents cannot read or receive this card."
         : "Visibility: human decision required.";
+      const humanOnlyHint = visibility === "human_only"
+        ? `
+          <div class="msg-sys-admin-human-note" role="note" aria-label="Human-only notice">
+            <span class="msg-sys-admin-human-note-icon" aria-hidden="true">i</span>
+            <span class="msg-sys-admin-human-note-text">This confirmation card is visible only to human participants.</span>
+          </div>
+        `
+        : "";
 
       this.innerHTML = `
         <div class="msg-sys-admin-title">Administrator switch confirmation required</div>
         <div class="msg-sys-admin-body">${this._esc(reasonText)} ${this._esc(onlineText)}</div>
         <div class="msg-sys-admin-body">${this._esc(visibilityText)}</div>
+        ${humanOnlyHint}
         <div class="msg-sys-admin-body">Current admin: ${this._esc(currentBadge)} | Candidate: ${this._esc(candidateBadge)}</div>
         <div class="msg-sys-admin-actions">
           <button type="button" class="msg-sys-admin-btn msg-sys-admin-btn-switch" data-action="switch">${this._esc(switchLabel)}</button>
