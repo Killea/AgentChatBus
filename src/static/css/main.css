@@ -1120,6 +1120,120 @@ body[data-theme="light"] .bubble-v2 code {
   animation: bubble-in .2s ease;
 }
 
+/* System prompt collapsable bubble (UI-06) — inherits .msg-sys-event palette */
+.msg-sys-prompt {
+  align-self: stretch;
+  margin: 8px 0 16px;
+  border: 1px solid rgba(245, 158, 11, .18);
+  border-radius: 20px;
+  font-size: 11.5px;
+  font-style: italic;
+  color: #fbbf24;
+  animation: bubble-in .2s ease;
+}
+
+.msg-sys-prompt-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 14px;
+  background: rgba(245, 158, 11, .10);
+  border: none;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 11.5px;
+  font-style: italic;
+  font-weight: 600;
+  color: #fbbf24;
+  text-align: left;
+  gap: 8px;
+}
+
+.msg-sys-prompt-header.is-expanded {
+  border-radius: 20px 20px 0 0;
+}
+
+.msg-sys-prompt-header:hover {
+  background: rgba(245, 158, 11, .13);
+}
+
+.msg-sys-prompt-chevron {
+  font-size: 10px;
+  font-style: normal;
+  flex-shrink: 0;
+}
+
+.msg-sys-prompt-body {
+  max-height: 320px;
+  overflow-y: auto;
+  border-radius: 0 0 20px 20px;
+  border: none;
+  border-top: 1px solid rgba(245, 158, 11, .18);
+  padding: 8px 14px;
+  transition: max-height 0.2s ease, padding 0.2s ease;
+  font-size: 11.5px;
+  font-style: normal;
+  color: #fbbf24;
+  background: rgba(245, 158, 11, .04);
+  line-height: 1.6;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(245, 158, 11, .35) transparent;
+}
+
+.msg-sys-prompt-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.msg-sys-prompt-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.msg-sys-prompt-body::-webkit-scrollbar-thumb {
+  background: rgba(245, 158, 11, .35);
+  border-radius: 4px;
+}
+
+.msg-sys-prompt-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(245, 158, 11, .6);
+}
+
+.msg-sys-prompt-body.collapsed {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+  border-top-color: transparent;
+}
+
+body[data-theme="light"] .msg-sys-prompt {
+  background: rgba(217, 119, 6, .1);
+  border-color: rgba(217, 119, 6, .24);
+  color: #92400e;
+}
+
+body[data-theme="light"] .msg-sys-prompt-header {
+  color: #92400e;
+}
+
+body[data-theme="light"] .msg-sys-prompt-body {
+  color: #92400e;
+  border-top-color: rgba(217, 119, 6, .24);
+  background: rgba(217, 119, 6, .04);
+}
+
+/* Override bubble-v2 heading/strong colors to stay in amber palette */
+.msg-sys-prompt-body h1,
+.msg-sys-prompt-body h2,
+.msg-sys-prompt-body h3,
+.msg-sys-prompt-body h4,
+.msg-sys-prompt-body h5,
+.msg-sys-prompt-body h6,
+.msg-sys-prompt-body strong {
+  color: inherit;
+}
+
 .msg-sys-admin-card {
   align-self: center;
   width: min(760px, 92%);

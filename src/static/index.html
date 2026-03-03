@@ -730,7 +730,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         }
       };
 
-      // ---- System event (centered pill / action card) ------------------------------------------------------------
+      // ---- System event (centered pill / action card) or system prompt (collapsable bubble) ---------------------
       if (m.role === 'system' && m.author === 'system') {
         const metaObj = parseMetadata(m.metadata);
         if (metaObj && metaObj.ui_type === 'admin_switch_confirmation_required') {
@@ -747,6 +747,41 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
           return;
         }
 
+        // System prompt (seq=0): collapsable bubble with Markdown rendering
+        if (m.seq === 0) {
+          const wrapper = document.createElement('div');
+          wrapper.className = 'msg-sys-prompt';
+          wrapper.setAttribute('data-seq', '0');
+
+          const promptHeader = document.createElement('button');
+          promptHeader.type = 'button';
+          promptHeader.className = 'msg-sys-prompt-header';
+          promptHeader.setAttribute('aria-expanded', 'true');
+          promptHeader.classList.add('is-expanded');
+          promptHeader.innerHTML = `<span class="msg-sys-prompt-label">Thread Instructions (system)</span><span class="msg-sys-prompt-chevron">&#9650;</span>`;
+
+          const promptBody = document.createElement('div');
+          promptBody.className = 'msg-sys-prompt-body bubble-v2';
+          renderMessageContent(promptBody, m.content, null);
+
+          promptHeader.addEventListener('click', () => {
+            const expanded = promptHeader.getAttribute('aria-expanded') === 'true';
+            promptHeader.setAttribute('aria-expanded', String(!expanded));
+            promptHeader.classList.toggle('is-expanded', !expanded);
+            promptBody.classList.toggle('collapsed', expanded);
+            promptHeader.querySelector('.msg-sys-prompt-chevron').innerHTML = expanded ? '&#9660;' : '&#9650;';
+            promptHeader.querySelector('.msg-sys-prompt-label').textContent = expanded
+              ? 'Thread Instructions (system) — click to expand'
+              : 'Thread Instructions (system)';
+          });
+
+          wrapper.appendChild(promptHeader);
+          wrapper.appendChild(promptBody);
+          box.appendChild(wrapper);
+          return;
+        }
+
+        // Other system events: centered pill
         const pill = document.createElement('div');
         pill.className = 'msg-sys-event';
         const sentAt = fmtTime(m.created_at);
