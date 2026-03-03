@@ -2425,8 +2425,7 @@ if __name__ == "__main__":
         reload_includes=["src/*.py", "src/db/*.py"],
         reload_excludes=["src/tools/*.py"],
         log_level="info",
-        # Force-close lingering SSE / long-poll connections after 3 s when
-        # Ctrl+C (SIGINT) is received. Without this, uvicorn waits forever
-        # for the MCP SSE stream to disconnect naturally.
-        timeout_graceful_shutdown=3,
+        # Do not wait on Ctrl+C; terminate immediately even if SSE/long-poll
+        # connections are still open.
+        timeout_graceful_shutdown=0,
     )
