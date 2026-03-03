@@ -29,15 +29,16 @@
 
   function buildSidebar() {
     const sidebar = document.getElementById("nav-sidebar");
-    const messagesEl = document.getElementById("messages");
-    if (!sidebar || !messagesEl) return;
+    const messagesEl = document.getElementById("messages-scroll");
+    const messagesInner = document.getElementById("messages");
+    if (!sidebar || !messagesEl || !messagesInner) return;
 
     // Disconnect previous observer
     if (_observer) { _observer.disconnect(); _observer = null; }
 
     sidebar.innerHTML = "";
 
-    const rows = messagesEl.querySelectorAll(".msg-row[data-seq]");
+    const rows = messagesInner.querySelectorAll(".msg-row[data-seq]");
     if (rows.length === 0) {
       sidebar.classList.add("nav-sidebar-empty");
       return;
@@ -92,7 +93,7 @@
         const entry = sidebar.querySelector(`.nav-entry[data-seq="${seq}"]`);
         if (entry) entry.classList.toggle("nav-entry-active", e.isIntersecting);
       });
-    }, { root: messagesEl, threshold: 0.3 });
+    }, { root: messagesEl, threshold: 0.3 });  // messagesEl = #messages-scroll (scroll container)
 
     rows.forEach((row) => _observer.observe(row));
   }

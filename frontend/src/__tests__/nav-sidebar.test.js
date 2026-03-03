@@ -26,13 +26,14 @@ function makeNavSidebar({ document, localStorage }) {
 
   function buildSidebar() {
     const sidebar = document.getElementById('nav-sidebar');
-    const messagesEl = document.getElementById('messages');
-    if (!sidebar || !messagesEl) return;
+    const messagesEl = document.getElementById('messages-scroll');
+    const messagesInner = document.getElementById('messages');
+    if (!sidebar || !messagesEl || !messagesInner) return;
 
     if (_observer) { _observer.disconnect(); _observer = null; }
     sidebar.innerHTML = '';
 
-    const rows = messagesEl.querySelectorAll('.msg-row[data-seq]');
+    const rows = messagesInner.querySelectorAll('.msg-row[data-seq]');
     if (rows.length === 0) {
       sidebar.classList.add('nav-sidebar-empty');
       return;
@@ -77,18 +78,22 @@ function makeNavSidebar({ document, localStorage }) {
 // ---------------------------------------------------------------------------
 
 function createDOM(document) {
-  const chatArea = document.createElement('div');
-  chatArea.id = 'chat-area';
+  const messagesWrap = document.createElement('div');
+  messagesWrap.id = 'messages-wrap';
+
+  const messagesScroll = document.createElement('div');
+  messagesScroll.id = 'messages-scroll';
 
   const messagesEl = document.createElement('div');
   messagesEl.id = 'messages';
-  chatArea.appendChild(messagesEl);
+  messagesScroll.appendChild(messagesEl);
+  messagesWrap.appendChild(messagesScroll);
 
   const sidebar = document.createElement('nav');
   sidebar.id = 'nav-sidebar';
-  chatArea.appendChild(sidebar);
+  messagesWrap.appendChild(sidebar);
 
-  document.body.appendChild(chatArea);
+  document.body.appendChild(messagesWrap);
   return { messagesEl, sidebar };
 }
 

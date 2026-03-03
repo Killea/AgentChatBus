@@ -1,4 +1,4 @@
-﻿/* ====================================================================================
+/* ====================================================================================
    Reset & Base
 ==================================================================================== */
 *,
@@ -700,13 +700,42 @@ body[data-theme="light"] .thread-item.context-highlight {
   flex: 1;
   overflow: hidden;
   display: flex;
+  flex-direction: row;  /* UI-07: side-by-side with #nav-sidebar */
+  min-height: 0;
+}
+
+/* UI-07: scroll container wrapping #messages */
+#messages-scroll {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
   flex-direction: column;
   min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent-dim) var(--bg-panel);
+}
+
+#messages-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+#messages-scroll::-webkit-scrollbar-track {
+  background: var(--bg-panel);
+  border-radius: 4px;
+}
+
+#messages-scroll::-webkit-scrollbar-thumb {
+  background: var(--accent-dim);
+  border-radius: 4px;
+  border: 2px solid var(--bg-panel);
+}
+
+#messages-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
 }
 
 #messages {
   flex: 1;
-  overflow-y: auto;
   padding: 20px;
   display: flex;
   flex-direction: column;
@@ -717,30 +746,6 @@ body[data-theme="light"] .thread-item.context-highlight {
 #messages.loading-history .msg-row,
 #messages.loading-history .msg-sys-event {
   animation: none !important;
-}
-
-#messages {
-  scrollbar-width: thin;
-  scrollbar-color: var(--accent-dim) var(--bg-panel);
-}
-
-#messages::-webkit-scrollbar {
-  width: 8px;
-}
-
-#messages::-webkit-scrollbar-track {
-  background: var(--bg-panel);
-  border-radius: 4px;
-}
-
-#messages::-webkit-scrollbar-thumb {
-  background: var(--accent-dim);
-  border-radius: 4px;
-  border: 2px solid var(--bg-panel);
-}
-
-#messages::-webkit-scrollbar-thumb:hover {
-  background: var(--accent);
 }
 
 #messages>acb-empty-state {
@@ -2922,16 +2927,8 @@ mark.search-match {
 
 /* -----------------------------------------------------------------------
    UI-07: Message Navigation Sidebar (Emoji Minimap)
+   Inside #messages-wrap, scrollable column to the right of messages.
    ----------------------------------------------------------------------- */
-
-/* Wrapper: messages-wrap + nav-sidebar side by side */
-#chat-area {
-  display: flex;
-  flex-direction: row;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
 
 /* Emoji minimap column */
 #nav-sidebar {
@@ -2953,7 +2950,6 @@ mark.search-match {
 #nav-sidebar::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 2px; }
 #nav-sidebar::-webkit-scrollbar-track { background: transparent; }
 
-/* Empty state */
 #nav-sidebar.nav-sidebar-empty::after {
   content: "No messages";
   display: block;
@@ -2963,7 +2959,6 @@ mark.search-match {
   padding: 12px 4px;
 }
 
-/* Each entry */
 .nav-entry {
   display: flex;
   align-items: center;
@@ -2992,18 +2987,15 @@ mark.search-match {
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
-/* Emoji */
 .nav-entry-emoji {
   font-size: 14px;
   line-height: 1;
   flex-shrink: 0;
 }
 
-/* Name + time column */
 .nav-entry-meta {
   display: flex;
   flex-direction: column;
-  gap: 0px;
   min-width: 0;
   overflow: hidden;
 }
@@ -3027,7 +3019,6 @@ mark.search-match {
   max-width: 72px;
 }
 
-/* Highlight flash on jump */
 .msg-row.nav-highlight {
   animation: nav-highlight-flash .6s ease;
 }
@@ -3037,12 +3028,10 @@ mark.search-match {
   100% { box-shadow: none; }
 }
 
-/* Toggle: hidden state */
 body.minimap-hidden #nav-sidebar {
   display: none;
 }
 
-/* Responsive: hide below 1000px */
 @media (max-width: 1000px) {
   #nav-sidebar { display: none; }
 }
