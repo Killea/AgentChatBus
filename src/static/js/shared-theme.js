@@ -2,13 +2,16 @@
   function setTheme(theme) {
     const effectiveTheme = theme === "light" ? "light" : "dark";
     document.body.setAttribute("data-theme", effectiveTheme);
+
     const btn = document.getElementById("btn-theme-toggle");
     if (btn) {
-      btn.textContent = effectiveTheme === "light" ? "Dark" : "Light";
-      btn.title =
-        effectiveTheme === "light"
-          ? "Switch to dark theme"
-          : "Switch to light theme";
+      // In dark mode → show sun (click = go light); in light mode → show moon (click = go dark)
+      const sun = document.getElementById("theme-icon-sun");
+      const moon = document.getElementById("theme-icon-moon");
+      if (sun) sun.style.display = effectiveTheme === "dark" ? "" : "none";
+      if (moon) moon.style.display = effectiveTheme === "light" ? "" : "none";
+      btn.title = effectiveTheme === "light" ? "Switch to dark theme" : "Switch to light theme";
+      btn.setAttribute("aria-label", btn.title);
     }
     localStorage.setItem("agentchatbus-theme", effectiveTheme);
   }

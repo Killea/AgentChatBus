@@ -202,6 +202,136 @@ body[data-theme="light"] .msg-row.message-has-mentions .bubble-v2 {
   color: var(--text-2);
 }
 
+/* ====================================================================================
+   Toolbar buttons — shared style for topbar + thread header icon buttons
+   Applied via .toolbar-btn utility class; also targets acb-icon-button rendered buttons
+==================================================================================== */
+
+/* Base style shared by all icon-only toolbar buttons */
+.toolbar-btn,
+#btn-theme-toggle,
+#btn-settings,
+#thread-settings-btn,
+#export-thread-btn,
+#search-toggle-btn,
+#desktop-sidebar-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid var(--border-light);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 14px;
+  transition: background .15s, border-color .15s, color .15s;
+}
+
+.toolbar-btn:hover,
+#btn-theme-toggle:hover,
+#btn-settings:hover,
+#thread-settings-btn:hover,
+#export-thread-btn:hover,
+#search-toggle-btn:hover,
+#desktop-sidebar-toggle:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.toolbar-btn:active,
+#btn-theme-toggle:active,
+#btn-settings:active,
+#thread-settings-btn:active,
+#export-thread-btn:active,
+#search-toggle-btn:active,
+#desktop-sidebar-toggle:active {
+  transform: scale(.93);
+}
+
+body[data-theme="light"] .toolbar-btn,
+body[data-theme="light"] #btn-theme-toggle,
+body[data-theme="light"] #btn-settings,
+body[data-theme="light"] #thread-settings-btn,
+body[data-theme="light"] #export-thread-btn,
+body[data-theme="light"] #search-toggle-btn,
+body[data-theme="light"] #desktop-sidebar-toggle {
+  color: #475569;
+}
+
+body[data-theme="light"] .toolbar-btn:hover,
+body[data-theme="light"] #btn-theme-toggle:hover,
+body[data-theme="light"] #btn-settings:hover,
+body[data-theme="light"] #thread-settings-btn:hover,
+body[data-theme="light"] #export-thread-btn:hover,
+body[data-theme="light"] #search-toggle-btn:hover,
+body[data-theme="light"] #desktop-sidebar-toggle:hover {
+  background: #e8f0ff;
+  border-color: #93c5fd;
+  color: #1e40af;
+}
+
+/* Active (pressed) state for search toggle */
+#search-toggle-btn.active {
+  background: var(--accent-glow);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+body[data-theme="light"] #search-toggle-btn.active {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1e40af;
+}
+
+/* ── scroll-to-top button ───────────────────────────────────────────────────── */
+.scroll-top-btn {
+  position: absolute;
+  bottom: 12px;
+  right: 16px;
+  z-index: 10;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-panel);
+  color: var(--text-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, .25);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity .2s ease, transform .2s ease, background .15s, border-color .15s, color .15s;
+}
+
+.scroll-top-btn.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.scroll-top-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.scroll-top-btn:active {
+  transform: scale(.93);
+}
+
+/* ====================================================================================
+   Topbar buttons (non-icon CTA)
+==================================================================================== */
+
+/* ── New Thread button (CTA — keeps accent style) ───────────────────────────── */
 #btn-new-thread {
   background: var(--accent);
   color: #fff;
@@ -223,42 +353,6 @@ body[data-theme="light"] .msg-row.message-has-mentions .bubble-v2 {
 
 #btn-new-thread:active {
   transform: scale(.97);
-}
-
-#btn-theme-toggle {
-  background: transparent;
-  color: var(--text-2);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius);
-  padding: 6px 10px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background .15s, color .15s;
-}
-
-#btn-theme-toggle:hover {
-  background: var(--bg-hover);
-  color: var(--text-1);
-}
-
-#btn-settings {
-  background: transparent;
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  font-size: 16px;
-  width: 34px;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: var(--text-1);
-  margin-left: 8px;
-  transition: background 0.15s;
-}
-
-#btn-settings:hover {
-  background: var(--bg-hover);
 }
 
 /* ====================================================================================
@@ -560,37 +654,6 @@ body[data-theme="light"] .thread-item.context-highlight {
   text-overflow: ellipsis;
 }
 
-#export-thread-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border-radius: 8px;
-  border: 1px solid var(--border-light);
-  background: transparent;
-  color: var(--text-2);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background .15s, border-color .15s, color .15s;
-}
-
-#export-thread-btn:hover {
-  background: var(--bg-hover);
-  border-color: var(--border);
-  color: var(--text-1);
-}
-
-body[data-theme="light"] #export-thread-btn {
-  color: #475569;
-}
-
-body[data-theme="light"] #export-thread-btn:hover {
-  background: #e8f0ff;
-  border-color: #93c5fd;
-  color: #1e40af;
-}
 
 #online-presence {
   margin-left: auto;
@@ -621,6 +684,15 @@ body[data-theme="light"] #export-thread-btn:hover {
 }
 
 /* Messages */
+#messages-wrap {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 #messages {
   flex: 1;
   overflow-y: auto;
@@ -753,6 +825,42 @@ body[data-theme="light"] #export-thread-btn:hover {
   align-items: baseline;
   gap: 8px;
   font-size: 11px;
+}
+
+/* ── Per-message copy button ───────────────────────────────────────────────── */
+.msg-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid var(--border-light);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity .15s, background .15s, border-color .15s, color .15s;
+}
+
+.msg-row:hover .msg-copy-btn {
+  opacity: 1;
+}
+
+.msg-copy-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.msg-copy-btn--ok {
+  border-color: var(--green) !important;
+  color: var(--green) !important;
+  background: transparent !important;
+  opacity: 1 !important;
 }
 
 .msg-row-right .msg-header {
@@ -1214,6 +1322,7 @@ body[data-theme="light"] .msg-sys-admin-timeout-note-icon {
 
 /* System prompt collapsable bubble (UI-06) — inherits .msg-sys-event palette */
 .msg-sys-prompt {
+  position: relative;
   align-self: stretch;
   margin: 8px 0 16px;
   border: 1px solid rgba(245, 158, 11, .18);
@@ -1258,6 +1367,7 @@ body[data-theme="light"] .msg-sys-admin-timeout-note-icon {
 }
 
 .msg-sys-prompt-body {
+  position: relative;
   max-height: 320px;
   overflow-y: auto;
   border-radius: 0 0 20px 20px;
@@ -1297,6 +1407,36 @@ body[data-theme="light"] .msg-sys-admin-timeout-note-icon {
   padding-bottom: 0;
   overflow: hidden;
   border-top-color: transparent;
+}
+
+/* Copy button inside the prompt body */
+.msg-sys-prompt-copy-btn {
+  position: absolute;
+  bottom: 8px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid rgba(245, 158, 11, .25);
+  background: transparent;
+  color: rgba(251, 191, 36, .5);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .15s, background .15s, border-color .15s, color .15s;
+}
+
+.msg-sys-prompt-body:hover .msg-sys-prompt-copy-btn {
+  opacity: 1;
+}
+
+.msg-sys-prompt-copy-btn:hover {
+  background: rgba(245, 158, 11, .08);
+  border-color: rgba(245, 158, 11, .5);
+  color: #fbbf24;
 }
 
 body[data-theme="light"] .msg-sys-prompt {
@@ -2076,14 +2216,28 @@ acb-confirm-dialog .confirm-actions {
   text-decoration: underline;
 }
 
-/* Scrollbar */
+/* Scrollbar — same style as #messages (accent blue) */
+#thread-pane {
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent-dim) var(--bg-panel);
+}
+
 #thread-pane::-webkit-scrollbar {
-  width: 16px;
+  width: 8px;
+}
+
+#thread-pane::-webkit-scrollbar-track {
+  background: var(--bg-panel);
+  border-radius: 4px;
 }
 
 #thread-pane::-webkit-scrollbar-thumb {
-  background: var(--border-light);
+  background: var(--accent-dim);
   border-radius: 4px;
+}
+
+#thread-pane::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
 }
 
 /* ---- Agent tooltip (custom, copy-enabled) -------------------------------------------------------------- */
@@ -2161,8 +2315,126 @@ acb-confirm-dialog .confirm-actions {
 }
 
 /* ====================================================================================
+   Server Status Tooltip (.acb-tooltip-srv / .srv-tip-*)
+==================================================================================== */
+
+.acb-tooltip-srv {
+  padding: 0;
+  min-width: 220px;
+}
+
+.srv-tip-card {
+  padding: 10px 12px;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.srv-tip-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+
+.srv-tip-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.srv-tip-dot--on  { background: var(--green);  box-shadow: 0 0 6px var(--green); }
+.srv-tip-dot--off { background: var(--red);    box-shadow: 0 0 6px var(--red); }
+
+.srv-tip-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-1);
+  flex: 1;
+}
+
+.srv-tip-state {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.srv-tip-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 6px 0;
+  opacity: 0.6;
+}
+
+.srv-tip-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 1.5px 0;
+}
+
+.srv-tip-row--sub {
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.srv-tip-key {
+  color: var(--text-2);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.srv-tip-val {
+  color: var(--text-1);
+  font-size: 11px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.srv-tip-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 0 2px;
+}
+
+.srv-tip-badge {
+  background: var(--bg-hover);
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-size: 10px;
+  color: var(--text-2);
+}
+
+.srv-tip-badge b {
+  color: var(--accent);
+}
+
+.srv-tip-rate {
+  display: inline-block;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 1px 6px;
+  font-size: 10px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  margin-left: 3px;
+}
+
+/* ====================================================================================
    Mobile Responsive Design
 ==================================================================================== */
+
+/* Collapsed sidebar */
+#sidebar.collapsed {
+  width: 0;
+  overflow: hidden;
+  border-right: none;
+}
 
 /* Hide hamburger menu on desktop */
 #mobile-menu-btn {
@@ -2171,6 +2443,11 @@ acb-confirm-dialog .confirm-actions {
 
 /* Mobile styles (max-width: 768px) */
 @media screen and (max-width: 768px) {
+  /* Hide desktop toggle, show mobile hamburger */
+  #desktop-sidebar-toggle {
+    display: none;
+  }
+
   /* Show hamburger menu */
   #mobile-menu-btn {
     display: flex;
@@ -2410,45 +2687,6 @@ acb-confirm-dialog .confirm-actions {
 }
 
 /* ====================================================================================
-   UI-08: Scroll-to-top button
-==================================================================================== */
-.scroll-top-btn {
-  position: fixed;
-  bottom: 90px;
-  right: 24px;
-  z-index: 100;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: none;
-  background: var(--accent);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow: 0 2px 12px rgba(59, 130, 246, .45);
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(8px);
-  transition: opacity .2s ease, transform .2s ease, background .15s ease;
-}
-
-.scroll-top-btn.visible {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(0);
-}
-
-.scroll-top-btn:hover {
-  background: var(--accent-dim);
-}
-
-.scroll-top-btn:active {
-  transform: scale(.93);
-}
-
-/* ====================================================================================
    UI-02: Search bar
 ==================================================================================== */
 #search-bar {
@@ -2575,12 +2813,6 @@ acb-confirm-dialog .confirm-actions {
 
 .search-pills-sep {
   flex: 1;
-}
-
-/* Toggle button active state */
-#search-toggle-btn.active {
-  background: var(--accent-glow);
-  color: var(--accent);
 }
 
 /* All-threads results dropdown */

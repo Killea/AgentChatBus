@@ -356,22 +356,49 @@
   }
 
   function _navigateToResult(r) {
-    // Load the thread by dispatching a synthetic thread-select event
+    close();
+    _clearAllResults();
+
+    // Use the global selectThread function exposed by index.html
+    if (typeof window.selectThread === 'function') {
+      window.selectThread(r.thread_id, r.thread_topic || '', 'active').then(() => {
+        // After the thread loads, scroll to the matched message
+        _pendingScrollSeq = r.seq;
+        _trySrollToPendingSeq();
+      }).catch(() => {});
+      return;
+    }
+
+    // Fallback: click the thread item in the sidebar if visible
     const pane = document.getElementById('thread-pane');
     if (!pane) return;
     const threadItem = pane.querySelector(`[data-thread-id="${r.thread_id}"]`);
     if (threadItem) {
-      threadItem.dispatchEvent(new CustomEvent('thread-select', {
-        bubbles: true,
-        detail: { threadId: r.thread_id, scrollToSeq: r.seq },
-      }));
-    } else {
-      // Thread not in list — try to load it via global selectThread if available
-      if (typeof window.selectThread === 'function') {
-        window.selectThread(r.thread_id, r.seq);
-      }
+      _pendingScrollSeq = r.seq;
+      threadItem.click();
     }
-    close();
+  }
+
+  let _pendingScrollSeq = null;
+
+  function _trySrollToPendingSeq() {
+    if (_pendingScrollSeq == null) return;
+    const seq = _pendingScrollSeq;
+    // Poll for message element up to 2s
+    let attempts = 0;
+    const poll = setInterval(() => {
+      const el = document.querySelector(`[data-seq="${seq}"]`);
+      if (el) {
+        clearInterval(poll);
+        _pendingScrollSeq = null;
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.closest('.msg-row')?.classList.add('search-match-active');
+        setTimeout(() => el.closest('.msg-row')?.classList.remove('search-match-active'), 2000);
+      } else if (++attempts > 20) {
+        clearInterval(poll);
+        _pendingScrollSeq = null;
+      }
+    }, 100);
   }
 
   function _clearAllResults() {

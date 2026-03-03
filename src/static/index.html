@@ -18,6 +18,11 @@
   <!-- ---- Top bar -------------------------------------------------------------- -->
   <div id="topbar">
     <button id="mobile-menu-btn" type="button" aria-label="Toggle sidebar">☰</button>
+    <button id="desktop-sidebar-toggle" type="button" aria-label="Toggle sidebar" title="Toggle sidebar">
+      <svg id="sidebar-toggle-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="15 18 9 12 15 6"/>
+      </svg>
+    </button>
     <div class="logo"><img src="/static/bus.png" alt="Bus" />AgentChatBus</div>
     <div id="footer-link">
       <a href="https://github.com/Killea/AgentChatBus" target="_blank" rel="noopener noreferrer">GitHub
@@ -29,11 +34,32 @@
     <!-- <button id="btn-theme-toggle" type="button" onclick="toggleTheme()">Light</button> -->
     <!-- <button id="btn-settings" type="button" onclick="openSettingsModal()" title="MCP Server Settings"
       style="background: transparent; border: 1px solid var(--border-light); border-radius: 8px; font-size: 16px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-1); margin-left: 8px; transition: background 0.15s;">⚙️</button> -->
-    <acb-icon-button button-id="btn-theme-toggle" label="Light" action="toggleTheme"></acb-icon-button>
+    <button id="btn-theme-toggle" type="button" title="Switch to light theme" aria-label="Switch theme" onclick="toggleTheme()">
+      <!-- Sun icon — shown in dark mode (switch to light) -->
+      <svg id="theme-icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="5"/>
+        <line x1="12" y1="1" x2="12" y2="3"/>
+        <line x1="12" y1="21" x2="12" y2="23"/>
+        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+        <line x1="1" y1="12" x2="3" y2="12"/>
+        <line x1="21" y1="12" x2="23" y2="12"/>
+        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+      </svg>
+      <!-- Moon icon — shown in light mode (switch to dark) -->
+      <svg id="theme-icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+      </svg>
+    </button>
     <acb-icon-button button-id="btn-new-thread" label="＋ New Thread" action="openModal"
       title="Create new thread"></acb-icon-button>
-    <acb-icon-button button-id="btn-settings" label="⚙️" action="openSettingsModal" title="MCP Server Settings"
-      aria-label="MCP Server Settings"></acb-icon-button>
+    <button id="btn-settings" type="button" title="MCP Server Settings" aria-label="MCP Server Settings" onclick="openSettingsModal()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
   </div>
 
   <!-- ---- Layout ---------------------------------------------------------------- -->
@@ -82,16 +108,18 @@
         <div id="search-all-results" class="search-all-results" aria-live="polite"></div>
       </div>
 
-      <div id="messages">
-        <acb-empty-state></acb-empty-state>
-      </div>
+      <div id="messages-wrap" style="position:relative;flex:1;overflow:hidden;display:flex;flex-direction:column;">
+        <div id="messages">
+          <acb-empty-state></acb-empty-state>
+        </div>
 
-      <!-- UI-08: Scroll-to-top floating button -->
-      <button id="btn-scroll-top" class="scroll-top-btn" aria-label="Scroll to top" title="Scroll to top">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="18 15 12 9 6 15"/>
-        </svg>
-      </button>
+        <!-- UI-08: Scroll-to-top floating button -->
+        <button id="btn-scroll-top" class="scroll-top-btn" aria-label="Scroll to top" title="Scroll to top">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="18 15 12 9 6 15"/>
+          </svg>
+        </button>
+      </div>
 
       <acb-compose-shell></acb-compose-shell>
 
@@ -215,6 +243,25 @@
         });
       }
 
+      // Desktop sidebar toggle
+      (function setupDesktopSidebarToggle() {
+        const btn = document.getElementById('desktop-sidebar-toggle');
+        const sidebar = document.getElementById('sidebar');
+        const icon = document.getElementById('sidebar-toggle-icon');
+        if (!btn || !sidebar) return;
+        let collapsed = false;
+        btn.addEventListener('click', () => {
+          collapsed = !collapsed;
+          sidebar.classList.toggle('collapsed', collapsed);
+          // Rotate icon: chevron-left when open, chevron-right when collapsed
+          if (icon) {
+            icon.innerHTML = collapsed
+              ? '<polyline points="9 18 15 12 9 6"/>'
+              : '<polyline points="15 18 9 12 15 6"/>';
+          }
+        });
+      })();
+
       // UI-02: Initialize search
       if (window.AcbSearch) window.AcbSearch.init();
       await refreshThreads();
@@ -272,6 +319,117 @@
       closeMobileSidebar();
       hideThreadContextMenu();
     });
+
+    (function setupServerStatusTooltip() {
+      const dot = document.getElementById('status-dot');
+      const label = document.getElementById('status-label');
+      if (!dot || !label) return;
+
+      let _metricsCache = null;
+      let _cacheTs = 0;
+      const CACHE_TTL = 30000; // 30s
+
+      function _fmtUptime(seconds) {
+        if (seconds == null) return '—';
+        const s = Math.round(seconds);
+        if (s < 60) return `${s}s`;
+        if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        return `${h}h ${m}m`;
+      }
+
+      function _fmtDate(iso) {
+        if (!iso) return '—';
+        try {
+          return new Date(iso).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
+        } catch { return iso; }
+      }
+
+      function _buildHtml(m, connected) {
+        const dot = connected ? '<span class="srv-tip-dot srv-tip-dot--on"></span>' : '<span class="srv-tip-dot srv-tip-dot--off"></span>';
+        const stateLabel = connected ? 'Connected' : 'Reconnecting…';
+
+        const byStatus = m.threads?.by_status || {};
+        const statusEntries = Object.entries(byStatus)
+          .filter(([, v]) => v > 0)
+          .map(([k, v]) => `<span class="srv-tip-badge">${k} <b>${v}</b></span>`)
+          .join('');
+
+        const rate = m.messages?.rate || {};
+
+        return `
+          <div class="srv-tip-card">
+            <div class="srv-tip-header">
+              ${dot}
+              <span class="srv-tip-title">AgentChatBus</span>
+              <span class="srv-tip-state">${stateLabel}</span>
+            </div>
+            <div class="srv-tip-divider"></div>
+            <div class="srv-tip-row">
+              <span class="srv-tip-key">Uptime</span>
+              <span class="srv-tip-val">${_fmtUptime(m.uptime_seconds)}</span>
+            </div>
+            <div class="srv-tip-row">
+              <span class="srv-tip-key">Started</span>
+              <span class="srv-tip-val">${_fmtDate(m.started_at)}</span>
+            </div>
+            <div class="srv-tip-row">
+              <span class="srv-tip-key">Schema</span>
+              <span class="srv-tip-val">v${m.schema_version ?? '—'}</span>
+            </div>
+            <div class="srv-tip-divider"></div>
+            <div class="srv-tip-row">
+              <span class="srv-tip-key">Threads</span>
+              <span class="srv-tip-val">${m.threads?.total ?? '—'}</span>
+            </div>
+            ${statusEntries ? `<div class="srv-tip-badges">${statusEntries}</div>` : ''}
+            <div class="srv-tip-row">
+              <span class="srv-tip-key">Messages</span>
+              <span class="srv-tip-val">${m.messages?.total ?? '—'}</span>
+            </div>
+            <div class="srv-tip-row srv-tip-row--sub">
+              <span class="srv-tip-key">Activity</span>
+              <span class="srv-tip-val">
+                <span class="srv-tip-rate">${rate.last_1m ?? 0}/1m</span>
+                <span class="srv-tip-rate">${rate.last_5m ?? 0}/5m</span>
+                <span class="srv-tip-rate">${rate.last_15m ?? 0}/15m</span>
+              </span>
+            </div>
+            <div class="srv-tip-row">
+              <span class="srv-tip-key">Agents online</span>
+              <span class="srv-tip-val">${m.agents?.online ?? '—'} / ${m.agents?.total ?? '—'}</span>
+            </div>
+          </div>`;
+      }
+
+      async function _show(anchorEl) {
+        const now = Date.now();
+        if (!_metricsCache || now - _cacheTs > CACHE_TTL) {
+          try {
+            _metricsCache = await window.AcbApi.api('/api/metrics');
+            _cacheTs = Date.now();
+          } catch {
+            _metricsCache = null;
+          }
+        }
+        if (!window.AcbTooltip?.showRich) return;
+        const connected = document.getElementById('status-dot')?.style.background?.includes('green') || isConnected;
+        const html = _metricsCache
+          ? _buildHtml(_metricsCache, connected)
+          : `<div class="srv-tip-card"><div class="srv-tip-header"><span class="srv-tip-title">AgentChatBus</span></div><div class="srv-tip-row"><span class="srv-tip-key">Status</span><span class="srv-tip-val">${connected ? 'Connected' : 'Reconnecting…'}</span></div></div>`;
+        window.AcbTooltip.showRich(anchorEl, html, { className: 'acb-tooltip-srv', maxWidth: '260px' });
+      }
+
+      function _hide() {
+        if (window.AcbTooltip?.scheduleHide) window.AcbTooltip.scheduleHide(200);
+      }
+
+      [dot, label].forEach(el => {
+        el.addEventListener('mouseenter', () => _show(el));
+        el.addEventListener('mouseleave', _hide);
+      });
+    })();
 
     (function setupUnifiedInfoTooltip() {
       const infoEl = document.getElementById('agent-status-info');
@@ -588,6 +746,8 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         if (window.AcbSearch) window.AcbSearch.rebuild();
       });
     }
+    // Expose globally for AcbSearch navigation
+    window.selectThread = selectThread;
 
     function getThreadSyncContext(threadId = activeThreadId) {
       if (!threadId) return null;
@@ -763,6 +923,25 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
                     return window.AcbMessageRenderer.renderMessageContent(containerEl, rawText, metadata);
     }
 
+    // ── Copy message content to clipboard ────────────────────────────────────
+    window.AcbCopyMsg = function(btn) {
+      const bubble = btn.closest('.msg-col')?.querySelector('.bubble-v2');
+      if (!bubble) return;
+      const text = bubble.innerText || bubble.textContent || '';
+      navigator.clipboard.writeText(text.trim()).then(() => {
+        // Swap icon to checkmark briefly
+        const svg = btn.querySelector('svg');
+        if (!svg) return;
+        const original = svg.innerHTML;
+        svg.innerHTML = '<polyline points="20 6 9 17 4 12"/>';
+        btn.classList.add('msg-copy-btn--ok');
+        setTimeout(() => {
+          svg.innerHTML = original;
+          btn.classList.remove('msg-copy-btn--ok');
+        }, 1500);
+      }).catch(() => {});
+    };
+
     function appendBubble(m) {
       const box = document.getElementById('messages');
 
@@ -868,6 +1047,31 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
 
           wrapper.appendChild(promptHeader);
           wrapper.appendChild(promptBody);
+
+          // Copy button inside promptBody (bottom-right), not in the header
+          const promptCopyBtn = document.createElement('button');
+          promptCopyBtn.type = 'button';
+          promptCopyBtn.className = 'msg-sys-prompt-copy-btn';
+          promptCopyBtn.title = 'Copy system prompt';
+          promptCopyBtn.setAttribute('aria-label', 'Copy system prompt');
+          promptCopyBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+          promptCopyBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const text = (promptBody.innerText || promptBody.textContent || '').trim();
+            navigator.clipboard.writeText(text).then(() => {
+              const svg = promptCopyBtn.querySelector('svg');
+              if (!svg) return;
+              const original = svg.innerHTML;
+              svg.innerHTML = '<polyline points="20 6 9 17 4 12"/>';
+              promptCopyBtn.classList.add('msg-copy-btn--ok');
+              setTimeout(() => {
+                svg.innerHTML = original;
+                promptCopyBtn.classList.remove('msg-copy-btn--ok');
+              }, 1500);
+            }).catch(() => {});
+          });
+          promptBody.appendChild(promptCopyBtn);
+
           box.appendChild(wrapper);
           return;
         }
@@ -941,6 +1145,9 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
           <span class="msg-time-label">seq ${m.seq} ${fmtTime(m.created_at)}</span>
           ${priorityBadgeHtml}
           ${handoffBadgeHtml}
+          <button class="msg-copy-btn" title="Copy message" aria-label="Copy message content" onclick="window.AcbCopyMsg(this)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </button>
         </div>
         ${replyQuoteHtml}
         <div class="bubble-v2" style="border-color:${color}55;${isHuman ? 'border-right-color' : 'border-left-color'}:${color}"></div>
