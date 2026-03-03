@@ -268,6 +268,36 @@
       await refreshAgents();
       updateOnlinePresence();
       startSSE();
+
+      // UI-11: restore thread from URL hash on page load
+      await (async function restoreThreadFromHash() {
+        const m = location.hash.match(/^#thread=(.+)$/);
+        if (!m) return;
+        const id = decodeURIComponent(m[1]);
+        try {
+          const response = await api(\/api/threads?include_archived=1&limit=500\);
+          const t = (response.threads || []).find((th) => th.id === id);
+          if (t) selectThread(t.id, t.topic, t.status);
+          else history.replaceState(null, '', location.pathname);
+        } catch (_) {
+          history.replaceState(null, '', location.pathname);
+        }
+      })();
+
+      // UI-11: handle browser back/forward for thread deeplinks
+      window.addEventListener('hashchange', async () => {
+        const m = location.hash.match(/^#thread=(.+)$/);
+        if (!m) return;
+        const id = decodeURIComponent(m[1]);
+        try {
+          const response = await api(\/api/threads?include_archived=1&limit=500\);
+          const t = (response.threads || []).find((th) => th.id === id);
+          if (t) selectThread(t.id, t.topic, t.status);
+          else history.replaceState(null, '', location.pathname);
+        } catch (_) {
+          history.replaceState(null, '', location.pathname);
+        }
+      });
       // Temporarily disable periodic agent polling to avoid showing many offline agents
       // setInterval(refreshAgents, 12000);
       setInterval(refreshAgents, 5000);  // Update status bar every 5 seconds
@@ -720,6 +750,8 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     async function selectThread(id, topic, status, initialSyncContext = null) {
       // Close mobile sidebar when selecting thread
       closeMobileSidebar();
+      // UI-11: persist selected thread in URL hash (no page reload)
+      history.replaceState(null, '', '#thread=' + encodeURIComponent(id));
       
       return window.AcbChat.selectThread({
         id, topic, status,
