@@ -700,8 +700,24 @@ body[data-theme="light"] .thread-item.context-highlight {
   flex: 1;
   overflow: hidden;
   display: flex;
-  flex-direction: row;  /* UI-07: side-by-side with #nav-sidebar */
+  flex-direction: column;  /* system prompt stacked above chat-body */
   min-height: 0;
+}
+
+/* UI-07: system prompt area — full width, no scroll */
+#sys-prompt-area {
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+/* UI-07: chat body = messages-scroll + nav-sidebar side by side */
+#chat-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+  position: relative;
 }
 
 /* UI-07: scroll container wrapping #messages */
@@ -2927,10 +2943,9 @@ mark.search-match {
 
 /* -----------------------------------------------------------------------
    UI-07: Message Navigation Sidebar (Emoji Minimap)
-   Inside #messages-wrap, scrollable column to the right of messages.
+   Inside #chat-body (flex row), scrollable column to the right of messages.
    ----------------------------------------------------------------------- */
 
-/* Emoji minimap column */
 #nav-sidebar {
   width: 110px;
   flex-shrink: 0;

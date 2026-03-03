@@ -96,32 +96,6 @@
     }, { root: messagesEl, threshold: 0.3 });  // messagesEl = #messages-scroll (scroll container)
 
     rows.forEach((row) => _observer.observe(row));
-
-    // Align top of sidebar with first msg-row (below system prompt)
-    _alignSidebarTop(sidebar, messagesEl, messagesInner);
-  }
-
-  function _alignSidebarTop(sidebar, messagesScroll, messagesInner) {
-    // Use requestAnimationFrame to ensure layout is done
-    requestAnimationFrame(() => {
-      const sysPrompt = messagesInner.querySelector(".msg-sys-prompt");
-      if (sysPrompt) {
-        const scrollTop = messagesScroll.scrollTop;
-        const promptBottom = sysPrompt.offsetTop + sysPrompt.offsetHeight;
-        sidebar.style.paddingTop = Math.max(0, promptBottom - scrollTop) + "px";
-        // Update on scroll
-        if (!messagesScroll._navSidebarScrollBound) {
-          messagesScroll.addEventListener("scroll", () => {
-            const st = messagesScroll.scrollTop;
-            const pb = sysPrompt.offsetTop + sysPrompt.offsetHeight;
-            sidebar.style.paddingTop = Math.max(0, pb - st) + "px";
-          }, { passive: true });
-          messagesScroll._navSidebarScrollBound = true;
-        }
-      } else {
-        sidebar.style.paddingTop = "0px";
-      }
-    });
   }
 
   function _esc(str) {

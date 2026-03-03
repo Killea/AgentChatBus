@@ -109,23 +109,31 @@
       </div>
 
 
-      <!-- UI-07: messages-wrap = messages scroll area + emoji minimap column side by side -->
+      <!-- UI-07: messages-wrap: system prompt full-width, then chat-body flex-row -->
       <div id="messages-wrap">
-        <div id="messages-scroll">
-          <div id="messages">
-            <acb-empty-state></acb-empty-state>
+
+        <!-- System prompt occupies full width -->
+        <div id="sys-prompt-area"></div>
+
+        <!-- chat-body: messages + minimap side by side -->
+        <div id="chat-body">
+          <div id="messages-scroll">
+            <div id="messages">
+              <acb-empty-state></acb-empty-state>
+            </div>
           </div>
+
+          <!-- UI-07: emoji minimap column -->
+          <nav id="nav-sidebar" aria-label="Message navigation"></nav>
+
+          <!-- UI-08: Scroll-to-top floating button -->
+          <button id="btn-scroll-top" class="scroll-top-btn" aria-label="Scroll to top" title="Scroll to top">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="18 15 12 9 6 15"/>
+            </svg>
+          </button>
         </div>
 
-        <!-- UI-07: emoji minimap column (inside messages-wrap, below system prompt) -->
-        <nav id="nav-sidebar" aria-label="Message navigation"></nav>
-
-        <!-- UI-08: Scroll-to-top floating button -->
-        <button id="btn-scroll-top" class="scroll-top-btn" aria-label="Scroll to top" title="Scroll to top">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="18 15 12 9 6 15"/>
-          </svg>
-        </button>
       </div>
 
       <acb-compose-shell></acb-compose-shell>
@@ -898,6 +906,8 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       document.getElementById('thread-header').style.display = 'none';
       document.getElementById('compose').classList.remove('visible');
       document.getElementById('messages').innerHTML = EMPTY_STATE_TEMPLATE;
+      const sysArea = document.getElementById('sys-prompt-area');
+      if (sysArea) sysArea.innerHTML = '';
       updateOnlinePresence();
     }
 
@@ -955,9 +965,11 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     function appendBubble(m) {
       const box = document.getElementById('messages');
 
-      // ---- Deduplication check: prevent duplicate messages from appearing ---
+      // ---- Deduplication check (also check sys-prompt-area for seq=0) --------
       const seq = String(m.seq);
-      const existingMsg = box.querySelector(`[data-seq="${seq}"]`);
+      const sysPromptArea = document.getElementById('sys-prompt-area');
+      const existingMsg = box.querySelector(`[data-seq="${seq}"]`) ||
+        (sysPromptArea && sysPromptArea.querySelector(`[data-seq="${seq}"]`));
       if (existingMsg) {
         console.warn(`[Deduplicate] Message seq ${seq} already exists in DOM, skipping.`);
         return;
@@ -1082,7 +1094,10 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
           });
           promptBody.appendChild(promptCopyBtn);
 
-          box.appendChild(wrapper);
+          // UI-07: system prompt goes into its own full-width area (above chat-body)
+          const sysArea = document.getElementById('sys-prompt-area') || box;
+          sysArea.innerHTML = '';
+          sysArea.appendChild(wrapper);
           return;
         }
 
