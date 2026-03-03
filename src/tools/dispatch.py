@@ -601,6 +601,32 @@ async def handle_msg_search(db, arguments: dict[str, Any]) -> list[types.TextCon
         "query": query,
     }))]
 
+
+async def handle_msg_get(db, arguments: dict[str, Any]) -> list[types.TextContent]:
+    """Handle msg_get MCP tool (UP-24) — fetch a single message by ID."""
+    message_id = str(arguments.get("message_id", "")).strip()
+    msg = await crud.msg_get(db, message_id)
+    if msg is None:
+        return [types.TextContent(type="text", text=json.dumps({"found": False, "message": None}))]
+    reactions = await crud.msg_reactions(db, msg.id)
+    result = {
+        "found": True,
+        "message": {
+            "msg_id": msg.id,
+            "thread_id": msg.thread_id,
+            "author": msg.author,
+            "content": msg.content,
+            "seq": msg.seq,
+            "role": msg.role,
+            "priority": msg.priority,
+            "reply_to_msg_id": msg.reply_to_msg_id,
+            "metadata": msg.metadata,
+            "created_at": msg.created_at,
+            "reactions": [{"agent_id": r.agent_id, "reaction": r.reaction} for r in reactions],
+        },
+    }
+    return [types.TextContent(type="text", text=json.dumps(result))]
+
 def _metadata_targets(msg: Any, agent_id: str) -> bool:
     """Return True if the message metadata.handoff_target matches agent_id."""
     meta = _safe_json_loads(msg.metadata)
@@ -900,6 +926,7 @@ TOOLS_DISPATCH = {
     "msg_post": handle_msg_post,
     "msg_list": handle_msg_list,
     "msg_wait": handle_msg_wait,
+    "msg_get": handle_msg_get,
     "msg_react": handle_msg_react,
     "msg_unreact": handle_msg_unreact,
     "msg_search": handle_msg_search,

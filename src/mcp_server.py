@@ -277,6 +277,24 @@ async def list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
+            name="msg_get",
+            description=(
+                "Fetch a single message by its ID. "
+                "Returns full message details including content, author, seq, priority, "
+                "reply_to_msg_id, metadata, and reactions. "
+                "Returns {found: false} if the message does not exist. "
+                "Useful for reply-to context lookup, verification before reacting, "
+                "or retrieving a specific message referenced by ID."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "message_id": {"type": "string", "description": "ID of the message to fetch."},
+                },
+                "required": ["message_id"],
+            },
+        ),
+        types.Tool(
             name="msg_wait",
             description=(
                 "Block until at least one new message arrives in the thread after `after_seq`. "
