@@ -3,6 +3,12 @@
     const activityTime = agent.last_activity_time ? new Date(agent.last_activity_time) : null;
     const now = new Date();
 
+    // If backend reports the agent online and its latest activity is msg_wait,
+    // keep it in Waiting state throughout the wait loop.
+    if (agent && agent.is_online && agent.last_activity === "msg_wait") {
+      return "Waiting";
+    }
+
     if (!activityTime) {
       return agent.is_online ? "Waiting" : "Offline";
     }
