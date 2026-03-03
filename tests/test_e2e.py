@@ -28,6 +28,27 @@ def _require_server_or_skip(client: httpx.Client) -> None:
     pytest.skip(f"AgentChatBus server is not reachable at {BASE_URL}")
 
 
+def _register_agent(client: httpx.Client) -> tuple[str, str]:
+    resp = client.post(
+        "/api/agents/register",
+        json={"ide": "VS Code", "model": "GPT-5.3-Codex"},
+    )
+    assert resp.status_code == 200, resp.text
+    payload = resp.json()
+    return payload["agent_id"], payload["token"]
+
+
+def _create_thread(client: httpx.Client, topic: str, **extra_fields) -> httpx.Response:
+    creator_id, creator_token = _register_agent(client)
+    body = {"topic": topic, "creator_agent_id": creator_id}
+    body.update(extra_fields)
+    return client.post(
+        "/api/threads",
+        json=body,
+        headers={"X-Agent-Token": creator_token},
+    )
+
+
 def _post_message_strict(client: httpx.Client, thread_id: str, author: str, role: str, content: str) -> httpx.Response:
     sync = client.post(f"/api/threads/{thread_id}/sync-context", json={})
     assert sync.status_code == 200, sync.text
@@ -50,12 +71,12 @@ def thread_id() -> str:
         _require_server_or_skip(client)
 
         topic = "E2E-Idempotency-Test"
-        r1 = client.post("/api/threads", json={"topic": topic})
+        r1 = _create_thread(client, topic)
         assert r1.status_code == 201, r1.text
         id1 = r1.json()["id"]
 
         # Creating same topic again should return same thread id (idempotent).
-        r2 = client.post("/api/threads", json={"topic": topic})
+        r2 = _create_thread(client, topic)
         assert r2.status_code == 201, r2.text
         id2 = r2.json()["id"]
 
@@ -73,7 +94,7 @@ def test_thread_create_returns_initial_sync_context():
         _require_server_or_skip(client)
 
         topic = f"E2E-Create-Sync-{uuid.uuid4()}"
-        resp = client.post("/api/threads", json={"topic": topic})
+        resp = _create_thread(client, topic)
         assert resp.status_code == 201, resp.text
 
         body = resp.json()
@@ -88,7 +109,7 @@ def test_first_message_can_use_thread_create_token():
         _require_server_or_skip(client)
 
         topic = f"E2E-First-Post-With-Create-Token-{uuid.uuid4()}"
-        create_resp = client.post("/api/threads", json={"topic": topic})
+        create_resp = _create_thread(client, topic)
         assert create_resp.status_code == 201, create_resp.text
         created = create_resp.json()
 
@@ -133,7 +154,7 @@ def cf_thread_id() -> str:
     """Dedicated thread for content filter tests."""
     with _build_client() as client:
         _require_server_or_skip(client)
-        r = client.post("/api/threads", json={"topic": "E2E-ContentFilter-Test"})
+        r = _create_thread(client, "E2E-ContentFilter-Test")
         assert r.status_code == 201, r.text
         return r.json()["id"]
 

@@ -287,10 +287,17 @@ def test_api_create_thread_with_template():
     """POST /api/threads with template applies template defaults."""
     with _build_client() as client:
         _require_server_or_skip(client)
+        register_resp = client.post(
+            "/api/agents/register",
+            json={"ide": "VS Code", "model": "GPT-5.3-Codex"},
+        )
+        assert register_resp.status_code == 200, register_resp.text
+        agent = register_resp.json()
         r = client.post("/api/threads", json={
             "topic": f"Integration Template Thread {id(client)}",
             "template": "code-review",
-        })
+            "creator_agent_id": agent["agent_id"],
+        }, headers={"X-Agent-Token": agent["token"]})
         assert r.status_code == 201, r.text
         data = r.json()
         assert data["template_id"] == "code-review"

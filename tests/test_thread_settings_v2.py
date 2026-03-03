@@ -252,5 +252,93 @@ async def test_system_message_creation(db):
     assert len(system_msgs) > 0
 
 
+@pytest.mark.asyncio
+async def test_thread_delete_with_reactions_and_settings(db):
+    """Deleting a thread must remove dependent rows and not violate FK constraints."""
+    thread_id = await create_test_thread(db)
+
+    # Ensure settings row exists (created automatically on thread_create path).
+    settings = await crud.thread_settings_get_or_create(db, thread_id)
+    assert settings.thread_id == thread_id
+
+    # Create a message and a reaction that references this message.
+    sync = await crud.issue_reply_token(db, thread_id=thread_id)
+    msg = await crud.msg_post(
+        db,
+        thread_id=thread_id,
+        author="test-agent",
+        content="msg for delete",
+        expected_last_seq=sync["current_seq"],
+        reply_token=sync["reply_token"],
+        role="user",
+    )
+    await crud.msg_react(db, message_id=msg.id, agent_id=None, reaction="ack")
+
+    deleted = await crud.thread_delete(db, thread_id)
+    assert deleted is not None
+    assert deleted["thread_id"] == thread_id
+
+    # Verify thread and dependents are gone.
+    assert await crud.thread_get(db, thread_id) is None
+    async with db.execute("SELECT COUNT(*) AS cnt FROM thread_settings WHERE thread_id = ?", (thread_id,)) as cur:
+        assert (await cur.fetchone())["cnt"] == 0
+    async with db.execute(
+        "SELECT COUNT(*) AS cnt FROM reactions WHERE message_id = ?", (msg.id,)
+    ) as cur:
+        assert (await cur.fetchone())["cnt"] == 0
+
+
+@pytest.mark.asyncio
+async def test_thread_delete_cleans_future_fk_tables(db):
+    """thread_delete should keep working when new FK tables are introduced."""
+    thread_id = await create_test_thread(db)
+
+    sync = await crud.issue_reply_token(db, thread_id=thread_id)
+    msg = await crud.msg_post(
+        db,
+        thread_id=thread_id,
+        author="test-agent",
+        content="fk future table probe",
+        expected_last_seq=sync["current_seq"],
+        reply_token=sync["reply_token"],
+        role="user",
+    )
+
+    # Simulate future schema additions with new FK dependencies.
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS future_thread_links (
+            id TEXT PRIMARY KEY,
+            thread_ref TEXT NOT NULL REFERENCES threads(id)
+        )
+        """
+    )
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS future_message_links (
+            id TEXT PRIMARY KEY,
+            message_ref TEXT NOT NULL REFERENCES messages(id)
+        )
+        """
+    )
+    await db.execute(
+        "INSERT INTO future_thread_links (id, thread_ref) VALUES (?, ?)",
+        ("ftl-1", thread_id),
+    )
+    await db.execute(
+        "INSERT INTO future_message_links (id, message_ref) VALUES (?, ?)",
+        ("fml-1", msg.id),
+    )
+    await db.commit()
+
+    deleted = await crud.thread_delete(db, thread_id)
+    assert deleted is not None
+
+    async with db.execute("SELECT COUNT(*) AS cnt FROM future_thread_links") as cur:
+        assert (await cur.fetchone())["cnt"] == 0
+    async with db.execute("SELECT COUNT(*) AS cnt FROM future_message_links") as cur:
+        assert (await cur.fetchone())["cnt"] == 0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

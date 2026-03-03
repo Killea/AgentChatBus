@@ -43,7 +43,7 @@ async def test_msg_wait_no_admin_prompt_when_no_agent_online():
 
 @pytest.mark.asyncio
 async def test_msg_wait_single_online_agent_gets_admin_prompt():
-    """When the current caller is the only online agent, emit actionable admin prompt."""
+    """When the current caller is the only online agent, emit actionable non-admin prompt."""
     db = await _setup_db()
     try:
         thread = await crud.thread_create(db, "msg-wait-one-online")
@@ -63,6 +63,6 @@ async def test_msg_wait_single_online_agent_gets_admin_prompt():
 
         payload = json.loads(out[0].text)
         assert "coordination_prompt" in payload
-        assert payload["coordination_prompt"]["type"] == "single_agent_admin_notice"
+        assert payload["coordination_prompt"]["type"] == "single_agent_timeout_notice"
     finally:
         await db.close()

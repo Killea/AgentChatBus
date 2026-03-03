@@ -869,6 +869,28 @@ body[data-theme="light"] .handoff-badge {
   color: #2563eb;
 }
 
+/* Reply-to quote block (UP-14) */
+.msg-reply-quote {
+  display: inline-block;
+  font-size: 0.78em;
+  padding: 2px 8px;
+  margin-bottom: 4px;
+  border-left: 3px solid rgba(150,150,255,0.6);
+  background: rgba(150,150,255,0.08);
+  border-radius: 0 4px 4px 0;
+  color: rgba(200,200,220,0.8);
+  font-style: normal;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body[data-theme="light"] .msg-reply-quote {
+  border-left-color: rgba(80,80,200,0.4);
+  background: rgba(80,80,200,0.06);
+  color: #555;
+}
+
 body[data-theme="light"] .stop-tag {
   background: rgba(100,100,100,0.08);
   color: #555;
@@ -1210,6 +1232,74 @@ body[data-theme="light"] .msg-sys-prompt-body {
 .msg-sys-prompt-body h6,
 .msg-sys-prompt-body strong {
   color: inherit;
+}
+
+.msg-sys-admin-card {
+  align-self: center;
+  width: min(760px, 92%);
+  border: 1px solid rgba(245, 158, 11, .35);
+  border-radius: 12px;
+  background: rgba(245, 158, 11, .08);
+  padding: 10px 12px;
+  animation: bubble-in .2s ease;
+}
+
+.msg-sys-admin-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #fbbf24;
+  margin-bottom: 6px;
+}
+
+.msg-sys-admin-body {
+  font-size: 12px;
+  color: var(--text-1);
+  margin-bottom: 8px;
+}
+
+.msg-sys-admin-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.msg-sys-admin-btn {
+  border: 1px solid var(--border-light);
+  background: var(--bg-card);
+  color: var(--text-1);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.msg-sys-admin-btn:hover {
+  border-color: var(--accent);
+}
+
+.msg-sys-admin-btn:disabled {
+  opacity: .6;
+  cursor: default;
+}
+
+.msg-sys-admin-btn-switch {
+  border-color: rgba(16, 185, 129, .45);
+}
+
+.msg-sys-admin-status {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.msg-sys-admin-card.resolved {
+  border-color: rgba(34, 197, 94, .35);
+  background: rgba(34, 197, 94, .08);
+}
+
+body[data-theme="light"] .msg-sys-admin-card {
+  background: rgba(217, 119, 6, .08);
+  border-color: rgba(217, 119, 6, .32);
 }
 
 .bubble-meta {

@@ -50,6 +50,25 @@ def _require_server_or_skip(client: httpx.Client) -> None:
     pytest.skip(f"AgentChatBus server is not reachable at {BASE_URL}")
 
 
+def _register_agent(client: httpx.Client) -> tuple[str, str]:
+    resp = client.post(
+        "/api/agents/register",
+        json={"ide": "VS Code", "model": "GPT-5.3-Codex"},
+    )
+    assert resp.status_code == 200, resp.text
+    payload = resp.json()
+    return payload["agent_id"], payload["token"]
+
+
+def _create_thread(client: httpx.Client, topic: str) -> httpx.Response:
+    creator_id, creator_token = _register_agent(client)
+    return client.post(
+        "/api/threads",
+        json={"topic": topic, "creator_agent_id": creator_id},
+        headers={"X-Agent-Token": creator_token},
+    )
+
+
 async def _setup_db() -> aiosqlite.Connection:
     db = await aiosqlite.connect(":memory:")
     db.row_factory = aiosqlite.Row
@@ -371,7 +390,7 @@ def test_api_metrics_threads_reflect_creation():
         total_before = before["threads"]["total"]
 
         topic = f"Metrics Integration Thread {uuid.uuid4().hex[:8]}"
-        r = client.post("/api/threads", json={"topic": topic})
+        r = _create_thread(client, topic)
         assert r.status_code == 201, r.text
 
         after = client.get("/api/metrics").json()
@@ -385,7 +404,7 @@ def test_api_metrics_messages_reflect_post():
 
         # Create thread
         topic = f"Metrics Msg Thread {uuid.uuid4().hex[:8]}"
-        thread_r = client.post("/api/threads", json={"topic": topic})
+        thread_r = _create_thread(client, topic)
         assert thread_r.status_code == 201, thread_r.text
         thread_id = thread_r.json()["id"]
 

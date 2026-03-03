@@ -374,7 +374,17 @@ async def test_react_emits_event():
 
 def _get_or_create_thread(client: httpx.Client, topic: str = "reaction-priority-test") -> str:
     """Create a thread for integration tests. Returns thread_id."""
-    resp = client.post("/api/threads", json={"topic": topic, "status": "discuss"})
+    register_resp = client.post(
+        "/api/agents/register",
+        json={"ide": "VS Code", "model": "GPT-5.3-Codex"},
+    )
+    assert register_resp.status_code == 200, register_resp.text
+    agent = register_resp.json()
+    resp = client.post(
+        "/api/threads",
+        json={"topic": topic, "status": "discuss", "creator_agent_id": agent["agent_id"]},
+        headers={"X-Agent-Token": agent["token"]},
+    )
     data = resp.json()
     # Handle both create (201) and idempotent existing (200/400 with id)
     if resp.status_code in (200, 201):

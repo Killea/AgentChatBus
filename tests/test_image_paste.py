@@ -38,8 +38,21 @@ async def test_send_message_with_image():
 
     # 先创建一个线程
     async with aiohttp.ClientSession() as session:
+        reg_resp = await session.post(
+            f"{SERVER_URL}/api/agents/register",
+            json={"ide": "VS Code", "model": "GPT-5.3-Codex"},
+        )
+        if reg_resp.status != 200:
+            print(f"❌ 注册 agent 失败: {reg_resp.status}")
+            return False
+        agent = await reg_resp.json()
+
         # 创建线程
-        create_resp = await session.post(f"{SERVER_URL}/api/threads", json={"topic": "测试图片功能"})
+        create_resp = await session.post(
+            f"{SERVER_URL}/api/threads",
+            json={"topic": "测试图片功能", "creator_agent_id": agent["agent_id"]},
+            headers={"X-Agent-Token": agent["token"]},
+        )
         if create_resp.status != 201:
             print(f"❌ 创建线程失败: {create_resp.status}")
             return False

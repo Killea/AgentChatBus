@@ -31,12 +31,34 @@ def _require_server_or_skip(client: httpx.Client) -> None:
     pytest.skip(f"AgentChatBus server is not reachable at {BASE_URL}")
 
 
+def _register_agent(client: httpx.Client) -> tuple[str, str]:
+    resp = client.post(
+        "/api/agents/register",
+        json={"ide": "VS Code", "model": "GPT-5.3-Codex"},
+    )
+    assert resp.status_code == 200, resp.text
+    payload = resp.json()
+    return payload["agent_id"], payload["token"]
+
+
+def _create_thread(client: httpx.Client, topic: str, system_prompt: str | None = None) -> httpx.Response:
+    creator_id, creator_token = _register_agent(client)
+    body = {"topic": topic, "creator_agent_id": creator_id}
+    if system_prompt is not None:
+        body["system_prompt"] = system_prompt
+    return client.post(
+        "/api/threads",
+        json=body,
+        headers={"X-Agent-Token": creator_token},
+    )
+
+
 @pytest.fixture(scope="module")
 def thread_id_for_hardening() -> str:
     """Thread used across hardening tests."""
     with _build_client() as client:
         _require_server_or_skip(client)
-        r = client.post("/api/threads", json={"topic": "security-hardening-tests"})
+        r = _create_thread(client, "security-hardening-tests")
         assert r.status_code == 201, r.text
         return r.json()["id"]
 
@@ -168,12 +190,10 @@ def test_system_prompt_with_api_key_blocked():
         _require_server_or_skip(client)
         # ghp_ + 36 alphanumeric chars matches the GitHub PAT pattern in content_filter.py
         fake_github_pat = "ghp_" + "A" * 36
-        r = client.post(
-            "/api/threads",
-            json={
-                "topic": "secret-leak-test",
-                "system_prompt": f"You are helpful. Token: {fake_github_pat}",
-            },
+        r = _create_thread(
+            client,
+            "secret-leak-test",
+            system_prompt=f"You are helpful. Token: {fake_github_pat}",
         )
         assert r.status_code == 400, f"Expected 400, got {r.status_code}: {r.text}"
 
@@ -182,12 +202,10 @@ def test_system_prompt_without_secret_allowed():
     """system_prompt without secret patterns must be accepted normally."""
     with _build_client() as client:
         _require_server_or_skip(client)
-        r = client.post(
-            "/api/threads",
-            json={
-                "topic": "clean-system-prompt",
-                "system_prompt": "You are a helpful AI assistant. Be concise and professional.",
-            },
+        r = _create_thread(
+            client,
+            "clean-system-prompt",
+            system_prompt="You are a helpful AI assistant. Be concise and professional.",
         )
         assert r.status_code == 201, f"Expected 201, got {r.status_code}: {r.text}"
 

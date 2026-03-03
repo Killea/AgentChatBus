@@ -37,6 +37,19 @@ def _require_server_or_skip(client: httpx.Client) -> None:
     pytest.skip(f"AgentChatBus server with UP-20 pagination not reachable at {BASE_URL}")
 
 
+def _create_thread(client: httpx.Client, topic: str) -> httpx.Response:
+    register_resp = client.post(
+        "/api/agents/register",
+        json={"ide": "VS Code", "model": "GPT-5.3-Codex"},
+    )
+    assert register_resp.status_code == 200, register_resp.text
+    agent = register_resp.json()
+    return client.post(
+        "/api/threads",
+        json={"topic": topic, "creator_agent_id": agent["agent_id"]},
+        headers={"X-Agent-Token": agent["token"]},
+    )
+
 async def _setup_db() -> aiosqlite.Connection:
     db = await aiosqlite.connect(":memory:")
     db.row_factory = aiosqlite.Row
@@ -329,7 +342,7 @@ def test_api_threads_with_limit():
         _require_server_or_skip(client)
         # Ensure enough threads exist
         for i in range(3):
-            client.post("/api/threads", json={"topic": f"Pagination test limit {uuid.uuid4()}"})
+            _create_thread(client, f"Pagination test limit {uuid.uuid4()}")
 
         resp = client.get("/api/threads?limit=2")
         assert resp.status_code == 200
@@ -344,12 +357,12 @@ def test_api_threads_with_before():
         _require_server_or_skip(client)
 
         # Create a thread and use its created_at as the cursor
-        resp_create = client.post("/api/threads", json={"topic": f"Ref thread {uuid.uuid4()}"})
+        resp_create = _create_thread(client, f"Ref thread {uuid.uuid4()}")
         assert resp_create.status_code == 201
         ref_created_at = resp_create.json()["created_at"]
 
         # Create a newer thread after the reference
-        client.post("/api/threads", json={"topic": f"Newer thread {uuid.uuid4()}"})
+        _create_thread(client, f"Newer thread {uuid.uuid4()}")
 
         resp = client.get(f"/api/threads?before={ref_created_at}")
         assert resp.status_code == 200
@@ -367,7 +380,7 @@ def test_api_threads_pagination_walk():
         # Create 5 threads and track their IDs directly
         created_ids: set[str] = set()
         for _ in range(5):
-            r = client.post("/api/threads", json={"topic": f"Walk thread {uuid.uuid4()}"})
+            r = _create_thread(client, f"Walk thread {uuid.uuid4()}")
             assert r.status_code == 201
             created_ids.add(r.json()["id"])
 
@@ -415,7 +428,7 @@ def test_api_threads_status_with_limit():
     with _build_client() as client:
         _require_server_or_skip(client)
         for _ in range(3):
-            client.post("/api/threads", json={"topic": f"Status limit test {uuid.uuid4()}"})
+            _create_thread(client, f"Status limit test {uuid.uuid4()}")
 
         resp = client.get("/api/threads?status=discuss&limit=2")
         assert resp.status_code == 200

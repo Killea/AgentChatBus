@@ -193,17 +193,27 @@
       console.error("Error loading thread settings:", err);
     }
 
+    const getAvatarEmoji = (key) => {
+      if (window.AcbUtils && typeof window.AcbUtils.getAgentAvatarEmoji === "function") {
+        return window.AcbUtils.getAgentAvatarEmoji(key);
+      }
+      return "🤖";
+    };
+
     // Load current admin info
     try {
       const adminRes = await api(`/api/threads/${threadId}/admin`);
       if (adminRes) {
         // Show current admin (creator or auto-assigned)
         const currentAdminEl = document.getElementById("ts-current-admin");
-        if (adminRes.admin_name) {
-          const typeLabel = adminRes.admin_type === "creator" ? "（创建者）" : "（自动）";
-          currentAdminEl.textContent = adminRes.admin_name + typeLabel;
+        const adminLabel = adminRes.admin_name || adminRes.admin_id;
+        if (adminLabel) {
+          const adminKey = adminRes.admin_id || adminLabel;
+          const emoji = getAvatarEmoji(adminKey);
+          const typeLabel = adminRes.admin_type === "creator" ? " (Creator)" : " (Auto-assigned)";
+          currentAdminEl.textContent = `${emoji} ${adminLabel}${typeLabel}`;
         } else {
-          currentAdminEl.textContent = "未分配";
+          currentAdminEl.textContent = "Unassigned";
         }
       }
     } catch (err) {
@@ -215,9 +225,11 @@
       const settingsRes = await api(`/api/threads/${threadId}/settings`);
       const creatorAdminEl = document.getElementById("ts-creator-admin");
       if (settingsRes && settingsRes.creator_admin_name) {
-        creatorAdminEl.textContent = settingsRes.creator_admin_name;
+        const creatorKey = settingsRes.creator_admin_id || settingsRes.creator_admin_name;
+        const emoji = getAvatarEmoji(creatorKey);
+        creatorAdminEl.textContent = `${emoji} ${settingsRes.creator_admin_name}`;
       } else {
-        creatorAdminEl.textContent = "无";
+        creatorAdminEl.textContent = "None";
       }
     } catch (err) {
       console.error("Error loading creator admin:", err);
@@ -241,7 +253,7 @@
 
     // Validation
     if (isNaN(timeoutSeconds) || timeoutSeconds < 10 || timeoutSeconds > 300) {
-      alert("超时时间必须在 10 到 300 秒之间");
+      alert("Timeout must be between 10 and 300 seconds.");
       return;
     }
 

@@ -28,6 +28,75 @@ from src.content_filter import check_content, ContentFilterError
 logger = logging.getLogger(__name__)
 
 
+def _quote_ident(name: str) -> str:
+    """Quote SQL identifiers from trusted schema metadata.
+
+    Allows only ASCII letters/digits/underscore and non-digit first char.
+    """
+    if not name:
+        raise ValueError("Empty identifier")
+    if not (name[0].isalpha() or name[0] == "_"):
+        raise ValueError(f"Invalid identifier start: {name}")
+    if not all(ch.isalnum() or ch == "_" for ch in name):
+        raise ValueError(f"Invalid identifier: {name}")
+    return f'"{name}"'
+
+
+async def _delete_fk_dependents_for_thread(
+    db: aiosqlite.Connection,
+    thread_id: str,
+    *,
+    referenced_table: str,
+) -> None:
+    """Delete rows in tables that FK-reference `referenced_table`.
+
+    This keeps thread_delete resilient when new FK-linked tables are added.
+    """
+    async with db.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+    ) as cur:
+        table_rows = await cur.fetchall()
+
+    targets: list[tuple[str, str]] = []
+    for tr in table_rows:
+        table_name = tr["name"]
+        if table_name == referenced_table:
+            continue
+        try:
+            pragma_sql = f"PRAGMA foreign_key_list({_quote_ident(table_name)})"
+            async with db.execute(pragma_sql) as cur:
+                fk_rows = await cur.fetchall()
+        except Exception:
+            continue
+
+        for fk in fk_rows:
+            if fk["table"] == referenced_table:
+                targets.append((table_name, fk["from"]))
+
+    # De-duplicate while preserving stable order.
+    seen: set[tuple[str, str]] = set()
+    deduped: list[tuple[str, str]] = []
+    for item in targets:
+        if item in seen:
+            continue
+        seen.add(item)
+        deduped.append(item)
+
+    for table_name, fk_col in deduped:
+        qt = _quote_ident(table_name)
+        qc = _quote_ident(fk_col)
+        if referenced_table == "messages":
+            await db.execute(
+                f"DELETE FROM {qt} WHERE {qc} IN (SELECT id FROM messages WHERE thread_id = ?)",
+                (thread_id,),
+            )
+        elif referenced_table == "threads":
+            await db.execute(
+                f"DELETE FROM {qt} WHERE {qc} = ?",
+                (thread_id,),
+            )
+
+
 def _row_get(row: sqlite3.Row, key: str, default=None):
     """Safely get a column from a sqlite3.Row, returning default if column doesn't exist.
     
@@ -146,6 +215,8 @@ async def thread_create(
     metadata: Optional[dict] = None,
     system_prompt: Optional[str] = None,
     template: Optional[str] = None,
+    creator_admin_id: Optional[str] = None,
+    creator_admin_name: Optional[str] = None,
 ) -> Thread:
     # Resolve template defaults (UP-18): apply before caller overrides
     template_id: Optional[str] = None
@@ -173,6 +244,35 @@ async def thread_create(
             "INSERT INTO threads (id, topic, status, created_at, metadata, system_prompt, template_id) VALUES (?, ?, 'discuss', ?, ?, ?, ?)",
             (tid, topic, now, meta_json, system_prompt, template_id),
         )
+
+        # Persist thread settings at creation time so creator-admin is recorded
+        # immediately in the database instead of being backfilled later.
+        await db.execute(
+            """
+            INSERT INTO thread_settings (
+                thread_id,
+                auto_administrator_enabled,
+                timeout_seconds,
+                last_activity_time,
+                creator_admin_id,
+                creator_admin_name,
+                creator_assignment_time,
+                created_at,
+                updated_at
+            )
+            VALUES (?, 1, 60, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                tid,
+                now,
+                creator_admin_id,
+                creator_admin_name,
+                now if creator_admin_id else None,
+                now,
+                now,
+            ),
+        )
+
         await db.commit()
         await _emit_event(db, "thread.new", tid, {"thread_id": tid, "topic": topic})
         logger.info(f"Thread created: {tid} '{topic}'")
@@ -326,8 +426,9 @@ async def thread_delete(db: aiosqlite.Connection, thread_id: str) -> dict | None
     Returns a dict with audit info (thread_id, topic, message_count) on success,
     or None if the thread does not exist.
     
-    All dependent records (events, messages, reply_tokens) are deleted first to satisfy
-    FK constraints. All deletes are wrapped in a single transaction with rollback on error.
+    All dependent records are deleted first to satisfy FK constraints.
+    The cleanup discovers FK-linked tables dynamically so new schema additions
+    do not silently break thread deletion behavior.
     """
     async with db.execute("SELECT * FROM threads WHERE id = ?", (thread_id,)) as cur:
         row = await cur.fetchone()
@@ -343,8 +444,14 @@ async def thread_delete(db: aiosqlite.Connection, thread_id: str) -> dict | None
     try:
         # Delete dependent records first (satisfy FK constraints)
         await db.execute("DELETE FROM events WHERE thread_id = ?", (thread_id,))
+        # Remove rows in tables FK-linked to messages before deleting messages.
+        await _delete_fk_dependents_for_thread(db, thread_id, referenced_table="messages")
         await db.execute("DELETE FROM messages WHERE thread_id = ?", (thread_id,))
+        # Remove rows in tables FK-linked directly to threads.
+        await _delete_fk_dependents_for_thread(db, thread_id, referenced_table="threads")
+        # Defensive explicit cleanup for non-FK-linked rows.
         await db.execute("DELETE FROM reply_tokens WHERE thread_id = ?", (thread_id,))
+        await db.execute("DELETE FROM thread_settings WHERE thread_id = ?", (thread_id,))
         # Finally delete the thread itself
         await db.execute("DELETE FROM threads WHERE id = ?", (thread_id,))
         await db.commit()
@@ -584,6 +691,37 @@ async def thread_settings_set_creator_admin(
     return await thread_settings_get_or_create(db, thread_id)
 
 
+async def thread_settings_switch_admin(
+    db: aiosqlite.Connection,
+    thread_id: str,
+    admin_id: str,
+    admin_name: str,
+) -> ThreadSettings:
+    """Switch thread admin based on explicit human confirmation.
+
+    This operation clears creator-admin priority and sets the selected admin as
+    the active auto-assigned admin.
+    """
+    now = _now()
+    await db.execute(
+        """
+        UPDATE thread_settings
+        SET creator_admin_id = NULL,
+            creator_admin_name = NULL,
+            creator_assignment_time = NULL,
+            auto_assigned_admin_id = ?,
+            auto_assigned_admin_name = ?,
+            admin_assignment_time = ?,
+            updated_at = ?
+        WHERE thread_id = ?
+          AND auto_administrator_enabled = 1
+        """,
+        (admin_id, admin_name, now, now, thread_id),
+    )
+    await db.commit()
+    return await thread_settings_get_or_create(db, thread_id)
+
+
 async def thread_settings_get_timeouts(
     db: aiosqlite.Connection,
 ) -> list[ThreadSettings]:
@@ -759,6 +897,13 @@ async def template_delete(db: aiosqlite.Connection, template_id: str) -> None:
 _VALID_PRIORITIES = {"normal", "urgent", "system"}
 
 
+async def msg_get(db: aiosqlite.Connection, message_id: str) -> Optional[Message]:
+    """Fetch a single message by ID. Returns None if not found."""
+    async with db.execute("SELECT * FROM messages WHERE id = ?", (message_id,)) as cur:
+        row = await cur.fetchone()
+    return _row_to_message(row) if row else None
+
+
 async def msg_post(
     db: aiosqlite.Connection,
     thread_id: str,
@@ -769,10 +914,24 @@ async def msg_post(
     role: str = "user",
     metadata: Optional[dict] = None,
     priority: str = "normal",
+    reply_to_msg_id: Optional[str] = None,
 ) -> Message:
     # Validate priority (UP-16)
     if priority not in _VALID_PRIORITIES:
         raise ValueError(f"Invalid priority '{priority}'. Must be one of: {', '.join(sorted(_VALID_PRIORITIES))}")
+
+    # Validate reply_to_msg_id (UP-14): must exist and belong to the same thread
+    if reply_to_msg_id is not None:
+        async with db.execute(
+            "SELECT thread_id FROM messages WHERE id = ?", (reply_to_msg_id,)
+        ) as cur:
+            parent_row = await cur.fetchone()
+        if parent_row is None:
+            raise ValueError(f"reply_to_msg_id '{reply_to_msg_id}' does not exist.")
+        if parent_row["thread_id"] != thread_id:
+            raise ValueError(
+                f"reply_to_msg_id '{reply_to_msg_id}' belongs to a different thread."
+            )
 
     # Content filter: block known secret patterns before any DB interaction
     if CONTENT_FILTER_ENABLED:
@@ -859,8 +1018,8 @@ async def msg_post(
     seq = await next_seq(db)
     meta_json = json.dumps(metadata) if metadata else None
     await db.execute(
-        "INSERT INTO messages (id, thread_id, author, role, content, seq, created_at, metadata, author_id, author_name, priority) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (mid, thread_id, actual_author, role, content, seq, now, meta_json, author_id, author_name, priority),
+        "INSERT INTO messages (id, thread_id, author, role, content, seq, created_at, metadata, author_id, author_name, priority, reply_to_msg_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (mid, thread_id, actual_author, role, content, seq, now, meta_json, author_id, author_name, priority, reply_to_msg_id),
     )
     await db.execute(
         "UPDATE threads SET updated_at = ? WHERE id = ?", (now, thread_id)
@@ -909,11 +1068,19 @@ async def msg_post(
                 "msg_id": mid, "thread_id": thread_id,
                 "agent": author_name, "reason": stop_reason,
             })
-    logger.debug(f"Message posted: seq={seq} author={author_name} thread={thread_id} priority={priority}")
+    # SSE event for reply-to threading (UP-14)
+    if reply_to_msg_id is not None:
+        await _emit_event(db, "msg.reply", thread_id, {
+            "msg_id": mid, "reply_to_msg_id": reply_to_msg_id,
+            "thread_id": thread_id, "author": author_name, "seq": seq,
+        })
+
+    logger.debug(f"Message posted: seq={seq} author={author_name} thread={thread_id} priority={priority} reply_to={reply_to_msg_id}")
     return Message(
         id=mid, thread_id=thread_id, author=actual_author, role=role,
         content=content, seq=seq, created_at=_parse_dt(now), metadata=meta_json,
-        author_id=author_id, author_name=author_name, priority=priority
+        author_id=author_id, author_name=author_name, priority=priority,
+        reply_to_msg_id=reply_to_msg_id,
     )
 
 
@@ -980,6 +1147,7 @@ async def _msg_create_system(
     thread_id: str,
     content: str,
     metadata: Optional[dict] = None,
+    clear_auto_admin: bool = True,
 ) -> Message:
     """Internal: Create a system message without reply token validation.
     
@@ -1003,8 +1171,22 @@ async def _msg_create_system(
     
     await db.commit()
     
-    # Update thread activity for timeout tracking
-    await thread_settings_update_activity(db, thread_id)
+    # Update thread activity for timeout tracking.
+    # Some system flows (e.g. human-confirmed admin switch) must preserve admin assignment.
+    if clear_auto_admin:
+        await thread_settings_update_activity(db, thread_id)
+    else:
+        now2 = _now()
+        await db.execute(
+            """
+            UPDATE thread_settings
+            SET last_activity_time = ?,
+                updated_at = ?
+            WHERE thread_id = ?
+            """,
+            (now2, now2, thread_id),
+        )
+        await db.commit()
     
     await _emit_event(db, "msg.new", thread_id, {
         "msg_id": mid, "thread_id": thread_id, "author": "System",
@@ -1026,6 +1208,7 @@ def _row_to_message(row: aiosqlite.Row) -> Message:
     if not author_name:
         author_name = row["author"]
     priority = row["priority"] if "priority" in keys else "normal"
+    reply_to_msg_id = row["reply_to_msg_id"] if "reply_to_msg_id" in keys else None
 
     return Message(
         id=row["id"],
@@ -1039,6 +1222,7 @@ def _row_to_message(row: aiosqlite.Row) -> Message:
         author_id=author_id,
         author_name=author_name,
         priority=priority,
+        reply_to_msg_id=reply_to_msg_id,
     )
 
 
@@ -1590,9 +1774,9 @@ async def thread_export_markdown(db: aiosqlite.Connection, thread_id: str) -> Op
     return "\n".join(lines)
 
 
-# ─────────────────────────────────────────────
-# Metrics (UP-22)
-# ─────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+# UP-22: Bus-level observability metrics
+# ──────────────────────────────────────────────────────────────────────────────
 
 async def get_bus_metrics(db: aiosqlite.Connection) -> dict:
     """Return a snapshot of bus-level observability metrics.
@@ -1618,21 +1802,20 @@ async def get_bus_metrics(db: aiosqlite.Connection) -> dict:
                              AGENT_HEARTBEAT_TIMEOUT window
     """
     now = datetime.now(timezone.utc)
-    now_iso = now.isoformat()
 
-    # ── Thread counts ────────────────────────────────────────────────────────
+    # ── Thread counts ──────────────────────────────────────────────────────────
     threads_by_status: dict[str, int] = {}
     async with db.execute("SELECT status, COUNT(*) AS cnt FROM threads GROUP BY status") as cur:
         async for row in cur:
             threads_by_status[row["status"]] = row["cnt"]
     threads_total = sum(threads_by_status.values())
 
-    # ── Message total ────────────────────────────────────────────────────────
+    # ── Message total ──────────────────────────────────────────────────────────
     async with db.execute("SELECT COUNT(*) AS cnt FROM messages") as cur:
         row = await cur.fetchone()
     messages_total = row["cnt"] if row else 0
 
-    # ── Message rates (1m / 5m / 15m) ───────────────────────────────────────
+    # ── Message rates (1m / 5m / 15m) ─────────────────────────────────────────
     cutoffs = {
         "last_1m":  (now - timedelta(minutes=1)).isoformat(),
         "last_5m":  (now - timedelta(minutes=5)).isoformat(),
@@ -1646,11 +1829,9 @@ async def get_bus_metrics(db: aiosqlite.Connection) -> dict:
             row = await cur.fetchone()
         message_rate[key] = row["cnt"] if row else 0
 
-    # ── Inter-message latency (avg ms, threads active in last 15 min) ────────
+    # ── Inter-message latency (avg ms, threads active in last 15 min) ─────────
     # Uses LAG() window function (SQLite >= 3.25.0) to compute time gaps
     # between consecutive messages within each thread, then averages them.
-    # Only considers threads that had activity in the last 15 minutes to keep
-    # the metric relevant to current bus load.
     cutoff_15m = cutoffs["last_15m"]
     avg_latency_ms: Optional[float] = None
     try:
@@ -1672,10 +1853,9 @@ async def get_bus_metrics(db: aiosqlite.Connection) -> dict:
         if row and row["avg_gap"] is not None:
             avg_latency_ms = round(row["avg_gap"], 1)
     except Exception:
-        # Defensive: if the window query fails for any reason, degrade gracefully
         avg_latency_ms = None
 
-    # ── stop_reason distribution (UP-17) ─────────────────────────────────────
+    # ── stop_reason distribution (UP-17) ──────────────────────────────────────
     canonical_reasons = ("convergence", "timeout", "complete", "error", "impasse")
     stop_reasons: dict[str, int] = {r: 0 for r in canonical_reasons}
     async with db.execute(
@@ -1690,7 +1870,7 @@ async def get_bus_metrics(db: aiosqlite.Connection) -> dict:
             reason = row["reason"]
             stop_reasons[reason] = stop_reasons.get(reason, 0) + row["cnt"]
 
-    # ── Agent counts ─────────────────────────────────────────────────────────
+    # ── Agent counts ───────────────────────────────────────────────────────────
     agents_total = 0
     agents_online = 0
     heartbeat_cutoff = (

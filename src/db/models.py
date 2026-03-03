@@ -45,6 +45,7 @@ class Message:
     metadata: Optional[str]  # JSON string
     author_id: Optional[str] = None
     author_name: Optional[str] = None
+    reply_to_msg_id: Optional[str] = None
     priority: str = "normal"  # normal | urgent | system (UP-16)
 
 

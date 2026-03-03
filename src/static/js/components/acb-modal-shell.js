@@ -60,16 +60,15 @@
             onclick="event.stopPropagation()">
             <h3 style="font-size:16px;font-weight:600;margin-bottom:18px;color:var(--text-1)">⚙️ Thread Settings</h3>
             
-            <label style="display:block;font-size:13px;color:var(--text-2);margin-bottom:6px;">启用自动管理员</label>
+            <label style="display:block;font-size:13px;color:var(--text-2);margin-bottom:6px;">Enable Auto Administrator</label>
             <input id="ts-auto-coordinator" type="checkbox" style="width:18px;height:18px;cursor:pointer;margin-bottom:16px;" />
             
-            <label style="display:block;font-size:13px;color:var(--text-2);margin-bottom:6px;">自动管理员超时（秒）</label>
+            <label style="display:block;font-size:13px;color:var(--text-2);margin-bottom:6px;">Auto Administrator Timeout (seconds)</label>
             <input id="ts-timeout-seconds" type="number" min="10" max="300" value="60"
               style="width:100%;background:var(--bg-input);border:1px solid var(--border-light);color:var(--text-1);border-radius:10px;padding:10px 14px;font-size:14px;font-family:inherit;margin-bottom:16px;" />
             
             <div style="background:var(--bg-input);border:1px solid var(--border-light);border-radius:10px;padding:12px;margin-bottom:16px;font-size:13px;color:var(--text-2);">
-              <div style="margin-bottom:8px;"><strong>创建者管理员:</strong> <span id="ts-creator-admin">无</span></div>
-              <div><strong>当前管理员:</strong> <span id="ts-current-admin">未分配</span></div>
+              <div><strong>Current Administrator:</strong> <span id="ts-current-admin">Unassigned</span></div>
             </div>
             
             <div id="thread-settings-message" style="font-size:12px;color:var(--green);margin-bottom:16px;display:none;"></div>

@@ -42,6 +42,11 @@ from src.db.crud import (
 from src.config import THREAD_TIMEOUT_ENABLED, THREAD_TIMEOUT_MINUTES, THREAD_TIMEOUT_SWEEP_INTERVAL, RELOAD_ENABLED
 from src.mcp_server import server as mcp_server, _session_language
 from src.content_filter import ContentFilterError
+from src.thread_creation_service import (
+    create_thread_with_verified_creator,
+    CreatorAuthError,
+    CreatorNotFoundError,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -81,13 +86,32 @@ def clear_thread_wait_state(thread_id: str) -> None:
     """Clear all wait states for a thread (e.g., after admin notification)."""
     _thread_agent_wait_states.pop(thread_id, None)
 
+
+_ADMIN_EMOJIS = ["🤖", "🛠️", "🧠", "📡", "🧭", "⚙️"]
+
+
+def _agent_emoji(agent_id: str | None) -> str:
+    if not agent_id:
+        return "❔"
+    idx = abs(hash(agent_id)) % len(_ADMIN_EMOJIS)
+    return _ADMIN_EMOJIS[idx]
+
+
+def _agent_label(agent: object | None, fallback_id: str | None = None) -> str:
+    if agent is None:
+        return fallback_id or "Unknown"
+    display_name = getattr(agent, "display_name", None)
+    name = getattr(agent, "name", None)
+    agent_id = getattr(agent, "id", None)
+    return str(display_name or name or agent_id or fallback_id or "Unknown")
+
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 # Database operation timeout (seconds)
 # Support environment variable override via AGENTCHATBUS_DB_TIMEOUT
 DB_TIMEOUT = int(os.getenv("AGENTCHATBUS_DB_TIMEOUT", "5"))
 
-# Server start time — set in lifespan(), used by /api/metrics
+# Server start time — set in lifespan(), used by /api/metrics (UP-22)
 _start_time: datetime | None = None
 
 
@@ -204,57 +228,69 @@ async def _admin_coordinator_loop() -> None:
                 if elapsed < ts.timeout_seconds:
                     continue
                 
-                # Timeout reached - need to notify/assign admin
+                # Timeout reached - evaluate admin coordination action
                 logger.info(f"Thread {thread_id}: all {len(online_wait_states)} online agents in msg_wait for {elapsed:.0f}s")
                 
                 try:
-                    # Determine the administrator
-                    admin_id = ts.creator_admin_id or ts.auto_assigned_admin_id
-                    admin_agent = None
                     participant_count = len(participating_online_agents)
-                    # Coordination prompts are only meaningful when at least two online
-                    # participants are involved in the thread.
-                    if participant_count < 2:
+                    # Trigger prompt when at least one online participant remains.
+                    if participant_count < 1:
                         continue
-                    
-                    if admin_id and admin_id in thread_participant_ids:
-                        admin_agent = next((a for a in participating_online_agents if a.id == admin_id), None)
-                    
-                    if not admin_agent:
-                        # No admin or admin offline - assign randomly from online thread participants.
-                        if participating_online_agents:
-                            admin_agent = random.choice(participating_online_agents)
-                            admin_id = admin_agent.id
-                            
-                            # Update database
-                            await asyncio.wait_for(
-                                crud.thread_settings_assign_admin(
-                                    db, thread_id, admin_agent.id, admin_agent.name
-                                ),
-                                timeout=DB_TIMEOUT,
-                            )
-                            logger.info(f"Assigned admin {admin_agent.name} to thread {thread_id} (random selection)")
-                    
-                    if not admin_agent:
-                        logger.warning(f"No online agents to notify for thread {thread_id}")
+
+                    # Current admin is creator-admin first, then auto-assigned admin.
+                    current_admin_id = ts.creator_admin_id or ts.auto_assigned_admin_id
+                    if not current_admin_id:
                         continue
-                    
-                    # Build explicit administrator-directed notification.
-                    admin_label = admin_agent.display_name or admin_agent.name or admin_agent.id
+
+                    current_admin_online = current_admin_id in thread_participant_ids
+                    if current_admin_online:
+                        continue
+
+                    current_admin = next((a for a in all_agents if a.id == current_admin_id), None)
+
+                    # Propose a candidate from online participants, excluding the current admin.
+                    candidate_pool = [a for a in participating_online_agents if a.id != current_admin_id]
+                    if not candidate_pool:
+                        logger.warning(f"No online candidate available for thread {thread_id} admin switch prompt")
+                        continue
+
+                    candidate_admin = random.choice(candidate_pool)
+
+                    current_admin_emoji = _agent_emoji(current_admin_id)
+                    current_admin_label = _agent_label(current_admin, current_admin_id)
+                    candidate_admin_emoji = _agent_emoji(candidate_admin.id)
+                    candidate_admin_label = _agent_label(candidate_admin, candidate_admin.id)
+
                     system_msg_content = (
-                        f"Coordination timeout: all online participants have been in msg_wait state for {int(elapsed)} seconds. "
-                        f"Administrator {admin_label} (id: {admin_agent.id}) should now lead coordination: "
-                        f"collect status updates, summarize progress, and assign next actions."
+                        "Possible administrator offline detected. "
+                        f"Current admin: {current_admin_emoji} {current_admin_label}. "
+                        f"Candidate admin: {candidate_admin_emoji} {candidate_admin_label}. "
+                        "Human confirmation is required before any admin change."
                     )
                     
                     metadata = {
+                        "ui_type": "admin_switch_confirmation_required",
                         "thread_id": thread_id,
-                        "admin_id": admin_agent.id,
-                        "admin_name": admin_agent.name,
+                        "reason": "possible_admin_offline",
+                        "current_admin_id": current_admin_id,
+                        "current_admin_name": current_admin_label,
+                        "current_admin_emoji": current_admin_emoji,
+                        "candidate_admin_id": candidate_admin.id,
+                        "candidate_admin_name": candidate_admin_label,
+                        "candidate_admin_emoji": candidate_admin_emoji,
                         "timeout_seconds": int(elapsed),
                         "online_agents_count": participant_count,
-                        "is_single_agent": False,
                         "triggered_at": datetime.now(timezone.utc).isoformat(),
+                        "ui_buttons": [
+                            {
+                                "action": "switch",
+                                "label": f"Switch admin to {candidate_admin_emoji} {candidate_admin_label}",
+                            },
+                            {
+                                "action": "keep",
+                                "label": f"Keep {current_admin_emoji} {current_admin_label} as admin",
+                            },
+                        ],
                     }
                     
                     # Post system message
@@ -264,6 +300,7 @@ async def _admin_coordinator_loop() -> None:
                             thread_id=thread_id,
                             content=system_msg_content,
                             metadata=metadata,
+                            clear_auto_admin=False,
                         ),
                         timeout=DB_TIMEOUT,
                     )
@@ -271,7 +308,12 @@ async def _admin_coordinator_loop() -> None:
                     # Clear wait states for this thread to avoid repeated notifications
                     clear_thread_wait_state(thread_id)
                     
-                    logger.info(f"Sent coordination timeout notice to admin {admin_agent.name} for thread {thread_id}")
+                    logger.info(
+                        "Sent admin-switch confirmation prompt for thread %s: current=%s, candidate=%s",
+                        thread_id,
+                        current_admin_id,
+                        candidate_admin.id,
+                    )
                     
                 except asyncio.TimeoutError:
                     logger.error(f"Timeout processing coordination for thread {thread_id}")
@@ -562,6 +604,7 @@ async def api_messages(
             "created_at": m.created_at.isoformat(),
             "metadata": m.metadata,
             "priority": m.priority,
+            "reply_to_msg_id": m.reply_to_msg_id,
             "reactions": reactions_map.get(m.id, []),
         }
         for m in msgs
@@ -780,6 +823,7 @@ class ThreadCreate(BaseModel):
     metadata: dict | None = None
     system_prompt: str | None = None
     template: str | None = None   # Template ID for defaults (UP-18)
+    creator_agent_id: str
 
 
 class TemplateCreate(BaseModel):
@@ -811,6 +855,7 @@ class MessageCreate(BaseModel):
     metadata: dict | None = None
     images: list[dict] | None = None  # [{url: str, name: str}, ...]
     priority: Literal["normal", "urgent", "system"] = "normal"  # UP-16
+    reply_to_msg_id: str | None = None  # UP-14: optional parent message ID
 
 class SyncContextRequest(BaseModel):
     agent_id: str | None = None
@@ -921,7 +966,10 @@ async def api_sync_context(thread_id: str, body: SyncContextRequest | None = Non
     return sync
 
 @app.post("/api/threads", status_code=201)
-async def api_create_thread(body: ThreadCreate):
+async def api_create_thread(
+    body: ThreadCreate,
+    x_agent_token: str | None = Header(default=None),
+):
     # QW-07: apply content filter to system_prompt to block embedded secrets
     if body.system_prompt:
         from src.content_filter import check_content
@@ -931,16 +979,31 @@ async def api_create_thread(body: ThreadCreate):
 
     try:
         db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
-        t = await asyncio.wait_for(
-            crud.thread_create(db, body.topic, body.metadata, body.system_prompt, template=body.template),
-            timeout=DB_TIMEOUT
-        )
-        sync = await asyncio.wait_for(
-            crud.issue_reply_token(db, thread_id=t.id),
+
+        if not x_agent_token:
+            raise HTTPException(
+                status_code=401,
+                detail="X-Agent-Token header required to create thread as a registered agent",
+            )
+
+        t, sync = await asyncio.wait_for(
+            create_thread_with_verified_creator(
+                db,
+                topic=body.topic,
+                creator_agent_id=body.creator_agent_id,
+                creator_token=x_agent_token,
+                metadata=body.metadata,
+                system_prompt=body.system_prompt,
+                template=body.template,
+            ),
             timeout=DB_TIMEOUT,
         )
     except asyncio.TimeoutError:
         raise HTTPException(status_code=503, detail="Database operation timeout")
+    except CreatorAuthError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except CreatorNotFoundError as e:
+        raise HTTPException(status_code=401, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return {"id": t.id, "topic": t.topic, "status": t.status, "system_prompt": t.system_prompt,
@@ -1011,7 +1074,8 @@ async def api_post_message(thread_id: str, body: MessageCreate, x_agent_token: s
                          reply_token=reply_token,
                          role=body.role,
                          metadata=msg_metadata if msg_metadata else None,
-                         priority=body.priority),
+                         priority=body.priority,
+                         reply_to_msg_id=body.reply_to_msg_id),
             timeout=DB_TIMEOUT
         )
     except MissingSyncFieldsError as e:
@@ -1064,7 +1128,7 @@ async def api_post_message(thread_id: str, body: MessageCreate, x_agent_token: s
     # Return the full message with metadata
     result = {"id": m.id, "seq": m.seq, "author": m.author,
             "role": m.role, "content": m.content, "created_at": m.created_at.isoformat(),
-            "priority": m.priority}
+            "priority": m.priority, "reply_to_msg_id": m.reply_to_msg_id}
 
     # Add metadata (includes mentions and images)
     if m.metadata:
@@ -1157,7 +1221,7 @@ async def api_agent_update(agent_id: str, body: AgentUpdate):
 
 
 @app.post("/api/agents/register", status_code=200)
-async def api_agent_register(body: AgentRegister):
+async def api_agent_register(body: AgentRegister, response: Response):
     try:
         db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
         a = await asyncio.wait_for(
@@ -1175,6 +1239,8 @@ async def api_agent_register(body: AgentRegister):
     except asyncio.TimeoutError:
         raise HTTPException(status_code=503, detail="Database operation timeout")
     import json as _json
+    response.set_cookie("acb_agent_id", a.id, httponly=True, samesite="lax", path="/")
+    response.set_cookie("acb_agent_token", a.token, httponly=True, samesite="lax", path="/")
     return {
         "agent_id": a.id,
         "name": a.name,
@@ -1200,7 +1266,7 @@ async def api_agent_heartbeat(body: AgentToken):
     return {"ok": ok}
 
 @app.post("/api/agents/resume")
-async def api_agent_resume(body: AgentToken):
+async def api_agent_resume(body: AgentToken, response: Response):
     try:
         db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
         a = await asyncio.wait_for(
@@ -1211,6 +1277,8 @@ async def api_agent_resume(body: AgentToken):
         raise HTTPException(status_code=503, detail="Database operation timeout")
     except ValueError:
         raise HTTPException(status_code=401, detail="Invalid agent_id/token")
+    response.set_cookie("acb_agent_id", a.id, httponly=True, samesite="lax", path="/")
+    response.set_cookie("acb_agent_token", body.token, httponly=True, samesite="lax", path="/")
     return {
         "ok": True,
         "agent_id": a.id,
@@ -1236,6 +1304,75 @@ async def api_agent_unregister(body: AgentToken):
     return {"ok": ok}
 
 
+@app.post("/api/agents/{agent_id}/kick")
+async def api_agent_kick(agent_id: str):
+    """Force an agent offline: interrupt msg_wait, remove from connections, backdate heartbeat.
+    
+    This is used to simulate agent crashes or forcibly disconnect misbehaving agents.
+    Does NOT require authentication.
+    """
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        agent = await asyncio.wait_for(crud.agent_get(db, agent_id), timeout=DB_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+    
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    # Step 1: Remove from all thread msg_wait states (interrupt long polls)
+    threads_interrupted = []
+    for thread_id in list(_thread_agent_wait_states.keys()):
+        if agent_id in _thread_agent_wait_states[thread_id]:
+            _thread_agent_wait_states[thread_id].pop(agent_id, None)
+            threads_interrupted.append(thread_id)
+            logger.info(f"[kick] Removed agent {agent_id} from msg_wait on thread {thread_id}")
+        if not _thread_agent_wait_states[thread_id]:
+            del _thread_agent_wait_states[thread_id]
+    
+    # Step 2: Remove from MCP connection registry (disconnect SSE/MCP sessions)
+    import uuid
+    sessions_disconnected = []
+    try:
+        from src.mcp_server import _connection_agents, pop_agent_for_session
+        for session_id in list(_connection_agents.keys()):
+            info = _connection_agents.get(session_id)
+            if info and info.get("agent_id") == agent_id:
+                result = pop_agent_for_session(session_id)
+                sessions_disconnected.append(session_id[:8])
+                logger.info(f"[kick] Removed agent {agent_id} from MCP session {session_id[:8]}...")
+    except Exception as e:
+        logger.warning(f"[kick] Could not remove from MCP connections: {e}")
+    
+    # Step 3: Mark agent offline by rotating token and backdating heartbeat
+    try:
+        now = datetime.now(timezone.utc)
+        old_heartbeat = now - timedelta(seconds=120)  # 120s in past, beyond 30s heartbeat window
+        new_token = str(uuid.uuid4())
+        
+        db2 = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        await asyncio.wait_for(
+            db2.execute(
+                "UPDATE agents SET token=?, last_heartbeat=? WHERE id=?",
+                (new_token, old_heartbeat.isoformat()+"+00:00", agent_id)
+            ),
+            timeout=DB_TIMEOUT
+        )
+        await asyncio.wait_for(db2.commit(), timeout=DB_TIMEOUT)
+        logger.info(f"[kick] Backdated heartbeat and rotated token for agent {agent_id}")
+    except Exception as e:
+        logger.warning(f"[kick] Could not update DB for agent {agent_id}: {e}")
+    
+    return {
+        "ok": True,
+        "agent_id": agent_id,
+        "agent_name": agent.display_name or agent.name,
+        "threads_interrupted": threads_interrupted,
+        "sessions_disconnected_count": len(sessions_disconnected),
+        "message": f"Agent {agent.display_name or agent.name} has been kicked offline. "
+                   f"Interrupted {len(threads_interrupted)} msg_wait(s), "
+                   f"disconnected {len(sessions_disconnected)} session(s)."
+    }
 
 
 
@@ -1426,6 +1563,9 @@ async def api_get_thread_settings(thread_id: str):
         "auto_assigned_admin_id": settings.auto_assigned_admin_id,
         "auto_assigned_admin_name": settings.auto_assigned_admin_name,
         "admin_assignment_time": settings.admin_assignment_time.isoformat() if settings.admin_assignment_time else None,
+        "creator_admin_id": settings.creator_admin_id,
+        "creator_admin_name": settings.creator_admin_name,
+        "creator_assignment_time": settings.creator_assignment_time.isoformat() if settings.creator_assignment_time else None,
         "created_at": settings.created_at.isoformat(),
         "updated_at": settings.updated_at.isoformat(),
     }
@@ -1436,6 +1576,12 @@ class ThreadSettingsUpdate(BaseModel):
     auto_coordinator_enabled: bool | None = None  # Backward compatibility alias
     timeout_seconds: int | None = None
     model_config = ConfigDict(extra="ignore")
+
+
+class AdminDecisionRequest(BaseModel):
+    action: Literal["switch", "keep"]
+    candidate_admin_id: str | None = None
+    source_message_id: str | None = None
 
 
 @app.post("/api/threads/{thread_id}/settings")
@@ -1520,14 +1666,132 @@ async def api_get_thread_admin(thread_id: str):
     return {"admin_id": None, "admin_name": None, "admin_type": None, "assigned_at": None}
 
 
+@app.post("/api/threads/{thread_id}/admin/decision")
+async def api_thread_admin_decision(thread_id: str, body: AdminDecisionRequest):
+    """Apply a human decision for admin switch confirmation prompts.
+
+    This endpoint is intended for the web UI: no admin change occurs until a human
+    explicitly clicks a decision button.
+    """
+    try:
+        db = await asyncio.wait_for(get_db(), timeout=DB_TIMEOUT)
+        t = await asyncio.wait_for(crud.thread_get(db, thread_id), timeout=DB_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+    if t is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    try:
+        settings = await asyncio.wait_for(
+            crud.thread_settings_get_or_create(db, thread_id),
+            timeout=DB_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+
+    current_admin_id = settings.creator_admin_id or settings.auto_assigned_admin_id
+    current_admin_name = settings.creator_admin_name or settings.auto_assigned_admin_name
+
+    if body.action == "switch":
+        if not body.candidate_admin_id:
+            raise HTTPException(status_code=400, detail="candidate_admin_id is required for action='switch'")
+
+        try:
+            candidate = await asyncio.wait_for(crud.agent_get(db, body.candidate_admin_id), timeout=DB_TIMEOUT)
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=503, detail="Database operation timeout")
+        if candidate is None:
+            raise HTTPException(status_code=404, detail="Candidate admin agent not found")
+
+        candidate_name = candidate.display_name or candidate.name or candidate.id
+        try:
+            await asyncio.wait_for(
+                crud.thread_settings_switch_admin(db, thread_id, candidate.id, candidate_name),
+                timeout=DB_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=503, detail="Database operation timeout")
+
+        old_badge = f"{_agent_emoji(current_admin_id)} {current_admin_name or current_admin_id or 'Unknown'}"
+        new_badge = f"{_agent_emoji(candidate.id)} {candidate_name}"
+        confirmation = (
+            f"Administrator switched by human decision: {old_badge} -> {new_badge}."
+        )
+        metadata = {
+            "ui_type": "admin_switch_decision_result",
+            "decision": "switch",
+            "thread_id": thread_id,
+            "source_message_id": body.source_message_id,
+            "previous_admin_id": current_admin_id,
+            "new_admin_id": candidate.id,
+            "new_admin_name": candidate_name,
+            "new_admin_emoji": _agent_emoji(candidate.id),
+            "decided_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        try:
+            await asyncio.wait_for(
+                crud._msg_create_system(
+                    db,
+                    thread_id=thread_id,
+                    content=confirmation,
+                    metadata=metadata,
+                    clear_auto_admin=False,
+                ),
+                timeout=DB_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=503, detail="Database operation timeout")
+
+        return {
+            "ok": True,
+            "action": "switch",
+            "thread_id": thread_id,
+            "new_admin_id": candidate.id,
+            "new_admin_name": candidate_name,
+        }
+
+    kept_badge = f"{_agent_emoji(current_admin_id)} {current_admin_name or current_admin_id or 'Unknown'}"
+    confirmation = f"Administrator kept by human decision: {kept_badge}."
+    metadata = {
+        "ui_type": "admin_switch_decision_result",
+        "decision": "keep",
+        "thread_id": thread_id,
+        "source_message_id": body.source_message_id,
+        "kept_admin_id": current_admin_id,
+        "kept_admin_name": current_admin_name,
+        "kept_admin_emoji": _agent_emoji(current_admin_id),
+        "decided_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    try:
+        await asyncio.wait_for(
+            crud._msg_create_system(
+                db,
+                thread_id=thread_id,
+                content=confirmation,
+                metadata=metadata,
+                clear_auto_admin=False,
+            ),
+            timeout=DB_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database operation timeout")
+
+    return {
+        "ok": True,
+        "action": "keep",
+        "thread_id": thread_id,
+        "kept_admin_id": current_admin_id,
+        "kept_admin_name": current_admin_name,
+    }
+
+
 
 # ─────────────────────────────────────────────
-# Health check
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-
-# ─────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 # Metrics (UP-22)
-# ─────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 
 @app.get("/api/metrics")
 async def get_metrics():
@@ -1556,6 +1820,9 @@ async def get_metrics():
         "schema_version": SCHEMA_VERSION,
     }
 
+
+# Health check
+# ──────────────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 async def health():

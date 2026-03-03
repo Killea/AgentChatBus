@@ -25,6 +25,25 @@ def _require_server_or_skip(client: httpx.Client) -> None:
     pytest.skip(f"AgentChatBus server is not reachable at {BASE_URL}")
 
 
+def _register_agent(client: httpx.Client) -> tuple[str, str]:
+    resp = client.post(
+        "/api/agents/register",
+        json={"ide": "VS Code", "model": "GPT-5.3-Codex"},
+    )
+    assert resp.status_code == 200, resp.text
+    payload = resp.json()
+    return payload["agent_id"], payload["token"]
+
+
+def _create_thread(client: httpx.Client, topic: str) -> httpx.Response:
+    creator_id, creator_token = _register_agent(client)
+    return client.post(
+        "/api/threads",
+        json={"topic": topic, "creator_agent_id": creator_id},
+        headers={"X-Agent-Token": creator_token},
+    )
+
+
 def _sync_and_post(client: httpx.Client, thread_id: str, payload: dict) -> dict:
     """Helper to sync context and post message in one call."""
     sync = client.post(f"/api/threads/{thread_id}/sync-context", json={}).json()
@@ -38,7 +57,7 @@ def export_thread_id() -> str:
     """Thread with 3 messages for export tests."""
     with _build_client() as client:
         _require_server_or_skip(client)
-        r = client.post("/api/threads", json={"topic": "Export-Test-UI03"})
+        r = _create_thread(client, "Export-Test-UI03")
         assert r.status_code == 201, r.text
         tid = r.json()["id"]
 
@@ -100,7 +119,7 @@ def test_export_empty_thread():
     """Thread with no messages returns a markdown header without message sections."""
     with _build_client() as client:
         _require_server_or_skip(client)
-        r = client.post("/api/threads", json={"topic": "Export-Empty-UI03"})
+        r = _create_thread(client, "Export-Empty-UI03")
         assert r.status_code == 201
         tid = r.json()["id"]
 
@@ -116,9 +135,7 @@ def test_export_special_chars():
     """Topic and content with special Markdown chars must not corrupt output."""
     with _build_client() as client:
         _require_server_or_skip(client)
-        r = client.post(
-            "/api/threads", json={"topic": "Export Special & Chars | Test # 42"}
-        )
+        r = _create_thread(client, "Export Special & Chars | Test # 42")
         assert r.status_code == 201
         tid = r.json()["id"]
 

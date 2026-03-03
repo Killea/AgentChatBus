@@ -486,6 +486,17 @@ async def init_schema(db: aiosqlite.Connection) -> None:
     # Migration: Add priority column to messages (UP-16)
     await _add_column_if_missing(db, "messages", "priority", "TEXT NOT NULL DEFAULT 'normal'")
 
+    # Migration: Add reply_to_msg_id column to messages (UP-14)
+    await _add_column_if_missing(db, "messages", "reply_to_msg_id", "TEXT")
+    try:
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_reply ON messages(reply_to_msg_id)"
+        )
+        await db.commit()
+        logger.info("Migration: ensured reply_to_msg_id column + index exist (UP-14)")
+    except Exception as e:
+        logger.error(f"Migration failed for reply_to_msg_id index: {e}")
+
     # Migration: Create reactions table if it does not exist (UP-13)
     # Safe for existing DBs — CREATE TABLE IF NOT EXISTS + CREATE UNIQUE INDEX IF NOT EXISTS
     try:

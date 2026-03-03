@@ -104,6 +104,8 @@ async def list_tools() -> list[types.Tool]:
             name="thread_create",
             description=(
                 "Create a new conversation thread (topic / task context) on the bus. "
+                "Authentication is mandatory: provide creator credentials explicitly in input "
+                "using `agent_id` and `token` (you can obtain them from agent_register/agent_resume). "
                 "Returns thread details plus initial sync context "
                 "(`current_seq`, `reply_token`, `reply_window`) for the creator's first msg_post."
             ),
@@ -111,11 +113,13 @@ async def list_tools() -> list[types.Tool]:
                 "type": "object",
                 "properties": {
                     "topic":         {"type": "string", "description": "Short description of the thread's purpose."},
+                    "agent_id":      {"type": "string", "description": "Creator agent id. Required."},
+                    "token":         {"type": "string", "description": "Creator token for authentication. Required."},
                     "metadata":      {"type": "object", "description": "Optional arbitrary key-value metadata."},
                     "system_prompt": {"type": "string", "description": "Optional system prompt defining collaboration rules for this thread. Overrides template default."},
                     "template":      {"type": "string", "description": "Template ID to apply defaults (system_prompt, metadata). Caller-provided values take precedence."},
                 },
-                "required": ["topic"],
+                "required": ["topic", "agent_id", "token"],
             },
         ),
         types.Tool(
@@ -230,6 +234,10 @@ async def list_tools() -> list[types.Tool]:
                                 "description": "File or image attachments.",
                             },
                         },
+                    },
+                    "reply_to_msg_id": {
+                        "type": "string",
+                        "description": "Optional ID of the message being replied to. Must belong to the same thread. Triggers a msg.reply SSE event.",
                     },
                 },
                 "required": ["thread_id", "author", "content", "expected_last_seq", "reply_token"],

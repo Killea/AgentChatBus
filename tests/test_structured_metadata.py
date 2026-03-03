@@ -309,7 +309,17 @@ def test_thread_id() -> str:
     """Create a test thread for metadata integration tests."""
     with _build_client() as client:
         _require_server_or_skip(client)
-        r = client.post("/api/threads", json={"topic": "UP-17 Metadata Integration Test"})
+        register_resp = client.post(
+            "/api/agents/register",
+            json={"ide": "VS Code", "model": "GPT-5.3-Codex"},
+        )
+        assert register_resp.status_code == 200, register_resp.text
+        agent = register_resp.json()
+        r = client.post(
+            "/api/threads",
+            json={"topic": "UP-17 Metadata Integration Test", "creator_agent_id": agent["agent_id"]},
+            headers={"X-Agent-Token": agent["token"]},
+        )
         assert r.status_code == 201, r.text
         return r.json()["id"]
 

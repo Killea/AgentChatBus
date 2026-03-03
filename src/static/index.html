@@ -91,6 +91,7 @@
   <script src="/static/js/components/acb-thread-header.js?v=2"></script>
   <script src="/static/js/components/acb-thread-item.js?v=2"></script>
   <script src="/static/js/components/acb-message-tail-meta.js?v=1"></script>
+  <script src="/static/js/components/acb-admin-switch-card.js?v=1"></script>
   <script src="/static/js/components/acb-compose-shell.js?v=3"></script>
   <script src="/static/js/components/acb-agent-status-shell.js?v=2"></script>
   <script src="/static/js/shared-threads.js?v=2"></script>
@@ -718,20 +719,36 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         return;
       }
 
-      // ---- System event (centered pill) or system prompt (collapsable bubble) -------------------------
-      if (m.role === 'system' && m.author === 'system') {
-<<<<<<< HEAD
-        const pill = document.createElement('div');
-        pill.className = 'msg-sys-event';
-        const sentAt = fmtTime(m.created_at);
-        pill.textContent = sentAt ? `${sentAt}  ${m.content}` : m.content;
-        if (m.created_at) {
-          pill.title = `sent at ${m.created_at}`;
+      const parseMetadata = (raw) => {
+        if (!raw) return null;
+        if (typeof raw === 'object') return raw;
+        if (typeof raw !== 'string') return null;
+        try {
+          return JSON.parse(raw);
+        } catch {
+          return null;
         }
-        box.appendChild(pill);
-=======
+      };
+
+      // ---- System event (centered pill / action card) or system prompt (collapsable bubble) ---------------------
+      if (m.role === 'system' && m.author === 'system') {
+        const metaObj = parseMetadata(m.metadata);
+        if (metaObj && metaObj.ui_type === 'admin_switch_confirmation_required') {
+          const card = document.createElement('acb-admin-switch-card');
+          if (typeof card.setData === 'function') {
+            card.setData({
+              message: m,
+              metadata: metaObj,
+              threadId: metaObj.thread_id || activeThreadId,
+              api,
+            });
+          }
+          box.appendChild(card);
+          return;
+        }
+
+        // System prompt (seq=0): collapsable bubble with Markdown rendering
         if (m.seq === 0) {
-          // System prompt (seq=0): collapsable bubble with Markdown rendering
           const wrapper = document.createElement('div');
           wrapper.className = 'msg-sys-prompt';
           wrapper.setAttribute('data-seq', '0');
@@ -761,14 +778,18 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
           wrapper.appendChild(promptHeader);
           wrapper.appendChild(promptBody);
           box.appendChild(wrapper);
-        } else {
-          // Other system events: centered pill (unchanged)
-          const pill = document.createElement('div');
-          pill.className = 'msg-sys-event';
-          pill.textContent = m.content;
-          box.appendChild(pill);
+          return;
         }
->>>>>>> f779396 (feat(ui): system prompt collapsable bubble with Markdown rendering (UI-06))
+
+        // Other system events: centered pill
+        const pill = document.createElement('div');
+        pill.className = 'msg-sys-event';
+        const sentAt = fmtTime(m.created_at);
+        pill.textContent = sentAt ? `${sentAt}  ${m.content}` : m.content;
+        if (m.created_at) {
+          pill.title = `sent at ${m.created_at}`;
+        }
+        box.appendChild(pill);
         return;
       }
 
@@ -788,10 +809,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       row.setAttribute('data-seq', String(m.seq));
 
       // Check if this message has mentions (look in metadata if string/object)
-      let metaObj = null;
-      if (m.metadata) {
-        metaObj = (typeof m.metadata === 'string') ? JSON.parse(m.metadata) : m.metadata;
-      }
+      let metaObj = parseMetadata(m.metadata);
       const hasMentions = metaObj && metaObj.mentions && Array.isArray(metaObj.mentions) && metaObj.mentions.length > 0;
       if (hasMentions) {
         row.classList.add('message-has-mentions');
@@ -817,6 +835,11 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         priorityBadgeHtml = '<span class="msg-priority-badge msg-priority-system" title="System message">SYSTEM</span>';
       }
 
+      // Reply-to quote (UP-14)
+      const replyQuoteHtml = m.reply_to_msg_id
+        ? `<div class="msg-reply-quote" title="In reply to message ${esc(m.reply_to_msg_id)}">&#8617; In reply to: <em>${esc(m.reply_to_msg_id.slice(0, 8))}…</em></div>`
+        : '';
+
       row.innerHTML = `
       <div class="msg-avatar" style="background:${bgAlpha};color:${color};border:1px solid ${color}44">${avatarEmoji}</div>
       <div class="msg-col">
@@ -826,6 +849,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
           ${priorityBadgeHtml}
           ${handoffBadgeHtml}
         </div>
+        ${replyQuoteHtml}
         <div class="bubble-v2" style="border-color:${color}55;${isHuman ? 'border-right-color' : 'border-left-color'}:${color}"></div>
         ${isAgentMessage ? '<acb-message-tail-meta></acb-message-tail-meta>' : ''}
         <div class="msg-reactions"></div>
