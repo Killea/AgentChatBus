@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -17,7 +17,7 @@
 
   <!-- ---- Top bar -------------------------------------------------------------- -->
   <div id="topbar">
-    <button id="mobile-menu-btn" type="button" aria-label="Toggle sidebar">☰</button>
+    <button id="mobile-menu-btn" type="button" aria-label="Toggle sidebar">â˜°</button>
     <button id="desktop-sidebar-toggle" type="button" aria-label="Toggle sidebar" title="Toggle sidebar">
       <svg id="sidebar-toggle-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="15 18 9 12 15 6"/>
@@ -33,9 +33,9 @@
     <div class="status-label" id="status-label">Connected</div>
     <!-- <button id="btn-theme-toggle" type="button" onclick="toggleTheme()">Light</button> -->
     <!-- <button id="btn-settings" type="button" onclick="openSettingsModal()" title="MCP Server Settings"
-      style="background: transparent; border: 1px solid var(--border-light); border-radius: 8px; font-size: 16px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-1); margin-left: 8px; transition: background 0.15s;">⚙️</button> -->
+      style="background: transparent; border: 1px solid var(--border-light); border-radius: 8px; font-size: 16px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-1); margin-left: 8px; transition: background 0.15s;">☑️</button> -->
     <button id="btn-theme-toggle" type="button" title="Switch to light theme" aria-label="Switch theme" onclick="toggleTheme()">
-      <!-- Sun icon — shown in dark mode (switch to light) -->
+      <!-- Sun icon â€” shown in dark mode (switch to light) -->
       <svg id="theme-icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <circle cx="12" cy="12" r="5"/>
         <line x1="12" y1="1" x2="12" y2="3"/>
@@ -47,12 +47,12 @@
         <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
         <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
       </svg>
-      <!-- Moon icon — shown in light mode (switch to dark) -->
+      <!-- Moon icon â€” shown in light mode (switch to dark) -->
       <svg id="theme-icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none">
         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
       </svg>
     </button>
-    <acb-icon-button button-id="btn-new-thread" label="＋ New Thread" action="openModal"
+    <acb-icon-button button-id="btn-new-thread" label="ï¼‹ New Thread" action="openModal"
       title="Create new thread"></acb-icon-button>
     <button id="btn-settings" type="button" title="MCP Server Settings" aria-label="MCP Server Settings" onclick="openSettingsModal()">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -86,7 +86,7 @@
           <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
-          <input id="search-input" type="text" placeholder="Search messages…" autocomplete="off" spellcheck="false" aria-label="Search query"/>
+          <input id="search-input" type="text" placeholder="Search messagesâ€¦" autocomplete="off" spellcheck="false" aria-label="Search query"/>
           <span id="search-counter" class="search-counter" aria-live="polite"></span>
           <button id="search-prev" class="search-nav-btn" title="Previous match" aria-label="Previous match">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
@@ -94,7 +94,7 @@
           <button id="search-next" class="search-nav-btn" title="Next match" aria-label="Next match">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
-          <button id="search-close" class="search-close-btn" title="Close search (Esc)" aria-label="Close search">×</button>
+          <button id="search-close" class="search-close-btn" title="Close search (Esc)" aria-label="Close search">Ã—</button>
         </div>
         <div class="search-pills-row">
           <span class="search-pills-label">Search in:</span>
@@ -146,7 +146,7 @@
     </div>
   </div>
 
-  <!-- ── Confirm dialog (reusable) ─────── -->
+  <!-- â”€â”€ Confirm dialog (reusable) â”€â”€â”€â”€â”€â”€â”€ -->
   <acb-confirm-dialog id="confirm-dialog"></acb-confirm-dialog>
 
 
@@ -346,7 +346,7 @@
       const CACHE_TTL = 30000; // 30s
 
       function _fmtUptime(seconds) {
-        if (seconds == null) return '—';
+        if (seconds == null) return 'â€”';
         const s = Math.round(seconds);
         if (s < 60) return `${s}s`;
         if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
@@ -356,7 +356,7 @@
       }
 
       function _fmtDate(iso) {
-        if (!iso) return '—';
+        if (!iso) return 'â€”';
         try {
           return new Date(iso).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
         } catch { return iso; }
@@ -364,7 +364,7 @@
 
       function _buildHtml(m, connected) {
         const dot = connected ? '<span class="srv-tip-dot srv-tip-dot--on"></span>' : '<span class="srv-tip-dot srv-tip-dot--off"></span>';
-        const stateLabel = connected ? 'Connected' : 'Reconnecting…';
+        const stateLabel = connected ? 'Connected' : 'Reconnectingâ€¦';
 
         const byStatus = m.threads?.by_status || {};
         const statusEntries = Object.entries(byStatus)
@@ -392,17 +392,17 @@
             </div>
             <div class="srv-tip-row">
               <span class="srv-tip-key">Schema</span>
-              <span class="srv-tip-val">v${m.schema_version ?? '—'}</span>
+              <span class="srv-tip-val">v${m.schema_version ?? 'â€”'}</span>
             </div>
             <div class="srv-tip-divider"></div>
             <div class="srv-tip-row">
               <span class="srv-tip-key">Threads</span>
-              <span class="srv-tip-val">${m.threads?.total ?? '—'}</span>
+              <span class="srv-tip-val">${m.threads?.total ?? 'â€”'}</span>
             </div>
             ${statusEntries ? `<div class="srv-tip-badges">${statusEntries}</div>` : ''}
             <div class="srv-tip-row">
               <span class="srv-tip-key">Messages</span>
-              <span class="srv-tip-val">${m.messages?.total ?? '—'}</span>
+              <span class="srv-tip-val">${m.messages?.total ?? 'â€”'}</span>
             </div>
             <div class="srv-tip-row srv-tip-row--sub">
               <span class="srv-tip-key">Activity</span>
@@ -414,7 +414,7 @@
             </div>
             <div class="srv-tip-row">
               <span class="srv-tip-key">Agents online</span>
-              <span class="srv-tip-val">${m.agents?.online ?? '—'} / ${m.agents?.total ?? '—'}</span>
+              <span class="srv-tip-val">${m.agents?.online ?? 'â€”'} / ${m.agents?.total ?? 'â€”'}</span>
             </div>
           </div>`;
       }
@@ -433,7 +433,7 @@
         const connected = document.getElementById('status-dot')?.style.background?.includes('green') || isConnected;
         const html = _metricsCache
           ? _buildHtml(_metricsCache, connected)
-          : `<div class="srv-tip-card"><div class="srv-tip-header"><span class="srv-tip-title">AgentChatBus</span></div><div class="srv-tip-row"><span class="srv-tip-key">Status</span><span class="srv-tip-val">${connected ? 'Connected' : 'Reconnecting…'}</span></div></div>`;
+          : `<div class="srv-tip-card"><div class="srv-tip-header"><span class="srv-tip-title">AgentChatBus</span></div><div class="srv-tip-row"><span class="srv-tip-key">Status</span><span class="srv-tip-val">${connected ? 'Connected' : 'Reconnectingâ€¦'}</span></div></div>`;
         window.AcbTooltip.showRich(anchorEl, html, { className: 'acb-tooltip-srv', maxWidth: '260px' });
       }
 
@@ -658,7 +658,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       const label = document.getElementById('status-label');
       dot.style.background = v ? 'var(--green)' : 'var(--red)';
       dot.style.boxShadow = v ? '0 0 8px var(--green)' : '0 0 8px var(--red)';
-      label.textContent = v ? 'Connected' : 'Reconnecting…';
+      label.textContent = v ? 'Connected' : 'Reconnectingâ€¦';
       return window.AcbSSE.setConnectedUI(v);
     }
 
@@ -798,7 +798,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
 
     function openThreadContextMenu(event, thread) {
       contextMenuThread = window.AcbThreads.openThreadContextMenu(event, thread);
-      // 保存右键点击的位置，用于确认对话框定位
+      // ä¿å­˜å³é”®ç‚¹å‡»çš„ä½ç½®ï¼Œç”¨äºŽç¡®è®¤å¯¹è¯æ¡†å®šä½
       contextMenuThread._clickX = event.clientX;
       contextMenuThread._clickY = event.clientY;
     }
@@ -943,7 +943,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
                     return window.AcbMessageRenderer.renderMessageContent(containerEl, rawText, metadata);
     }
 
-    // ── Copy message content to clipboard ────────────────────────────────────
+    // â”€â”€ Copy message content to clipboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     window.AcbCopyMsg = function(btn) {
       const bubble = btn.closest('.msg-col')?.querySelector('.bubble-v2');
       if (!bubble) return;
@@ -1064,7 +1064,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
             promptHeader.querySelector('.msg-sys-prompt-chevron').innerHTML = !expanded ? '&#9650;' : '&#9660;';
             promptHeader.querySelector('.msg-sys-prompt-label').textContent = !expanded
               ? 'Thread Instructions (system)'
-              : 'Thread Instructions (system) — click to expand';
+              : 'Thread Instructions (system) u{2014} click to expand';
           });
 
           wrapper.appendChild(promptHeader);
@@ -1115,12 +1115,15 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
 
       const authorLabel = String(m.author_name ?? m.author ?? '').trim() || 'unknown';
       const isSystem = String(m.role ?? '').toLowerCase() === 'system' || authorLabel.toLowerCase() === 'system';
-      const isHuman = authorLabel.toLowerCase() === 'human';
+      const isHuman = !m.author_id && (
+        authorLabel.toLowerCase() === 'human'
+        || String(m.role ?? '').toLowerCase() === 'user'
+      );
       const authorKey = isHuman ? 'human' : (isSystem ? 'system' : String(m.author_id ?? authorLabel));
       const color = authorColor(authorKey);
       const avatarEmoji = String(m.author_emoji || '').trim()
         || String(currentAgents?.find((a) => a.id === String(m.author_id ?? ''))?.emoji || '').trim()
-        || (isHuman ? '👤' : (isSystem ? '⚙️' : '🤖'));
+        || (isHuman ? '👤' : (isSystem ? '☑️' : '🤖'));
       const bgAlpha = `${color}22`;  // ~13% alpha tint for avatar bg
       const isAgentMessage = !isHuman && !isSystem;
       const sentAtLabel = fmtTime(m.created_at);
@@ -1159,7 +1162,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
 
       // Reply-to quote (UP-14)
       const replyQuoteHtml = m.reply_to_msg_id
-        ? `<div class="msg-reply-quote" title="In reply to message ${esc(m.reply_to_msg_id)}">&#8617; In reply to: <em>${esc(m.reply_to_msg_id.slice(0, 8))}…</em></div>`
+        ? `<div class="msg-reply-quote" title="In reply to message ${esc(m.reply_to_msg_id)}">&#8617; In reply to: <em>${esc(m.reply_to_msg_id.slice(0, 8))}â€¦</em></div>`
         : '';
 
       row.innerHTML = `
@@ -1248,7 +1251,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
             const pill = document.createElement('span');
             pill.className = 'reaction-pill';
             pill.title = agents.join(', ');
-            pill.textContent = agents.length > 1 ? `${label} ×${agents.length}` : label;
+            pill.textContent = agents.length > 1 ? `${label} Ã—${agents.length}` : label;
             reactionsEl.appendChild(pill);
           }
         }
@@ -1308,7 +1311,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
           <div class="msg-col">
             <div class="msg-header">
               <span class="msg-author-label" style="color:${color}">${esc(agentId)}</span>
-              <span class="msg-time-label">typing…</span>
+              <span class="msg-time-label">typingâ€¦</span>
             </div>
             <div class="typing-bubble"><span></span><span></span><span></span></div>
           </div>`;
@@ -1400,7 +1403,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
 
     function getStateEmoji(state) {
       const map = { 'Offline': '⚫', 'Waiting': '⏳', 'Active': '🟢' };
-      return map[state] || 'Γ¥ô';
+      return map[state] || '❓';
     }
 
     // ==============================================================================================
@@ -1435,7 +1438,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     // Extras: thread state & close (REST shims)
     // ==============================================================================================
     // Extend the REST API with two extra POST endpoints that main.py may serve later.
-    // If they 404, we silently ignore ΓÇö the MCP tool path is the canonical way.
+    // If they 404, we silently ignore Î“Ã‡Ã¶ the MCP tool path is the canonical way.
 
     // ==============================================================================================
     // Utilities
