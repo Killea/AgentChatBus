@@ -357,7 +357,7 @@ async def thread_delete(db: aiosqlite.Connection, thread_id: str) -> dict | None
     Returns a dict with audit info (thread_id, topic, message_count) on success,
     or None if the thread does not exist.
     
-    All dependent records (events, messages, reply_tokens) are deleted first to satisfy
+    All dependent records (events, reactions, messages, reply_tokens, thread_settings) are deleted first to satisfy
     FK constraints. All deletes are wrapped in a single transaction with rollback on error.
     """
     async with db.execute("SELECT * FROM threads WHERE id = ?", (thread_id,)) as cur:
@@ -374,8 +374,14 @@ async def thread_delete(db: aiosqlite.Connection, thread_id: str) -> dict | None
     try:
         # Delete dependent records first (satisfy FK constraints)
         await db.execute("DELETE FROM events WHERE thread_id = ?", (thread_id,))
+        # reactions -> messages FK
+        await db.execute(
+            "DELETE FROM reactions WHERE message_id IN (SELECT id FROM messages WHERE thread_id = ?)",
+            (thread_id,),
+        )
         await db.execute("DELETE FROM messages WHERE thread_id = ?", (thread_id,))
         await db.execute("DELETE FROM reply_tokens WHERE thread_id = ?", (thread_id,))
+        await db.execute("DELETE FROM thread_settings WHERE thread_id = ?", (thread_id,))
         # Finally delete the thread itself
         await db.execute("DELETE FROM threads WHERE id = ?", (thread_id,))
         await db.commit()

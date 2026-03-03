@@ -252,5 +252,41 @@ async def test_system_message_creation(db):
     assert len(system_msgs) > 0
 
 
+@pytest.mark.asyncio
+async def test_thread_delete_with_reactions_and_settings(db):
+    """Deleting a thread must remove dependent rows and not violate FK constraints."""
+    thread_id = await create_test_thread(db)
+
+    # Ensure settings row exists (created automatically on thread_create path).
+    settings = await crud.thread_settings_get_or_create(db, thread_id)
+    assert settings.thread_id == thread_id
+
+    # Create a message and a reaction that references this message.
+    sync = await crud.issue_reply_token(db, thread_id=thread_id)
+    msg = await crud.msg_post(
+        db,
+        thread_id=thread_id,
+        author="test-agent",
+        content="msg for delete",
+        expected_last_seq=sync["current_seq"],
+        reply_token=sync["reply_token"],
+        role="user",
+    )
+    await crud.msg_react(db, message_id=msg.id, agent_id=None, reaction="ack")
+
+    deleted = await crud.thread_delete(db, thread_id)
+    assert deleted is not None
+    assert deleted["thread_id"] == thread_id
+
+    # Verify thread and dependents are gone.
+    assert await crud.thread_get(db, thread_id) is None
+    async with db.execute("SELECT COUNT(*) AS cnt FROM thread_settings WHERE thread_id = ?", (thread_id,)) as cur:
+        assert (await cur.fetchone())["cnt"] == 0
+    async with db.execute(
+        "SELECT COUNT(*) AS cnt FROM reactions WHERE message_id = ?", (msg.id,)
+    ) as cur:
+        assert (await cur.fetchone())["cnt"] == 0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
