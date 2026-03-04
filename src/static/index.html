@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -33,7 +33,7 @@
     <div class="status-label" id="status-label">Connected</div>
     <!-- <button id="btn-theme-toggle" type="button" onclick="toggleTheme()">Light</button> -->
     <!-- <button id="btn-settings" type="button" onclick="openSettingsModal()" title="MCP Server Settings"
-      style="background: transparent; border: 1px solid var(--border-light); border-radius: 8px; font-size: 16px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-1); margin-left: 8px; transition: background 0.15s;">⚙️</button> -->
+      style="background: transparent; border: 1px solid var(--border-light); border-radius: 8px; font-size: 16px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-1); margin-left: 8px; transition: background 0.15s;">☑️</button> -->
     <button id="btn-theme-toggle" type="button" title="Switch to light theme" aria-label="Switch theme" onclick="toggleTheme()">
       <!-- Sun icon — shown in dark mode (switch to light) -->
       <svg id="theme-icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1064,7 +1064,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
             promptHeader.querySelector('.msg-sys-prompt-chevron').innerHTML = !expanded ? '&#9650;' : '&#9660;';
             promptHeader.querySelector('.msg-sys-prompt-label').textContent = !expanded
               ? 'Thread Instructions (system)'
-              : 'Thread Instructions (system) — click to expand';
+              : 'Thread Instructions (system) u{2014} click to expand';
           });
 
           wrapper.appendChild(promptHeader);
@@ -1115,12 +1115,15 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
 
       const authorLabel = String(m.author_name ?? m.author ?? '').trim() || 'unknown';
       const isSystem = String(m.role ?? '').toLowerCase() === 'system' || authorLabel.toLowerCase() === 'system';
-      const isHuman = authorLabel.toLowerCase() === 'human';
+      const isHuman = !m.author_id && (
+        authorLabel.toLowerCase() === 'human'
+        || String(m.role ?? '').toLowerCase() === 'user'
+      );
       const authorKey = isHuman ? 'human' : (isSystem ? 'system' : String(m.author_id ?? authorLabel));
       const color = authorColor(authorKey);
       const avatarEmoji = String(m.author_emoji || '').trim()
         || String(currentAgents?.find((a) => a.id === String(m.author_id ?? ''))?.emoji || '').trim()
-        || (isHuman ? '👤' : (isSystem ? '⚙️' : '🤖'));
+        || (isHuman ? '👤' : (isSystem ? '☑️' : '🤖'));
       const bgAlpha = `${color}22`;  // ~13% alpha tint for avatar bg
       const isAgentMessage = !isHuman && !isSystem;
       const sentAtLabel = fmtTime(m.created_at);
@@ -1400,7 +1403,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
 
     function getStateEmoji(state) {
       const map = { 'Offline': '⚫', 'Waiting': '⏳', 'Active': '🟢' };
-      return map[state] || 'Γ¥ô';
+      return map[state] || '❓';
     }
 
     // ==============================================================================================
@@ -1435,7 +1438,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     // Extras: thread state & close (REST shims)
     // ==============================================================================================
     // Extend the REST API with two extra POST endpoints that main.py may serve later.
-    // If they 404, we silently ignore ΓÇö the MCP tool path is the canonical way.
+    // If they 404, we silently ignore — the MCP tool path is the canonical way.
 
     // ==============================================================================================
     // Utilities

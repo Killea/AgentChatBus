@@ -1697,25 +1697,42 @@ body[data-theme="light"] .msg-sys-admin-human-note-icon {
   display: flex;
 }
 
-#compose-author {
-  background: var(--bg-input);
-  border: 1px solid var(--border-light);
-  color: var(--text-2);
+#compose-author-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
   border-radius: 10px;
-  padding: 10px 14px;
-  font-size: 13.5px;
-  font-family: inherit;
-  width: 80px;
   flex-shrink: 0;
-  text-align: center;
   align-self: flex-start;
   height: 42px;
+  box-sizing: border-box;
+  transition: border-color .15s;
+}
+
+#compose-author-wrap:focus-within {
+  border-color: var(--accent) !important;
+}
+
+#compose-author-avatar {
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+#compose-author {
+  background: transparent;
+  border: none;
+  color: var(--text-1);
+  font-size: 13.5px;
+  font-family: inherit;
+  width: 72px;
+  text-align: center;
   box-sizing: border-box;
 }
 
 #compose-author:focus {
   outline: none;
-  border-color: var(--accent);
 }
 
 #compose-input {

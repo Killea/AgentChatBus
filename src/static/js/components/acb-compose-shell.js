@@ -8,9 +8,14 @@
     connectedCallback() {
       if (this.childElementCount > 0) return;
 
+      const HUMAN_COLOR = '#fb923c';
+
       this.innerHTML = `
         <div id="compose">
-          <input id="compose-author" type="text" value="human" placeholder="author" />
+          <div id="compose-author-wrap">
+            <span id="compose-author-avatar">👤</span>
+            <input id="compose-author" type="text" value="human" placeholder="name" />
+          </div>
           <div style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
             <div id="mentions-bar" style="display:none; padding: 5px; font-size: 0.85em; background: rgba(0,0,0,0.1); border-radius: 4px; margin-bottom: 5px;">
               <span id="mentioned-agents"></span>
@@ -21,6 +26,28 @@
           </div>
           <button id="btn-send" onclick="sendMessage()" title="Send">➤</button>
         </div>`;
+
+      // Fix 2 — Persistance du nom via localStorage
+      const authorInput = this.querySelector('#compose-author');
+      if (authorInput) {
+        const savedName = localStorage.getItem('acb-human-name');
+        if (savedName) authorInput.value = savedName;
+        authorInput.addEventListener('input', () => {
+          const val = authorInput.value.trim();
+          if (val) localStorage.setItem('acb-human-name', val);
+        });
+      }
+
+      // Fix 3 — Couleur orange du wrapper auteur
+      const wrap = this.querySelector('#compose-author-wrap');
+      const avatar = this.querySelector('#compose-author-avatar');
+      if (wrap) {
+        wrap.style.border = `1px solid ${HUMAN_COLOR}44`;
+        wrap.style.borderRadius = '6px';
+      }
+      if (avatar) {
+        avatar.style.color = HUMAN_COLOR;
+      }
 
       const input = this.querySelector('#compose-input');
       if (input) {
