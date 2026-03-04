@@ -930,6 +930,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       document.getElementById('messages').innerHTML = EMPTY_STATE_TEMPLATE;
       const sysArea = document.getElementById('sys-prompt-area');
       if (sysArea) sysArea.innerHTML = '';
+      _sysPromptCollapsedOnce = false;
       updateOnlinePresence();
     }
 
@@ -1005,6 +1006,9 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       const targetId = btn.dataset.replyTarget;
       if (targetId) window.AcbScrollToMsg(targetId);
     });
+
+    // one-shot flag: collapse sys-prompt only on first real message per thread
+    let _sysPromptCollapsedOnce = false;
 
     function appendBubble(m) {
       const box = document.getElementById('messages');
@@ -1142,6 +1146,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
           const sysArea = document.getElementById('sys-prompt-area') || box;
           sysArea.innerHTML = '';
           sysArea.appendChild(wrapper);
+          _sysPromptCollapsedOnce = false;
           return;
         }
 
@@ -1333,9 +1338,9 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       box.appendChild(row);
       if (window.AcbNavSidebar) window.AcbNavSidebar.onNewMessage();
 
-      // UI-07: collapse system prompt on first real message
+      // UI-07: collapse system prompt on first real message (one-shot per thread)
       const sysArea = document.getElementById('sys-prompt-area');
-      if (sysArea) {
+      if (sysArea && !_sysPromptCollapsedOnce) {
         const header = sysArea.querySelector('.msg-sys-prompt-header');
         const body = sysArea.querySelector('.msg-sys-prompt-body');
         if (header && body && header.getAttribute('aria-expanded') === 'true') {
@@ -1347,6 +1352,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
           if (chevron) chevron.innerHTML = '&#9660;';
           if (label) label.textContent = 'Thread Instructions (system) — click to expand';
         }
+        _sysPromptCollapsedOnce = true;
       }
     }
     // ---- Typing indicator ----------------------------------------------------------------------------------------------------------
