@@ -482,12 +482,6 @@ async def handle_msg_post(db, arguments: dict[str, Any]) -> list[types.TextConte
         # Agent posted a message - exit wait state for this thread
         if connection_agent_id:
             await crud.thread_wait_exit(db, thread_id, connection_agent_id)
-    except MissingSyncFieldsError as e:
-        return [types.TextContent(type="text", text=json.dumps({
-            "error": "MISSING_SYNC_FIELDS",
-            "missing_fields": e.missing_fields,
-            "action": "CALL_MSG_WAIT_THEN_RETRY",
-        }))]
     except RateLimitExceeded as e:
         return [types.TextContent(type="text", text=json.dumps({
             "error": "Rate limit exceeded",
@@ -495,30 +489,42 @@ async def handle_msg_post(db, arguments: dict[str, Any]) -> list[types.TextConte
             "window": e.window,
             "retry_after": e.retry_after,
         }))]
-    except SeqMismatchError as e:
+    except (MissingSyncFieldsError, SeqMismatchError, ReplyTokenInvalidError, ReplyTokenExpiredError, ReplyTokenReplayError) as e:
+        error_type = type(e).__name__
+        expected_seq = arguments.get("expected_last_seq", 0)
+        if not isinstance(expected_seq, int):
+            expected_seq = 0
+            
+        try:
+            # Fetch actual new messages that the agent missed
+            new_msgs = await crud.msg_list(db, thread_id, after_seq=expected_seq)
+            new_msgs_dump = [
+                {
+                    "seq": m.seq,
+                    "author": m.author_name or m.author,
+                    "role": m.role,
+                    "content": m.content,
+                    "created_at": m.created_at.isoformat()
+                }
+                for m in new_msgs
+            ]
+        except Exception:
+            new_msgs_dump = []
+
         return [types.TextContent(type="text", text=json.dumps({
-            "error": "SEQ_MISMATCH",
-            "expected_last_seq": e.expected_last_seq,
-            "current_seq": e.current_seq,
-            "new_messages": e.new_messages,
-            "action": "RE_READ_AND_RETRY",
-        }))]
-    except ReplyTokenInvalidError:
-        return [types.TextContent(type="text", text=json.dumps({
-            "error": "TOKEN_INVALID",
-            "action": "CALL_MSG_WAIT_THEN_RETRY",
-        }))]
-    except ReplyTokenExpiredError as e:
-        return [types.TextContent(type="text", text=json.dumps({
-            "error": "TOKEN_EXPIRED",
-            "expires_at": e.expires_at,
-            "action": "CALL_MSG_WAIT_THEN_RETRY",
-        }))]
-    except ReplyTokenReplayError as e:
-        return [types.TextContent(type="text", text=json.dumps({
-            "error": "TOKEN_REPLAY",
-            "consumed_at": e.consumed_at,
-            "action": "CALL_MSG_WAIT_THEN_RETRY",
+            "error": error_type,
+            "detail": str(e) if hasattr(e, "__str__") else error_type,
+            "CRITICAL_REMINDER": (
+                "Your msg_post was rejected! "
+                "NEW context arrived while you were trying to post. "
+                "You MUST read the 'new_messages_1st_read' below NOW to understand what changed. "
+                "Do NOT blindly retry your old message! "
+                "Next, you MUST call 'msg_wait' to get a fresh reply_token. "
+                "When you do, you will receive these messages again (2nd read). "
+                "Only AFTER that, formulate a NEW response."
+            ),
+            "new_messages_1st_read": new_msgs_dump,
+            "action": "READ_MESSAGES_THEN_CALL_MSG_WAIT"
         }))]
     except ContentFilterError as e:
         return [types.TextContent(type="text", text=json.dumps({
