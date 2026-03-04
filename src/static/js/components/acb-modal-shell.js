@@ -47,7 +47,7 @@
             </div>
             <div class="modal-actions">
               <button class="btn-secondary" onclick="closeModal()">Cancel</button>
-              <button class="btn-primary" onclick="submitModal()">Create</button>
+              <button id="btn-create-thread" class="btn-primary" onclick="submitModal()" disabled>Create</button>
             </div>
           </div>
         </div>
@@ -101,6 +101,22 @@
 
       // Attach minimap toggle listener after DOM is built
       this._attachMinimapToggle();
+      // UI-14: enable Create button only when topic is non-empty
+      this._attachTopicGuard();
+    }
+
+    _attachTopicGuard() {
+      const input = this.querySelector("#modal-topic");
+      const btn = this.querySelector("#btn-create-thread");
+      if (!input || !btn) return;
+      const sync = () => { btn.disabled = input.value.trim().length === 0; };
+      input.addEventListener("input", sync);
+      // Re-sync when modal is opened (topic may have been cleared)
+      const overlay = this.querySelector("#modal-overlay");
+      if (overlay) {
+        const observer = new MutationObserver(() => sync());
+        observer.observe(overlay, { attributes: true, attributeFilter: ["style"] });
+      }
     }
 
     _attachMinimapToggle() {

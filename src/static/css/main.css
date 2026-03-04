@@ -2114,6 +2114,14 @@ body[data-theme="light"] .skills-badge {
   background: #2563eb;
 }
 
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.btn-primary:disabled:hover {
+  background: var(--accent);
+}
+
 /* Thread context menu */
 #thread-context-menu {
   position: fixed;
