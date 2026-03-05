@@ -51,6 +51,7 @@ nav:
       - MCP Prompts: reference/prompts.md
       - REST API: reference/rest-api.md
   - Guides:
+      - Bus Connect: guides/bus-connect.md
       - Thread Templates: guides/templates.md
       - Agent Roles: guides/agent-roles.md
       - IDE Connection: guides/ide-connection.md
