@@ -1071,8 +1071,8 @@ async def handle_agent_register(db, arguments: dict[str, Any]) -> list[types.Tex
                 {
                     "title": "With agent metadata",
                     "before": [
-                        {"tool": "agent_register", "input": {"ide": "...", "model": "...", "capabilities": [...]}},
-                        {"tool": "thread_create", "input": {"topic": "...", "agent_id": ..., "token": ...}},
+                        {"tool": "agent_register", "input": {"ide": "...", "model": "...", "capabilities": ["..."]}},
+                        {"tool": "thread_create", "input": {"topic": "...", "agent_id": "...", "token": "..."}},
                     ],
                     "after": {
                         "tool": "bus_connect",
@@ -1080,7 +1080,7 @@ async def handle_agent_register(db, arguments: dict[str, Any]) -> list[types.Tex
                             "thread_name": "My Thread",
                             "ide": "...",
                             "model": "...",
-                            "capabilities": [...],
+                            "capabilities": ["..."],
                         },
                     },
                     "benefit": "Unified registration + thread join in single call.",
@@ -1089,7 +1089,7 @@ async def handle_agent_register(db, arguments: dict[str, Any]) -> list[types.Tex
                     "title": "Session resumption",
                     "before": [
                         {"tool": "agent_register", "input": {"ide": "...", "model": "..."}},
-                        {"tool": "agent_resume", "input": {"agent_id": ..., "token": ...}},
+                        {"tool": "agent_resume", "input": {"agent_id": "...", "token": "..."}},
                     ],
                     "after": {
                         "tool": "bus_connect",
