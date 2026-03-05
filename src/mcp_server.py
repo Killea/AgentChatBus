@@ -58,9 +58,12 @@ _connection_agents: dict[str, dict[str, str]] = {}
 
 # Live SSE session registry (in-memory only, resets on server restart).
 # Contains session_ids that currently have an active SSE TCP connection.
-# SSE agents in this set are provably online regardless of heartbeat timeout.
+# Sessions are refreshed on each tool call POST and during msg_wait heartbeats.
+# After the last refresh, sessions are considered stale after _SSE_STALE_SECONDS.
+# Kept deliberately short (60s) so that agents go offline quickly after msg_wait
+# ends or they stop making tool calls, rather than staying "live" for 5+ minutes.
 _active_sse_sessions: dict[str, float] = {}
-_SSE_STALE_SECONDS = max(120, MSG_WAIT_TIMEOUT + 15)
+_SSE_STALE_SECONDS = 60
 def get_session_id() -> str | None:
     """Get session ID for this SSE connection."""
     return _session_id.get()

@@ -3,18 +3,29 @@
    * Determine agent state using SSE connection presence as the primary signal.
    *
    * States (priority order):
-   *   Listening — SSE connected + last_activity is msg_wait   (green ⏳)
-   *   Working   — SSE connected + NOT in msg_wait             (amber ⚡)
-   *   Offline   — no SSE + heartbeat expired                  (dark ⚫)
+   *   Listening — SSE connected + last_activity is msg_wait              (⏳)
+   *   Working   — SSE connected + NOT msg_wait + activity within 60s     (⚡)
+   *   Idle      — SSE connected + NOT msg_wait + activity older than 60s (🔌)
+   *               (SSE open but agent stopped responding — may be processing
+   *               a long task or is a stale connection)
+   *   Offline   — no SSE + heartbeat expired                             (⚫)
    *
    * For stdio agents (no SSE): fall back to heartbeat-based detection.
    * stdio agents will show Listening when is_online=true, Offline otherwise.
    */
+  const WORKING_TIMEOUT_S = 60;
+
   function getAgentState(agent) {
     if (!agent) return "Offline";
 
     if (agent.is_sse_connected) {
       if (agent.last_activity === "msg_wait") return "Listening";
+      // Check how long ago the last activity was
+      const lastActivityTime = agent.last_activity_time ? new Date(agent.last_activity_time) : null;
+      if (lastActivityTime) {
+        const elapsedS = (Date.now() - lastActivityTime.getTime()) / 1000;
+        if (elapsedS > WORKING_TIMEOUT_S) return "Idle";
+      }
       return "Working";
     }
 
@@ -25,10 +36,10 @@
 
   /**
    * Return the state emoji for display in the card.
-   * ⏳ Listening, ⚡ Working, ⚫ Offline
+   * ⏳ Listening, ⚡ Working, 🔌 Idle, ⚫ Offline
    */
   function getStateEmoji(state) {
-    const map = { Listening: "⏳", Working: "⚡", Offline: "⚫" };
+    const map = { Listening: "⏳", Working: "⚡", Idle: "🔌", Offline: "⚫" };
     return map[state] || "⚫";
   }
 

@@ -816,6 +816,15 @@ async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.Content]:
                 logger.debug(f"[msg_wait] heartbeat refreshed for agent_id={agent_id}")
             except Exception as e:
                 logger.warning(f"[msg_wait] Failed to refresh heartbeat for {agent_id}: {e}")
+        # Also refresh the in-process SSE session timestamp so is_agent_sse_connected()
+        # stays true during active msg_wait polling. Without this, the short
+        # _SSE_STALE_SECONDS window would expire mid-wait and flip the agent offline.
+        try:
+            session_id = src.mcp_server.get_session_id()
+            if session_id:
+                src.mcp_server.mark_sse_connected(session_id)
+        except Exception:
+            pass
 
     if agent_id and token:
         try:
