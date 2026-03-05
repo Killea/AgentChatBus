@@ -19,24 +19,55 @@
 
 /* ─── Header ────────────────────────────────────────────────────────────────── */
 
-/* Dark mode header: deep ACB background */
+/* Dark mode header: deep ACB background — !important needed to override Material primary color */
 [data-md-color-scheme="slate"] .md-header {
-  background-color: #0a0d12;
+  background-color: #0a0d12 !important;
   border-bottom: 1px solid #1e2635;
 }
 
 [data-md-color-scheme="slate"] .md-header__title {
-  color: #e2e8f0;
+  color: #e2e8f0 !important;
 }
 
-/* Light mode header: slightly darker than page for contrast */
+/* Title gradient: exact match with ACB web UI topbar .logo */
+.md-header__title .md-header__topic:first-child .md-ellipsis,
+.md-header__title {
+  background: linear-gradient(135deg, #3b82f6, #a855f7) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.3px !important;
+}
+
+/* Section title on scroll: solid white, no gradient */
+.md-header__title .md-header__topic:last-child .md-ellipsis {
+  background: none !important;
+  -webkit-background-clip: unset !important;
+  background-clip: unset !important;
+  -webkit-text-fill-color: #e2e8f0 !important;
+  color: #e2e8f0 !important;
+  font-weight: 400 !important;
+  letter-spacing: normal !important;
+}
+
+/* Light mode header: ACB dark blue */
 [data-md-color-scheme="default"] .md-header {
-  background-color: #1e3a8a;
+  background-color: #0f172a !important;
   border-bottom: 1px solid #1d4ed8;
 }
 
 [data-md-color-scheme="default"] .md-header__title {
-  color: #f8fafc;
+  color: #f8fafc !important;
+}
+
+/* Nav tabs (the tabs bar below header) */
+[data-md-color-scheme="slate"] .md-tabs {
+  background-color: #1e3a8a !important;
+}
+
+[data-md-color-scheme="default"] .md-tabs {
+  background-color: #2563eb !important;
 }
 
 /* ─── Accent color ──────────────────────────────────────────────────────────── */
@@ -59,8 +90,11 @@
 
 /* ─── Navigation sidebar ────────────────────────────────────────────────────── */
 
-[data-md-color-scheme="slate"] .md-nav {
-  background-color: #0f1318;
+/* Remove the default grayish background on sidebar section titles */
+[data-md-color-scheme="slate"] .md-nav__title {
+  background-color: transparent !important;
+  box-shadow: none !important;
+  color: #94a3b8 !important;
 }
 
 [data-md-color-scheme="slate"] .md-nav__link--active,
@@ -70,18 +104,26 @@
 
 /* ─── Code blocks ───────────────────────────────────────────────────────────── */
 
-[data-md-color-scheme="slate"] .highlight pre,
-[data-md-color-scheme="slate"] code {
-  background-color: #111620;
-  border: 1px solid #1e2635;
-  border-radius: 6px;
+/* Dark mode: override Material's default code background */
+[data-md-color-scheme="slate"] .highlight pre {
+  background-color: #111620 !important;
 }
 
-[data-md-color-scheme="default"] .highlight pre,
-[data-md-color-scheme="default"] code {
-  background-color: #f0f4ff;
-  border: 1px solid #d9e2ef;
-  border-radius: 6px;
+[data-md-color-scheme="slate"] :not(pre) > code {
+  background-color: #111620 !important;
+}
+
+/* Copy button injected by JS — same background as pre */
+[data-md-color-scheme="slate"] .md-clipboard {
+  background-color: #111620 !important;
+  box-shadow: none !important;
+  border: none !important;
+  color: #4b5563 !important;
+}
+
+[data-md-color-scheme="slate"] .md-clipboard:hover {
+  color: #94a3b8 !important;
+  background-color: #111620 !important;
 }
 
 /* ─── Tables ────────────────────────────────────────────────────────────────── */
