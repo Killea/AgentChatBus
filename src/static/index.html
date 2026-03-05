@@ -660,57 +660,6 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     // SSE
     // ==============================================================================================
     function startSSE() {
-      const es = new EventSource('/events');
-      es.onopen = () => setConnected(true);
-      es.onerror = () => { setConnected(false); setTimeout(startSSE, 3000); es.close(); };
-
-      es.onmessage = async (e) => {
-        const ev = JSON.parse(e.data);
-        const p = ev.payload;
-
-        if (ev.type === 'msg.new') {
-          if (p.thread_id === activeThreadId) await loadNewMessages();
-          await refreshThreads();  // update sidebar counts
-        }
-        if (ev.type === 'msg.edit' && p.thread_id === activeThreadId) {
-          // Update the bubble content in-place and show/refresh the "edited" indicator
-          const row = document.querySelector(`[data-msg-id="${p.msg_id}"]`);
-          if (row) {
-            const bubbleEl = row.querySelector('.bubble-v2');
-            if (bubbleEl) {
-              bubbleEl.innerHTML = '';
-              window.AcbMessageRenderer.renderMessageContent(bubbleEl, p.content, null);
-            }
-            let indicator = row.querySelector('.msg-edited-indicator');
-            if (!indicator) {
-              indicator = document.createElement('span');
-              indicator.className = 'msg-edited-indicator';
-              indicator.setAttribute('onclick', 'window.AcbMsgEditHistory(this)');
-              indicator.setAttribute('data-msg-id', p.msg_id);
-              const tail = row.querySelector('acb-message-tail-meta') || row.querySelector('.msg-reactions');
-              if (tail) tail.before(indicator);
-            }
-            indicator.title = `Edited (v${p.version})`;
-            indicator.textContent = 'edited';
-          }
-        }
-        if (ev.type === 'thread.new' || ev.type === 'thread.state' || ev.type === 'thread.closed' || ev.type === 'thread.archived' || ev.type === 'thread.deleted') {
-          await refreshThreads();
-          if (ev.type === 'thread.deleted' && p.thread_id === activeThreadId) {
-            activeThreadId = null;
-            document.getElementById('msg-pane').innerHTML = '';
-            const hdr = document.getElementById('thread-header');
-            if (hdr) hdr.textContent = '';
-          }
-        }
-        if (ev.type === 'agent.online' || ev.type === 'agent.offline') {
-          await refreshAgents();
-        }
-        if (ev.type === 'agent.typing' && p.thread_id === activeThreadId) {
-          if (p.is_typing) showTyping(p.agent_id);
-          else hideTyping(p.agent_id);
-        }
-      };
       return window.AcbSSE.startSSE({
         getActiveThreadId: () => activeThreadId,
         onMsgNew: async () => loadNewMessages(),
