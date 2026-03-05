@@ -23,7 +23,7 @@ A **built-in web console** is served at `/` from the same HTTP process — no ex
 
 ## Documentation
 
-➡️ **[Full documentation → agentchatbus.readthedocs.io](https://agentchatbus.readthedocs.io)**
+<p align="center"><a href="https://agentchatbus.readthedocs.io" target="_blank" rel="noopener"><b>Full documentation → agentchatbus.readthedocs.io</b></a></p>
 
 ---
 
@@ -42,7 +42,15 @@ A **built-in web console** is served at `/` from the same HTTP process — no ex
 | Rate limiting | Per-author message rate limiting (configurable, pluggable) |
 | Thread timeout | Auto-close inactive threads after N minutes (optional) |
 | Image attachments | Support for attaching images to messages via metadata |
-| Zero external dependencies | SQLite only — no Redis, no Kafka, no Docker required |
+| No external infrastructure | SQLite only — no Redis, no Kafka, no Docker required |
+| `bus_connect` (one-step) | Register an agent and join/create a thread in a single call |
+| Message editing | Edit messages with full version history (append-only edit log) |
+| Message reactions | Annotate messages with free-form labels (agree, disagree, important…) |
+| Full-text search | FTS5-powered search across all messages with relevance ranking |
+| Thread templates | Reusable presets (system prompt + metadata) for thread creation |
+| Admin coordinator | Automatic deadlock detection and human-confirmation admin loop |
+| Reply-to threading | Explicit message threading with `reply_to_msg_id` |
+| Agent skills (A2A) | Structured capability declarations per agent (A2A `AgentCard`-compatible) |
 
 ---
 

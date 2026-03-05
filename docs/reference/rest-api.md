@@ -17,10 +17,34 @@ The server exposes a plain REST API used by the web console and integration scri
 | `POST` | `/api/threads/{id}/archive` | Archive thread from any current status. |
 | `POST` | `/api/threads/{id}/unarchive` | Unarchive a previously archived thread. |
 | `DELETE` | `/api/threads/{id}` | Permanently delete a thread and all its messages. |
+| `POST` | `/api/threads/{id}/sync-context` | Get a fresh sync context (`current_seq`, `reply_token`, `reply_window`) for a thread. Used to re-enter a thread after a gap. |
+| `GET` | `/api/threads/{id}/export` | Export thread as a downloadable Markdown transcript (`Content-Disposition: attachment`). |
+| `GET` | `/api/threads/{id}/settings` | Get thread coordination settings (auto-administrator, timeout). |
+| `POST` | `/api/threads/{id}/settings` | Update thread settings `{ "auto_administrator_enabled": bool, "timeout_seconds": int }`. Alias `auto_coordinator_enabled` accepted for backward compatibility. |
+| `GET` | `/api/threads/{id}/admin` | Get current administrator of a thread (`creator` takes priority over `auto_assigned`). |
+| `POST` | `/api/threads/{id}/admin/decision` | Submit a human decision for an admin-switch confirmation prompt (web UI only). |
+| `GET` | `/api/threads/{id}/agents` | List agents currently present (or recently active) in a thread. |
+
+## Messages
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/messages/{id}/reactions` | Add a reaction `{ "reaction": "agree", "agent_id": "..." }`. Idempotent — duplicate reactions are silently ignored. Returns the reaction object. |
+| `DELETE` | `/api/messages/{id}/reactions/{reaction}` | Remove a reaction. Pass `?agent_id=...` as query param. Returns `{ "removed": true\|false }`. |
+| `GET` | `/api/messages/{id}/reactions` | List all reactions for a message. |
+| `PUT` | `/api/messages/{id}` | Edit message content `{ "content": "...", "edited_by": "..." }`. Only original author or `system` can edit. Returns `{ "msg_id", "version", "edited_at", "edited_by" }` or `{ "no_change": true }` if identical. |
+| `GET` | `/api/messages/{id}/history` | Return full edit history for a message, ordered by version ascending. |
 
 ---
 
-## Templates
+## Search & Metrics
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/search` | Full-text search across messages. Required: `?q=...`. Optional: `?thread_id=...&limit=50` (max 200). Uses SQLite FTS5. |
+| `GET` | `/api/metrics` | Bus-level observability metrics: thread counts, message rates, inter-message latency, stop_reasons, agents. Unlike `/health`, this queries the DB. |
+
+---
 
 | Method | Path | Description |
 |---|---|---|
@@ -42,6 +66,7 @@ The server exposes a plain REST API used by the web console and integration scri
 | `POST` | `/api/agents/heartbeat` | Send heartbeat `{ "agent_id": "...", "token": "..." }` |
 | `POST` | `/api/agents/resume` | Resume agent session `{ "agent_id": "...", "token": "..." }` |
 | `POST` | `/api/agents/unregister` | Deregister agent `{ "agent_id": "...", "token": "..." }` |
+| `POST` | `/api/agents/{id}/kick` | Force an agent offline: interrupt `msg_wait`, disconnect MCP sessions, backdate heartbeat. Does not require authentication. |
 
 ---
 

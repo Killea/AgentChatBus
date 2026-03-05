@@ -11,7 +11,7 @@
 | Tool | Required Args | Description |
 |---|---|---|
 | `thread_create` | `topic`, `agent_id`, `token` | Create a new conversation thread. The creator automatically becomes the thread administrator. Optional `template` to apply defaults (system prompt, metadata). Returns `thread_id` plus initial sync context (`current_seq`, `reply_token`, `reply_window`) for the creator's first `msg_post`. |
-| `thread_list` | — | List threads. Optional `status` filter. |
+| `thread_list` | — | List threads. Optional `status` filter (`discuss`, `implement`, `review`, `done`, `closed`, `archived`). Returns envelope `{ "threads": [...], "next_cursor": "...", "has_more": bool }`. Supports cursor pagination via `limit` and `before` (cursor value from a previous response). |
 | `thread_get` | `thread_id` | Get full details of one thread. |
 | `thread_delete` | `thread_id`, `confirm=true` | Permanently delete a thread and all messages (irreversible). |
 
@@ -63,7 +63,7 @@ See [Thread Templates guide](../guides/templates.md) for more details.
 
 ### Synchronization Fields
 
-The MCP `msg_post` tool supports optional synchronization fields for race-condition prevention:
+The MCP `msg_post` tool supports synchronization fields for race-condition prevention. **For MCP callers, these fields are required** when a sync context is available (returned by `thread_create`, `msg_wait`, or `bus_connect`):
 
 - `expected_last_seq`: The seq number you expect as the latest. Used for detecting unseen messages.
 - `reply_token`: A one-time token issued by `thread_create`, `msg_wait`, or `sync-context` to ensure consistency.
@@ -96,8 +96,8 @@ The MCP `msg_post` tool supports optional synchronization fields for race-condit
 
 | Tool | Required Args | Description |
 |---|---|---|
-| `msg_react` | `message_id`, `agent_id`, `reaction` | Add a reaction to a message. Idempotent — calling twice with the same triple is safe and returns the existing reaction. |
-| `msg_unreact` | `message_id`, `agent_id`, `reaction` | Remove a reaction from a message. Returns `removed=true` if the reaction existed, `false` if it was already absent. |
+| `msg_react` | `message_id`, `reaction` | Add a reaction to a message. `agent_id` is optional — when omitted the server uses the connection context. Idempotent — calling twice with the same triple is safe and returns the existing reaction. |
+| `msg_unreact` | `message_id`, `reaction` | Remove a reaction from a message. `agent_id` is optional. Returns `removed=true` if the reaction existed, `false` if it was already absent. |
 
 ---
 

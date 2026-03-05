@@ -1,0 +1,129 @@
+/*
+ * AgentChatBus — MkDocs Material custom theme
+ * Aligned with the ACB web UI (src/static/css/main.css)
+ *
+ * ACB palette (dark):
+ *   --bg-base:    #0a0d12   (deepest background)
+ *   --bg-panel:   #0f1318   (sidebar / nav)
+ *   --bg-card:    #151a22   (cards)
+ *   --border:     #1e2635
+ *   --accent:     #3b82f6   (blue)
+ *   --text-1:     #e2e8f0
+ *   --text-2:     #94a3b8
+ *
+ * ACB palette (light):
+ *   --bg-base:    #f3f6fb
+ *   --accent:     #2563eb
+ *   --text-1:     #0f172a
+ */
+
+/* ─── Header ────────────────────────────────────────────────────────────────── */
+
+/* Dark mode header: deep ACB background */
+[data-md-color-scheme="slate"] .md-header {
+  background-color: #0a0d12;
+  border-bottom: 1px solid #1e2635;
+}
+
+[data-md-color-scheme="slate"] .md-header__title {
+  color: #e2e8f0;
+}
+
+/* Light mode header: slightly darker than page for contrast */
+[data-md-color-scheme="default"] .md-header {
+  background-color: #1e3a8a;
+  border-bottom: 1px solid #1d4ed8;
+}
+
+[data-md-color-scheme="default"] .md-header__title {
+  color: #f8fafc;
+}
+
+/* ─── Accent color ──────────────────────────────────────────────────────────── */
+
+/* Dark mode: ACB blue #3b82f6 */
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #3b82f6;
+  --md-primary-fg-color--light: #60a5fa;
+  --md-primary-fg-color--dark: #1d4ed8;
+  --md-accent-fg-color: #3b82f6;
+}
+
+/* Light mode: ACB light blue #2563eb */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #2563eb;
+  --md-primary-fg-color--light: #3b82f6;
+  --md-primary-fg-color--dark: #1d4ed8;
+  --md-accent-fg-color: #2563eb;
+}
+
+/* ─── Navigation sidebar ────────────────────────────────────────────────────── */
+
+[data-md-color-scheme="slate"] .md-nav {
+  background-color: #0f1318;
+}
+
+[data-md-color-scheme="slate"] .md-nav__link--active,
+[data-md-color-scheme="slate"] .md-nav__link:hover {
+  color: #3b82f6;
+}
+
+/* ─── Code blocks ───────────────────────────────────────────────────────────── */
+
+[data-md-color-scheme="slate"] .highlight pre,
+[data-md-color-scheme="slate"] code {
+  background-color: #111620;
+  border: 1px solid #1e2635;
+  border-radius: 6px;
+}
+
+[data-md-color-scheme="default"] .highlight pre,
+[data-md-color-scheme="default"] code {
+  background-color: #f0f4ff;
+  border: 1px solid #d9e2ef;
+  border-radius: 6px;
+}
+
+/* ─── Tables ────────────────────────────────────────────────────────────────── */
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) th {
+  background-color: #151a22;
+  color: #e2e8f0;
+  border-bottom: 2px solid #3b82f6;
+}
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) td {
+  border-color: #1e2635;
+}
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) tr:hover {
+  background-color: #1a2030;
+}
+
+[data-md-color-scheme="default"] .md-typeset table:not([class]) th {
+  background-color: #e8f0ff;
+  color: #0f172a;
+  border-bottom: 2px solid #2563eb;
+}
+
+[data-md-color-scheme="default"] .md-typeset table:not([class]) tr:hover {
+  background-color: #edf3ff;
+}
+
+/* ─── Admonition blocks ─────────────────────────────────────────────────────── */
+
+[data-md-color-scheme="slate"] .md-typeset .admonition {
+  border-color: #1e2635;
+  background-color: #151a22;
+}
+
+/* ─── Footer ────────────────────────────────────────────────────────────────── */
+
+[data-md-color-scheme="slate"] .md-footer {
+  background-color: #0a0d12;
+  border-top: 1px solid #1e2635;
+}
+
+[data-md-color-scheme="default"] .md-footer {
+  background-color: #1e3a8a;
+}
