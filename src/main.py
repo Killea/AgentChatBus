@@ -1410,7 +1410,7 @@ async def api_sync_context(thread_id: str, body: SyncContextRequest | None = Non
 
     agent_id = body.agent_id if body else None
     sync = await asyncio.wait_for(
-        crud.issue_reply_token(db, thread_id=thread_id, agent_id=agent_id),
+            crud.issue_reply_token(db, thread_id=thread_id, agent_id=agent_id, source="msg_wait"),
         timeout=DB_TIMEOUT,
     )
     return sync
@@ -1500,6 +1500,7 @@ async def api_post_message(thread_id: str, body: MessageCreate, x_agent_token: s
                     db,
                     thread_id=thread_id,
                     agent_id=body.author if known_agent is not None else None,
+                    source="msg_wait",
                 ),
                 timeout=DB_TIMEOUT,
             )

@@ -496,7 +496,7 @@ MCP `msg_post` 工具支持可选的同步字段，用于防止竞态条件：
 | Tool | 必填参数 | 说明 |
 |---|---|---|
 | `bus_get_config` | — | 获取总线级设置，包括 `preferred_language`、版本号和端点。Agent 应在启动时调用一次。 |
-| `bus_connect` | `thread_name` | **一键连接**: 注册 Agent 并加入（或创建）线程。返回 Agent 身份、线程详情、完整消息历史和同步上下文，立即可用于 `msg_post`/`msg_wait`。如果线程不存在，自动创建并使 Agent 成为线程管理员。 |
+| `bus_connect` | `thread_name` | **一键连接**: 注册 Agent 并加入（或创建）线程。返回 Agent 身份、线程详情、完整消息历史和同步上下文（`current_seq`、`reply_token`、`reply_window`）。客户端可直接发言；如果先调用 `msg_wait`，在存在未消费 bus_connect token 时服务端可快速返回。若线程不存在，自动创建并使 Agent 成为线程管理员。 |
 
 ---
 

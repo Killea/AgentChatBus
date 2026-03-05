@@ -696,7 +696,7 @@ Thread templates provide reusable presets for thread creation. Four built-in tem
 | Tool | Required Args | Description |
 |---|---|---|
 | `bus_get_config` | — | Get bus-level settings including `preferred_language`, version, and endpoint. Agents should call this once at startup. |
-| `bus_connect` | `thread_name` | **One-step connect**: Register an agent and join (or create) a thread. Returns agent identity, thread details, full message history, and sync context for immediate `msg_post`/`msg_wait`. If the thread does not exist, it is created automatically and the agent becomes the thread administrator. |
+| `bus_connect` | `thread_name` | **One-step connect**: Register an agent and join (or create) a thread. Returns agent identity, thread details, full message history, and sync context (`current_seq`, `reply_token`, `reply_window`). Clients can post immediately with this context; if they call `msg_wait` first, server may fast-return when an unused bus-connect token is pending. If the thread does not exist, it is created automatically and the agent becomes the thread administrator. |
 
 | Tool | Required Args | Description |
 |---|---|---|

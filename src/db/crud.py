@@ -487,6 +487,7 @@ async def issue_reply_token(
     db: aiosqlite.Connection,
     thread_id: str,
     agent_id: Optional[str] = None,
+    source: str = "msg_wait",
 ) -> dict:
     """Issue a reply token bound to a thread (and optionally an agent).
 
@@ -498,9 +499,9 @@ async def issue_reply_token(
     # Tokens are treated as non-expiring, so we set expires_at far in the future.
     expires_at = "9999-12-31T23:59:59+00:00"
     await db.execute(
-        "INSERT INTO reply_tokens (token, thread_id, agent_id, issued_at, expires_at, consumed_at, status) "
-        "VALUES (?, ?, ?, ?, ?, NULL, 'issued')",
-        (token, thread_id, agent_id, issued_at, expires_at),
+        "INSERT INTO reply_tokens (token, thread_id, agent_id, issued_at, expires_at, consumed_at, status, source, fast_returned_at) "
+        "VALUES (?, ?, ?, ?, ?, NULL, 'issued', ?, NULL)",
+        (token, thread_id, agent_id, issued_at, expires_at, source),
     )
     await db.commit()
     current_seq = await thread_latest_seq(db, thread_id)
@@ -525,6 +526,55 @@ async def reply_tokens_invalidate_for_agent(
         (now, thread_id, agent_id),
     )
     await db.commit()
+
+
+async def reply_tokens_invalidate_for_agent_source(
+    db: aiosqlite.Connection,
+    thread_id: str,
+    agent_id: str,
+    source: str,
+) -> None:
+    now = _now()
+    await db.execute(
+        "UPDATE reply_tokens SET status = 'consumed', consumed_at = ? "
+        "WHERE thread_id = ? AND agent_id = ? AND source = ? AND status = 'issued'",
+        (now, thread_id, agent_id, source),
+    )
+    await db.commit()
+
+
+async def reply_token_find_pending_bus_connect(
+    db: aiosqlite.Connection,
+    thread_id: str,
+    agent_id: str,
+) -> Optional[str]:
+    """Return newest pending bus_connect token that has not used fast-return yet."""
+    async with db.execute(
+        "SELECT token FROM reply_tokens "
+        "WHERE thread_id = ? AND agent_id = ? AND status = 'issued' "
+        "AND source = 'bus_connect' AND fast_returned_at IS NULL "
+        "ORDER BY issued_at DESC LIMIT 1",
+        (thread_id, agent_id),
+    ) as cur:
+        row = await cur.fetchone()
+    if not row:
+        return None
+    return row["token"]
+
+
+async def reply_token_mark_fast_returned(
+    db: aiosqlite.Connection,
+    token: str,
+) -> bool:
+    now = _now()
+    async with db.execute(
+        "UPDATE reply_tokens SET fast_returned_at = ? "
+        "WHERE token = ? AND status = 'issued' AND fast_returned_at IS NULL",
+        (now, token),
+    ) as cur:
+        updated = cur.rowcount
+    await db.commit()
+    return bool(updated)
 
 
 
@@ -1079,7 +1129,7 @@ async def msg_post(
         raise MissingSyncFieldsError(missing_fields)
 
     async with db.execute(
-        "SELECT token, thread_id, agent_id, expires_at, consumed_at, status "
+        "SELECT token, thread_id, agent_id, expires_at, consumed_at, status, source, fast_returned_at "
         "FROM reply_tokens WHERE token = ?",
         (reply_token,),
     ) as cur:

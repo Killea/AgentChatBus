@@ -673,8 +673,10 @@ async def list_tools() -> list[types.Tool]:
             description=(
                 "One-step connect: register an agent and join (or create) a thread. "
                 "Returns agent identity, thread details, full message history, and sync context "
-                "for immediate msg_post/msg_wait. If the thread does not exist, it is created "
-                "automatically and the agent becomes the thread administrator."
+                "(current_seq, reply_token, reply_window). If clients still call msg_wait before posting, "
+                "server may return immediately when an unused bus_connect token is pending. "
+                "If the thread does not exist, it is created automatically and the agent becomes "
+                "the thread administrator."
             ),
             inputSchema={
                 "type": "object",

@@ -255,10 +255,22 @@ async def handle_bus_connect(db, arguments: dict[str, Any]) -> list[types.TextCo
         )
         thread_created = True
 
-    # ── Phase 3: Fetch Messages and Sync Context ──
+    # ── Phase 3: Fetch Messages + Bus-Connect Sync Context ──
     after_seq = arguments.get("after_seq", 0)
     msgs = await crud.msg_list(db, thread.id, after_seq=after_seq)
-    sync = await crud.issue_reply_token(db, thread_id=thread.id, agent_id=agent.id)
+    # Keep only one issued bus_connect token per (thread, agent).
+    await crud.reply_tokens_invalidate_for_agent_source(
+        db,
+        thread_id=thread.id,
+        agent_id=agent.id,
+        source="bus_connect",
+    )
+    sync = await crud.issue_reply_token(
+        db,
+        thread_id=thread.id,
+        agent_id=agent.id,
+        source="bus_connect",
+    )
 
     # ── Phase 4: Identify Administrator Role ──
     settings = await crud.thread_settings_get_or_create(db, thread.id)
@@ -905,7 +917,14 @@ async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.Content]:
         logger.warning(f"[msg_wait] No credentials available: agent_id={agent_id}, token={'***' if token else None}")
 
     wants_sync_only = False
+    pending_bus_connect_token: str | None = None
     if agent_id:
+        pending_bus_connect_token = await crud.reply_token_find_pending_bus_connect(
+            db,
+            thread_id=thread_id,
+            agent_id=agent_id,
+        )
+
         async with db.execute(
             "SELECT COUNT(*) FROM reply_tokens "
             "WHERE thread_id = ? AND agent_id = ? AND status = 'issued'",
@@ -914,7 +933,17 @@ async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.Content]:
             row = await cur.fetchone()
             if row and row[0] == 0:
                 wants_sync_only = True
-                logger.debug(f"[msg_wait] Agent {agent_id} has no issued token; sync_only = True")
+
+    if pending_bus_connect_token:
+        logger.info(
+            f"[msg_wait] immediate-return-eligible reason=bus_connect_token_pending "
+            f"thread_id={thread_id} agent_id={agent_id} after_seq={after_seq}"
+        )
+    if wants_sync_only:
+        logger.info(
+            f"[msg_wait] immediate-return-eligible reason=no_issued_token "
+            f"thread_id={thread_id} agent_id={agent_id} after_seq={after_seq}"
+        )
 
     async def _poll():
         last_heartbeat = asyncio.get_event_loop().time()
@@ -930,6 +959,10 @@ async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.Content]:
                         if agent_id:
                             await crud.thread_wait_exit(db, thread_id, agent_id)
                             await crud.agent_msg_received(db, agent_id)
+                        logger.info(
+                            f"[msg_wait] return reason=targeted_messages thread_id={thread_id} "
+                            f"agent_id={agent_id} for_agent={for_agent} count={len(filtered)}"
+                        )
                         return filtered
                     # Messages were present but not targeted at this waiter.
                     # Move the local cursor forward to avoid polling the same
@@ -940,11 +973,31 @@ async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.Content]:
                     if agent_id:
                         await crud.thread_wait_exit(db, thread_id, agent_id)
                         await crud.agent_msg_received(db, agent_id)
+                    logger.info(
+                        f"[msg_wait] return reason=new_messages thread_id={thread_id} "
+                        f"agent_id={agent_id} count={len(msgs)}"
+                    )
                     return msgs
+
+            # Priority: messages first, then bus_connect token fast-return,
+            # then generic no-issued-token fast-return.
+            if pending_bus_connect_token:
+                if agent_id:
+                    await crud.thread_wait_exit(db, thread_id, agent_id)
+                await crud.reply_token_mark_fast_returned(db, pending_bus_connect_token)
+                logger.info(
+                    f"[msg_wait] return reason=sync_only_bus_connect_token_pending "
+                    f"thread_id={thread_id} agent_id={agent_id}"
+                )
+                return []
 
             if wants_sync_only:
                 if agent_id:
                     await crud.thread_wait_exit(db, thread_id, agent_id)
+                logger.info(
+                    f"[msg_wait] return reason=sync_only_no_issued_token "
+                    f"thread_id={thread_id} agent_id={agent_id}"
+                )
                 return []
 
             now = asyncio.get_event_loop().time()
@@ -958,8 +1011,17 @@ async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.Content]:
         msgs = await asyncio.wait_for(_poll(), timeout=timeout_s)
     except asyncio.TimeoutError:
         msgs = []
+        logger.info(
+            f"[msg_wait] return reason=timeout thread_id={thread_id} "
+            f"agent_id={agent_id} timeout_ms={timeout_ms}"
+        )
 
-    token_payload = await crud.issue_reply_token(db, thread_id=thread_id, agent_id=agent_id)
+    token_payload = await crud.issue_reply_token(
+        db,
+        thread_id=thread_id,
+        agent_id=agent_id,
+        source="msg_wait",
+    )
     
     # Coordinator interventions are generated by main._admin_coordinator_loop.
     coordination_prompt = None

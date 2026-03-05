@@ -5,7 +5,7 @@ from mcp import types
 
 from src.db import crud
 from src.db.database import init_schema
-from src.tools.dispatch import handle_bus_connect, handle_msg_post
+from src.tools.dispatch import handle_bus_connect, handle_msg_post, handle_msg_wait
 import src.mcp_server
 
 @pytest.fixture(autouse=True)
@@ -45,10 +45,11 @@ async def test_bus_connect_new_agent_new_thread():
     assert payload["thread"]["created"] is True
     assert payload["thread"]["status"] == "discuss"
 
-    # Check messages and sync
+    # Check messages and sync context
     assert len(payload["messages"]) == 1  # System prompt is injected synthetically
     assert payload["current_seq"] == 0
     assert "reply_token" in payload
+    assert "reply_window" in payload
 
     await db.close()
 
@@ -84,6 +85,8 @@ async def test_bus_connect_new_agent_existing_thread():
     assert len(payload["messages"]) == 2  # System prompt + First message
     assert payload["messages"][1]["content"] == "First message"
     assert payload["current_seq"] == 1
+    assert "reply_token" in payload
+    assert "reply_window" in payload
 
     await db.close()
 
@@ -110,5 +113,113 @@ async def test_bus_connect_no_reuse_agent():
     assert p2["agent"]["agent_id"] != agent_id1
     assert p2["thread"]["topic"] == "Thread2"
     assert p2["thread"]["created"] is True
+
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_bus_connect_requires_msg_wait_before_first_msg_post():
+    db = await aiosqlite.connect(":memory:")
+    db.row_factory = aiosqlite.Row
+    await init_schema(db)
+
+    connect_out = await handle_bus_connect(
+        db,
+        {
+            "thread_name": "Fixed Flow Thread",
+            "ide": "VS Code",
+            "model": "GPT-5.3-Codex",
+        },
+    )
+    connect_payload = json.loads(connect_out[0].text)
+    thread_id = connect_payload["thread"]["thread_id"]
+    agent_id = connect_payload["agent"]["agent_id"]
+    agent_token = connect_payload["agent"]["token"]
+
+    # Bus-connect now issues sync fields directly, so first post can succeed.
+    posted = await handle_msg_post(
+        db,
+        {
+            "thread_id": thread_id,
+            "author": agent_id,
+            "content": "first message with bus_connect sync context",
+            "expected_last_seq": connect_payload["current_seq"],
+            "reply_token": connect_payload["reply_token"],
+            "role": "assistant",
+        },
+    )
+    posted_payload = json.loads(posted[0].text)
+    assert "msg_id" in posted_payload
+    assert posted_payload["seq"] == 1
+
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_bus_connect_token_makes_next_msg_wait_immediate_once():
+    db = await aiosqlite.connect(":memory:")
+    db.row_factory = aiosqlite.Row
+    await init_schema(db)
+
+    connect_out = await handle_bus_connect(
+        db,
+        {
+            "thread_name": "Fast Return Once",
+            "ide": "VS Code",
+            "model": "GPT-5.3-Codex",
+        },
+    )
+    connect_payload = json.loads(connect_out[0].text)
+    thread_id = connect_payload["thread"]["thread_id"]
+    agent_id = connect_payload["agent"]["agent_id"]
+    agent_token = connect_payload["agent"]["token"]
+
+    # First wait should fast-return due to pending bus_connect token.
+    waited = await handle_msg_wait(
+        db,
+        {
+            "thread_id": thread_id,
+            "after_seq": 0,
+            "timeout_ms": 1,
+            "return_format": "json",
+            "agent_id": agent_id,
+            "token": agent_token,
+        },
+    )
+    wait_payload = json.loads(waited[0].text)
+    assert "reply_token" in wait_payload
+    assert "current_seq" in wait_payload
+
+    # The same pending bus_connect token should only fast-return once.
+    # Second wait should follow timeout behavior (still returns sync envelope).
+    waited2 = await handle_msg_wait(
+        db,
+        {
+            "thread_id": thread_id,
+            "after_seq": 0,
+            "timeout_ms": 10,
+            "return_format": "json",
+            "agent_id": agent_id,
+            "token": agent_token,
+        },
+    )
+    wait_payload2 = json.loads(waited2[0].text)
+    assert wait_payload2["messages"] == []
+    assert "reply_token" in wait_payload2
+
+    posted2 = await handle_msg_post(
+        db,
+        {
+            "thread_id": thread_id,
+            "author": agent_id,
+            "content": "first message with msg_wait sync context",
+            "expected_last_seq": wait_payload2["current_seq"],
+            "reply_token": wait_payload2["reply_token"],
+            "role": "assistant",
+        },
+    )
+    posted_payload2 = json.loads(posted2[0].text)
+    assert "msg_id" in posted_payload2
+    assert posted_payload2["seq"] == 1
 
     await db.close()

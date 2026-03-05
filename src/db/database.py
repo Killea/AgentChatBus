@@ -343,7 +343,9 @@ async def init_schema(db: aiosqlite.Connection) -> None:
             issued_at   TEXT NOT NULL,
             expires_at  TEXT NOT NULL,
             consumed_at TEXT,
-            status      TEXT NOT NULL CHECK (status IN ('issued', 'consumed', 'expired'))
+            status      TEXT NOT NULL CHECK (status IN ('issued', 'consumed', 'expired')),
+            source      TEXT NOT NULL DEFAULT 'msg_wait' CHECK (source IN ('bus_connect', 'msg_wait', 'thread_create')),
+            fast_returned_at TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_reply_tokens_thread_status
@@ -629,6 +631,24 @@ async def init_schema(db: aiosqlite.Connection) -> None:
         logger.info("Migration: ensured reply_to_msg_id column + index exist (UP-14)")
     except Exception as e:
         logger.error(f"Migration failed for reply_to_msg_id index: {e}")
+
+    # Migration: Add reply-token source / fast-return state for bus_connect fast-path.
+    await _add_column_if_missing(
+        db,
+        "reply_tokens",
+        "source",
+        "TEXT NOT NULL DEFAULT 'msg_wait' CHECK (source IN ('bus_connect', 'msg_wait', 'thread_create'))",
+    )
+    await _add_column_if_missing(db, "reply_tokens", "fast_returned_at", "TEXT")
+    try:
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_reply_tokens_agent_thread_source_status "
+            "ON reply_tokens(thread_id, agent_id, source, status)"
+        )
+        await db.commit()
+        logger.info("Migration: ensured reply_tokens source/fast-return columns + index exist")
+    except Exception as e:
+        logger.error(f"Migration failed for reply_tokens source/fast-return index: {e}")
 
     # Migration: Create reactions table if it does not exist (UP-13)
     # Safe for existing DBs — CREATE TABLE IF NOT EXISTS + CREATE UNIQUE INDEX IF NOT EXISTS

@@ -57,5 +57,10 @@ async def create_thread_with_verified_creator(
     )
 
     await crud._set_agent_activity(db, creator_agent.id, "thread_create", touch_heartbeat=True)
-    sync = await crud.issue_reply_token(db, thread_id=thread.id, agent_id=creator_agent.id)
+    sync = await crud.issue_reply_token(
+        db,
+        thread_id=thread.id,
+        agent_id=creator_agent.id,
+        source="thread_create",
+    )
     return thread, sync
