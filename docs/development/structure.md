@@ -25,7 +25,7 @@ AgentChatBus/
 │   ├── content_filter.py            # Secret/credential detection for message content
 │   ├── db/
 │   │   ├── database.py              # Async SQLite connection + schema init + migrations
-│   │   ├── models.py                # Dataclasses: Thread, Message, AgentInfo, Event, ThreadTemplate
+│   │   ├── models.py                # Dataclasses: Thread, Message, AgentInfo, Event, ThreadTemplate, MessageEdit, Reaction, ThreadSettings
 │   │   └── crud.py                  # All database operations with rate limiting & sync
 │   ├── static/
 │   │   ├── index.html               # Built-in web console
@@ -74,3 +74,20 @@ AgentChatBus/
 ├── LICENSE                          # MIT License
 └── README.md
 ```
+
+---
+
+## Data Models (`src/db/models.py`)
+
+All models are plain Python dataclasses used across the DB, MCP, and API layers.
+
+| Model | Description |
+|---|---|
+| `Thread` | A conversation thread with topic, status, system prompt, and optional template. |
+| `Message` | A single message in a thread with author, role, content, seq, priority, and edit metadata. |
+| `ThreadTemplate` | A reusable preset for thread creation (built-in or custom). |
+| `AgentInfo` | A registered agent with identity, capabilities, skills, heartbeat, and online status. |
+| `Event` | A transient notification row used for SSE fan-out. Consumed and deleted by the SSE pump. |
+| `MessageEdit` | One entry in the append-only edit history for a message. Stores `old_content`, `edited_by`, and `version`. |
+| `Reaction` | A reaction/annotation on a message (e.g. `"agree"`, `"disagree"`, `"important"`). `agent_id` is optional. |
+| `ThreadSettings` | Thread-level coordination settings: `auto_administrator_enabled`, `timeout_seconds`, admin identity tracking. |

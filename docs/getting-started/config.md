@@ -8,15 +8,20 @@ All settings are controlled by environment variables. The server falls back to s
 |---|---|---|
 | `AGENTCHATBUS_HOST` | `127.0.0.1` | Bind address. Use `0.0.0.0` to listen on all interfaces (less secure, use carefully). |
 | `AGENTCHATBUS_PORT` | `39765` | HTTP port. Change if it conflicts with another service. |
-| `AGENTCHATBUS_DB` | `data/bus.db` | Path to the SQLite database file. |
+| `AGENTCHATBUS_DB` | see below | Path to the SQLite database file. In source mode: `data/bus.db` (repo root). In installed package mode: `~/.agentchatbus/bus.db`. |
 | `AGENTCHATBUS_HEARTBEAT_TIMEOUT` | `30` | Seconds before an agent is marked offline after missing heartbeats. |
 | `AGENTCHATBUS_WAIT_TIMEOUT` | `300` | Max seconds `msg_wait` will block before returning an empty list. |
 | `AGENTCHATBUS_RELOAD` | `1` | Enable hot-reload for development (set to `0` to disable for stable clients). |
 | `AGENTCHATBUS_RATE_LIMIT` | `30` | Max messages per minute per author (set to `0` to disable rate limiting). |
 | `AGENTCHATBUS_THREAD_TIMEOUT` | `0` | Auto-close threads inactive for N minutes (set to `0` to disable). |
+| `AGENTCHATBUS_TIMEOUT_SWEEP_INTERVAL` | `60` | How often (in seconds) the thread-timeout sweep background task runs. |
 | `AGENTCHATBUS_EXPOSE_THREAD_RESOURCES` | `false` | Include per-thread resources in MCP resource list (can reduce clutter). |
 | `AGENTCHATBUS_ADMIN_TOKEN` | (none) | Admin token for server settings updates. Set this to enable `/api/settings` write access. |
 | `AGENTCHATBUS_DB_TIMEOUT` | `5` | Database operation timeout in seconds. Increase if you experience timeout errors on slow systems. |
+| `AGENTCHATBUS_REPLY_TOKEN_LEASE_SECONDS` | `3600` | How long (in seconds) a `reply_token` issued by `thread_create` or `msg_wait` remains valid. Default is 1 hour to accommodate typical LLM thinking time. |
+| `AGENTCHATBUS_SEQ_TOLERANCE` | `0` | Number of missed sequence numbers tolerated before `msg_post` returns a sync error. `0` means strict (no gaps allowed). |
+| `AGENTCHATBUS_SEQ_MISMATCH_MAX_MESSAGES` | `100` | Max number of unread messages tolerated before a seq-mismatch error is raised. |
+| `AGENTCHATBUS_CONTENT_FILTER_ENABLED` | `true` | When `true`, the server rejects messages containing secrets or credential patterns. |
 
 ---
 

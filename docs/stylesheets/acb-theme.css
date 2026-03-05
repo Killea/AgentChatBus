@@ -1,0 +1,171 @@
+/*
+ * AgentChatBus — MkDocs Material custom theme
+ * Aligned with the ACB web UI (src/static/css/main.css)
+ *
+ * ACB palette (dark):
+ *   --bg-base:    #0a0d12   (deepest background)
+ *   --bg-panel:   #0f1318   (sidebar / nav)
+ *   --bg-card:    #151a22   (cards)
+ *   --border:     #1e2635
+ *   --accent:     #3b82f6   (blue)
+ *   --text-1:     #e2e8f0
+ *   --text-2:     #94a3b8
+ *
+ * ACB palette (light):
+ *   --bg-base:    #f3f6fb
+ *   --accent:     #2563eb
+ *   --text-1:     #0f172a
+ */
+
+/* ─── Header ────────────────────────────────────────────────────────────────── */
+
+/* Dark mode header: deep ACB background — !important needed to override Material primary color */
+[data-md-color-scheme="slate"] .md-header {
+  background-color: #0a0d12 !important;
+  border-bottom: 1px solid #1e2635;
+}
+
+[data-md-color-scheme="slate"] .md-header__title {
+  color: #e2e8f0 !important;
+}
+
+/* Title gradient: exact match with ACB web UI topbar .logo */
+.md-header__title .md-header__topic:first-child .md-ellipsis,
+.md-header__title {
+  background: linear-gradient(135deg, #3b82f6, #a855f7) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.3px !important;
+}
+
+/* Section title on scroll: solid white, no gradient */
+.md-header__title .md-header__topic:last-child .md-ellipsis {
+  background: none !important;
+  -webkit-background-clip: unset !important;
+  background-clip: unset !important;
+  -webkit-text-fill-color: #e2e8f0 !important;
+  color: #e2e8f0 !important;
+  font-weight: 400 !important;
+  letter-spacing: normal !important;
+}
+
+/* Light mode header: ACB dark blue */
+[data-md-color-scheme="default"] .md-header {
+  background-color: #0f172a !important;
+  border-bottom: 1px solid #1d4ed8;
+}
+
+[data-md-color-scheme="default"] .md-header__title {
+  color: #f8fafc !important;
+}
+
+/* Nav tabs (the tabs bar below header) */
+[data-md-color-scheme="slate"] .md-tabs {
+  background-color: #1e3a8a !important;
+}
+
+[data-md-color-scheme="default"] .md-tabs {
+  background-color: #2563eb !important;
+}
+
+/* ─── Accent color ──────────────────────────────────────────────────────────── */
+
+/* Dark mode: ACB blue #3b82f6 */
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #3b82f6;
+  --md-primary-fg-color--light: #60a5fa;
+  --md-primary-fg-color--dark: #1d4ed8;
+  --md-accent-fg-color: #3b82f6;
+}
+
+/* Light mode: ACB light blue #2563eb */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #2563eb;
+  --md-primary-fg-color--light: #3b82f6;
+  --md-primary-fg-color--dark: #1d4ed8;
+  --md-accent-fg-color: #2563eb;
+}
+
+/* ─── Navigation sidebar ────────────────────────────────────────────────────── */
+
+/* Remove the default grayish background on sidebar section titles */
+[data-md-color-scheme="slate"] .md-nav__title {
+  background-color: transparent !important;
+  box-shadow: none !important;
+  color: #94a3b8 !important;
+}
+
+[data-md-color-scheme="slate"] .md-nav__link--active,
+[data-md-color-scheme="slate"] .md-nav__link:hover {
+  color: #3b82f6;
+}
+
+/* ─── Code blocks ───────────────────────────────────────────────────────────── */
+
+/* Dark mode: override Material's default code background */
+[data-md-color-scheme="slate"] .highlight pre {
+  background-color: #111620 !important;
+}
+
+[data-md-color-scheme="slate"] :not(pre) > code {
+  background-color: #111620 !important;
+}
+
+/* Copy button injected by JS — same background as pre */
+[data-md-color-scheme="slate"] .md-clipboard {
+  background-color: #111620 !important;
+  box-shadow: none !important;
+  border: none !important;
+  color: #4b5563 !important;
+}
+
+[data-md-color-scheme="slate"] .md-clipboard:hover {
+  color: #94a3b8 !important;
+  background-color: #111620 !important;
+}
+
+/* ─── Tables ────────────────────────────────────────────────────────────────── */
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) th {
+  background-color: #151a22;
+  color: #e2e8f0;
+  border-bottom: 2px solid #3b82f6;
+}
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) td {
+  border-color: #1e2635;
+}
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) tr:hover {
+  background-color: #1a2030;
+}
+
+[data-md-color-scheme="default"] .md-typeset table:not([class]) th {
+  background-color: #e8f0ff;
+  color: #0f172a;
+  border-bottom: 2px solid #2563eb;
+}
+
+[data-md-color-scheme="default"] .md-typeset table:not([class]) tr:hover {
+  background-color: #edf3ff;
+}
+
+/* ─── Admonition blocks ─────────────────────────────────────────────────────── */
+
+[data-md-color-scheme="slate"] .md-typeset .admonition {
+  border-color: #1e2635;
+  background-color: #151a22;
+}
+
+/* ─── Footer ────────────────────────────────────────────────────────────────── */
+
+[data-md-color-scheme="slate"] .md-footer {
+  background-color: #0a0d12;
+  border-top: 1px solid #1e2635;
+}
+
+[data-md-color-scheme="default"] .md-footer {
+  background-color: #1e3a8a;
+}
