@@ -112,6 +112,7 @@ async def _migrate_thread_settings_timeout_constraints(db: aiosqlite.Connection)
                 thread_id                   TEXT UNIQUE NOT NULL REFERENCES threads(id),
                 auto_administrator_enabled  INTEGER NOT NULL DEFAULT 1,
                 timeout_seconds             INTEGER NOT NULL DEFAULT 60 CHECK (timeout_seconds >= 30),
+                switch_timeout_seconds      INTEGER NOT NULL DEFAULT 60 CHECK (switch_timeout_seconds >= 30),
                 last_activity_time          TEXT NOT NULL,
                 auto_assigned_admin_id      TEXT,
                 auto_assigned_admin_name    TEXT,
@@ -132,6 +133,7 @@ async def _migrate_thread_settings_timeout_constraints(db: aiosqlite.Connection)
                 thread_id,
                 auto_administrator_enabled,
                 timeout_seconds,
+                switch_timeout_seconds,
                 last_activity_time,
                 auto_assigned_admin_id,
                 auto_assigned_admin_name,
@@ -151,6 +153,7 @@ async def _migrate_thread_settings_timeout_constraints(db: aiosqlite.Connection)
                     WHEN timeout_seconds < 30 THEN 30
                     ELSE timeout_seconds
                 END,
+                60,
                 last_activity_time,
                 auto_assigned_admin_id,
                 auto_assigned_admin_name,
@@ -415,6 +418,7 @@ async def init_schema(db: aiosqlite.Connection) -> None:
             thread_id                   TEXT UNIQUE NOT NULL REFERENCES threads(id),
             auto_administrator_enabled  INTEGER NOT NULL DEFAULT 1,  -- Renamed from auto_coordinator_enabled
             timeout_seconds             INTEGER NOT NULL DEFAULT 60 CHECK (timeout_seconds >= 30),
+            switch_timeout_seconds      INTEGER NOT NULL DEFAULT 60 CHECK (switch_timeout_seconds >= 30),
             last_activity_time          TEXT NOT NULL,
             auto_assigned_admin_id      TEXT,
             auto_assigned_admin_name    TEXT,
@@ -584,6 +588,14 @@ async def init_schema(db: aiosqlite.Connection) -> None:
         ("creator_assignment_time", "TEXT"),
     ]:
         await _add_column_if_missing(db, "thread_settings", col, typedef)
+
+    # Migration: Add switch_timeout_seconds to thread_settings
+    await _add_column_if_missing(
+        db,
+        "thread_settings",
+        "switch_timeout_seconds",
+        "INTEGER NOT NULL DEFAULT 60 CHECK (switch_timeout_seconds >= 30)"
+    )
 
     # Migration: Rebuild thread_settings to relax timeout max cap and bump defaults.
     await _migrate_thread_settings_timeout_constraints(db)

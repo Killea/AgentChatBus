@@ -230,6 +230,7 @@
       const res = await api(`/api/threads/${threadId}/settings`);
       if (res) {
         document.getElementById("ts-timeout-seconds").value = res.timeout_seconds || 60;
+        document.getElementById("ts-switch-timeout-seconds").value = res.switch_timeout_seconds || 60;
       }
     } catch (err) {
       console.error("Error loading thread settings:", err);
@@ -270,10 +271,15 @@
     }
 
     const timeoutSeconds = parseInt(document.getElementById("ts-timeout-seconds").value, 10);
+    const switchTimeoutSeconds = parseInt(document.getElementById("ts-switch-timeout-seconds").value, 10);
 
     // Validation
     if (isNaN(timeoutSeconds) || timeoutSeconds < 30) {
-      alert("Timeout must be at least 30 seconds.");
+      alert("Inactivity Intervention Delay must be at least 30 seconds.");
+      return;
+    }
+    if (isNaN(switchTimeoutSeconds) || switchTimeoutSeconds < 30) {
+      alert("Switch Confirmation Delay must be at least 30 seconds.");
       return;
     }
 
@@ -300,6 +306,7 @@
           auto_administrator_enabled: true,
           auto_coordinator_enabled: true,
           timeout_seconds: timeoutSeconds,
+          switch_timeout_seconds: switchTimeoutSeconds,
         }),
       });
 

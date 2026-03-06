@@ -253,6 +253,7 @@ async def thread_create(
                 thread_id,
                 auto_administrator_enabled,
                 timeout_seconds,
+                switch_timeout_seconds,
                 last_activity_time,
                 creator_admin_id,
                 creator_admin_name,
@@ -260,7 +261,7 @@ async def thread_create(
                 created_at,
                 updated_at
             )
-            VALUES (?, 1, 60, ?, ?, ?, ?, ?, ?)
+            VALUES (?, 1, 60, 60, ?, ?, ?, ?, ?, ?)
             """,
             (
                 tid,
@@ -669,6 +670,7 @@ async def thread_settings_get_or_create(
             thread_id=row["thread_id"],
             auto_administrator_enabled=bool(row["auto_administrator_enabled"]),
             timeout_seconds=row["timeout_seconds"],
+            switch_timeout_seconds=_row_get(row, "switch_timeout_seconds", 60),
             last_activity_time=_parse_dt(row["last_activity_time"]),
             auto_assigned_admin_id=row["auto_assigned_admin_id"],
             auto_assigned_admin_name=row["auto_assigned_admin_name"],
@@ -685,10 +687,10 @@ async def thread_settings_get_or_create(
     await db.execute(
         """
         INSERT INTO thread_settings 
-        (thread_id, auto_administrator_enabled, timeout_seconds, last_activity_time, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        (thread_id, auto_administrator_enabled, timeout_seconds, switch_timeout_seconds, last_activity_time, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (thread_id, True, 60, now, now, now),
+        (thread_id, True, 60, 60, now, now, now),
     )
     await db.commit()
     
@@ -704,6 +706,7 @@ async def thread_settings_get_or_create(
         thread_id=row["thread_id"],
         auto_administrator_enabled=bool(row["auto_administrator_enabled"]),
         timeout_seconds=row["timeout_seconds"],
+        switch_timeout_seconds=_row_get(row, "switch_timeout_seconds", 60),
         last_activity_time=_parse_dt(row["last_activity_time"]),
         auto_assigned_admin_id=row["auto_assigned_admin_id"],
         auto_assigned_admin_name=row["auto_assigned_admin_name"],
@@ -722,6 +725,7 @@ async def thread_settings_update(
     auto_administrator_enabled: Optional[bool] = None,
     auto_coordinator_enabled: Optional[bool] = None,
     timeout_seconds: Optional[int] = None,
+    switch_timeout_seconds: Optional[int] = None,
 ) -> ThreadSettings:
     """Update thread settings for coordination and timeouts."""
     # Backward compatibility: accept legacy field name.
@@ -732,6 +736,10 @@ async def thread_settings_update(
     if timeout_seconds is not None:
         if timeout_seconds < 30:
             raise ValueError("timeout_seconds must be at least 30")
+
+    if switch_timeout_seconds is not None:
+        if switch_timeout_seconds < 30:
+            raise ValueError("switch_timeout_seconds must be at least 30")
     
     # Prepare update statement
     updates = []
@@ -744,6 +752,10 @@ async def thread_settings_update(
     if timeout_seconds is not None:
         updates.append("timeout_seconds = ?")
         values.append(timeout_seconds)
+
+    if switch_timeout_seconds is not None:
+        updates.append("switch_timeout_seconds = ?")
+        values.append(switch_timeout_seconds)
     
     updates.append("updated_at = ?")
     values.append(_now())

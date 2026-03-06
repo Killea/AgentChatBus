@@ -112,6 +112,7 @@ class ThreadSettings:
     thread_id: str
     auto_administrator_enabled: bool = False  # Renamed from auto_coordinator_enabled
     timeout_seconds: int = 60               # >= 30 seconds (no max cap)
+    switch_timeout_seconds: int = 60        # >= 30 seconds (no max cap)
     last_activity_time: datetime = field(default_factory=lambda: datetime.now())
     auto_assigned_admin_id: Optional[str] = None
     auto_assigned_admin_name: Optional[str] = None

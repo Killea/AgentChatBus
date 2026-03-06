@@ -1551,6 +1551,8 @@ body[data-theme="light"] .msg-sys-prompt-body {
 }
 
 .msg-sys-admin-card {
+  display: flex;
+    flex-direction: column;
   align-self: center;
   width: min(760px, 92%);
   border: 1px solid rgba(245, 158, 11, .35);
@@ -2078,9 +2080,9 @@ body[data-theme="light"] .skills-badge {
 }
 
 #modal h3 {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
-  margin-bottom: 18px;
+  margin-bottom: 0px;
 }
 
 #modal-topic {
@@ -3408,10 +3410,13 @@ body[data-theme="light"] .settings-nav-item.active {
 
 .settings-section-title {
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-3);
-  margin-bottom: 12px;
-  letter-spacing: .06em;
+  margin-bottom: 16px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border-light);
+    padding-bottom: 8px;
 }
 
 .settings-card {
@@ -3430,10 +3435,10 @@ body[data-theme="light"] .settings-nav-item.active {
 }
 
 .settings-field-description {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-2);
-  margin-top: 2px;
-  line-height: 1.4;
+  margin-top: 4px;
+    line-height: 1.5;
 }
 .settings-field-row {
   flex-direction: row;

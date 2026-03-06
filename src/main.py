@@ -299,7 +299,8 @@ async def _admin_coordinator_loop() -> None:
                 )
                 elapsed = (datetime.now(timezone.utc) - latest_enter).total_seconds()
                 
-                if elapsed < ts.timeout_seconds:
+                min_timeout = min(ts.timeout_seconds, getattr(ts, 'switch_timeout_seconds', ts.timeout_seconds))
+                if elapsed < min_timeout:
                     continue
 
                 # Timeout reached - evaluate admin coordination action
@@ -308,7 +309,7 @@ async def _admin_coordinator_loop() -> None:
                     thread_id,
                     len(thread_participant_ids),
                     elapsed,
-                    ts.timeout_seconds,
+                    min_timeout,
                 )
 
                 try:
@@ -404,6 +405,8 @@ async def _admin_coordinator_loop() -> None:
                     )
 
                     if single_online_current_admin:
+                        if elapsed < ts.timeout_seconds:
+                            continue
                         if _has_pending_prompt("admin_takeover_confirmation_required"):
                             logger.debug(
                                 "Skip duplicate admin takeover confirmation for thread %s (pending exists)",
@@ -451,6 +454,8 @@ async def _admin_coordinator_loop() -> None:
                             timeout=DB_TIMEOUT,
                         )
                     elif participant_count > 1:
+                        if elapsed < ts.timeout_seconds:
+                            continue
                         if not _has_recent_ui_event("admin_coordination_timeout_notice"):
                             human_notice = (
                                 f"Auto Administrator Timeout triggered after {int(elapsed)} seconds. "
@@ -539,6 +544,8 @@ async def _admin_coordinator_loop() -> None:
                                     timeout=DB_TIMEOUT,
                                 )
                     elif needs_switch_confirmation:
+                        if elapsed < getattr(ts, 'switch_timeout_seconds', ts.timeout_seconds):
+                            continue
                         if _has_pending_prompt("admin_switch_confirmation_required"):
                             logger.debug(
                                 "Skip duplicate admin switch confirmation for thread %s (pending exists)",
@@ -2177,6 +2184,7 @@ async def api_get_thread_settings(thread_id: str):
         "auto_administrator_enabled": settings.auto_administrator_enabled,
         "auto_coordinator_enabled": settings.auto_administrator_enabled,  # Backward compatibility
         "timeout_seconds": settings.timeout_seconds,
+        "switch_timeout_seconds": settings.switch_timeout_seconds,
         "last_activity_time": settings.last_activity_time.isoformat(),
         "auto_assigned_admin_id": settings.auto_assigned_admin_id,
         "auto_assigned_admin_name": settings.auto_assigned_admin_name,
@@ -2195,6 +2203,7 @@ class ThreadSettingsUpdate(BaseModel):
     auto_administrator_enabled: bool | None = None
     auto_coordinator_enabled: bool | None = None  # Backward compatibility alias
     timeout_seconds: int | None = None
+    switch_timeout_seconds: int | None = None
     model_config = ConfigDict(extra="ignore")
 
 
@@ -2239,6 +2248,7 @@ async def api_update_thread_settings(thread_id: str, body: ThreadSettingsUpdate)
                 thread_id,
                 auto_administrator_enabled=auto_admin_value,
                 timeout_seconds=body.timeout_seconds,
+                switch_timeout_seconds=body.switch_timeout_seconds,
             ),
             timeout=DB_TIMEOUT,
         )
@@ -2252,6 +2262,7 @@ async def api_update_thread_settings(thread_id: str, body: ThreadSettingsUpdate)
         "auto_administrator_enabled": settings.auto_administrator_enabled,
         "auto_coordinator_enabled": settings.auto_administrator_enabled,  # Backward compatibility
         "timeout_seconds": settings.timeout_seconds,
+        "switch_timeout_seconds": settings.switch_timeout_seconds,
         "last_activity_time": settings.last_activity_time.isoformat(),
         "auto_assigned_admin_id": settings.auto_assigned_admin_id,
         "auto_assigned_admin_name": settings.auto_assigned_admin_name,
