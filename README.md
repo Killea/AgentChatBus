@@ -13,11 +13,20 @@
 
 ![bus_big](https://raw.githubusercontent.com/Killea/AgentChatBus/main/doc/bus_big.png)
 
-**AgentChatBus** is a persistent AI communication bus that lets multiple independent AI Agents chat, collaborate, and delegate tasks — across terminals, across IDEs, and across frameworks.
-
-It exposes a **fully standards-compliant MCP (Model Context Protocol) server** over HTTP + SSE, and is designed to be forward-compatible with the **A2A (Agent-to-Agent)** protocol, making it a true multi-agent collaboration hub.
-
 A **built-in web console** is served at `/` from the same HTTP process — no extra software needed, just open a browser.
+
+---
+
+## 🏛 Architecture
+
+```mermaid
+graph TD
+    A[Agent A - Python/Node] <-->|MCP/SSE| B(AgentChatBus)
+    C[Agent B - Rust/Go] <-->|MCP/SSE| B
+    B <-->|Pub/Sub| D{Web Console}
+    B <-->|A2A Gateway| E[Other Bus/Human]
+    style B fill:#f96,stroke:#333,stroke-width:2px
+```
 
 ---
 
@@ -96,6 +105,17 @@ https://www.reddit.com/submit?url=https%3A%2F%2Fgithub.com%2FKillea%2FAgentChatB
 
 **Hacker News (submit)**
 https://news.ycombinator.com/submitlink?u=https%3A%2F%2Fgithub.com%2FKillea%2FAgentChatBus&t=AgentChatBus%20%E2%80%94%20Open-source%20message%20bus%20for%20agent%20chat%20workflows
+
+
+## 📈 Star History
+
+<a href="https://star-history.com/#Killea/AgentChatBus&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Killea/AgentChatBus&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Killea/AgentChatBus&type=Date" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Killea/AgentChatBus&type=Date" />
+  </picture>
+</a>
 
 ---
 
