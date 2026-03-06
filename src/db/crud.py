@@ -529,6 +529,21 @@ async def reply_tokens_invalidate_for_agent(
     await db.commit()
 
 
+async def reply_tokens_invalidate_for_agent_except(
+    db: aiosqlite.Connection,
+    thread_id: str,
+    agent_id: str,
+    keep_token: str,
+) -> None:
+    now = _now()
+    await db.execute(
+        "UPDATE reply_tokens SET status = 'consumed', consumed_at = ? "
+        "WHERE thread_id = ? AND agent_id = ? AND status = 'issued' AND token != ?",
+        (now, thread_id, agent_id, keep_token),
+    )
+    await db.commit()
+
+
 async def reply_tokens_invalidate_for_agent_source(
     db: aiosqlite.Connection,
     thread_id: str,
@@ -540,6 +555,96 @@ async def reply_tokens_invalidate_for_agent_source(
         "UPDATE reply_tokens SET status = 'consumed', consumed_at = ? "
         "WHERE thread_id = ? AND agent_id = ? AND source = ? AND status = 'issued'",
         (now, thread_id, agent_id, source),
+    )
+    await db.commit()
+
+
+async def reply_token_get_latest_issued(
+    db: aiosqlite.Connection,
+    thread_id: str,
+    agent_id: str,
+) -> Optional[dict]:
+    async with db.execute(
+        "SELECT token, expires_at FROM reply_tokens "
+        "WHERE thread_id = ? AND agent_id = ? AND status = 'issued' "
+        "ORDER BY issued_at DESC LIMIT 1",
+        (thread_id, agent_id),
+    ) as cur:
+        row = await cur.fetchone()
+    if not row:
+        return None
+    return {
+        "reply_token": row["token"],
+        "expires_at": row["expires_at"],
+    }
+
+
+async def _ensure_msg_wait_refresh_requests_table(db: aiosqlite.Connection) -> None:
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS msg_wait_refresh_requests (
+            thread_id     TEXT NOT NULL,
+            agent_id      TEXT NOT NULL,
+            requested_at  TEXT NOT NULL,
+            reason        TEXT,
+            PRIMARY KEY (thread_id, agent_id)
+        )
+        """
+    )
+    await db.commit()
+
+
+async def msg_wait_refresh_request_set(
+    db: aiosqlite.Connection,
+    thread_id: str,
+    agent_id: str,
+    reason: str | None = None,
+) -> None:
+    await _ensure_msg_wait_refresh_requests_table(db)
+    now = _now()
+    await db.execute(
+        """
+        INSERT INTO msg_wait_refresh_requests (thread_id, agent_id, requested_at, reason)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(thread_id, agent_id)
+        DO UPDATE SET requested_at = excluded.requested_at,
+                      reason = excluded.reason
+        """,
+        (thread_id, agent_id, now, reason),
+    )
+    await db.commit()
+
+
+async def msg_wait_refresh_request_get(
+    db: aiosqlite.Connection,
+    thread_id: str,
+    agent_id: str,
+) -> Optional[dict]:
+    await _ensure_msg_wait_refresh_requests_table(db)
+    async with db.execute(
+        "SELECT thread_id, agent_id, requested_at, reason FROM msg_wait_refresh_requests WHERE thread_id = ? AND agent_id = ?",
+        (thread_id, agent_id),
+    ) as cur:
+        row = await cur.fetchone()
+    if not row:
+        return None
+    return {
+        "thread_id": row["thread_id"],
+        "agent_id": row["agent_id"],
+        "requested_at": row["requested_at"],
+        "reason": row["reason"],
+    }
+
+
+async def msg_wait_refresh_request_clear(
+    db: aiosqlite.Connection,
+    thread_id: str,
+    agent_id: str,
+) -> None:
+    await _ensure_msg_wait_refresh_requests_table(db)
+    await db.execute(
+        "DELETE FROM msg_wait_refresh_requests WHERE thread_id = ? AND agent_id = ?",
+        (thread_id, agent_id),
     )
     await db.commit()
 

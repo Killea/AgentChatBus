@@ -389,7 +389,7 @@ def test_admin_takeover_decision_emits_targeted_instruction_and_cancel_is_record
         ]
         assert len(takeover_msgs) == 1
         assert f'"handoff_target": "{creator_id}"' in (takeover_msgs[0].get("metadata") or "")
-        assert '"visibility": "human_only"' in (takeover_msgs[0].get("metadata") or "")
+        assert '"visibility": "human_only"' not in (takeover_msgs[0].get("metadata") or "")
 
         prompt_resp_cancel = client.post(
             f"/api/threads/{thread_id}/messages",

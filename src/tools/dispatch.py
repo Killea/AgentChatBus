@@ -585,42 +585,41 @@ async def handle_msg_post(db, arguments: dict[str, Any]) -> list[types.TextConte
 
         if invalidate_agent_id:
             await crud.reply_tokens_invalidate_for_agent(db, thread_id, invalidate_agent_id)
-            
-        expected_seq = arguments.get("expected_last_seq", 0)
-        if not isinstance(expected_seq, int):
-            expected_seq = 0
-            
-        try:
-            # Fetch actual new messages that the agent missed
-            new_msgs = await crud.msg_list(db, thread_id, after_seq=expected_seq)
-            new_msgs_dump = [
-                {
-                    "seq": m.seq,
-                    "author": m.author_name or m.author,
-                    "role": m.role,
-                    "content": m.content,
-                    "created_at": m.created_at.isoformat()
-                }
-                for m in new_msgs
-            ]
-        except Exception:
-            new_msgs_dump = []
+            await crud.msg_wait_refresh_request_set(db, thread_id, invalidate_agent_id, reason=error_type)
 
-        return [types.TextContent(type="text", text=json.dumps({
+        if isinstance(e, SeqMismatchError):
+            return [types.TextContent(type="text", text=json.dumps({
+                "error": error_type,
+                "detail": str(e) if hasattr(e, "__str__") else error_type,
+                "expected_last_seq": e.expected_last_seq,
+                "current_seq": e.current_seq,
+                "CRITICAL_REMINDER": (
+                    "Your msg_post was rejected! "
+                    "NEW context arrived while you were trying to post. "
+                    "You MUST read the 'new_messages_1st_read' below NOW to understand what changed. "
+                    "Do NOT blindly retry your old message! "
+                    "Next, you MUST call 'msg_wait' to get a fresh reply_token. "
+                    "When you do, you will receive these messages again (2nd read). "
+                    "Only AFTER that, formulate a NEW response."
+                ),
+                "new_messages_1st_read": e.new_messages,
+                "action": "READ_MESSAGES_THEN_CALL_MSG_WAIT"
+            }))]
+
+        payload = {
             "error": error_type,
             "detail": str(e) if hasattr(e, "__str__") else error_type,
-            "CRITICAL_REMINDER": (
-                "Your msg_post was rejected! "
-                "NEW context arrived while you were trying to post. "
-                "You MUST read the 'new_messages_1st_read' below NOW to understand what changed. "
-                "Do NOT blindly retry your old message! "
-                "Next, you MUST call 'msg_wait' to get a fresh reply_token. "
-                "When you do, you will receive these messages again (2nd read). "
-                "Only AFTER that, formulate a NEW response."
+            "REMINDER": (
+                "Your reply_token is no longer usable. "
+                "Call 'msg_wait' now to get a fresh reply_token before posting again."
             ),
-            "new_messages_1st_read": new_msgs_dump,
-            "action": "READ_MESSAGES_THEN_CALL_MSG_WAIT"
-        }))]
+            "action": "CALL_MSG_WAIT",
+        }
+        if isinstance(e, ReplyTokenExpiredError):
+            payload["expires_at"] = e.expires_at
+        if isinstance(e, ReplyTokenReplayError):
+            payload["consumed_at"] = e.consumed_at
+        return [types.TextContent(type="text", text=json.dumps(payload))]
     except ContentFilterError as e:
         return [types.TextContent(type="text", text=json.dumps({
             "error": "Content blocked by filter",
@@ -944,9 +943,11 @@ async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.Content]:
 
     wants_sync_only = False
     issued_token_count: int | None = None
+    refresh_request: dict[str, Any] | None = None
     current_latest_seq = await crud.thread_latest_seq(db, thread_id)
     
     if verified_agent:
+        refresh_request = await crud.msg_wait_refresh_request_get(db, thread_id, agent_id)
         async with db.execute(
             "SELECT COUNT(*) FROM reply_tokens "
             "WHERE thread_id = ? AND agent_id = ? AND status = 'issued'",
@@ -954,17 +955,22 @@ async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.Content]:
         ) as cur:
             row = await cur.fetchone()
             issued_token_count = row[0] if row else 0
+            if refresh_request:
+                wants_sync_only = True
             # Only force return for sync if the agent is actually behind.
             # If they are at the latest seq, they can safely wait; they'll get
             # a token when they eventually wake up.
-            if issued_token_count == 0 and after_seq < current_latest_seq:
+            if not wants_sync_only and issued_token_count == 0 and after_seq < current_latest_seq:
                 wants_sync_only = True
     
     fast_return_allowed = bool(wants_sync_only)
     
     # ── Diagnostic Logs ───────────────────────────────────────────────────────
     reason = "normal"
-    if wants_sync_only:
+    if refresh_request:
+        refresh_reason = refresh_request.get("reason") or "unknown"
+        reason = f"refresh_required_after_{refresh_reason}(after_seq={after_seq}, latest={current_latest_seq})"
+    elif wants_sync_only:
         reason = f"no_issued_tokens_and_behind(total_issued={issued_token_count if agent_id else 'N/A'}, after_seq={after_seq}, latest={current_latest_seq})"
     elif verified_agent and issued_token_count == 0:
         reason = f"no_issued_tokens_but_caught_up(latest={current_latest_seq})"
@@ -1009,7 +1015,7 @@ async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.Content]:
 
     if wants_sync_only:
         logger.info(
-            f"[msg_wait] immediate-return-eligible reason=no_issued_token "
+            f"[msg_wait] immediate-return-eligible reason={'refresh_required' if refresh_request else 'no_issued_token'} "
             f"thread_id={thread_id} agent_id={agent_id} after_seq={after_seq}"
         )
 
@@ -1068,17 +1074,46 @@ async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.Content]:
         msgs = await asyncio.wait_for(_poll(), timeout=timeout_s)
     except asyncio.TimeoutError:
         msgs = []
+        if verified_agent:
+            await crud.thread_wait_exit(db, thread_id, agent_id)
         logger.info(
             f"[msg_wait] return reason=timeout thread_id={thread_id} "
             f"agent_id={agent_id} timeout_ms={timeout_ms}"
         )
 
-    token_payload = await crud.issue_reply_token(
-        db,
-        thread_id=thread_id,
-        agent_id=agent_id if verified_agent else None,
-        source="msg_wait",
-    )
+    if verified_agent and refresh_request:
+        await crud.msg_wait_refresh_request_clear(db, thread_id, agent_id)
+
+    current_seq_after_wait = await crud.thread_latest_seq(db, thread_id)
+    token_payload: dict[str, Any] | None = None
+
+    if verified_agent and not msgs and current_seq_after_wait == current_latest_seq:
+        latest_token = await crud.reply_token_get_latest_issued(db, thread_id, agent_id)
+        if latest_token is not None:
+            await crud.reply_tokens_invalidate_for_agent_except(
+                db,
+                thread_id=thread_id,
+                agent_id=agent_id,
+                keep_token=latest_token["reply_token"],
+            )
+            token_payload = {
+                "reply_token": latest_token["reply_token"],
+                "current_seq": current_seq_after_wait,
+                "reply_window": {
+                    "expires_at": latest_token["expires_at"],
+                    "max_new_messages": 0,
+                },
+            }
+
+    if token_payload is None:
+        if verified_agent:
+            await crud.reply_tokens_invalidate_for_agent(db, thread_id, agent_id)
+        token_payload = await crud.issue_reply_token(
+            db,
+            thread_id=thread_id,
+            agent_id=agent_id if verified_agent else None,
+            source="msg_wait",
+        )
     
     # Coordinator interventions are generated by main._admin_coordinator_loop.
     coordination_prompt = None

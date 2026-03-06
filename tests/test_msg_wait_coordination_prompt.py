@@ -143,8 +143,47 @@ async def test_msg_wait_and_msg_list_filter_human_only_system_messages():
 
 
 @pytest.mark.asyncio
-async def test_msg_wait_for_agent_unmatched_message_keeps_wait_state():
-    """When for_agent does not match available messages, waiter should remain in wait state."""
+async def test_msg_wait_returns_targeted_takeover_instruction_to_agent():
+    """Targeted coordination instructions must stay visible to the intended agent."""
+    db = await _setup_db()
+    try:
+        thread = await crud.thread_create(db, "msg-wait-targeted-takeover")
+        agent = await crud.agent_register(db, ide="VS Code", model="GPT-5.3-Codex")
+
+        await crud._msg_create_system(
+            db,
+            thread.id,
+            "Coordinator decision: please take over now.",
+            metadata={
+                "ui_type": "admin_coordination_takeover_instruction",
+                "handoff_target": agent.id,
+                "target_admin_id": agent.id,
+            },
+            clear_auto_admin=False,
+        )
+
+        out = await handle_msg_wait(
+            db,
+            {
+                "thread_id": thread.id,
+                "after_seq": 0,
+                "timeout_ms": 50,
+                "return_format": "json",
+                "agent_id": agent.id,
+                "token": agent.token,
+            },
+        )
+
+        payload = json.loads(out[0].text)
+        assert len(payload.get("messages") or []) == 1
+        assert payload["messages"][0]["content"] == "Coordinator decision: please take over now."
+    finally:
+        await db.close()
+
+
+@pytest.mark.asyncio
+async def test_msg_wait_for_agent_unmatched_message_timeout_clears_wait_state():
+    """When for_agent does not match and msg_wait times out, the wait state should be cleared."""
     db = await _setup_db()
     try:
         thread = await crud.thread_create(db, "msg-wait-for-agent-unmatched")
@@ -194,7 +233,34 @@ async def test_msg_wait_for_agent_unmatched_message_keeps_wait_state():
         assert payload.get("messages") == []
 
         states = await crud.thread_wait_states_grouped(db)
-        assert thread.id in states
-        assert agent.id in states[thread.id]
+        assert thread.id not in states or agent.id not in states.get(thread.id, {})
+    finally:
+        await db.close()
+
+
+@pytest.mark.asyncio
+async def test_msg_wait_timeout_clears_wait_state():
+    db = await _setup_db()
+    try:
+        thread = await crud.thread_create(db, "msg-wait-timeout-clears-state")
+        agent = await crud.agent_register(db, ide="VS Code", model="GPT-5.3-Codex")
+
+        out = await handle_msg_wait(
+            db,
+            {
+                "thread_id": thread.id,
+                "after_seq": 0,
+                "timeout_ms": 20,
+                "return_format": "json",
+                "agent_id": agent.id,
+                "token": agent.token,
+            },
+        )
+
+        payload = json.loads(out[0].text)
+        assert payload.get("messages") == []
+
+        states = await crud.thread_wait_states_grouped(db)
+        assert thread.id not in states or agent.id not in states.get(thread.id, {})
     finally:
         await db.close()

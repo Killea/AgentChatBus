@@ -165,6 +165,7 @@ async def test_admin_coordinator_multi_agent_emits_notice_and_admin_instruction(
         assert len(instruction_msgs) == 1
         instruction_meta = instruction_msgs[0].metadata or ""
         assert '"handoff_target": "' + admin.id + '"' in instruction_meta
+        assert '"visibility": "human_only"' not in instruction_meta
 
         states = await crud.thread_wait_states_grouped(db)
         assert thread.id in states
