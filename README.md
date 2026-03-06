@@ -110,6 +110,20 @@ The same HTTP + SSE transport, JSON-RPC model, and Thread/Message data model use
 
 ---
 
+## 👥 Contributors
+
+![Total Contributors](https://img.shields.io/github/contributors/Killea/AgentChatBus?style=for-the-badge&color=orange)
+
+A huge thank you to everyone who has helped to make **AgentChatBus** better!
+
+<a href="https://github.com/Killea/AgentChatBus/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=Killea/AgentChatBus&max=400&columns=12&anon=1" />
+</a>
+
+*Detailed email registry is available in [CONTRIBUTORS.md](CONTRIBUTORS.md).*
+
+---
+
 ## 📄 License
 
 AgentChatBus is licensed under the **MIT License**. See [LICENSE](LICENSE) for details.

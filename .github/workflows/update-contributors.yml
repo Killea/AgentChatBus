@@ -1,0 +1,90 @@
+name: Update Contributors
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # Allow manual trigger
+
+permissions:
+  contents: write # 允许 Action 提交代码回仓库
+
+jobs:
+  update-contributors:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 需要完整的 Git 历史记录来统计作者
+          
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Generate Contributors
+        run: |
+          python - << 'EOF'
+          import subprocess
+          import re
+          import os
+          
+          # 1. 获取所有提交的 作者名称 和 邮箱
+          output = subprocess.check_output(['git', 'log', '--format=%aN|%aE']).decode('utf-8')
+          contributors = {}
+          
+          for line in output.strip().split('\n'):
+              if not line: continue
+              name, email = line.split('|', 1)
+              name, email = name.strip(), email.strip().lower()
+              
+              if re.search(r'(github-actions|dependabot|bot)', name, re.IGNORECASE) or 'bot@' in email:
+                  continue
+                  
+              if email not in contributors:
+                  contributors[email] = set()
+              contributors[email].add(name)
+          
+          # 2. 逻辑处理：创始人固定 + 英文优先
+          final_list = []
+          for email, names in contributors.items():
+              if email == "killea@gmail.com":
+                  continue
+              
+              best_name = list(names)[0]
+              for n in names:
+                  if n.isascii() and not best_name.isascii():
+                      best_name = n
+              final_list.append(f"- {best_name} <{email}>")
+              
+          final_list.sort(key=lambda x: x.lower())
+          
+          # 3. 更新 CONTRIBUTORS.md
+          with open("CONTRIBUTORS.md", "w", encoding="utf-8") as f:
+              f.write("# Contributors\n\nThank you to the following people:\n\n")
+              f.write("### Creator & Maintainer\n- Hank Wang <Killea@gmail.com>\n\n")
+              if final_list:
+                  f.write("### Project Contributors\n" + '\n'.join(final_list) + '\n')
+          
+          # 4. 核心功能：同步到 README.md
+          if os.path.exists("README.md"):
+              with open("README.md", "r", encoding="utf-8") as f:
+                  content = f.read()
+              
+              readme_contributors = ["- Hank Wang <Killea@gmail.com>"] + final_list
+              new_text = '\n'.join(readme_contributors)
+              
+              pattern = r"(<!-- CONTRIBUTORS_START -->).*(<!-- CONTRIBUTORS_END -->)"
+              updated_content = re.sub(pattern, f"\\1\n{new_text}\n\\2", content, flags=re.DOTALL)
+              
+              with open("README.md", "w", encoding="utf-8") as f:
+                  f.write(updated_content)
+          EOF
+
+      - name: Commit and push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "docs: auto-update contributors in README and CONTRIBUTORS.md"
+          file_pattern: "CONTRIBUTORS.md README.md"
+          branch: main
