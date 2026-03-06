@@ -130,3 +130,49 @@ async def test_msg_wait_attention_disabled(mock_attention_false):
             pass
             
     await db.close()
+
+@pytest.mark.asyncio
+async def test_msg_post_attention_enabled(mock_attention_true):
+    db = await _make_db()
+    thread = await crud.thread_create(db, "Topic")
+    sync = await crud.issue_reply_token(db, thread.id)
+    
+    # Test msg_post
+    result_list = await dispatch.handle_msg_post(db, {
+        "thread_id": thread.id,
+        "author": "agent-test",
+        "content": "Testing post attention enabled",
+        "expected_last_seq": sync["current_seq"],
+        "reply_token": sync["reply_token"],
+        "metadata": {"handoff_target": "agent-xyz", "stop_reason": "timeout"},
+        "priority": "urgent"
+    })
+    
+    payload = json.loads(result_list[0].text)
+    assert payload["priority"] == "urgent"
+    assert payload.get("handoff_target") == "agent-xyz"
+    assert payload.get("stop_reason") == "timeout"
+    await db.close()
+
+@pytest.mark.asyncio
+async def test_msg_post_attention_disabled(mock_attention_false):
+    db = await _make_db()
+    thread = await crud.thread_create(db, "Topic")
+    sync = await crud.issue_reply_token(db, thread.id)
+    
+    # Test msg_post
+    result_list = await dispatch.handle_msg_post(db, {
+        "thread_id": thread.id,
+        "author": "agent-test",
+        "content": "Testing post attention disabled",
+        "expected_last_seq": sync["current_seq"],
+        "reply_token": sync["reply_token"],
+        "metadata": {"handoff_target": "agent-xyz", "stop_reason": "timeout"},
+        "priority": "urgent"
+    })
+    
+    payload = json.loads(result_list[0].text)
+    assert "priority" not in payload
+    assert "handoff_target" not in payload
+    assert "stop_reason" not in payload
+    await db.close()

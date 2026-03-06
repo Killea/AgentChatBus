@@ -648,7 +648,12 @@ async def handle_msg_post(db, arguments: dict[str, Any]) -> list[types.TextConte
             result["stop_reason"] = meta["stop_reason"]
     return [types.TextContent(type="text", text=json.dumps(result))]
 
-def _filter_msg_metadata(meta_str: str | None) -> str | None:
+def _filter_metadata_fields(meta_str: str | None) -> str | None:
+    # NOTE: `priority` is not part of the metadata string column in the database schema;
+    # it is a top-level field on the Message model.
+    # Therefore, while `handoff_target` and `stop_reason` are filtered here from the JSON metadata,
+    # the attention-mechanism feature flag for `priority` (ENABLE_PRIORITY) is enforced
+    # independently inside formatting functions (`handle_msg_get`, `handle_msg_list`, etc.).
     raw_meta = _safe_json_loads(meta_str) or {}
     if isinstance(raw_meta, dict):
         if not ENABLE_HANDOFF_TARGET and "handoff_target" in raw_meta:
@@ -680,7 +685,7 @@ async def handle_msg_list(db, arguments: dict[str, Any]) -> list[types.Content]:
         return blocks
 
     def _filter_msg(m):
-        filtered_meta = _filter_msg_metadata(m.metadata)
+        filtered_meta = _filter_metadata_fields(m.metadata)
         
         msg_dict = {
             "msg_id": m.id,
@@ -850,7 +855,7 @@ async def handle_msg_get(db, arguments: dict[str, Any]) -> list[types.TextConten
             "seq": msg.seq,
             "role": msg.role,
             "reply_to_msg_id": msg.reply_to_msg_id,
-            "metadata": _filter_msg_metadata(msg.metadata),
+            "metadata": _filter_metadata_fields(msg.metadata),
             "created_at": msg.created_at.isoformat() if hasattr(msg.created_at, "isoformat") else msg.created_at,
             "edited_at": msg.edited_at.isoformat() if msg.edited_at else None,
             "edit_version": msg.edit_version,
@@ -1067,7 +1072,7 @@ async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.Content]:
             "content": m.content,
             "seq": m.seq,
             "created_at": m.created_at.isoformat(),
-            "metadata": _filter_msg_metadata(m.metadata),
+            "metadata": _filter_metadata_fields(m.metadata),
         }
         if ENABLE_PRIORITY:
             d["priority"] = m.priority
