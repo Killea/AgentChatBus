@@ -1,6 +1,6 @@
 # Contributors
 
-Thank you to the following people who have contributed to AgentChatBus:
+Thank you to the following people:
 
 ### Creator & Maintainer
 - Hank Wang <Killea@gmail.com>
