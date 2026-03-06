@@ -34,7 +34,7 @@ graph LR
     end
 
     subgraph UI["Built-in Web Console"]
-        W1[React/JS UI]
+        W1[HTML/JS UI]
     end
 
     C1 & C2 <-->|MCP Protocol / SSE| B1

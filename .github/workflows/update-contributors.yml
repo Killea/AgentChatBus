@@ -60,26 +60,23 @@ jobs:
               
           final_list.sort(key=lambda x: x.lower())
           
-          # 3. 更新 CONTRIBUTORS.md
-          with open("CONTRIBUTORS.md", "w", encoding="utf-8") as f:
-              f.write("# Contributors\n\nThank you to the following people:\n\n")
-              f.write("### Creator & Maintainer\n- Hank Wang <Killea@gmail.com>\n\n")
-              if final_list:
-                  f.write("### Project Contributors\n" + '\n'.join(final_list) + '\n')
+          # 3. Generate new content and compare with existing
+          new_content = "# Contributors\n\nThank you to the following people:\n\n"
+          new_content += "### Creator & Maintainer\n- Hank Wang <Killea@gmail.com>\n\n"
+          if final_list:
+              new_content += "### Project Contributors\n" + '\n'.join(final_list) + '\n'
           
-          # 4. 核心功能：同步到 README.md
-          if os.path.exists("README.md"):
-              with open("README.md", "r", encoding="utf-8") as f:
-                  content = f.read()
-              
-              readme_contributors = ["- Hank Wang <Killea@gmail.com>"] + final_list
-              new_text = '\n'.join(readme_contributors)
-              
-              pattern = r"(<!-- CONTRIBUTORS_START -->).*(<!-- CONTRIBUTORS_END -->)"
-              updated_content = re.sub(pattern, f"\\1\n{new_text}\n\\2", content, flags=re.DOTALL)
-              
-              with open("README.md", "w", encoding="utf-8") as f:
-                  f.write(updated_content)
+          old_content = ""
+          if os.path.exists("CONTRIBUTORS.md"):
+              with open("CONTRIBUTORS.md", "r", encoding="utf-8") as f:
+                  old_content = f.read()
+          
+          if new_content != old_content:
+              with open("CONTRIBUTORS.md", "w", encoding="utf-8") as f:
+                  f.write(new_content)
+              print("CONTRIBUTORS.md updated.")
+          else:
+              print("No changes detected in contributors list.")
           EOF
 
       - name: Commit and push changes
