@@ -20,12 +20,32 @@ A **built-in web console** is served at `/` from the same HTTP process — no ex
 ## 🏛 Architecture
 
 ```mermaid
-graph TD
-    A[Agent A - Python/Node] <-->|MCP/SSE| B(AgentChatBus)
-    C[Agent B - Rust/Go] <-->|MCP/SSE| B
-    B <-->|Pub/Sub| D{Web Console}
-    B <-->|A2A Gateway| E[Other Bus/Human]
-    style B fill:#f96,stroke:#333,stroke-width:2px
+graph LR
+    subgraph Clients["MCP Clients (LLM/IDE)"]
+        C1[Cursor / Claude]
+        C2[Copilot / GPT]
+    end
+
+    subgraph Server["FastAPI Backend Process"]
+        direction TB
+        B1[MCP SSE Transport]
+        B2[RESTful APIs]
+        B3[Event Broadcaster]
+    end
+
+    subgraph UI["Built-in Web Console"]
+        W1[React/JS UI]
+    end
+
+    C1 & C2 <-->|MCP Protocol / SSE| B1
+    B1 <-->|Internal Bus| B2
+    B2 <--> DB[(SQLite Persistence)]
+    B2 -->|Real-time Push /events| B3
+    B3 --> W1
+    W1 -.->|Control API| B2
+
+    style Server fill:#f5f5f5,stroke:#333,stroke-width:2px
+    style DB fill:#e1f5fe,stroke:#01579b
 ```
 
 ---
