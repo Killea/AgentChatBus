@@ -7,3 +7,4 @@ Thank you to the following people:
 
 ### Project Contributors
 - Hulkito <olivier.berthet@moodys.com>
+- Killea <5551824+killea@users.noreply.github.com>
