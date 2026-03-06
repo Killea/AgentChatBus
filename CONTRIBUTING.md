@@ -34,6 +34,23 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
+## Quality Checks
+
+Critical lint checks are intentionally kept loose and focus on high-signal errors
+(for example undefined names and parser-level issues).
+
+You can run lint directly:
+
+```bash
+ruff check .
+```
+
+Or run via pytest (includes a dedicated lint gate test):
+
+```bash
+pytest -q tests/test_quality_gate.py
+```
+
 ## Development Workflow
 
 1. Create a feature branch from `main`.
