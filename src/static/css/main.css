@@ -3467,7 +3467,7 @@ body[data-theme="light"] .settings-nav-item.active {
 
 .settings-field-note {
   font-size: 12px;
-  color: var(--text-3);
+  color: var(--text-2);
   line-height: 1.4;
 }
 

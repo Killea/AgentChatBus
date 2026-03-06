@@ -1,7 +1,17 @@
 (function registerAcbModalShell() {
   const NETWORK_FIELDS = [
-    { label: "Host", id: "setting-host", type: "text" },
-    { label: "Port", id: "setting-port", type: "number" },
+    {
+      label: "Host",
+      id: "setting-host",
+      type: "text",
+      description: "The IP address or hostname the server binds to. Use '127.0.0.1' for local-only access (secure), or '0.0.0.0' to allow agents from other machines on the network."
+    },
+    {
+      label: "Port",
+      id: "setting-port",
+      type: "number",
+      description: "The TCP network port the server listens on (Default: 39765). Ensure this port is open in your firewall if you plan to connect external agents."
+    },
   ];
 
   const AGENT_FIELDS = [
