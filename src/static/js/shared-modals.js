@@ -270,18 +270,15 @@
       return;
     }
 
-    const timeoutSeconds = parseInt(document.getElementById("ts-timeout-seconds").value, 10);
-    const switchTimeoutSeconds = parseInt(document.getElementById("ts-switch-timeout-seconds").value, 10);
+    const timeoutInput = document.getElementById("ts-timeout-seconds");
+    const switchTimeoutInput = document.getElementById("ts-switch-timeout-seconds");
 
-    // Validation
-    if (isNaN(timeoutSeconds) || timeoutSeconds < 30) {
-      alert("Inactivity Intervention Delay must be at least 30 seconds.");
-      return;
-    }
-    if (isNaN(switchTimeoutSeconds) || switchTimeoutSeconds < 30) {
-      alert("Switch Confirmation Delay must be at least 30 seconds.");
-      return;
-    }
+    // Validation using HTML5 Native checking
+    if (!timeoutInput.reportValidity()) return;
+    if (!switchTimeoutInput.reportValidity()) return;
+
+    const timeoutSeconds = parseInt(timeoutInput.value, 10);
+    const switchTimeoutSeconds = parseInt(switchTimeoutInput.value, 10);
 
     const msg = document.getElementById("thread-settings-message");
     const cancelBtn = document.getElementById("ts-btn-cancel");
