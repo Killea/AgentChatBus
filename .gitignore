@@ -59,3 +59,5 @@ frontend/coverage/
 
 *tmp*
 *temp*
+
+/agent-customization
