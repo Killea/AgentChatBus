@@ -137,12 +137,39 @@
     }
 
     menu.classList.add("visible");
-    const menuWidth = 170;
-    const menuHeight = 84;
-    const x = Math.min(event.clientX, window.innerWidth - menuWidth - 8);
-    const y = Math.min(event.clientY, window.innerHeight - menuHeight - 8);
-    menu.style.left = `${Math.max(8, x)}px`;
-    menu.style.top = `${Math.max(8, y)}px`;
+
+    // Make menu visible temporarily to measure its actual height
+    menu.style.visibility = 'hidden';
+    menu.style.position = 'fixed';
+    menu.style.left = '0';
+    menu.style.top = '0';
+
+    // Force layout to calculate dimensions
+    const menuWidth = menu.offsetWidth || 170;
+    const menuHeight = menu.offsetHeight || 84;
+    const padding = 8;
+
+    menu.style.visibility = 'visible';
+
+    let x = event.clientX;
+    let y = event.clientY;
+
+    // Check if menu would overflow to the right
+    if (x + menuWidth + padding > window.innerWidth) {
+      x = window.innerWidth - menuWidth - padding;
+    }
+
+    // Check if menu would overflow to the bottom
+    if (y + menuHeight + padding > window.innerHeight) {
+      y = window.innerHeight - menuHeight - padding;
+    }
+
+    // Ensure menu stays within left and top boundaries
+    x = Math.max(padding, x);
+    y = Math.max(padding, y);
+
+    menu.style.left = `${x}px`;
+    menu.style.top = `${y}px`;
 
     const threadItems = document.querySelectorAll('.thread-item');
     threadItems.forEach(item => {
@@ -168,7 +195,7 @@
 
   async function closeThread({ threadId, api, refreshThreads, x = null, y = null }) {
     if (!threadId) return;
-    
+
     const inputDialog = document.getElementById('input-dialog');
     if (!inputDialog) {
       console.error('[closeThread] Input dialog not found');
@@ -306,9 +333,8 @@
     const topic = ctx.topic || "";
     hideThreadContextMenu();
 
-    const prompt = `Please use MCP tools to join the discussion. Enter the "${topic}" Thread.
-The Thread name must match exactly. Do not enter a similar Thread.
-If it does not exist, you may create it, but do not create a new title. Please register first, and you can send a message to introduce yourself. Also, please follow the system prompt within the Thread. All agents should maintain a cooperative attitude. If you need to modify code, you must obtain consent from other agents. Because you are reading the same codebase. Everyone can see the source code. Please be polite and avoid code conflicts. Human programmers may also participate in the discussion and assist agents. But mainly agents should cooperate with each other.
+    const prompt = `Please use AgentChatBus MCP tools to join the Thread. Enter the "${topic}" Thread, using bus_connect.
+The Thread name must match exactly. Please follow the system prompt within the Thread. All agents should maintain a cooperative attitude. If you need to modify code, you must obtain consent from other agents. Because you are reading the same codebase. Everyone can see the source code. Please be polite and avoid code conflicts. Human programmers may also participate in the discussion and assist agents. But mainly agents should cooperate with each other.
 The person who created the Thread is the Thread administrator and is responsible for administration and task coordination. If you are entering an existing Thread, wait for other agents to assign tasks. You need to confirm before making any changes.
 Please make sure to keep calling msg_wait. Do not exit the agent process. Do not exit the agent process unless you receive a notification. msg_wait does not consume any resources, please use msg_wait to maintain the connection.
 Task: After entering, stand by. Human programmers may need to publish requirements.`;
