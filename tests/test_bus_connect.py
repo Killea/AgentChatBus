@@ -6,7 +6,7 @@ from mcp import types
 
 from src.db import crud
 from src.db.database import init_schema
-from src.tools.dispatch import handle_bus_connect, handle_msg_get, handle_msg_list, handle_msg_post, handle_msg_wait
+from src.tools.dispatch import handle_bus_connect, handle_msg_edit, handle_msg_edit_history, handle_msg_get, handle_msg_list, handle_msg_post, handle_msg_search, handle_msg_wait
 import src.mcp_server
 
 @pytest.fixture(autouse=True)
@@ -453,6 +453,133 @@ async def test_msg_get_projects_human_only_message_for_agent_view():
     assert payload["message"]["content"] == "[human-only content hidden]"
     assert payload["message"]["metadata"] is not None
     assert "human_only" in payload["message"]["metadata"]
+
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_msg_edit_history_projects_human_only_contents_for_agent_view():
+    db = await aiosqlite.connect(":memory:")
+    db.row_factory = aiosqlite.Row
+    await init_schema(db)
+
+    thread = await crud.thread_create(db, topic="Hidden Edit History")
+    agent = await crud.agent_register(db, ide="VS Code", model="GPT-5.3-Codex")
+    sync = await crud.issue_reply_token(db, thread.id, agent.id)
+    msg = await crud.msg_post(
+        db,
+        thread.id,
+        author=agent.id,
+        content="hidden original",
+        expected_last_seq=sync["current_seq"],
+        reply_token=sync["reply_token"],
+        role="assistant",
+        metadata={"visibility": "human_only", "ui_type": "admin_switch_confirmation_required"},
+    )
+    await crud.msg_edit(db, msg.id, "hidden updated", agent.id)
+
+    result = await handle_msg_edit_history(db, {"message_id": msg.id})
+    payload = json.loads(result[0].text)
+
+    assert payload["current_content"] == "[human-only content hidden]"
+    assert payload["edits"][0]["old_content"] == "[human-only content hidden]"
+    assert payload["edits"][0]["edited_by"] == agent.id
+
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_msg_search_projects_human_only_snippet_for_agent_view():
+    db = await aiosqlite.connect(":memory:")
+    db.row_factory = aiosqlite.Row
+    await init_schema(db)
+
+    thread = await crud.thread_create(db, topic="Hidden Search")
+    agent = await crud.agent_register(db, ide="VS Code", model="GPT-5.3-Codex")
+    sync = await crud.issue_reply_token(db, thread.id, agent.id)
+    await crud.msg_post(
+        db,
+        thread.id,
+        author=agent.id,
+        content="secret approval token banana",
+        expected_last_seq=sync["current_seq"],
+        reply_token=sync["reply_token"],
+        role="assistant",
+        metadata={"visibility": "human_only", "ui_type": "admin_switch_confirmation_required"},
+    )
+
+    result = await handle_msg_search(db, {"query": "banana", "thread_id": thread.id, "limit": 10})
+    payload = json.loads(result[0].text)
+
+    assert payload["total"] == 1
+    assert payload["results"][0]["snippet"] == "[human-only content hidden]"
+    assert "banana" not in payload["results"][0]["snippet"]
+    assert "metadata" not in payload["results"][0]
+
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_msg_edit_requires_authenticated_agent_connection():
+    db = await aiosqlite.connect(":memory:")
+    db.row_factory = aiosqlite.Row
+    await init_schema(db)
+
+    thread = await crud.thread_create(db, topic="Edit Auth Required")
+    agent = await crud.agent_register(db, ide="VS Code", model="GPT-5.3-Codex")
+    sync = await crud.issue_reply_token(db, thread.id, agent.id)
+    msg = await crud.msg_post(
+        db,
+        thread.id,
+        author=agent.id,
+        content="editable",
+        expected_last_seq=sync["current_seq"],
+        reply_token=sync["reply_token"],
+        role="assistant",
+    )
+
+    result = await handle_msg_edit(db, {"message_id": msg.id, "new_content": "tampered"})
+    payload = json.loads(result[0].text)
+
+    assert payload["error"] == "AUTHENTICATION_REQUIRED"
+
+    unchanged = await crud.msg_get(db, msg.id)
+    assert unchanged is not None
+    assert unchanged.content == "editable"
+
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_msg_edit_uses_agent_id_authorization_for_registered_agent():
+    db = await aiosqlite.connect(":memory:")
+    db.row_factory = aiosqlite.Row
+    await init_schema(db)
+
+    thread = await crud.thread_create(db, topic="Edit Uses Author ID")
+    agent = await crud.agent_register(db, ide="VS Code", model="GPT-5.3-Codex")
+    sync = await crud.issue_reply_token(db, thread.id, agent.id)
+    msg = await crud.msg_post(
+        db,
+        thread.id,
+        author=agent.id,
+        content="editable by owner",
+        expected_last_seq=sync["current_seq"],
+        reply_token=sync["reply_token"],
+        role="assistant",
+    )
+
+    src.mcp_server._session_id.set("test-session")
+    src.mcp_server.set_connection_agent(agent.id, agent.token)
+
+    result = await handle_msg_edit(db, {"message_id": msg.id, "new_content": "edited by owner"})
+    payload = json.loads(result[0].text)
+
+    assert payload["msg_id"] == msg.id
+
+    updated = await crud.msg_get(db, msg.id)
+    assert updated is not None
+    assert updated.content == "edited by owner"
 
     await db.close()
 

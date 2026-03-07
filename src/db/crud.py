@@ -2288,6 +2288,7 @@ async def msg_search(
                 f.author,
                 m.seq,
                 m.created_at,
+                m.metadata,
                 snippet(messages_fts, 3, '<mark>', '</mark>', '…', 20) AS snippet
             FROM messages_fts f
             JOIN messages m ON m.id = f.message_id
@@ -2307,6 +2308,7 @@ async def msg_search(
                 f.author,
                 m.seq,
                 m.created_at,
+                m.metadata,
                 snippet(messages_fts, 3, '<mark>', '</mark>', '…', 20) AS snippet
             FROM messages_fts f
             JOIN messages m ON m.id = f.message_id
@@ -2334,6 +2336,7 @@ async def msg_search(
             "seq":          row["seq"],
             "created_at":   row["created_at"],
             "snippet":      row["snippet"],
+            "metadata":     row["metadata"],
         }
         for row in rows
     ]
@@ -2382,9 +2385,13 @@ async def msg_edit(
     if msg.role == "system":
         raise PermissionError("System messages cannot be edited")
 
-    if msg.author != edited_by and edited_by != "system":
+    allowed_editor_ids = {msg.author}
+    if msg.author_id:
+        allowed_editor_ids.add(msg.author_id)
+
+    if edited_by not in allowed_editor_ids and edited_by != "system":
         raise PermissionError(
-            f"Only the original author ('{msg.author}') or 'system' can edit this message"
+            f"Only the original author ('{msg.author_id or msg.author}') or 'system' can edit this message"
         )
 
     if msg.content == new_content:

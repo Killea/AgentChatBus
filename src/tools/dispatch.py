@@ -89,10 +89,17 @@ def _is_human_only_metadata(value: Any) -> bool:
     return visibility == "human_only" or audience == "human"
 
 
-def _project_message_for_agent(msg: Message) -> Message:
-    if not _is_human_only_metadata(getattr(msg, "metadata", None)):
-        return msg
-    meta = _message_metadata_dict(getattr(msg, "metadata", None)) or {}
+def _project_metadata_json_for_agent(value: Any) -> str | None:
+    if not _is_human_only_metadata(value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            return json.dumps(value)
+        return None
+
+    meta = _message_metadata_dict(value) or {}
     projected_meta = {
         key: value
         for key, value in meta.items()
@@ -101,28 +108,31 @@ def _project_message_for_agent(msg: Message) -> Message:
     projected_meta["visibility"] = projected_meta.get("visibility") or "human_only"
     projected_meta["content_hidden"] = True
     projected_meta["content_hidden_reason"] = "human_only"
+    return json.dumps(projected_meta)
+
+
+def _project_content_for_agent(metadata: Any, content: str | None) -> str | None:
+    if _is_human_only_metadata(metadata):
+        return AGENT_HUMAN_ONLY_PLACEHOLDER
+    return content
+
+
+def _project_message_for_agent(msg: Message) -> Message:
+    if not _is_human_only_metadata(getattr(msg, "metadata", None)):
+        return msg
     return replace(
         msg,
-        content=AGENT_HUMAN_ONLY_PLACEHOLDER,
-        metadata=json.dumps(projected_meta),
+        content=_project_content_for_agent(msg.metadata, msg.content),
+        metadata=_project_metadata_json_for_agent(msg.metadata),
     )
 
 
 def _project_message_dict_for_agent(message: dict[str, Any]) -> dict[str, Any]:
     if not _is_human_only_metadata(message.get("metadata")):
         return message
-    meta = _message_metadata_dict(message.get("metadata")) or {}
-    projected_meta = {
-        key: value
-        for key, value in meta.items()
-        if key in AGENT_HUMAN_ONLY_METADATA_KEYS
-    }
-    projected_meta["visibility"] = projected_meta.get("visibility") or "human_only"
-    projected_meta["content_hidden"] = True
-    projected_meta["content_hidden_reason"] = "human_only"
     projected = dict(message)
-    projected["content"] = AGENT_HUMAN_ONLY_PLACEHOLDER
-    projected["metadata"] = json.dumps(projected_meta)
+    projected["content"] = _project_content_for_agent(message.get("metadata"), message.get("content"))
+    projected["metadata"] = _project_metadata_json_for_agent(message.get("metadata"))
     return projected
 
 
@@ -132,6 +142,38 @@ def _project_messages_for_agent(messages: list[Message]) -> list[Message]:
 
 def _project_message_dicts_for_agent(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [_project_message_dict_for_agent(message) for message in messages]
+
+
+def _project_edit_history_payload_for_agent(
+    message: Message,
+    edits: list[Any],
+) -> dict[str, Any]:
+    hidden = _is_human_only_metadata(message.metadata)
+    return {
+        "message_id": message.id,
+        "current_content": _project_content_for_agent(message.metadata, message.content),
+        "edit_version": message.edit_version,
+        "edits": [
+            {
+                "version": edit.version,
+                "old_content": AGENT_HUMAN_ONLY_PLACEHOLDER if hidden else edit.old_content,
+                "edited_by": edit.edited_by,
+                "created_at": edit.created_at.isoformat(),
+            }
+            for edit in edits
+        ],
+    }
+
+
+def _project_search_results_for_agent(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    projected_results: list[dict[str, Any]] = []
+    for result in results:
+        projected = dict(result)
+        if _is_human_only_metadata(projected.get("metadata")):
+            projected["snippet"] = AGENT_HUMAN_ONLY_PLACEHOLDER
+        projected.pop("metadata", None)
+        projected_results.append(projected)
+    return projected_results
 
 
 def _strip_data_url(value: str) -> tuple[str | None, str | None]:
@@ -859,6 +901,7 @@ async def handle_msg_search(db, arguments: dict[str, Any]) -> list[types.TextCon
     thread_id = arguments.get("thread_id")
     limit = int(arguments.get("limit", 50))
     results = await crud.msg_search(db, query, thread_id=thread_id, limit=limit)
+    results = _project_search_results_for_agent(results)
     return [types.TextContent(type="text", text=json.dumps({
         "results": results,
         "total": len(results),
@@ -877,7 +920,12 @@ async def handle_msg_edit(db, arguments: dict[str, Any]) -> list[types.TextConte
 
     # Deduce edited_by from the connected agent (same pattern as msg_post)
     connection_agent_id, _ = src.mcp_server.get_connection_agent()
-    edited_by = connection_agent_id or "system"
+    if not connection_agent_id:
+        return [types.TextContent(type="text", text=json.dumps({
+            "error": "AUTHENTICATION_REQUIRED",
+            "detail": "msg_edit requires an authenticated agent connection.",
+        }))]
+    edited_by = connection_agent_id
 
     try:
         edit = await crud.msg_edit(db, message_id, new_content, edited_by)
@@ -923,20 +971,9 @@ async def handle_msg_edit_history(db, arguments: dict[str, Any]) -> list[types.T
         }))]
 
     edits = await crud.msg_edit_history(db, message_id)
-    return [types.TextContent(type="text", text=json.dumps({
-        "message_id": message_id,
-        "current_content": msg.content,
-        "edit_version": msg.edit_version,
-        "edits": [
-            {
-                "version": e.version,
-                "old_content": e.old_content,
-                "edited_by": e.edited_by,
-                "created_at": e.created_at.isoformat(),
-            }
-            for e in edits
-        ],
-    }))]
+    return [types.TextContent(type="text", text=json.dumps(
+        _project_edit_history_payload_for_agent(msg, edits)
+    ))]
 
 
 async def handle_msg_get(db, arguments: dict[str, Any]) -> list[types.TextContent]:
