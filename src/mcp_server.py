@@ -319,6 +319,41 @@ async def list_tools() -> list[types.Tool]:
                 "required": ["thread_id"],
             },
         ),
+        types.Tool(
+            name="thread_settings_get",
+            description=(
+                "Get thread settings (coordination config, timeouts, admin assignment). "
+                "Returns auto_administrator_enabled, timeout_seconds, switch_timeout_seconds, "
+                "and current admin info. Use before thread_settings_update to inspect current values."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "description": "Thread ID."},
+                },
+                "required": ["thread_id"],
+            },
+        ),
+        types.Tool(
+            name="thread_settings_update",
+            description=(
+                "Update thread settings for coordination and timeouts. "
+                "Key use case: set auto_administrator_enabled=false to disable the coordinator "
+                "for debate threads (removes ORCH-14/15/16 Shell workaround). "
+                "All fields are optional — only provided fields are updated. "
+                "timeout_seconds and switch_timeout_seconds must be >= 30."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "thread_id":                 {"type": "string", "description": "Thread ID."},
+                    "auto_administrator_enabled": {"type": "boolean", "description": "Enable/disable automatic admin coordinator."},
+                    "timeout_seconds":           {"type": "integer", "minimum": 30, "description": "Admin takeover timeout in seconds (>= 30)."},
+                    "switch_timeout_seconds":    {"type": "integer", "minimum": 30, "description": "Admin switch timeout in seconds (>= 30)."},
+                },
+                "required": ["thread_id"],
+            },
+        ),
 
 
         # ΓöÇΓöÇ Messaging ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ

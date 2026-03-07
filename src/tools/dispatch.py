@@ -608,6 +608,41 @@ async def handle_thread_get(db, arguments: dict[str, Any]) -> list[types.TextCon
         "summary": t.summary,
     }))]
 
+async def handle_thread_settings_get(db, arguments: dict[str, Any]) -> list[types.TextContent]:
+    thread_id = arguments["thread_id"]
+    if await crud.thread_get(db, thread_id) is None:
+        return [types.TextContent(type="text", text=json.dumps({"error": "Thread not found"}))]
+    ts = await crud.thread_settings_get_or_create(db, thread_id)
+    return [types.TextContent(type="text", text=json.dumps({
+        "thread_id": ts.thread_id,
+        "auto_administrator_enabled": ts.auto_administrator_enabled,
+        "timeout_seconds": ts.timeout_seconds,
+        "switch_timeout_seconds": ts.switch_timeout_seconds,
+        "auto_assigned_admin_id": ts.auto_assigned_admin_id,
+        "auto_assigned_admin_name": ts.auto_assigned_admin_name,
+    }))]
+
+async def handle_thread_settings_update(db, arguments: dict[str, Any]) -> list[types.TextContent]:
+    thread_id = arguments["thread_id"]
+    if await crud.thread_get(db, thread_id) is None:
+        return [types.TextContent(type="text", text=json.dumps({"error": "Thread not found"}))]
+    try:
+        ts = await crud.thread_settings_update(
+            db,
+            thread_id,
+            auto_administrator_enabled=arguments.get("auto_administrator_enabled"),
+            timeout_seconds=arguments.get("timeout_seconds"),
+            switch_timeout_seconds=arguments.get("switch_timeout_seconds"),
+        )
+        return [types.TextContent(type="text", text=json.dumps({
+            "ok": True,
+            "auto_administrator_enabled": ts.auto_administrator_enabled,
+            "timeout_seconds": ts.timeout_seconds,
+            "switch_timeout_seconds": ts.switch_timeout_seconds,
+        }))]
+    except ValueError as e:
+        return [types.TextContent(type="text", text=json.dumps({"error": str(e)}))]
+
 async def handle_msg_post(db, arguments: dict[str, Any]) -> list[types.TextContent]:
     thread_id = arguments["thread_id"]
 
@@ -1431,6 +1466,8 @@ TOOLS_DISPATCH = {
     "thread_list": handle_thread_list,
     "thread_delete": handle_thread_delete,
     "thread_get": handle_thread_get,
+    "thread_settings_get": handle_thread_settings_get,
+    "thread_settings_update": handle_thread_settings_update,
     "msg_post": handle_msg_post,
     "msg_list": handle_msg_list,
     "msg_wait": handle_msg_wait,

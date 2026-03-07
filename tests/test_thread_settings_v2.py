@@ -347,5 +347,81 @@ async def test_thread_delete_cleans_future_fk_tables(db):
         assert (await cur.fetchone())["cnt"] == 0
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# MCP handler tests (UP-28)
+# ─────────────────────────────────────────────────────────────────────────────
+
+import json
+from src.tools.dispatch import handle_thread_settings_get, handle_thread_settings_update
+
+
+@pytest.mark.asyncio
+async def test_mcp_thread_settings_get(db):
+    """thread_settings_get returns all expected fields for a valid thread."""
+    thread_id = await create_test_thread(db)
+
+    results = await handle_thread_settings_get(db, {"thread_id": thread_id})
+    assert len(results) == 1
+    data = json.loads(results[0].text)
+
+    assert data["thread_id"] == thread_id
+    assert "auto_administrator_enabled" in data
+    assert "timeout_seconds" in data
+    assert "switch_timeout_seconds" in data
+    assert "auto_assigned_admin_id" in data
+    assert "auto_assigned_admin_name" in data
+    assert data["timeout_seconds"] == 60
+    assert data["auto_administrator_enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_mcp_thread_settings_get_not_found(db):
+    """thread_settings_get returns error for invalid thread_id."""
+    results = await handle_thread_settings_get(db, {"thread_id": "nonexistent-thread-id"})
+    assert len(results) == 1
+    data = json.loads(results[0].text)
+    assert "error" in data
+    assert data["error"] == "Thread not found"
+
+
+@pytest.mark.asyncio
+async def test_mcp_thread_settings_update(db):
+    """thread_settings_update modifies settings and returns updated values."""
+    thread_id = await create_test_thread(db)
+
+    results = await handle_thread_settings_update(db, {
+        "thread_id": thread_id,
+        "auto_administrator_enabled": False,
+        "timeout_seconds": 120,
+    })
+    assert len(results) == 1
+    data = json.loads(results[0].text)
+
+    assert data["ok"] is True
+    assert data["auto_administrator_enabled"] is False
+    assert data["timeout_seconds"] == 120
+
+    # Verify persistence via get
+    get_results = await handle_thread_settings_get(db, {"thread_id": thread_id})
+    get_data = json.loads(get_results[0].text)
+    assert get_data["auto_administrator_enabled"] is False
+    assert get_data["timeout_seconds"] == 120
+
+
+@pytest.mark.asyncio
+async def test_mcp_thread_settings_update_invalid_timeout(db):
+    """thread_settings_update returns error when timeout_seconds < 30."""
+    thread_id = await create_test_thread(db)
+
+    results = await handle_thread_settings_update(db, {
+        "thread_id": thread_id,
+        "timeout_seconds": 10,
+    })
+    assert len(results) == 1
+    data = json.loads(results[0].text)
+    assert "error" in data
+    assert "30" in data["error"]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
