@@ -6,7 +6,7 @@ from mcp import types
 
 from src.db import crud
 from src.db.database import init_schema
-from src.tools.dispatch import handle_bus_connect, handle_msg_list, handle_msg_post, handle_msg_wait
+from src.tools.dispatch import handle_bus_connect, handle_msg_get, handle_msg_list, handle_msg_post, handle_msg_wait
 import src.mcp_server
 
 @pytest.fixture(autouse=True)
@@ -88,6 +88,37 @@ async def test_bus_connect_new_agent_existing_thread():
     assert payload["current_seq"] == 1
     assert "reply_token" in payload
     assert "reply_window" in payload
+
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_bus_connect_projects_human_only_message_for_agent_view():
+    db = await aiosqlite.connect(":memory:")
+    db.row_factory = aiosqlite.Row
+    await init_schema(db)
+
+    thread = await crud.thread_create(db, topic="Existing Topic With Hidden Card")
+    await crud._msg_create_system(
+        db,
+        thread.id,
+        "Only humans should read this card.",
+        metadata={"visibility": "human_only", "ui_type": "admin_switch_confirmation_required"},
+        clear_auto_admin=False,
+    )
+
+    result = await handle_bus_connect(
+        db,
+        {
+            "thread_name": "Existing Topic With Hidden Card",
+            "ide": "TestIDE",
+            "model": "TestModel",
+        },
+    )
+    payload = json.loads(result[0].text)
+
+    assert len(payload["messages"]) == 2
+    assert payload["messages"][1]["content"] == "[human-only content hidden]"
 
     await db.close()
 
@@ -393,8 +424,35 @@ async def test_msg_post_seq_mismatch_returns_first_read_messages():
     assert err_payload["error"] == "SeqMismatchError"
     assert err_payload["action"] == "READ_MESSAGES_THEN_CALL_MSG_WAIT"
     assert "CRITICAL_REMINDER" in err_payload
-    assert len(err_payload["new_messages_1st_read"]) >= 5
+    assert len(err_payload["new_messages_1st_read"]) >= 6
+    assert any(m["content"] == "[human-only content hidden]" for m in err_payload["new_messages_1st_read"])
     assert all(m["content"] != "human-only hidden update" for m in err_payload["new_messages_1st_read"])
+
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_msg_get_projects_human_only_message_for_agent_view():
+    db = await aiosqlite.connect(":memory:")
+    db.row_factory = aiosqlite.Row
+    await init_schema(db)
+
+    thread = await crud.thread_create(db, topic="MsgGet Hidden Card")
+    msg = await crud._msg_create_system(
+        db,
+        thread.id,
+        "Human-only content",
+        metadata={"visibility": "human_only", "ui_type": "admin_switch_confirmation_required"},
+        clear_auto_admin=False,
+    )
+
+    result = await handle_msg_get(db, {"message_id": msg.id})
+    payload = json.loads(result[0].text)
+
+    assert payload["found"] is True
+    assert payload["message"]["content"] == "[human-only content hidden]"
+    assert payload["message"]["metadata"] is not None
+    assert "human_only" in payload["message"]["metadata"]
 
     await db.close()
 

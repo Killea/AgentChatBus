@@ -79,7 +79,7 @@ async def test_msg_wait_single_online_agent_has_no_dispatch_coordination_prompt(
             {
                 "thread_id": thread.id,
                 "after_seq": 0,
-                "timeout_ms": 1,
+                "timeout_ms": 50,
                 "return_format": "json",
                 "agent_id": agent.id,
                 "token": agent.token,
@@ -93,8 +93,8 @@ async def test_msg_wait_single_online_agent_has_no_dispatch_coordination_prompt(
 
 
 @pytest.mark.asyncio
-async def test_msg_wait_and_msg_list_filter_human_only_system_messages():
-    """human_only system notices must remain invisible to agent tool calls."""
+async def test_msg_wait_and_msg_list_project_human_only_system_messages():
+    """human_only system notices should reach agents only as placeholder content."""
     db = await _setup_db()
     try:
         thread = await crud.thread_create(db, "msg-wait-human-only")
@@ -107,6 +107,7 @@ async def test_msg_wait_and_msg_list_filter_human_only_system_messages():
             metadata={
                 "ui_type": "admin_switch_confirmation_required",
                 "visibility": "human_only",
+                "private_body": "do not leak this to agents",
             },
             clear_auto_admin=False,
         )
@@ -116,7 +117,7 @@ async def test_msg_wait_and_msg_list_filter_human_only_system_messages():
             {
                 "thread_id": thread.id,
                 "after_seq": 0,
-                "timeout_ms": 1,
+                "timeout_ms": 50,
                 "return_format": "json",
                 "agent_id": agent.id,
                 "token": agent.token,
@@ -124,7 +125,10 @@ async def test_msg_wait_and_msg_list_filter_human_only_system_messages():
         )
 
         payload = json.loads(out[0].text)
-        assert payload.get("messages") == []
+        assert len(payload.get("messages") or []) == 1
+        assert payload["messages"][0]["content"] == "[human-only content hidden]"
+        assert "human_only" in (payload["messages"][0].get("metadata") or "")
+        assert "private_body" not in (payload["messages"][0].get("metadata") or "")
 
         list_out = await handle_msg_list(
             db,
@@ -137,7 +141,9 @@ async def test_msg_wait_and_msg_list_filter_human_only_system_messages():
             },
         )
         listed = json.loads(list_out[0].text)
-        assert not any("Auto Administrator Timeout triggered" in (m.get("content") or "") for m in listed)
+        assert [m["content"] for m in listed] == ["[human-only content hidden]"]
+        assert all("Auto Administrator Timeout triggered" not in (m.get("content") or "") for m in listed)
+        assert all("private_body" not in (m.get("metadata") or "") for m in listed)
     finally:
         await db.close()
 

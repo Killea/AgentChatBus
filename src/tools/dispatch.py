@@ -8,6 +8,7 @@ import asyncio
 import logging
 import base64
 import mimetypes
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 from datetime import datetime, timezone
@@ -46,6 +47,16 @@ from src.thread_creation_service import (
 import os
 
 logger = logging.getLogger(__name__)
+AGENT_HUMAN_ONLY_PLACEHOLDER = "[human-only content hidden]"
+AGENT_HUMAN_ONLY_METADATA_KEYS = {
+    "visibility",
+    "audience",
+    "ui_type",
+    "handoff_target",
+    "target_admin_id",
+    "source_message_id",
+    "decision_type",
+}
 
 
 def _safe_json_loads(value: Any) -> Any:
@@ -62,6 +73,65 @@ def _safe_json_loads(value: Any) -> Any:
         return json.loads(value)
     except Exception:
         return None
+
+
+def _message_metadata_dict(value: Any) -> dict[str, Any] | None:
+    meta = _safe_json_loads(value)
+    return meta if isinstance(meta, dict) else None
+
+
+def _is_human_only_metadata(value: Any) -> bool:
+    meta = _message_metadata_dict(value)
+    if not isinstance(meta, dict):
+        return False
+    visibility = str(meta.get("visibility") or "").strip().lower()
+    audience = str(meta.get("audience") or "").strip().lower()
+    return visibility == "human_only" or audience == "human"
+
+
+def _project_message_for_agent(msg: Message) -> Message:
+    if not _is_human_only_metadata(getattr(msg, "metadata", None)):
+        return msg
+    meta = _message_metadata_dict(getattr(msg, "metadata", None)) or {}
+    projected_meta = {
+        key: value
+        for key, value in meta.items()
+        if key in AGENT_HUMAN_ONLY_METADATA_KEYS
+    }
+    projected_meta["visibility"] = projected_meta.get("visibility") or "human_only"
+    projected_meta["content_hidden"] = True
+    projected_meta["content_hidden_reason"] = "human_only"
+    return replace(
+        msg,
+        content=AGENT_HUMAN_ONLY_PLACEHOLDER,
+        metadata=json.dumps(projected_meta),
+    )
+
+
+def _project_message_dict_for_agent(message: dict[str, Any]) -> dict[str, Any]:
+    if not _is_human_only_metadata(message.get("metadata")):
+        return message
+    meta = _message_metadata_dict(message.get("metadata")) or {}
+    projected_meta = {
+        key: value
+        for key, value in meta.items()
+        if key in AGENT_HUMAN_ONLY_METADATA_KEYS
+    }
+    projected_meta["visibility"] = projected_meta.get("visibility") or "human_only"
+    projected_meta["content_hidden"] = True
+    projected_meta["content_hidden_reason"] = "human_only"
+    projected = dict(message)
+    projected["content"] = AGENT_HUMAN_ONLY_PLACEHOLDER
+    projected["metadata"] = json.dumps(projected_meta)
+    return projected
+
+
+def _project_messages_for_agent(messages: list[Message]) -> list[Message]:
+    return [_project_message_for_agent(message) for message in messages]
+
+
+def _project_message_dicts_for_agent(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [_project_message_dict_for_agent(message) for message in messages]
 
 
 def _strip_data_url(value: str) -> tuple[str | None, str | None]:
@@ -109,6 +179,7 @@ def _url_to_local_upload_path(url: str) -> Path | None:
 
 
 def _message_to_blocks(m: Message) -> list[types.Content]:
+    m = _project_message_for_agent(m)
     author = m.author_name or m.author
     created = m.created_at.isoformat() if getattr(m, "created_at", None) else ""
     blocks: list[types.Content] = [
@@ -258,6 +329,7 @@ async def handle_bus_connect(db, arguments: dict[str, Any]) -> list[types.TextCo
     # ── Phase 3: Fetch Messages + Bus-Connect Sync Context ──
     after_seq = arguments.get("after_seq", 0)
     msgs = await crud.msg_list(db, thread.id, after_seq=after_seq)
+    msgs = _project_messages_for_agent(msgs)
     # Keep only one issued bus_connect token per (thread, agent).
     await crud.reply_tokens_invalidate_for_agent_source(
         db,
@@ -597,7 +669,7 @@ async def handle_msg_post(db, arguments: dict[str, Any]) -> list[types.TextConte
                     "When you do, you will receive these messages again (2nd read). "
                     "Only AFTER that, formulate a NEW response."
                 ),
-                "new_messages_1st_read": e.new_messages,
+                "new_messages_1st_read": _project_message_dicts_for_agent(e.new_messages),
                 "action": "READ_MESSAGES_THEN_CALL_MSG_WAIT"
             }))]
 
@@ -665,7 +737,7 @@ async def handle_msg_list(db, arguments: dict[str, Any]) -> list[types.Content]:
         include_system_prompt=arguments.get("include_system_prompt", True),
         priority=arguments.get("priority"),
     )
-    msgs = [m for m in msgs if not _is_human_only_message(m)]
+    msgs = _project_messages_for_agent(msgs)
 
     # Batch-fetch reactions for all real message IDs
     real_ids = [m.id for m in msgs if not m.id.startswith("sys-")]
@@ -838,6 +910,7 @@ async def handle_msg_get(db, arguments: dict[str, Any]) -> list[types.TextConten
     msg = await crud.msg_get(db, message_id)
     if msg is None:
         return [types.TextContent(type="text", text=json.dumps({"found": False, "message": None}))]
+    msg = _project_message_for_agent(msg)
     reactions = await crud.msg_reactions(db, msg.id)
     result = {
         "found": True,
@@ -869,12 +942,7 @@ def _metadata_targets(msg: Any, agent_id: str) -> bool:
 
 def _is_human_only_message(msg: Any) -> bool:
     """True when message metadata marks this message as visible to humans only."""
-    meta = _safe_json_loads(getattr(msg, "metadata", None))
-    if not isinstance(meta, dict):
-        return False
-    visibility = str(meta.get("visibility") or "").strip().lower()
-    audience = str(meta.get("audience") or "").strip().lower()
-    return visibility == "human_only" or audience == "human"
+    return _is_human_only_metadata(getattr(msg, "metadata", None))
 
 
 async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.Content]:
@@ -1019,7 +1087,7 @@ async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.Content]:
         local_after_seq = after_seq
         while True:
             raw_msgs = await crud.msg_list(db, thread_id, after_seq=local_after_seq, include_system_prompt=False)
-            msgs = [m for m in raw_msgs if not _is_human_only_message(m)]
+            msgs = _project_messages_for_agent(raw_msgs)
             if msgs:
                 if for_agent:
                     filtered = [m for m in msgs if _metadata_targets(m, for_agent)]
@@ -1114,6 +1182,7 @@ async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.Content]:
     coordination_prompt = None
     
     def _format_wait_msg(m):
+        m = _project_message_for_agent(m)
         d = {
             "msg_id": m.id,
             "author": m.author,
