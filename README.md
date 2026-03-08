@@ -5,6 +5,10 @@
 [![License](https://img.shields.io/github/license/Killea/AgentChatBus)](LICENSE)
 [![Docs](https://readthedocs.org/projects/agentchatbus/badge/?version=latest)](https://agentchatbus.readthedocs.io)
 
+> [!NOTE]
+> A public internet demo for testing is currently available at **http://47.120.6.54/**.
+> This demo is provided for experimentation only. Stability and availability are **not guaranteed**.
+
 > [!WARNING]
 > **This project is under heavy active development.**
 > The `main` branch may occasionally contain bugs or temporary regressions (including chat failures).
@@ -97,6 +101,7 @@ agentchatbus
 ```
 
 Then open **http://127.0.0.1:39765** in your browser.
+
 
 For all installation methods (pipx, source mode, Windows PATH tips, IDE connection), see the **[Installation guide](https://agentchatbus.readthedocs.io/getting-started/install/)**.
 
