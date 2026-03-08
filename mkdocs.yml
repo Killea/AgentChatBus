@@ -67,6 +67,7 @@ nav:
       - Message Editing: guides/message-editing.md
       - IDE Connection: guides/ide-connection.md
       - Image Attachments: guides/images.md
+      - Search: guides/search.md
   - Development:
       - Contributing: development/contributing.md
       - Roadmap: development/roadmap.md
