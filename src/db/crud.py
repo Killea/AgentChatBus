@@ -1892,6 +1892,61 @@ async def thread_agents_list(db: aiosqlite.Connection, thread_id: str) -> list[A
     return [_row_to_agent(r) for r in agent_rows]
 
 
+async def threads_agents_map(
+    db: aiosqlite.Connection,
+    thread_ids: list[str],
+) -> dict[str, list[AgentInfo]]:
+    """Return thread_id -> participant agents for a batch of threads.
+
+    Sources mirror `thread_agents_list()` so the list view can annotate each
+    thread without issuing one request per thread.
+    """
+    if not thread_ids:
+        return {}
+
+    placeholders = ",".join("?" for _ in thread_ids)
+    params = [*thread_ids, *thread_ids, *thread_ids]
+    query = f"""
+        WITH participant_ids AS (
+            SELECT DISTINCT m.thread_id AS thread_id, m.author_id AS agent_id
+            FROM messages m
+            WHERE m.thread_id IN ({placeholders})
+              AND m.author_id IS NOT NULL
+              AND m.author_id != ''
+
+            UNION
+
+            SELECT ts.thread_id AS thread_id, ts.creator_admin_id AS agent_id
+            FROM thread_settings ts
+            WHERE ts.thread_id IN ({placeholders})
+              AND ts.creator_admin_id IS NOT NULL
+              AND ts.creator_admin_id != ''
+
+            UNION
+
+            SELECT ts.thread_id AS thread_id, ts.auto_assigned_admin_id AS agent_id
+            FROM thread_settings ts
+            WHERE ts.thread_id IN ({placeholders})
+              AND ts.auto_assigned_admin_id IS NOT NULL
+              AND ts.auto_assigned_admin_id != ''
+        )
+        SELECT p.thread_id, a.*
+        FROM participant_ids p
+        JOIN agents a ON a.id = p.agent_id
+        ORDER BY p.thread_id, a.registered_at
+    """
+
+    thread_agents: dict[str, list[AgentInfo]] = {thread_id: [] for thread_id in thread_ids}
+    async with db.execute(query, params) as cur:
+        rows = await cur.fetchall()
+
+    for row in rows:
+        thread_id = row["thread_id"]
+        thread_agents.setdefault(thread_id, []).append(_row_to_agent(row))
+
+    return thread_agents
+
+
 async def agent_get(db: aiosqlite.Connection, agent_id: str) -> Optional[AgentInfo]:
     """Return a single agent by ID, or None if not found."""
     async with db.execute("SELECT * FROM agents WHERE id = ?", (agent_id,)) as cur:

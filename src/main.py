@@ -844,13 +844,31 @@ async def api_threads(
                 timeout=DB_TIMEOUT,
             ),
         )
+        thread_agent_map = await asyncio.wait_for(
+            crud.threads_agents_map(db, [t.id for t in threads]),
+            timeout=DB_TIMEOUT,
+        )
     except asyncio.TimeoutError:
         raise HTTPException(status_code=503, detail="Database operation timeout")
     has_more = limit > 0 and len(threads) == limit
     return {
         "threads": [
-            {"id": t.id, "topic": t.topic, "status": t.status, "system_prompt": t.system_prompt,
-             "created_at": t.created_at.isoformat()}
+            {
+                "id": t.id,
+                "topic": t.topic,
+                "status": t.status,
+                "system_prompt": t.system_prompt,
+                "created_at": t.created_at.isoformat(),
+                "waiting_agents": [
+                    {
+                        "id": agent.id,
+                        "display_name": agent.display_name or agent.name,
+                        "emoji": _agent_emoji(agent.id),
+                    }
+                    for agent in thread_agent_map.get(t.id, [])
+                    if agent.is_online and agent.last_activity == "msg_wait"
+                ],
+            }
             for t in threads
         ],
         "total": total,

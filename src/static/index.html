@@ -10,7 +10,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet" />
-  <link rel="stylesheet" href="/static/css/main.css?v=7" />
+  <link rel="stylesheet" href="/static/css/main.css?v=10" />
 </head>
 
 <body>
@@ -176,12 +176,12 @@
   <script src="/static/js/components/acb-thread-filter-shell.js?v=2"></script>
   <script src="/static/js/components/acb-thread-context-menu.js?v=2"></script>
   <script src="/static/js/components/acb-thread-header.js?v=2"></script>
-  <script src="/static/js/components/acb-thread-item.js?v=2"></script>
+  <script src="/static/js/components/acb-thread-item.js?v=3"></script>
   <script src="/static/js/components/acb-message-tail-meta.js?v=1"></script>
   <script src="/static/js/components/acb-admin-switch-card.js?v=3"></script>
   <script src="/static/js/components/acb-compose-shell.js?v=3"></script>
   <script src="/static/js/components/acb-agent-status-shell.js?v=2"></script>
-  <script src="/static/js/shared-threads.js?v=3"></script>
+  <script src="/static/js/shared-threads.js?v=5"></script>
   <script src="/static/js/shared-agent-status.js?v=2"></script>
   <script src="/static/js/components/acb-agent-status-item.js?v=2"></script>
   <script src="/static/js/shared-agents.js?v=3"></script>
@@ -314,13 +314,10 @@
       // UI-02: Initialize search
       if (window.AcbSearch) window.AcbSearch.init();
       await syncShowAdPolicy();
-      await refreshThreads();
-      await refreshAgents();
+      await refreshThreadSidebarData();
       updateOnlinePresence();
       startSSE();
-      // Temporarily disable periodic agent polling to avoid showing many offline agents
-      // setInterval(refreshAgents, 12000);
-      setInterval(refreshAgents, 10000);  // Update status bar every 10 seconds
+      setInterval(refreshThreadSidebarData, 10000);
 
       const tip = window.AcbTooltip.getTooltipElement();
       if (tip) {
@@ -697,7 +694,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         getActiveThreadId: () => activeThreadId,
         onMsgNew: async () => loadNewMessages(),
         onThreadEvent: async () => refreshThreads(),
-        onAgentPresence: async () => refreshAgents(),
+        onAgentPresence: async () => refreshThreadSidebarData(),
         onTyping: (agentId, isTyping) => {
           if (isTyping) showTyping(agentId);
           else hideTyping(agentId);
@@ -738,6 +735,13 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         timeAgo,
         updateThreadFilterButton,
       });
+    }
+
+    async function refreshThreadSidebarData() {
+      await Promise.all([
+        refreshThreads(),
+        refreshAgents(),
+      ]);
     }
 
     function toggleThreadFilterPanel(event) {

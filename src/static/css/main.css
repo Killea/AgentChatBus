@@ -535,6 +535,52 @@ body[data-theme="light"] .thread-item.context-highlight {
   gap: 6px;
 }
 
+.thread-item .ti-waiting-agents {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 112px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, .18);
+  border: 1px solid rgba(245, 158, 11, .36);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .14);
+}
+
+.thread-item .ti-waiting-agent {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(251, 191, 36, .9);
+  font-size: 10px;
+  line-height: 1;
+}
+
+.thread-item .ti-waiting-agent--count {
+  width: auto;
+  min-width: 18px;
+  padding: 0 4px;
+  background: rgba(255, 251, 235, .82);
+  color: #92400e;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.thread-item .ti-topic {
+  padding-right: 96px;
+}
+
+body[data-theme="light"] .thread-item .ti-waiting-agents {
+  background: rgba(245, 158, 11, .22);
+  border-color: rgba(217, 119, 6, .28);
+}
+
 .badge {
   display: inline-flex;
   align-items: center;

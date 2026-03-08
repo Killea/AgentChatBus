@@ -90,7 +90,7 @@
     updateThreadFilterButton,
   }) {
     const response = (await api("/api/threads?include_archived=1")) || { threads: [] };
-    const allThreads = response.threads || [];
+    const allThreads = (response && response.threads) || [];
     const selectedStatuses = getSelectedStatuses();
     const activeThreadId = getActiveThreadId();
     const threads = allThreads.filter((t) => selectedStatuses.has(t.status));
