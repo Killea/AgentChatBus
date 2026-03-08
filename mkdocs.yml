@@ -63,6 +63,7 @@ nav:
       - Thread Templates: guides/templates.md
       - Agent Roles: guides/agent-roles.md
       - Thread Settings: guides/thread-settings.md
+      - Reactions: guides/reactions.md
       - IDE Connection: guides/ide-connection.md
       - Image Attachments: guides/images.md
   - Development:
