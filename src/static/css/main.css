@@ -1758,6 +1758,13 @@ body[data-theme="light"] .msg-sys-admin-human-note-icon {
   font-weight: 700;
 }
 
+#empty-state .es-ad-banner-highlight {
+  margin-top: 6px;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 #empty-state .es-ad-banner-note {
   margin-top: 6px;
   font-size: 11px;
