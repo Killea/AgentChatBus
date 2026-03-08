@@ -1737,6 +1737,48 @@ body[data-theme="light"] .msg-sys-admin-human-note-icon {
   font-size: 13px;
 }
 
+#empty-state .es-ad-banner {
+  display: none;
+  margin-top: 8px;
+  max-width: 520px;
+  padding: 10px 14px;
+  border: 1px solid rgba(245, 158, 11, .55);
+  border-radius: 10px;
+  background: linear-gradient(135deg, #fef08a 0%, #facc15 100%);
+  color: #3f2a00;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.45;
+  text-align: center;
+  box-shadow: 0 10px 24px rgba(250, 204, 21, .18);
+}
+
+#empty-state .es-ad-banner-main {
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+#empty-state .es-ad-banner-note {
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: rgba(63, 42, 0, .78);
+}
+
+body.show-ad #empty-state .es-ad-banner {
+  display: block;
+}
+
+body[data-theme="light"] #empty-state .es-ad-banner {
+  border-color: rgba(217, 119, 6, .45);
+  color: #5b3a00;
+}
+
+body[data-theme="light"] #empty-state .es-ad-banner-note {
+  color: rgba(91, 58, 0, .82);
+}
+
 /* Compose */
 #compose {
   padding: 14px 20px;
@@ -2459,9 +2501,9 @@ acb-input-dialog .input-actions {
   align-items: center;
   padding: 3px 9px;
   border-radius: 6px;
-  border: 1px solid #0c4a6e;
-  background: #38bdf8;
-  color: #082f49;
+  border: 1px solid #b45309;
+  background: #facc15;
+  color: #111827;
   font-size: 11px;
   font-weight: 700;
   text-decoration: none;
@@ -2469,8 +2511,8 @@ acb-input-dialog .input-actions {
 }
 
 #topbar-ad-pypi:hover {
-  background: #0ea5e9;
-  color: #ffffff;
+  background: #eab308;
+  color: #111827;
 }
 
 body[data-theme="light"] #topbar-ad {
@@ -2479,9 +2521,9 @@ body[data-theme="light"] #topbar-ad {
 }
 
 body[data-theme="light"] #topbar-ad-pypi {
-  background: #7dd3fc;
-  border-color: #0369a1;
-  color: #082f49;
+  background: #f59e0b;
+  border-color: #92400e;
+  color: #111827;
 }
 
 /* Scrollbar — same style as #messages (accent blue) */
