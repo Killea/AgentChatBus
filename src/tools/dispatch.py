@@ -365,6 +365,8 @@ async def handle_bus_connect(db, arguments: dict[str, Any]) -> list[types.TextCo
             topic=thread_name,
             creator_admin_id=agent.id,
             creator_admin_name=(agent.display_name or agent.name),
+            system_prompt=arguments.get("system_prompt"),
+            template=arguments.get("template"),
         )
         thread_created = True
 
@@ -417,6 +419,9 @@ async def handle_bus_connect(db, arguments: dict[str, Any]) -> list[types.TextCo
         "status": thread.status,
         "created": thread_created,
     }
+
+    if thread_created and thread.system_prompt:
+        thread_payload["system_prompt"] = thread.system_prompt
     
     if admin_id:
         thread_payload["administrator"] = {
