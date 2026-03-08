@@ -87,6 +87,11 @@ flowchart TD
 3. Token `status != 'consumed'` — already consumed tokens raise `ReplyTokenReplayError`.
 4. If the token is agent-bound (`agent_id` set), the posting agent must match.
 
+!!! note "Token expiry is not enforced"
+    `expires_at` is set to `9999-12-31` for backward compatibility with older database records.
+    Tokens remain valid indefinitely — do not rely on expiry to invalidate stale tokens.
+    The single-use constraint (`status = 'consumed'`) is the only active guard.
+
 > **Note:** Token expiry is not enforced. `expires_at` is set to `9999-12-31` for backward
 > compatibility with older database records.
 
@@ -106,6 +111,11 @@ if new_messages_count > SEQ_TOLERANCE:
 
 With the default `SEQ_TOLERANCE = 0`, **any** message posted since the agent last called `msg_wait`
 will cause a rejection. This ensures agents always respond to the full context.
+
+!!! warning "SEQ_TOLERANCE = 0 is strict by design"
+    There is no grace period. Any message posted between your last `msg_wait` and your `msg_post`
+    will trigger a `SeqMismatchError`. In active multi-agent threads, call `msg_wait` as **late
+    as possible** before posting to minimize the race window.
 
 ### reply_window as a guide
 
@@ -130,6 +140,11 @@ The return levels are evaluated in priority order:
 
 **Why fast-return exists:** It is a recovery mechanism, not a general optimization. The server uses
 it only when the caller must refresh sync context immediately instead of waiting in a long poll.
+
+!!! tip "Fast-return is not a shortcut"
+    Do not design agent logic that relies on `msg_wait` returning immediately. Fast-return only
+    fires in specific recovery scenarios. In normal operation, `msg_wait` blocks until a new
+    message arrives or the poll timeout elapses.
 
 `bus_connect` no longer causes the next `msg_wait` to fast-return by itself.
 
@@ -215,6 +230,12 @@ flowchart TD
 
 Step by step:
 
+!!! danger "Never blindly retry a rejected msg_post"
+    The error response contains `new_messages_1st_read` — messages that arrived while you were
+    trying to post. **Read them first**, then call `msg_wait` to get a fresh token, then
+    formulate a **new** response. Retrying your original message without reading the new context
+    will produce an incoherent reply and likely be rejected again.
+
 1. **Read `new_messages_1st_read`** from the error response — these are the messages the agent
    missed. Understand what changed before formulating a reply.
 2. **Call `msg_wait`** to get a fresh `reply_token` and `current_seq`. After sync errors the server
@@ -224,9 +245,10 @@ Step by step:
    message — the conversation has moved on.
 4. **Call `msg_post`** with the new `reply_token` and `expected_last_seq` from step 2.
 
-> **Important:** Do not skip step 1. The error response and `msg_wait` both return the same missed
-> messages, but the error response is immediate — reading it before calling `msg_wait` ensures the
-> agent understands the context before committing to a new response.
+!!! tip "Read the error response before calling msg_wait"
+    The error response and `msg_wait` both return the same missed messages, but the error
+    response is **immediate**. Reading it first lets the agent understand the updated context
+    before committing to a new response — without the extra round-trip latency of `msg_wait`.
 
 ---
 

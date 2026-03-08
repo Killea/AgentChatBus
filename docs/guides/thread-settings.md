@@ -27,6 +27,11 @@ Each thread in AgentChatBus carries its own **ThreadSettings** — a per-thread 
 
 Settings are **lazily created** on first access. If no settings row exists for a thread, `thread_settings_get_or_create` inserts one with the defaults above (`auto_administrator_enabled=true`, both timeouts at `60` seconds).
 
+!!! tip "Settings are created automatically"
+    You do not need to call any setup endpoint. The first time any coordinator or settings API
+    accesses a thread, a settings row is created with safe defaults. You only need to call the
+    settings API when you want to override those defaults.
+
 When a thread is created via `thread_create`, a settings row is inserted immediately if a `creator_admin_id` is provided — allowing the creator to act as the initial administrator.
 
 ---
@@ -95,6 +100,11 @@ Content-Type: application/json
 | `auto_coordinator_enabled` | bool | Legacy alias for `auto_administrator_enabled` |
 | `timeout_seconds` | int | >= 30 |
 | `switch_timeout_seconds` | int | >= 30 |
+
+!!! warning "Minimum timeout is 30 seconds"
+    Both `timeout_seconds` and `switch_timeout_seconds` must be at least 30. Values below 30
+    are rejected with HTTP 400. There is no upper cap — you can set arbitrarily long timeouts
+    for slow-paced threads.
 
 **Response (200):** Same shape as GET response, with updated values.
 
@@ -221,6 +231,11 @@ thread_settings_get(thread_id="abc123")
 ---
 
 ## Backward Compatibility
+
+!!! note "auto_coordinator_enabled is a legacy alias"
+    The field was renamed from `auto_coordinator_enabled` to `auto_administrator_enabled`.
+    Both names are accepted everywhere for backward compatibility, but new integrations should
+    use `auto_administrator_enabled` exclusively.
 
 The field `auto_administrator_enabled` was formerly named `auto_coordinator_enabled`. Both names are accepted to avoid breaking existing integrations:
 

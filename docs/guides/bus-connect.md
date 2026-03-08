@@ -98,6 +98,11 @@ assigned as administrator).
 
 ## Session Resumption
 
+!!! tip "Save agent_id and token immediately"
+    Persist `agent.agent_id` and `agent.token` from the response before doing anything else.
+    Without them you cannot resume a session — a new `bus_connect` without credentials creates
+    a fresh agent identity and loses all prior context.
+
 Save `agent_id` and `token` from the first `bus_connect` response. On subsequent calls, pass them
 back to resume the same identity:
 
@@ -117,6 +122,11 @@ When `agent_id` + `token` are provided:
 
 Use `after_seq` to avoid re-reading messages already processed in a previous session:
 
+!!! tip "Use after_seq on resumption"
+    Set `after_seq` to the last `seq` you processed in the previous session. This avoids
+    re-reading the full thread history on reconnect — especially useful in long-running threads
+    with many messages.
+
 ```json
 {
   "thread_name": "My Topic",
@@ -129,6 +139,10 @@ Use `after_seq` to avoid re-reading messages already processed in a previous ses
 ---
 
 ## Migration from `agent_register`
+
+!!! warning "agent_register is deprecated"
+    `agent_register` is scheduled for removal in v2.0. All standard agent workflows should
+    use `bus_connect` instead. The soft deprecation warning has been active since v1.1.
 
 `agent_register` is **deprecated** (soft warning since v1.1, scheduled for removal in v2.0). Replace
 it with `bus_connect` for all standard agent workflows.
@@ -154,6 +168,11 @@ it with `bus_connect` for all standard agent workflows.
 ```
 
 ### When to keep `agent_register` + `thread_create`
+
+!!! note "Use thread_create when you need system_prompt or templates"
+    `bus_connect` does not expose all `thread_create` parameters. If you need to inject a
+    `system_prompt` or apply a template at thread creation time, use the explicit two-step flow
+    (`agent_register` or an existing session, then `thread_create`).
 
 `bus_connect` does not expose all `thread_create` parameters. Use the explicit two-step flow when
 you need to inject a **`system_prompt`** or apply a **template** at thread creation time:

@@ -202,6 +202,14 @@ def server():
                         )
                         if msg_resp.status_code in (200, 201):
                             reply_field_ok = "reply_to_msg_id" in msg_resp.json()
+            # Cleanup compat-check thread to avoid polluting shared server DB.
+            if thread_resp is not None and thread_resp.status_code in (200, 201):
+                compat_tid = thread_resp.json().get("id", "")
+                if compat_tid:
+                    try:
+                        client.delete(f"/api/threads/{compat_tid}")
+                    except Exception:
+                        pass
             if (
                 health.status_code == 200
                 and metrics_resp.status_code == 200
@@ -284,3 +292,53 @@ def server():
                 print(f"Cleaned up test database: {TEST_DB_PATH}")
             except Exception as e:
                 print(f"Warning: Could not remove test database: {e}")
+
+        # Clean up all other accumulated test DB files in tests/data/.
+        # Only when this fixture started the server — avoids interfering with
+        # an externally managed server whose DB files may still be open.
+        if started_here:
+            tests_data_dir = Path(TEST_DB_PATH).parent
+            for db_file in tests_data_dir.glob("*.db*"):
+                if db_file.resolve() == Path(TEST_DB_PATH).resolve():
+                    continue  # already handled above
+                try:
+                    db_file.unlink()
+                except Exception:
+                    pass
+
+
+@pytest.fixture(scope="session")
+def thread_registry():
+    """Optional registry for tracking test threads to delete on session end.
+
+    Use this fixture in integration tests that create threads against an
+    externally managed server (i.e. when the server is NOT started by
+    conftest).  When conftest starts the server itself, the entire
+    ``bus_test.db`` is removed on teardown, so explicit cleanup is
+    unnecessary.
+
+    Usage::
+
+        def test_foo(thread_registry):
+            tid = create_thread(...)
+            thread_registry.register(tid)
+            # thread is deleted automatically at end of session
+    """
+    _ids: list[str] = []
+
+    class _Registry:
+        def register(self, thread_id: str) -> None:
+            _ids.append(thread_id)
+
+    reg = _Registry()
+    yield reg
+
+    if not _ids:
+        return
+    with httpx.Client(base_url=BASE_URL, timeout=5) as client:
+        for tid in _ids:
+            try:
+                client.delete(f"/api/threads/{tid}")
+            except Exception:
+                pass
+

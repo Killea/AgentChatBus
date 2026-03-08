@@ -967,3 +967,132 @@ async def test_repeated_msg_wait_timeouts_reuse_single_token():
     assert row["cnt"] == 1
 
     await db.close()
+
+
+@pytest.mark.asyncio
+async def test_bus_connect_with_system_prompt_creates_thread_with_prompt():
+    db = await aiosqlite.connect(":memory:")
+    db.row_factory = aiosqlite.Row
+    await init_schema(db)
+
+    args = {
+        "thread_name": "Thread With Custom Prompt",
+        "ide": "TestIDE",
+        "model": "TestModel",
+        "system_prompt": "You are a code reviewer. Focus on security issues.",
+    }
+
+    result = await handle_bus_connect(db, args)
+    payload = json.loads(result[0].text)
+
+    assert payload["thread"]["created"] is True
+
+    async with db.execute(
+        "SELECT system_prompt FROM threads WHERE id = ?",
+        (payload["thread"]["thread_id"],),
+    ) as cur:
+        row = await cur.fetchone()
+    assert row["system_prompt"] == "You are a code reviewer. Focus on security issues."
+
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_bus_connect_system_prompt_ignored_when_joining_existing_thread():
+    db = await aiosqlite.connect(":memory:")
+    db.row_factory = aiosqlite.Row
+    await init_schema(db)
+
+    await crud.thread_create(db, topic="Pre-Existing Thread", system_prompt="Original prompt")
+
+    args = {
+        "thread_name": "Pre-Existing Thread",
+        "ide": "TestIDE",
+        "model": "TestModel",
+        "system_prompt": "Attempted override prompt",
+    }
+
+    result = await handle_bus_connect(db, args)
+    payload = json.loads(result[0].text)
+
+    assert payload["thread"]["created"] is False
+
+    async with db.execute(
+        "SELECT system_prompt FROM threads WHERE id = ?",
+        (payload["thread"]["thread_id"],),
+    ) as cur:
+        row = await cur.fetchone()
+    assert row["system_prompt"] == "Original prompt"
+
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_bus_connect_with_template_applies_template_prompt():
+    db = await aiosqlite.connect(":memory:")
+    db.row_factory = aiosqlite.Row
+    await init_schema(db)
+
+    await crud.template_create(
+        db,
+        id="up29-test-template",
+        name="UP-29 Test Template",
+        system_prompt="You are reviewing code for quality and security.",
+    )
+
+    args = {
+        "thread_name": "Review Session",
+        "ide": "TestIDE",
+        "model": "TestModel",
+        "template": "up29-test-template",
+    }
+
+    result = await handle_bus_connect(db, args)
+    payload = json.loads(result[0].text)
+
+    assert payload["thread"]["created"] is True
+
+    async with db.execute(
+        "SELECT system_prompt, template_id FROM threads WHERE id = ?",
+        (payload["thread"]["thread_id"],),
+    ) as cur:
+        row = await cur.fetchone()
+    assert row["system_prompt"] == "You are reviewing code for quality and security."
+    assert row["template_id"] == "up29-test-template"
+
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_bus_connect_system_prompt_reflected_in_response():
+    db = await aiosqlite.connect(":memory:")
+    db.row_factory = aiosqlite.Row
+    await init_schema(db)
+
+    args = {
+        "thread_name": "Thread With Prompt In Response",
+        "ide": "TestIDE",
+        "model": "TestModel",
+        "system_prompt": "Review all changes for accessibility compliance.",
+    }
+
+    result = await handle_bus_connect(db, args)
+    payload = json.loads(result[0].text)
+
+    assert payload["thread"]["created"] is True
+    assert payload["thread"]["system_prompt"] == "Review all changes for accessibility compliance."
+
+    # When joining existing thread, system_prompt should NOT be in response
+    args2 = {
+        "thread_name": "Thread With Prompt In Response",
+        "ide": "TestIDE2",
+        "model": "TestModel2",
+    }
+
+    result2 = await handle_bus_connect(db, args2)
+    payload2 = json.loads(result2[0].text)
+
+    assert payload2["thread"]["created"] is False
+    assert "system_prompt" not in payload2["thread"]
+
+    await db.close()
