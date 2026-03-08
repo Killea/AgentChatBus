@@ -2468,7 +2468,7 @@ acb-input-dialog .input-actions {
   text-decoration: underline;
 }
 
-#topbar-ad {
+#topbar-note-github {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2483,12 +2483,12 @@ acb-input-dialog .input-actions {
   white-space: nowrap;
 }
 
-#topbar-ad:hover {
+#topbar-note-github:hover {
   background: #eab308;
   color: #111827;
 }
 
-#topbar-ad code {
+#topbar-note-github code {
   background: rgba(255, 255, 255, 0.55);
   border-radius: 4px;
   padding: 1px 4px;
@@ -2496,7 +2496,7 @@ acb-input-dialog .input-actions {
   color: #111827;
 }
 
-#topbar-ad-pypi {
+#topbar-note-pypi {
   display: inline-flex;
   align-items: center;
   padding: 3px 9px;
@@ -2510,17 +2510,17 @@ acb-input-dialog .input-actions {
   white-space: nowrap;
 }
 
-#topbar-ad-pypi:hover {
+#topbar-note-pypi:hover {
   background: #eab308;
   color: #111827;
 }
 
-body[data-theme="light"] #topbar-ad {
+body[data-theme="light"] #topbar-note-github {
   background: #f59e0b;
   border-color: #92400e;
 }
 
-body[data-theme="light"] #topbar-ad-pypi {
+body[data-theme="light"] #topbar-note-pypi {
   background: #f59e0b;
   border-color: #92400e;
   color: #111827;
@@ -2807,11 +2807,11 @@ body[data-theme="light"] #topbar-ad-pypi {
     display: none;
   }
 
-  #topbar-ad {
+  #topbar-note-github {
     display: none !important;
   }
 
-  #topbar-ad-pypi {
+  #topbar-note-pypi {
     display: none !important;
   }
 

@@ -10,7 +10,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet" />
-  <link rel="stylesheet" href="/static/css/main.css?v=5" />
+  <link rel="stylesheet" href="/static/css/main.css?v=7" />
 </head>
 
 <body>
@@ -28,10 +28,10 @@
       <a href="https://github.com/Killea/AgentChatBus" target="_blank" rel="noopener noreferrer">GitHub
         AgentChatBus</a>
     </div>
-    <a id="topbar-ad" href="https://github.com/Killea/AgentChatBus" target="_blank" rel="noopener noreferrer" aria-live="polite" aria-label="Open AgentChatBus on GitHub in a new tab" title="Explore AgentChatBus on GitHub (opens in a new tab)" style="display:none;">
+    <a id="topbar-note-github" href="https://github.com/Killea/AgentChatBus" target="_blank" rel="noopener noreferrer" aria-live="polite" aria-label="Open AgentChatBus on GitHub in a new tab" title="Explore AgentChatBus on GitHub (opens in a new tab)" style="display:none;">
       Powered by AgentChatBus MCP. Deploy locally or online with <code>pip install agentchatbus</code>
     </a>
-    <a id="topbar-ad-pypi" href="https://pypi.org/project/agentchatbus/" target="_blank" rel="noopener noreferrer" aria-label="Open agentchatbus package on PyPI in a new tab" title="View agentchatbus on PyPI (opens in a new tab)" style="display:none;">
+    <a id="topbar-note-pypi" href="https://pypi.org/project/agentchatbus/" target="_blank" rel="noopener noreferrer" aria-label="Open agentchatbus package on PyPI in a new tab" title="View agentchatbus on PyPI (opens in a new tab)" style="display:none;">
       PyPI: agentchatbus
     </a>
     <div class="sep"></div>
@@ -221,8 +221,8 @@
 
     function applyShowAdPolicy(enabled) {
       showAd = !!enabled;
-      const adEl = document.getElementById('topbar-ad');
-      const pypiAdEl = document.getElementById('topbar-ad-pypi');
+      const adEl = document.getElementById('topbar-note-github');
+      const pypiAdEl = document.getElementById('topbar-note-pypi');
       if (adEl) {
         adEl.style.display = showAd ? 'inline-flex' : 'none';
       }
