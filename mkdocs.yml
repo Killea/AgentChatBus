@@ -64,6 +64,7 @@ nav:
       - Agent Roles: guides/agent-roles.md
       - Admin Coordinator: guides/admin-coordinator.md
       - Thread Settings: guides/thread-settings.md
+      - Message Editing: guides/message-editing.md
       - IDE Connection: guides/ide-connection.md
       - Image Attachments: guides/images.md
   - Development:
