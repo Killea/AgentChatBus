@@ -125,6 +125,36 @@ async def test_msg_post_with_both():
 
 
 @pytest.mark.asyncio
+async def test_msg_post_invalid_stop_reason_rolls_back_cleanly():
+    """Invalid stop_reason should reject the post without leaving partial DB writes."""
+    db = await _setup_db()
+    try:
+        thread = await crud.thread_create(db, "invalid-stop-reason-test")
+        sync = await crud.issue_reply_token(db, thread_id=thread.id)
+
+        with pytest.raises(ValueError, match="Invalid stop_reason"):
+            await crud.msg_post(
+                db,
+                thread_id=thread.id,
+                author="agent-a",
+                content="Should fail",
+                expected_last_seq=sync["current_seq"],
+                reply_token=sync["reply_token"],
+                metadata={"stop_reason": "not-valid"},
+            )
+
+        async with db.execute("SELECT COUNT(*) AS cnt FROM messages WHERE thread_id = ?", (thread.id,)) as cur:
+            row = await cur.fetchone()
+        assert row["cnt"] == 0
+
+        async with db.execute("SELECT COUNT(*) AS cnt FROM events WHERE thread_id = ?", (thread.id,)) as cur:
+            row = await cur.fetchone()
+        assert row["cnt"] == 1  # only the original thread.new event remains
+    finally:
+        await db.close()
+
+
+@pytest.mark.asyncio
 async def test_msg_post_backward_compat():
     """msg_post with no metadata still works correctly."""
     db = await _setup_db()

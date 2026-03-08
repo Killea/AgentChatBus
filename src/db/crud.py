@@ -186,7 +186,7 @@ def _parse_dt(s: str) -> datetime:
 # Sequence counter (global, bus-wide)
 # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
-async def next_seq(db: aiosqlite.Connection) -> int:
+async def next_seq(db: aiosqlite.Connection, *, commit: bool = True) -> int:
     """Atomically increment and return the next global sequence number.
 
     NOTE: This function commits internally. In the current single-process,
@@ -201,7 +201,8 @@ async def next_seq(db: aiosqlite.Connection) -> int:
         "UPDATE seq_counter SET val = val + 1 WHERE id = 1 RETURNING val"
     ) as cur:
         row = await cur.fetchone()
-    await db.commit()
+    if commit:
+        await db.commit()
     return row["val"]
 
 
@@ -880,6 +881,8 @@ async def thread_settings_update(
 async def thread_settings_update_activity(
     db: aiosqlite.Connection,
     thread_id: str,
+    *,
+    commit: bool = True,
 ) -> None:
     """Update last_activity_time and clear auto-assigned admin (activity detected)."""
     now = _now()
@@ -895,7 +898,8 @@ async def thread_settings_update_activity(
         """,
         (now, now, thread_id),
     )
-    await db.commit()
+    if commit:
+        await db.commit()
 
 
 async def thread_settings_assign_admin(
@@ -1181,9 +1185,18 @@ async def msg_post(
     priority: str = "normal",
     reply_to_msg_id: Optional[str] = None,
 ) -> Message:
+    valid_stop_reasons = {"convergence", "timeout", "error", "complete", "impasse"}
+
     # Validate priority (UP-16)
     if priority not in _VALID_PRIORITIES:
         raise ValueError(f"Invalid priority '{priority}'. Must be one of: {', '.join(sorted(_VALID_PRIORITIES))}")
+
+    if metadata:
+        stop_reason = metadata.get("stop_reason")
+        if stop_reason and stop_reason not in valid_stop_reasons:
+            raise ValueError(
+                f"Invalid stop_reason '{stop_reason}'. Must be one of: {', '.join(sorted(valid_stop_reasons))}"
+            )
 
     # Validate reply_to_msg_id (UP-14): must exist and belong to the same thread
     if reply_to_msg_id is not None:
@@ -1280,65 +1293,65 @@ async def msg_post(
 
     mid = str(uuid.uuid4())
     now = _now()
-    seq = await next_seq(db)
     meta_json = json.dumps(metadata) if metadata else None
-    await db.execute(
-        "INSERT INTO messages (id, thread_id, author, role, content, seq, created_at, metadata, author_id, author_name, priority, reply_to_msg_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (mid, thread_id, actual_author, role, content, seq, now, meta_json, author_id, author_name, priority, reply_to_msg_id),
-    )
-    await db.execute(
-        "UPDATE threads SET updated_at = ? WHERE id = ?", (now, thread_id)
-    )
-    async with db.execute(
-        "UPDATE reply_tokens SET status = 'consumed', consumed_at = ? "
-        "WHERE token = ? AND status = 'issued'",
-        (now, reply_token),
-    ) as cur:
-        consumed = cur.rowcount
-    if consumed == 0:
-        await db.rollback()
+    try:
+        seq = await next_seq(db, commit=False)
+        await db.execute(
+            "INSERT INTO messages (id, thread_id, author, role, content, seq, created_at, metadata, author_id, author_name, priority, reply_to_msg_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (mid, thread_id, actual_author, role, content, seq, now, meta_json, author_id, author_name, priority, reply_to_msg_id),
+        )
+        await db.execute(
+            "UPDATE threads SET updated_at = ? WHERE id = ?", (now, thread_id)
+        )
         async with db.execute(
-            "SELECT consumed_at FROM reply_tokens WHERE token = ?",
-            (reply_token,),
+            "UPDATE reply_tokens SET status = 'consumed', consumed_at = ? "
+            "WHERE token = ? AND status = 'issued'",
+            (now, reply_token),
         ) as cur:
-            row = await cur.fetchone()
-        consumed_at = row["consumed_at"] if row else None
-        raise ReplyTokenReplayError(reply_token, consumed_at)
+            consumed = cur.rowcount
+        if consumed == 0:
+            await db.rollback()
+            async with db.execute(
+                "SELECT consumed_at FROM reply_tokens WHERE token = ?",
+                (reply_token,),
+            ) as cur:
+                row = await cur.fetchone()
+            consumed_at = row["consumed_at"] if row else None
+            raise ReplyTokenReplayError(reply_token, consumed_at)
 
-    await db.commit()
-    if author_id:
-        await agent_msg_post(db, author_id)
-    
-    # Update thread activity for timeout tracking
-    await thread_settings_update_activity(db, thread_id)
-    
-    await _emit_event(db, "msg.new", thread_id, {
-        "msg_id": mid, "thread_id": thread_id, "author": author_name,
-        "author_id": author_id, "role": role, "seq": seq, "content": content[:200],  # truncate for event payload
-    })
-    _VALID_STOP_REASONS = {"convergence", "timeout", "error", "complete", "impasse"}
+        if author_id:
+            await agent_msg_post(db, author_id, commit=False)
 
-    if metadata:
-        handoff_target = metadata.get("handoff_target")
-        if handoff_target:
-            await _emit_event(db, "msg.handoff", thread_id, {
-                "msg_id": mid, "thread_id": thread_id,
-                "from_agent": author_name, "to_agent": handoff_target,
-            })
-        stop_reason = metadata.get("stop_reason")
-        if stop_reason:
-            if stop_reason not in _VALID_STOP_REASONS:
-                raise ValueError(f"Invalid stop_reason '{stop_reason}'. Must be one of: {', '.join(sorted(_VALID_STOP_REASONS))}")
-            await _emit_event(db, "msg.stop", thread_id, {
-                "msg_id": mid, "thread_id": thread_id,
-                "agent": author_name, "reason": stop_reason,
-            })
-    # SSE event for reply-to threading (UP-14)
-    if reply_to_msg_id is not None:
-        await _emit_event(db, "msg.reply", thread_id, {
-            "msg_id": mid, "reply_to_msg_id": reply_to_msg_id,
-            "thread_id": thread_id, "author": author_name, "seq": seq,
-        })
+        await thread_settings_update_activity(db, thread_id, commit=False)
+
+        await _emit_event(db, "msg.new", thread_id, {
+            "msg_id": mid, "thread_id": thread_id, "author": author_name,
+            "author_id": author_id, "role": role, "seq": seq, "content": content[:200],
+        }, commit=False)
+
+        if metadata:
+            handoff_target = metadata.get("handoff_target")
+            if handoff_target:
+                await _emit_event(db, "msg.handoff", thread_id, {
+                    "msg_id": mid, "thread_id": thread_id,
+                    "from_agent": author_name, "to_agent": handoff_target,
+                }, commit=False)
+            stop_reason = metadata.get("stop_reason")
+            if stop_reason:
+                await _emit_event(db, "msg.stop", thread_id, {
+                    "msg_id": mid, "thread_id": thread_id,
+                    "agent": author_name, "reason": stop_reason,
+                }, commit=False)
+        if reply_to_msg_id is not None:
+            await _emit_event(db, "msg.reply", thread_id, {
+                "msg_id": mid, "reply_to_msg_id": reply_to_msg_id,
+                "thread_id": thread_id, "author": author_name, "seq": seq,
+            }, commit=False)
+
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
 
     logger.debug(f"Message posted: seq={seq} author={author_name} thread={thread_id} priority={priority} reply_to={reply_to_msg_id}")
     return Message(
@@ -1710,6 +1723,7 @@ async def _set_agent_activity(
     activity: str,
     *,
     touch_heartbeat: bool = False,
+    commit: bool = True,
 ) -> bool:
     now = _now()
     if touch_heartbeat:
@@ -1724,7 +1738,8 @@ async def _set_agent_activity(
             (activity, now, agent_id),
         ) as cur:
             updated = cur.rowcount
-    await db.commit()
+    if commit:
+        await db.commit()
     return updated > 0
 
 
@@ -1801,8 +1816,8 @@ async def agent_msg_received(db: aiosqlite.Connection, agent_id: str) -> bool:
     return await _set_agent_activity(db, agent_id, "msg_received", touch_heartbeat=False)
 
 
-async def agent_msg_post(db: aiosqlite.Connection, agent_id: str) -> bool:
-    return await _set_agent_activity(db, agent_id, "msg_post", touch_heartbeat=False)
+async def agent_msg_post(db: aiosqlite.Connection, agent_id: str, *, commit: bool = True) -> bool:
+    return await _set_agent_activity(db, agent_id, "msg_post", touch_heartbeat=False, commit=commit)
 
 
 async def agent_unregister(db: aiosqlite.Connection, agent_id: str, token: str) -> bool:
@@ -1997,12 +2012,20 @@ def _row_to_agent(row: aiosqlite.Row) -> AgentInfo:
 # Event fan-out (for SSE)
 # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
-async def _emit_event(db: aiosqlite.Connection, event_type: str, thread_id: Optional[str], payload: dict) -> None:
+async def _emit_event(
+    db: aiosqlite.Connection,
+    event_type: str,
+    thread_id: Optional[str],
+    payload: dict,
+    *,
+    commit: bool = True,
+) -> None:
     await db.execute(
         "INSERT INTO events (event_type, thread_id, payload, created_at) VALUES (?, ?, ?, ?)",
         (event_type, thread_id, json.dumps(payload), _now()),
     )
-    await db.commit()
+    if commit:
+        await db.commit()
 async def thread_timeout_sweep(db: aiosqlite.Connection, timeout_minutes: int) -> list[str]:
     """
     Close open threads whose last message is older than timeout_minutes.
