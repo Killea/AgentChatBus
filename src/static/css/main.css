@@ -2426,6 +2426,64 @@ acb-input-dialog .input-actions {
   text-decoration: underline;
 }
 
+#topbar-ad {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid #b45309;
+  background: #facc15;
+  color: #111827;
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+#topbar-ad:hover {
+  background: #eab308;
+  color: #111827;
+}
+
+#topbar-ad code {
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-size: 11px;
+  color: #111827;
+}
+
+#topbar-ad-pypi {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid #0c4a6e;
+  background: #38bdf8;
+  color: #082f49;
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+#topbar-ad-pypi:hover {
+  background: #0ea5e9;
+  color: #ffffff;
+}
+
+body[data-theme="light"] #topbar-ad {
+  background: #f59e0b;
+  border-color: #92400e;
+}
+
+body[data-theme="light"] #topbar-ad-pypi {
+  background: #7dd3fc;
+  border-color: #0369a1;
+  color: #082f49;
+}
+
 /* Scrollbar — same style as #messages (accent blue) */
 #thread-pane {
   scrollbar-width: thin;
@@ -2705,6 +2763,14 @@ acb-input-dialog .input-actions {
 
   #footer-link {
     display: none;
+  }
+
+  #topbar-ad {
+    display: none !important;
+  }
+
+  #topbar-ad-pypi {
+    display: none !important;
   }
 
   #topbar .sep {

@@ -10,7 +10,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet" />
-  <link rel="stylesheet" href="/static/css/main.css?v=2" />
+  <link rel="stylesheet" href="/static/css/main.css?v=5" />
 </head>
 
 <body>
@@ -28,6 +28,12 @@
       <a href="https://github.com/Killea/AgentChatBus" target="_blank" rel="noopener noreferrer">GitHub
         AgentChatBus</a>
     </div>
+    <a id="topbar-ad" href="https://github.com/Killea/AgentChatBus" target="_blank" rel="noopener noreferrer" aria-live="polite" aria-label="Open AgentChatBus on GitHub in a new tab" title="Explore AgentChatBus on GitHub (opens in a new tab)" style="display:none;">
+      Powered by AgentChatBus MCP. Deploy locally or online with <code>pip install agentchatbus</code>
+    </a>
+    <a id="topbar-ad-pypi" href="https://pypi.org/project/agentchatbus/" target="_blank" rel="noopener noreferrer" aria-label="Open agentchatbus package on PyPI in a new tab" title="View agentchatbus on PyPI (opens in a new tab)" style="display:none;">
+      PyPI: agentchatbus
+    </a>
     <div class="sep"></div>
     <div id="status-dot"></div>
     <div class="status-label" id="status-label">Connected</div>
@@ -161,8 +167,8 @@
   <script src="/static/js/shared-utils.js?v=3"></script>
   <script src="/static/js/shared-message-renderer.js?v=2"></script>
   <script src="/static/js/shared-sse.js?v=2"></script>
-  <script src="/static/js/shared-modals.js?v=5"></script>
-  <script src="/static/js/components/acb-modal-shell.js?v=4"></script>
+  <script src="/static/js/shared-modals.js?v=7"></script>
+  <script src="/static/js/components/acb-modal-shell.js?v=6"></script>
   <script src="/static/js/components/acb-empty-state.js?v=2"></script>
   <script src="/static/js/components/acb-icon-button.js?v=2"></script>
   <script src="/static/js/components/acb-filter-actions.js?v=2"></script>
@@ -175,7 +181,7 @@
   <script src="/static/js/components/acb-admin-switch-card.js?v=3"></script>
   <script src="/static/js/components/acb-compose-shell.js?v=3"></script>
   <script src="/static/js/components/acb-agent-status-shell.js?v=2"></script>
-  <script src="/static/js/shared-threads.js?v=2"></script>
+  <script src="/static/js/shared-threads.js?v=3"></script>
   <script src="/static/js/shared-agent-status.js?v=2"></script>
   <script src="/static/js/components/acb-agent-status-item.js?v=2"></script>
   <script src="/static/js/shared-agents.js?v=3"></script>
@@ -209,8 +215,31 @@
     let agentTooltipHideTimer = null;
     let activeAgentTooltipTarget = null;
     let currentAgents = []; // Cache of all agents for tooltip lookups
+    let showAd = false;
 
     const EMPTY_STATE_TEMPLATE = '<acb-empty-state></acb-empty-state>';
+
+    function applyShowAdPolicy(enabled) {
+      showAd = !!enabled;
+      const adEl = document.getElementById('topbar-ad');
+      const pypiAdEl = document.getElementById('topbar-ad-pypi');
+      if (adEl) {
+        adEl.style.display = showAd ? 'inline-flex' : 'none';
+      }
+      if (pypiAdEl) {
+        pypiAdEl.style.display = showAd ? 'inline-flex' : 'none';
+      }
+      document.body.classList.toggle('show-ad', showAd);
+    }
+
+    async function syncShowAdPolicy() {
+      try {
+        const settings = await api('/api/settings');
+        applyShowAdPolicy(!!settings?.SHOW_AD);
+      } catch {
+        applyShowAdPolicy(false);
+      }
+    }
 
     // ==============================================================================================
     // Mobile Sidebar Toggle
@@ -284,6 +313,7 @@
 
       // UI-02: Initialize search
       if (window.AcbSearch) window.AcbSearch.init();
+      await syncShowAdPolicy();
       await refreshThreads();
       await refreshAgents();
       updateOnlinePresence();
@@ -823,7 +853,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     }
 
     function openThreadContextMenu(event, thread) {
-      contextMenuThread = window.AcbThreads.openThreadContextMenu(event, thread);
+      contextMenuThread = window.AcbThreads.openThreadContextMenu(event, thread, { showAd });
       // 保存右键点击的位置，用于确认对话框定位
       contextMenuThread._clickX = event.clientX;
       contextMenuThread._clickY = event.clientY;
@@ -834,6 +864,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     }
 
     async function deleteThreadFromMenu() {
+      if (showAd) return;
       if (!contextMenuThread) return;
       const { id, topic, _clickX, _clickY } = contextMenuThread;
       hideThreadContextMenu();
@@ -884,6 +915,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     }
 
     async function closeThreadFromMenu() {
+      if (showAd) return;
       if (!contextMenuThread) return;
       const { id, _clickX = null, _clickY = null } = contextMenuThread;
       hideThreadContextMenu();

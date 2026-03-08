@@ -112,7 +112,7 @@
     updateThreadFilterButton();
   }
 
-  function openThreadContextMenu(event, thread) {
+  function openThreadContextMenu(event, thread, options = {}) {
     event.preventDefault();
     event.stopPropagation();
 
@@ -120,12 +120,17 @@
     const archiveBtn = document.getElementById("ctx-archive");
     const unarchiveBtn = document.getElementById("ctx-unarchive");
     const closeBtn = document.getElementById("ctx-close");
-    if (!menu || !archiveBtn || !unarchiveBtn || !closeBtn) return thread;
+    const deleteBtn = document.getElementById("ctx-delete");
+    if (!menu || !archiveBtn || !unarchiveBtn || !closeBtn || !deleteBtn) return thread;
 
-    closeBtn.disabled = false;
-    closeBtn.textContent = "Close";
+    const adModeEnabled = !!options.showAd;
+
+    closeBtn.disabled = adModeEnabled;
+    closeBtn.textContent = adModeEnabled ? "Close (disabled by show_ad)" : "Close";
     archiveBtn.disabled = false;
     archiveBtn.textContent = "Archive";
+    deleteBtn.disabled = adModeEnabled;
+    deleteBtn.textContent = adModeEnabled ? "Delete (disabled by show_ad)" : "Delete";
 
     if (thread.status === "archived") {
       archiveBtn.style.display = "none";

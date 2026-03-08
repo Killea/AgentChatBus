@@ -1418,6 +1418,7 @@ class SettingsUpdate(BaseModel):
     ENABLE_HANDOFF_TARGET: bool | None = None
     ENABLE_STOP_REASON: bool | None = None
     ENABLE_PRIORITY: bool | None = None
+    SHOW_AD: bool | None = None
 
 @app.put("/api/settings")
 async def api_update_settings(body: SettingsUpdate, x_admin_token: str | None = Header(default=None)):

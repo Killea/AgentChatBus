@@ -61,6 +61,7 @@ RATE_LIMIT_ENABLED = RATE_LIMIT_MSG_PER_MINUTE > 0
 ENABLE_HANDOFF_TARGET = str(os.getenv("AGENTCHATBUS_ENABLE_HANDOFF_TARGET", config_data.get("ENABLE_HANDOFF_TARGET", "false"))).lower() in {"1", "true", "yes"}
 ENABLE_STOP_REASON = str(os.getenv("AGENTCHATBUS_ENABLE_STOP_REASON", config_data.get("ENABLE_STOP_REASON", "false"))).lower() in {"1", "true", "yes"}
 ENABLE_PRIORITY = str(os.getenv("AGENTCHATBUS_ENABLE_PRIORITY", config_data.get("ENABLE_PRIORITY", "false"))).lower() in {"1", "true", "yes"}
+SHOW_AD = str(os.getenv("AGENTCHATBUS_SHOW_AD", config_data.get("SHOW_AD", "false"))).lower() in {"1", "true", "yes"}
 
 # Content filter: block messages containing known secret patterns
 CONTENT_FILTER_ENABLED = os.getenv("AGENTCHATBUS_CONTENT_FILTER_ENABLED", "true").lower() in {"1", "true", "yes"}
@@ -90,6 +91,7 @@ def get_config_dict():
         "ENABLE_HANDOFF_TARGET": ENABLE_HANDOFF_TARGET,
         "ENABLE_STOP_REASON": ENABLE_STOP_REASON,
         "ENABLE_PRIORITY": ENABLE_PRIORITY,
+        "SHOW_AD": SHOW_AD,
     }
 
 def save_config_dict(new_data: dict):
