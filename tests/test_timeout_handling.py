@@ -73,7 +73,7 @@ def suppress_runtime_warnings():
 @pytest.mark.asyncio
 async def test_api_threads_timeout_on_get_db():
     """Test that API returns 503 when get_db() times out."""
-    with patch("asyncio.wait_for") as mock_wait_for:
+    with patch("src.main.asyncio.wait_for") as mock_wait_for:
         # First call to wait_for (get_db) times out
         mock_wait_for.side_effect = asyncio.TimeoutError()
         
@@ -98,7 +98,7 @@ async def test_api_threads_timeout_on_thread_list():
         else:
             raise asyncio.TimeoutError()
 
-    with patch("asyncio.wait_for", side_effect=mock_wait_for_impl):
+    with patch("src.main.asyncio.wait_for", side_effect=mock_wait_for_impl):
         try:
             await api_threads()
             pytest.fail("Expected HTTPException with 503")
@@ -113,7 +113,7 @@ async def test_api_agents_timeout():
     async def mock_wait_for_impl(coro, timeout):
         raise asyncio.TimeoutError()
 
-    with patch("asyncio.wait_for", side_effect=mock_wait_for_impl):
+    with patch("src.main.asyncio.wait_for", side_effect=mock_wait_for_impl):
         try:
             await api_agents()
             pytest.fail("Expected HTTPException with 503")
@@ -151,8 +151,8 @@ async def test_api_threads_success():
     async def mock_gather(*coros):
         return (mock_threads, len(mock_threads))
 
-    with patch("asyncio.wait_for", side_effect=mock_wait_for_get_db), \
-         patch("asyncio.gather", side_effect=mock_gather):
+    with patch("src.main.asyncio.wait_for", side_effect=mock_wait_for_get_db), \
+         patch("src.main.asyncio.gather", side_effect=mock_gather):
         # Since api_threads is an async function that returns an envelope dict,
         # we need to test the actual return value
         result = await api_threads()
@@ -195,7 +195,7 @@ async def test_api_agents_success():
         # Return mock_agents for agent_list calls
         return mock_agents
 
-    with patch("asyncio.wait_for", side_effect=mock_wait_for_impl):
+    with patch("src.main.asyncio.wait_for", side_effect=mock_wait_for_impl):
         result = await api_agents()
 
         assert isinstance(result, list)
