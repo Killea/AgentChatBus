@@ -129,7 +129,6 @@ async def test_api_agents_timeout():
 @pytest.mark.asyncio
 async def test_api_threads_success():
     """Test successful thread listing with no timeout."""
-    mock_db = AsyncMock()
     import datetime
     now = datetime.datetime.now()
 
@@ -145,16 +144,12 @@ async def test_api_threads_success():
         )
     ]
 
-    async def mock_wait_for_get_db(coro, timeout):
-        return mock_db
+    mock_db = AsyncMock()
 
-    async def mock_gather(*coros):
-        return (mock_threads, len(mock_threads))
-
-    with patch("src.main.asyncio.wait_for", side_effect=mock_wait_for_get_db), \
-         patch("src.main.asyncio.gather", side_effect=mock_gather):
-        # Since api_threads is an async function that returns an envelope dict,
-        # we need to test the actual return value
+    with patch("src.main.get_db", return_value=mock_db), \
+         patch("src.main.crud.thread_list", new=AsyncMock(return_value=mock_threads)), \
+         patch("src.main.crud.thread_count", new=AsyncMock(return_value=len(mock_threads))), \
+         patch("src.main.crud.threads_agents_map", new=AsyncMock(return_value={})):
         result = await api_threads()
 
         # Verify result is an envelope dict with expected structure (UP-20)
