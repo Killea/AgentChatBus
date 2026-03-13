@@ -179,6 +179,7 @@
   <script src="/static/js/components/acb-thread-item.js?v=3"></script>
   <script src="/static/js/components/acb-message-tail-meta.js?v=1"></script>
   <script src="/static/js/components/acb-admin-switch-card.js?v=3"></script>
+  <script src="/static/js/components/acb-survey-card.js?v=1"></script>
   <script src="/static/js/components/acb-compose-shell.js?v=3"></script>
   <script src="/static/js/components/acb-agent-status-shell.js?v=2"></script>
   <script src="/static/js/shared-threads.js?v=5"></script>
@@ -1243,6 +1244,53 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         }
       }
 
+      // Survey metadata markers for static rendering mode.
+      const uiType = String(metaObj?.ui_type || '').trim();
+      const isSurveyQuestion = uiType === 'survey_question';
+      const isSurveyAnswer = uiType === 'survey_answer';
+      const isSurveyMessage = isSurveyQuestion || isSurveyAnswer;
+
+      if (isSurveyMessage) {
+        row.classList.add('message-survey');
+        row.classList.add(isSurveyQuestion ? 'message-survey-question' : 'message-survey-answer');
+      }
+
+      let surveyBadgeHtml = '';
+      if (isSurveyQuestion) {
+        surveyBadgeHtml = '<span class="msg-survey-badge msg-survey-badge-question" title="Survey question">SURVEY</span>';
+      } else if (isSurveyAnswer) {
+        const responder = isHuman ? 'human' : (isSystem ? 'system' : 'agent');
+        surveyBadgeHtml = `<span class="msg-survey-badge msg-survey-badge-answer" title="Survey answer (${responder})">ANSWER</span>`;
+      }
+
+      // If this is a survey answer that references a question message, apply
+      // the selection to the original question DOM and skip inserting a duplicate
+      // answer bubble. This prevents duplicate textual replies and avoids
+      // showing both inline buttons and a separate answer message.
+      if (isSurveyAnswer && m.reply_to_msg_id) {
+        try {
+          const orig = document.querySelector(`[data-msg-id="${CSS.escape(m.reply_to_msg_id)}"]`);
+          if (orig) {
+            const bubble = orig.querySelector('.bubble-v2');
+            if (bubble) {
+              const choice = metaObj?.choice || metaObj?.value || '';
+              let matched = null;
+              if (choice) matched = bubble.querySelector(`.acb-md-btn[data-choice="${CSS.escape(choice)}"]`);
+              if (!matched && metaObj && metaObj.label) matched = Array.from(bubble.querySelectorAll('.acb-md-btn')).find(b => b.getAttribute('data-label') === metaObj.label || b.textContent.trim().startsWith(metaObj.label));
+              if (matched) {
+                matched.disabled = true;
+                matched.textContent = `${matched.getAttribute('data-label') || matched.textContent.trim()} ✓`;
+              } else {
+                bubble.querySelectorAll('.acb-md-btn').forEach(b => b.disabled = true);
+              }
+            }
+            return;
+          }
+        } catch (e) {
+          console.error('Error applying survey_answer to original message DOM', e);
+        }
+      }
+
       // Priority badge (UP-16)
       let priorityBadgeHtml = '';
       if (m.priority === 'urgent') {
@@ -1268,6 +1316,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
           <span class="msg-author-label" style="color:${color}">${esc(authorLabel)}</span>
           <span class="msg-time-label">seq ${m.seq} ${fmtTime(m.created_at)}</span>
           ${priorityBadgeHtml}
+          ${surveyBadgeHtml}
           ${handoffBadgeHtml}
           <button class="msg-copy-btn" title="Copy message" aria-label="Copy message content" onclick="window.AcbCopyMsg(this)">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -1297,6 +1346,17 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       const bubbleEl = row.querySelector('.bubble-v2');
       if (bubbleEl) {
         renderMessageContent(bubbleEl, m.content, m.metadata);
+
+        // If this message is a survey answer, suppress the duplicated textual content
+        // (we already show a survey badge and the original question). Leave bubble empty.
+        try {
+          if (isSurveyAnswer) {
+            // Remove any duplicated textual rendering
+            bubbleEl.innerHTML = '';
+          }
+        } catch (e) {
+          console.error('Failed to suppress survey answer content', e);
+        }
 
         // Render images if any
         let images = null;
@@ -1335,6 +1395,20 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
           bubbleEl.appendChild(imgContainer);
         } else {
           console.log(`[Bubble] No images to render`);
+        }
+
+        // If this message is a survey question, append interactive survey card (client-side)
+        try {
+          if (metaObj && String(metaObj.ui_type || '') === 'survey_question') {
+            const card = document.createElement('acb-survey-card');
+            if (typeof card.setData === 'function') {
+              card.setData({ message: m, metadata: metaObj, threadId: activeThreadId, api });
+            }
+            const col = row.querySelector('.msg-col');
+            if (col) col.appendChild(card);
+          }
+        } catch (err) {
+          console.error('[Bubble] Failed to render survey card:', err);
         }
       }
 
@@ -1774,6 +1848,78 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         modal.appendChild(container);
       }
     };
+  </script>
+  <script>
+    // Inline markdown table button handler: submits a survey answer when a button inside a rendered
+    // markdown table cell (class `acb-md-btn`) is clicked. Uses the same sync-context + msg POST flow
+    // as the composer to ensure strict sync tokens are obtained.
+    (function () {
+      document.addEventListener('click', async (ev) => {
+        const btn = ev.target.closest && ev.target.closest('.acb-md-btn');
+        if (!btn) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+
+        const choice = btn.getAttribute('data-choice') || btn.textContent || '';
+        const label = btn.getAttribute('data-label') || choice || '';
+        const threadId = window.currentThreadId || window.activeThreadId || null;
+        if (!threadId) {
+          window.alert('请先选择一个 Thread（Select a thread first）');
+          return;
+        }
+
+        const table = btn.closest('table');
+        // Find the message id of the question message so we can set reply_to_msg_id
+        const questionRow = btn.closest('.msg-row');
+        const questionMsgId = questionRow ? questionRow.getAttribute('data-msg-id') : null;
+        if (table) table.querySelectorAll('.acb-md-btn').forEach(b => b.disabled = true);
+        btn.disabled = true;
+
+        const authorEl = document.getElementById('compose-author');
+        const author = authorEl ? (authorEl.value.trim() || 'human') : 'human';
+
+        const payload = {
+          author,
+          role: 'user',
+          content: `Survey answer: ${label}`,
+          metadata: { ui_type: 'survey_answer', choice, label, source: 'inline-md' }
+        };
+        if (questionMsgId) payload.reply_to_msg_id = questionMsgId;
+
+        const callApi = (typeof api === 'function') ? api : (window.AcbApi && window.AcbApi.api) ? window.AcbApi.api : null;
+        if (!callApi) {
+          if (table) table.querySelectorAll('.acb-md-btn').forEach(b => b.disabled = false);
+          btn.disabled = false;
+          console.warn('API helper not available');
+          return;
+        }
+
+        // Obtain sync context
+        const sync = await callApi(`/api/threads/${threadId}/sync-context`, { method: 'POST', body: JSON.stringify({}) });
+        if (!sync || typeof sync.reply_token !== 'string') {
+          if (table) table.querySelectorAll('.acb-md-btn').forEach(b => b.disabled = false);
+          btn.disabled = false;
+          return;
+        }
+
+        payload.expected_last_seq = sync.current_seq;
+        payload.reply_token = sync.reply_token;
+
+        const res = await callApi(`/api/threads/${threadId}/messages`, { method: 'POST', body: JSON.stringify(payload) });
+        if (res && res.seq) {
+          // Mark the selected button in the originating question table
+          if (table) {
+            table.querySelectorAll('.acb-md-btn').forEach(b => { b.disabled = true; if (b === btn) b.textContent = `${label} ✓`; });
+          } else {
+            btn.textContent = `${label} ✓`;
+            btn.disabled = true;
+          }
+        } else {
+          if (table) table.querySelectorAll('.acb-md-btn').forEach(b => b.disabled = false);
+          btn.disabled = false;
+        }
+      });
+    })();
   </script>
 </body>
 

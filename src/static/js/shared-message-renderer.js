@@ -113,6 +113,36 @@
     const out = [];
     let i = 0;
 
+    // Split a table row on '|' separators that are not inside square brackets []
+    // or inline code backticks. Preserves pipe characters inside tokens like
+    // [button:Label|value]. Returns array of raw cell strings (not trimmed).
+    function splitTableRow(row) {
+      const cells = [];
+      let cur = '';
+      let inBrackets = 0;
+      let inBacktick = false;
+      for (let j = 0; j < row.length; j++) {
+        const ch = row[j];
+        if (ch === '`') {
+          inBacktick = !inBacktick;
+          cur += ch;
+          continue;
+        }
+        if (!inBacktick) {
+          if (ch === '[') { inBrackets++; cur += ch; continue; }
+          if (ch === ']') { if (inBrackets>0) inBrackets--; cur += ch; continue; }
+          if (ch === '|' && inBrackets === 0) {
+            cells.push(cur);
+            cur = '';
+            continue;
+          }
+        }
+        cur += ch;
+      }
+      cells.push(cur);
+      return cells.map(c => c.trim());
+    }
+
     while (i < lines.length) {
       const line = lines[i];
 
@@ -131,15 +161,37 @@
 
       // Table: header row followed by separator row
       if (line.includes('|') && i + 1 < lines.length && /^\s*\|?\s*[-:]+[-|:\s]+$/.test(lines[i + 1])) {
-        const headerCells = line.split('|').map(c => c.trim()).filter(c => c !== '');
+        const headerCells = splitTableRow(line).filter(c => c !== '');
+        // Helper to render a table cell that may contain inline button tokens like
+        // [button:Label|value] or [btn:Label|value]
+        function renderTableCellContent(rawCell) {
+          const cell = String(rawCell || '');
+          const btnRegex = /\[button:([^\]|]+)\|?([^\]]*)\]|\[btn:([^\]|]+)\|?([^\]]*)\]/g;
+          let last = 0;
+          let html = '';
+          let m;
+          while ((m = btnRegex.exec(cell)) !== null) {
+            const idx = m.index;
+            if (idx > last) html += inlineMd(esc(cell.slice(last, idx)));
+            const label = (m[1] || m[3] || '').trim();
+            const value = (m[2] || m[4] || label).trim();
+            const safeLabel = esc(label);
+            const safeValue = esc(value);
+            html += `<button type="button" class="acb-md-btn" data-choice="${safeValue}" data-label="${safeLabel}">${safeLabel}</button>`;
+            last = btnRegex.lastIndex;
+          }
+          if (last < cell.length) html += inlineMd(esc(cell.slice(last)));
+          return html;
+        }
+
         let html = '<table><thead><tr>';
-        headerCells.forEach(c => { html += `<th>${inlineMd(esc(c))}</th>`; });
+        headerCells.forEach(c => { html += `<th>${renderTableCellContent(c)}</th>`; });
         html += '</tr></thead><tbody>';
         i += 2;
         while (i < lines.length && lines[i].includes('|') && lines[i].trim() !== '') {
-          const cells = lines[i].split('|').map(c => c.trim()).filter(c => c !== '');
+          const cells = splitTableRow(lines[i]).filter(c => c !== '');
           html += '<tr>';
-          cells.forEach(c => { html += `<td>${inlineMd(esc(c))}</td>`; });
+          cells.forEach(c => { html += `<td>${renderTableCellContent(c)}</td>`; });
           html += '</tr>';
           i++;
         }

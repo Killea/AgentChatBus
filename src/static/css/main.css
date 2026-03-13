@@ -366,6 +366,55 @@ body[data-theme="light"] #search-toggle-btn.active {
   transform: scale(.97);
 }
 
+/* Inline markdown table button used by renderer: .acb-md-btn */
+.acb-md-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  margin: 2px 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(0,0,0,0.08);
+  background: linear-gradient(180deg, var(--accent), var(--accent-dim));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform .08s ease, box-shadow .12s ease, opacity .12s ease;
+  box-shadow: 0 6px 18px rgba(13, 71, 161, 0.16);
+}
+.acb-md-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+  box-shadow: none;
+}
+.acb-md-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(13, 71, 161, 0.18);
+}
+body[data-theme="light"] .acb-md-btn {
+  background: linear-gradient(180deg, var(--accent), var(--accent-dim));
+  color: #fff;
+  border: 1px solid rgba(37,99,235,0.12);
+  box-shadow: 0 6px 18px rgba(37,99,235,0.08);
+}
+/* Make inline markdown buttons render as plain/native-looking buttons (neutral) */
+.acb-md-btn {
+  background: transparent;
+  color: inherit;
+  border: 1px solid var(--border-light);
+  padding: 6px 10px;
+  margin: 2px 6px;
+  border-radius: 6px;
+  box-shadow: none;
+  font-weight: 600;
+}
+.acb-md-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.02);
+  transform: none;
+}
+.acb-md-btn:disabled { opacity: 0.6; }
+
 /* ====================================================================================
    Layout: sidebar + main
 ==================================================================================== */
@@ -1061,6 +1110,58 @@ body[data-theme="light"] .thread-item .ti-waiting-agents {
   background: rgba(59,130,246,0.14);
   color: #3b82f6;
   border-color: rgba(59,130,246,0.3);
+}
+
+/* Survey markers (static mode): question + answer labeling in chat stream */
+.msg-survey-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+.msg-survey-badge-question {
+  background: rgba(14,165,233,0.14);
+  color: #38bdf8;
+  border-color: rgba(14,165,233,0.3);
+}
+.msg-survey-badge-answer {
+  background: rgba(16,185,129,0.14);
+  color: #34d399;
+  border-color: rgba(16,185,129,0.3);
+}
+
+.msg-row.message-survey .bubble-v2 {
+  box-shadow: inset 0 0 0 1px rgba(14,165,233,0.12);
+}
+
+.msg-row.message-survey-answer .bubble-v2 {
+  box-shadow: inset 0 0 0 1px rgba(16,185,129,0.12);
+}
+
+body[data-theme="light"] .msg-survey-badge-question {
+  background: rgba(2,132,199,0.12);
+  color: #0369a1;
+  border-color: rgba(2,132,199,0.24);
+}
+
+body[data-theme="light"] .msg-survey-badge-answer {
+  background: rgba(5,150,105,0.12);
+  color: #047857;
+  border-color: rgba(5,150,105,0.24);
+}
+
+body[data-theme="light"] .msg-row.message-survey .bubble-v2 {
+  box-shadow: inset 0 0 0 1px rgba(2,132,199,0.10);
+}
+
+body[data-theme="light"] .msg-row.message-survey-answer .bubble-v2 {
+  box-shadow: inset 0 0 0 1px rgba(5,150,105,0.10);
 }
 
 /* Reaction pills (UP-13) */
