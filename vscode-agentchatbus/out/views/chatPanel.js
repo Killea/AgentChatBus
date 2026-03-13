@@ -125,20 +125,9 @@ class ChatPanel {
         if (!text.trim())
             return;
         try {
-            // In AgentChatBus, calling GET /messages directly refreshes our token locally without sidefx
-            const wrapper = await this._apiClient.getMessages(this._thread.id);
-            let currentSeq = this._currentSeq;
-            let token = this._replyToken;
-            if (!Array.isArray(wrapper)) {
-                if (wrapper.reply_token)
-                    token = wrapper.reply_token;
-                if (wrapper.current_seq)
-                    currentSeq = wrapper.current_seq;
-            }
-            const m = await this._apiClient.sendMessage(this._thread.id, text, {
-                current_seq: currentSeq,
-                reply_token: token || `human-${Date.now()}` // Safe fallback if token not provided
-            });
+            // In AgentChatBus, we need a valid reply token to send messages.
+            const sync = await this._apiClient.getSyncContext(this._thread.id);
+            const m = await this._apiClient.sendMessage(this._thread.id, text, sync);
             if (m && m.seq > this._currentSeq) {
                 this._currentSeq = m.seq;
                 this._pushMessage(m);
