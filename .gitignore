@@ -69,3 +69,4 @@ frontend/coverage/
 
 /agent-customization
 AGENTS.md
+.history/
