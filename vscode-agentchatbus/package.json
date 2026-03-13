@@ -1,0 +1,95 @@
+{
+  "name": "agentchatbus",
+  "displayName": "AgentChatBus",
+  "description": "AgentChatBus client for VS Code",
+  "version": "0.1.2",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:agentchatbus.threads",
+    "onView:agentchatbus.agents"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "agentchatbus",
+          "title": "AgentChatBus",
+          "icon": "$(comment-discussion)"
+        }
+      ]
+    },
+    "views": {
+      "agentchatbus": [
+        {
+          "id": "agentchatbus.threads",
+          "name": "Threads"
+        },
+        {
+          "id": "agentchatbus.agents",
+          "name": "Agents"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "AgentChatBus",
+      "properties": {
+        "agentchatbus.serverUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:39765",
+          "description": "AgentChatBus server URL"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "agentchatbus.refreshThreads",
+        "title": "Refresh Threads",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "agentchatbus.refreshAgents",
+        "title": "Refresh Agents",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "agentchatbus.openThread",
+        "title": "Open Thread"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "agentchatbus.refreshThreads",
+          "when": "view == agentchatbus.threads",
+          "group": "navigation"
+        },
+        {
+          "command": "agentchatbus.refreshAgents",
+          "when": "view == agentchatbus.agents",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0",
+    "@types/node": "20.x",
+    "@types/eventsource": "^1.1.15",
+    "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "eventsource": "^2.0.2"
+  },
+  "publisher": "killea"
+}
