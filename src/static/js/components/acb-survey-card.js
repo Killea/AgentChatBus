@@ -90,7 +90,22 @@
       const message = this._data.message || {};
       const title = String(meta.title || meta.question || '').trim() || 'Survey';
       const body = String(message.content || '').trim();
-      const uiButtons = Array.isArray(meta.ui_buttons) && meta.ui_buttons.length > 0 ? meta.ui_buttons : (Array.isArray(meta.options) ? meta.options.map(o => ({ action: String(o), label: String(o) })) : []);
+      // Normalize uiButtons: accept strings or objects {action,label,value,text,id}
+      let uiButtons = [];
+      if (Array.isArray(meta.ui_buttons) && meta.ui_buttons.length > 0) uiButtons = meta.ui_buttons.slice();
+      else if (Array.isArray(meta.options)) uiButtons = meta.options.slice();
+
+      // Normalize entries to objects with string action and label
+      uiButtons = uiButtons.map((b, idx) => {
+        if (b == null) return { action: `opt_${idx}`, label: `Option ${idx+1}` };
+        if (typeof b === 'string') return { action: b, label: b };
+        if (typeof b === 'object') {
+          const action = b.action ?? b.value ?? b.id ?? (b.label ? String(b.label) : undefined) ?? `opt_${idx}`;
+          const label = b.label ?? b.text ?? b.title ?? b.action ?? b.value ?? `Option ${idx+1}`;
+          return { action: String(action), label: String(label) };
+        }
+        return { action: String(b), label: String(b) };
+      });
 
       this.className = 'msg-survey-card';
       this.setAttribute('data-seq', String(message.seq ?? ''));
