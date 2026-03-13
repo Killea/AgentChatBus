@@ -53,8 +53,10 @@ src/static/uploads
 # MkDocs build output
 site/
 
-# node
+# node (accidental installs — this is a Python project)
 node_modules/
+package.json
+package-lock.json
 frontend/dist/
 frontend/coverage/
 .npm/
