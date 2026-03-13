@@ -3757,3 +3757,101 @@ body[data-theme="light"] .settings-nav-item.active {
 .toggle-switch input:checked+.toggle-slider:before {
   transform: translateX(16px);
 }
+
+/* ====================================================================================
+   Mermaid diagram rendering
+==================================================================================== */
+.mermaid-block {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin: 8px 0;
+  overflow-x: auto;
+}
+
+.mermaid-block .mermaid {
+  display: flex;
+  justify-content: center;
+  min-height: 40px;
+}
+
+.mermaid-block .mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-source-toggle {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: var(--bg-hover);
+  color: var(--text-2);
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  padding: 2px 10px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+  z-index: 2;
+}
+
+.mermaid-source-toggle:hover {
+  background: var(--accent-glow);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.mermaid-source {
+  margin-top: 8px;
+}
+
+.mermaid-source pre {
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  overflow-x: auto;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.mermaid-source code {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-2);
+}
+
+.mermaid-error {
+  color: var(--red);
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  white-space: pre-wrap;
+  padding: 8px;
+  background: rgba(239, 68, 68, .08);
+  border-radius: 6px;
+  border: 1px solid rgba(239, 68, 68, .25);
+}
+
+body[data-theme="light"] .mermaid-block {
+  background: #f9fbff;
+  border-color: #d9e2ef;
+}
+
+body[data-theme="light"] .mermaid-source pre {
+  background: #f3f6fb;
+  border-color: #d9e2ef;
+}
+
+body[data-theme="light"] .mermaid-source-toggle {
+  background: #edf3ff;
+  border-color: #c8d4e5;
+  color: #475569;
+}
+
+body[data-theme="light"] .mermaid-source-toggle:hover {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1e40af;
+}

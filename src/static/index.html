@@ -192,6 +192,13 @@
   <script src="/static/js/components/acb-input-dialog.js?v=1"></script>
   <!-- UI-02: Fuse.js (vendored) + search module -->
   <script src="/static/js/vendor/fuse.min.js"></script>
+  <script src="/static/js/vendor/mermaid.min.js"></script>
+  <script>
+    if (window.mermaid) {
+      const mermaidTheme = document.body.getAttribute('data-theme') === 'light' ? 'default' : 'dark';
+      mermaid.initialize({ startOnLoad: false, theme: mermaidTheme, securityLevel: 'strict' });
+    }
+  </script>
   <script src="/static/js/shared-search.js?v=1"></script>
   <script>
     // ==============================================================================================

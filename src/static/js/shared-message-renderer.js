@@ -232,6 +232,49 @@
 
     for (const tok of tokens) {
       if (tok.type === "code_block") {
+        const codeText = tok.code || "";
+
+        // ── Mermaid diagram rendering ──
+        if (tok.lang === "mermaid" && window.mermaid) {
+          const mermaidBlock = document.createElement("div");
+          mermaidBlock.className = "mermaid-block";
+
+          const diagramDiv = document.createElement("div");
+          diagramDiv.className = "mermaid";
+          diagramDiv.textContent = codeText;
+          mermaidBlock.appendChild(diagramDiv);
+
+          // Source toggle button
+          const toggleBtn = document.createElement("button");
+          toggleBtn.type = "button";
+          toggleBtn.className = "mermaid-source-toggle";
+          toggleBtn.textContent = "Source";
+          toggleBtn.setAttribute("aria-label", "Toggle mermaid source");
+
+          const sourceDiv = document.createElement("div");
+          sourceDiv.className = "mermaid-source";
+          sourceDiv.style.display = "none";
+          const sourcePre = document.createElement("pre");
+          const sourceCode = document.createElement("code");
+          sourceCode.textContent = codeText;
+          sourcePre.appendChild(sourceCode);
+          sourceDiv.appendChild(sourcePre);
+
+          toggleBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const hidden = sourceDiv.style.display === "none";
+            sourceDiv.style.display = hidden ? "block" : "none";
+            toggleBtn.textContent = hidden ? "Diagram" : "Source";
+          });
+
+          mermaidBlock.appendChild(toggleBtn);
+          mermaidBlock.appendChild(sourceDiv);
+          containerEl.appendChild(mermaidBlock);
+          continue;
+        }
+
+        // ── Normal code block ──
         const wrap = document.createElement("div");
         wrap.className = "code-block";
 
@@ -244,7 +287,6 @@
         const pre = document.createElement("pre");
         const code = document.createElement("code");
         if (tok.lang) code.setAttribute("data-lang", tok.lang);
-        const codeText = tok.code || "";
         code.textContent = codeText;
         pre.appendChild(code);
 
@@ -345,12 +387,31 @@
     }
   }
 
+  async function renderMermaidBlocks(root) {
+    if (!window.mermaid) return;
+    const container = root || document;
+    const nodes = container.querySelectorAll(".mermaid:not([data-processed])");
+    if (!nodes.length) return;
+    try {
+      await mermaid.run({ nodes: Array.from(nodes) });
+    } catch {
+      // On bulk failure, mark each as error fallback
+      nodes.forEach((el) => {
+        if (!el.querySelector("svg")) {
+          el.classList.add("mermaid-error");
+          el.setAttribute("data-processed", "true");
+        }
+      });
+    }
+  }
+
   window.AcbMessageRenderer = {
     normalizeMessageText,
     tokenizeMessage,
     parseInlineCodeSegments,
     renderTextWithMarkdown,
     renderMessageContent,
+    renderMermaidBlocks,
     esc,
     inlineMd,
     renderMarkdownToHTML,

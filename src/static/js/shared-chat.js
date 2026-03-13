@@ -45,6 +45,10 @@
     updateOnlinePresence();
     await updateStatusBar();
     if (msgs.length) setLastSeq(msgs[msgs.length - 1].seq);
+    // Render any mermaid diagrams in loaded history
+    if (window.AcbMessageRenderer?.renderMermaidBlocks) {
+      await window.AcbMessageRenderer.renderMermaidBlocks(box);
+    }
     scrollBottom(false);
     // Remove loading-history class to re-enable animations for new messages
     box.classList.remove("loading-history");
@@ -83,6 +87,11 @@
     msgs.forEach((m) => {
       setLastSeq((prev) => Math.max(prev, m.seq));
     });
+
+    // Render any mermaid diagrams in new messages
+    if (msgs.length && window.AcbMessageRenderer?.renderMermaidBlocks) {
+      await window.AcbMessageRenderer.renderMermaidBlocks();
+    }
 
     if (msgs.length) scrollBottom(true);
   }
