@@ -1,6 +1,12 @@
 import * as vscode from 'vscode';
 import type { AgentChatBusApiClient } from '../api/client';
 import type { Thread, Message, SendMessagePayload } from '../api/types';
+import {
+    buildChatPanelHtml,
+    buildRecoveredChatPanelHtml,
+    getChatPanelWebviewOptions,
+    getRecoveredChatPanelWebviewOptions,
+} from './chatPanelHtml';
 
 export class ChatPanel {
     public static readonly VIEW_TYPE = 'agentChatBusChat.v2';
@@ -57,29 +63,10 @@ export class ChatPanel {
 
     public static reviveRecoveredPanel(panel: vscode.WebviewPanel) {
         panel.title = 'ACB: Chat (Restore)';
-        panel.webview.options = {
-            enableScripts: false,
-            localResourceRoots: [vscode.Uri.file(ChatPanel._extensionPath)],
-        };
-        panel.webview.html = `<!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-                body { font-family: var(--vscode-font-family); color: var(--vscode-editor-foreground); background: var(--vscode-editor-background); padding: 20px; }
-                .card { border: 1px solid var(--vscode-panel-border); border-radius: 10px; padding: 14px; max-width: 560px; }
-                .hint { opacity: 0.8; margin-top: 8px; }
-            </style>
-        </head>
-        <body>
-            <div class="card">
-                <h3>Chat session needs reload</h3>
-                <p>This chat webview was restored from a previous session and was reset for stability.</p>
-                <p class="hint">Please open the thread again from the Threads panel.</p>
-            </div>
-        </body>
-        </html>`;
+        panel.webview.options = getRecoveredChatPanelWebviewOptions(
+            vscode.Uri.file(ChatPanel._extensionPath)
+        );
+        panel.webview.html = buildRecoveredChatPanelHtml();
     }
 
     public static createOrShow(thread: Thread, apiClient: AgentChatBusApiClient) {
@@ -97,13 +84,7 @@ export class ChatPanel {
                 ChatPanel.VIEW_TYPE,
                 `ACB: ${thread.topic || thread.id.substring(0, 8)}`,
                 column || vscode.ViewColumn.One,
-                {
-                    enableScripts: true,
-                    retainContextWhenHidden: true,
-                    localResourceRoots: [
-                        vscode.Uri.file(ChatPanel._extensionPath)
-                    ]
-                }
+                getChatPanelWebviewOptions(vscode.Uri.file(ChatPanel._extensionPath))
             );
             console.log('[ACB-ChatPanel] Panel created successfully, setting content...');
             ChatPanel.currentPanel = new ChatPanel(panel, thread, apiClient);
@@ -248,102 +229,14 @@ export class ChatPanel {
             mermaidScriptUrl: webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'resources', 'media', 'mermaid.min.js')).toString(),
             theme: vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ? 'dark' : 'light'
         };
-        const escAttr = (value: string) => String(value)
-            .replace(/&/g, '&amp;')
-            .replace(/"/g, '&quot;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
-
-        return `<!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Chat</title>
-            <link rel="stylesheet" href="${rendererStyleUri}">
-            <link rel="stylesheet" href="${panelStyleUri}">
-        </head>
-        <body
-            data-theme="${escAttr(config.theme)}"
-            data-thread-id="${escAttr(config.threadId)}"
-            data-thread-topic="${escAttr(config.threadTopic)}"
-            data-thread-status="${escAttr(config.threadStatus)}"
-            data-base-url="${escAttr(config.baseUrl)}"
-            data-mermaid-script-url="${escAttr(config.mermaidScriptUrl)}"
-        >
-            <div id="chat-shell">
-                <header id="chat-header">
-                    <div class="chat-thread-meta">
-                        <div class="chat-thread-title">${config.threadTopic.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
-                        <div class="chat-thread-subtitle">${config.threadStatus.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
-                    </div>
-                    <div class="chat-header-actions">
-                        <button id="search-prev" class="icon-btn" title="Previous match">Up</button>
-                        <button id="search-next" class="icon-btn" title="Next match">Down</button>
-                    </div>
-                </header>
-
-                <section id="search-bar">
-                    <input id="search-input" type="search" placeholder="Search this thread" spellcheck="false" />
-                    <div id="search-counter">0 / 0</div>
-                </section>
-
-                <section id="chat-body">
-                    <div id="messages-scroll">
-                        <div id="loading-indicator">
-                            <div class="loading-spinner"></div>
-                            <div class="loading-label">Loading thread...</div>
-                        </div>
-                        <div id="message-container"></div>
-                    </div>
-                    <nav id="nav-sidebar" aria-label="Message navigation"></nav>
-                </section>
-
-                <section id="composer-shell">
-                    <div id="reply-preview" class="hidden"></div>
-                    <div id="image-preview" class="hidden"></div>
-                    <div id="composer-toolbar">
-                        <div id="author-wrap">
-                            <label for="author-input">Name</label>
-                            <input id="author-input" type="text" maxlength="60" />
-                        </div>
-                        <div class="toolbar-actions">
-                            <button id="mention-button" class="icon-btn" title="Mention an agent">@</button>
-                            <button id="upload-button" class="icon-btn" title="Upload image">Image</button>
-                        </div>
-                    </div>
-                    <div id="composer-box">
-                        <div id="compose-input" contenteditable="true" data-placeholder="Send a message. Type @ to mention an agent."></div>
-                        <button id="send-button">Send</button>
-                    </div>
-                    <input id="image-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden />
-                    <div id="mention-menu" class="floating-menu hidden"></div>
-                    <div id="reaction-menu" class="floating-menu hidden">
-                        <button data-reaction="👍">👍</button>
-                        <button data-reaction="❤️">❤️</button>
-                        <button data-reaction="🎯">🎯</button>
-                        <button data-reaction="🔥">🔥</button>
-                        <button data-reaction="👀">👀</button>
-                        <button data-reaction="✅">✅</button>
-                    </div>
-                </section>
-            </div>
-
-            <div id="modal-backdrop" class="hidden">
-                <div id="modal-card">
-                    <div id="modal-header">
-                        <div id="modal-title">Details</div>
-                        <button id="modal-close" class="icon-btn">Close</button>
-                    </div>
-                    <div id="modal-content"></div>
-                </div>
-            </div>
-
-            <div id="toast" class="hidden"></div>
-
-            <script src="${rendererScriptUri}"></script>
-            <script src="${panelScriptUri}"></script>
-        </body>
-        </html>`;
+        return buildChatPanelHtml(
+            {
+                rendererScriptUri: rendererScriptUri.toString(),
+                rendererStyleUri: rendererStyleUri.toString(),
+                panelScriptUri: panelScriptUri.toString(),
+                panelStyleUri: panelStyleUri.toString(),
+            },
+            config
+        );
     }
 }
