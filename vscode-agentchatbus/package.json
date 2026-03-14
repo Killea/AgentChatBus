@@ -6,7 +6,7 @@
   "name": "agentchatbus",
   "displayName": "AgentChatBus",
   "description": "AgentChatBus client for VS Code",
-  "version": "0.1.39",
+  "version": "0.1.40",
   "icon": "resources/bus_128.png",
   "engines": {
     "vscode": "^1.105.0"
@@ -23,15 +23,6 @@
         "label": "AgentChatBus Local Server"
       }
     ],
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "agentchatbus",
-          "title": "AgentChatBus",
-          "icon": "resources/icon.svg"
-        }
-      ]
-    },
     "views": {
       "agentchatbus": [
         {
@@ -47,21 +38,22 @@
           "when": "agentchatbus:serverReady"
         },
         {
+          "id": "agentchatbus.settings",
+          "name": "Management",
+          "icon": "$(gear)",
+          "when": "agentchatbus:serverReady"
+        },
+        {
           "id": "agentchatbus.agents",
           "name": "Agents",
           "icon": "$(robot)",
+          "visibility": "collapsed",
           "when": "agentchatbus:serverReady"
         },
         {
           "id": "agentchatbus.mcpLogs",
           "name": "MCP Server Logs",
           "icon": "$(terminal)",
-          "when": "agentchatbus:serverReady"
-        },
-        {
-          "id": "agentchatbus.settings",
-          "name": "Management",
-          "icon": "$(gear)",
           "when": "agentchatbus:serverReady"
         }
       ]
@@ -167,14 +159,9 @@
         "icon": "$(go-to-file)"
       },
       {
-        "command": "agentchatbus.restartServer",
-        "title": "Restart Server",
-        "icon": "$(sync)"
-      },
-      {
         "command": "agentchatbus.stopServer",
         "title": "Force Restart MCP Service",
-        "icon": "$(debug-stop)"
+        "icon": "$(sync)"
       },
       {
         "command": "agentchatbus.stopServerPending",
@@ -215,19 +202,14 @@
           "group": "navigation@2"
         },
         {
-          "command": "agentchatbus.restartServer",
-          "when": "view == agentchatbus.mcpLogs",
-          "group": "navigation@1"
-        },
-        {
           "command": "agentchatbus.stopServer",
           "when": "view == agentchatbus.mcpLogs && !agentchatbus:serverStopping",
-          "group": "navigation@2"
+          "group": "navigation@1"
         },
         {
           "command": "agentchatbus.stopServerPending",
           "when": "view == agentchatbus.mcpLogs && agentchatbus:serverStopping",
-          "group": "navigation@2"
+          "group": "navigation@1"
         },
         {
           "command": "agentchatbus.openFullLog",

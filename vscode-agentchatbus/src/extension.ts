@@ -118,16 +118,6 @@ function initializeMainViews(context: vscode.ExtensionContext, serverManager: Bu
         vscode.commands.registerCommand('agentchatbus.clearMcpLogs', () => {
             mcpLogProvider?.clear();
         }),
-        vscode.commands.registerCommand('agentchatbus.restartServer', async () => {
-            const confirmed = await vscode.window.showWarningMessage(
-                'Restart AgentChatBus Server? This will disconnect all active agents and reset the message bus state.',
-                { modal: true },
-                'Restart'
-            );
-            if (confirmed === 'Restart') {
-                serverManager.restartServer();
-            }
-        }),
         vscode.commands.registerCommand('agentchatbus.stopServer', async () => {
             const status = serverManager.getStatusMetadata();
             const isExternal = status.startupMode === 'external-service';
