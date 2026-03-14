@@ -12,7 +12,7 @@ echo "--- AgentChatBus Extension Builder ---"
 
 if [ "$BUMP" != "none" ]; then
     echo "Bumping version ($BUMP)..."
-    npx vsce version $BUMP || exit 1
+    npm version $BUMP --no-git-tag-version || exit 1
 fi
 
 echo "Compiling TypeScript..."

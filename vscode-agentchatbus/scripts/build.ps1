@@ -17,16 +17,17 @@ param (
     [string]$bump = "patch"
 )
 
-# Set working directory to script location
+# Set working directory to the extension root (parent of the scripts folder)
 $PSScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
-cd $PSScriptRoot
+$ExtensionRoot = Split-Path -Parent $PSScriptRoot
+Set-Location -Path $ExtensionRoot
 
 Write-Host "--- AgentChatBus Extension Builder ---" -ForegroundColor Cyan
 
 # 1. Version Bumping
 if ($bump -ne "none") {
     Write-Host "Bumping version ($bump)..." -ForegroundColor Yellow
-    & npx vsce version $bump
+    & npm version $bump --no-git-tag-version
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Failed to bump version."
         exit $LASTEXITCODE

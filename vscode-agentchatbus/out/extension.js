@@ -41,6 +41,7 @@ const threadsProvider_1 = require("./providers/threadsProvider");
 const agentsProvider_1 = require("./providers/agentsProvider");
 const chatPanel_1 = require("./views/chatPanel");
 const busServerManager_1 = require("./busServerManager");
+const cursorMcpConfig_1 = require("./cursorMcpConfig");
 const setupProvider_1 = require("./providers/setupProvider");
 const mcpLogProvider_1 = require("./providers/mcpLogProvider");
 const settingsProvider_1 = require("./providers/settingsProvider");
@@ -48,11 +49,13 @@ const statusPanel_1 = require("./views/statusPanel");
 let apiClient;
 let mcpLogProvider;
 let settingsProvider;
+let cursorConfigManager;
 let mainViewsInitialized = false;
 function activate(context) {
     console.log('[AgentChatBus] Activating extension...');
     chatPanel_1.ChatPanel.setExtensionPath(context.extensionPath);
     const serverManager = new busServerManager_1.BusServerManager();
+    cursorConfigManager = new cursorMcpConfig_1.CursorMcpConfigManager();
     const setupProvider = new setupProvider_1.SetupProvider();
     mcpLogProvider = new mcpLogProvider_1.McpLogProvider();
     serverManager.setSetupProvider(setupProvider);
@@ -69,7 +72,9 @@ function activate(context) {
             const isReady = await serverManager.ensureServerRunning();
             if (isReady) {
                 console.log('[AgentChatBus] Server is ready, initializing main views.');
-                initializeMainViews(context, serverManager);
+                if (cursorConfigManager) {
+                    initializeMainViews(context, serverManager, cursorConfigManager);
+                }
             }
             else {
                 console.warn('[AgentChatBus] Server failed to start.');
@@ -102,7 +107,7 @@ function activate(context) {
         }, 500);
     });
 }
-function initializeMainViews(context, serverManager) {
+function initializeMainViews(context, serverManager, cursorConfigManager) {
     if (mainViewsInitialized)
         return;
     mainViewsInitialized = true;
@@ -162,6 +167,33 @@ function initializeMainViews(context, serverManager) {
     }), vscode.commands.registerCommand('agentchatbus.showMcpStatus', () => {
         const metadata = serverManager.getStatusMetadata();
         statusPanel_1.StatusPanel.createOrShow(metadata);
+    }), vscode.commands.registerCommand('agentchatbus.configureCursorMcp', async () => {
+        const config = vscode.workspace.getConfiguration('agentchatbus');
+        const serverUrl = config.get('serverUrl', 'http://127.0.0.1:39765');
+        const previewPath = cursorConfigManager.getGlobalConfigPath();
+        const normalizedServerUrl = serverUrl.replace(/\/+$/, '');
+        const sseUrl = `${normalizedServerUrl}/mcp/sse`;
+        const confirmed = await vscode.window.showInformationMessage(`Update Cursor global MCP config at ${previewPath} to point ${'agentchatbus'} at ${sseUrl}?`, { modal: true }, 'Configure Cursor');
+        if (confirmed !== 'Configure Cursor') {
+            return;
+        }
+        try {
+            const result = await cursorConfigManager.configureGlobalAgentChatBus(serverUrl);
+            const action = result.changed ? 'configured' : 'already up to date';
+            const followUp = await vscode.window.showInformationMessage(`Cursor MCP ${action}: ${result.serverName} -> ${result.sseUrl}`, 'Open Config');
+            if (followUp === 'Open Config') {
+                await cursorConfigManager.openGlobalConfig();
+            }
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            const followUp = await vscode.window.showErrorMessage(`Failed to configure Cursor MCP: ${message}`, 'Open Config');
+            if (followUp === 'Open Config') {
+                await cursorConfigManager.openGlobalConfig();
+            }
+        }
+    }), vscode.commands.registerCommand('agentchatbus.openCursorMcpConfig', async () => {
+        await cursorConfigManager.openGlobalConfig();
     }), vscode.commands.registerCommand('agentchatbus.copyThreadId', (item) => {
         if (item?.thread?.id) {
             vscode.env.clipboard.writeText(item.thread.id);

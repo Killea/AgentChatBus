@@ -1,0 +1,16 @@
+.vscode/**
+.github/**
+tsconfig.json
+.vscodeignore
+.gitignore
+scripts/**
+src/**
+node_modules/**
+!node_modules/eventsource/**
+out/test/**
+build.bat
+LICENSE
+# But KEEP these:
+!out/**
+!resources/**
+!package.json

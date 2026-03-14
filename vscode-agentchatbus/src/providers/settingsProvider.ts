@@ -19,6 +19,18 @@ export class SettingsProvider implements vscode.TreeDataProvider<SettingItem> {
                 "agentchatbus.showMcpStatus"
             ),
             new SettingItem(
+                "Configure Cursor MCP",
+                "Update Cursor's global mcp.json with an AgentChatBus SSE entry",
+                "symbol-event",
+                "agentchatbus.configureCursorMcp"
+            ),
+            new SettingItem(
+                "Open Cursor MCP Config",
+                "Open Cursor's global mcp.json for inspection",
+                "go-to-file",
+                "agentchatbus.openCursorMcpConfig"
+            ),
+            new SettingItem(
                 "Server Status", 
                 "View detailed server and environment diagnostics", 
                 "info", 
