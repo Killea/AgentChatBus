@@ -334,7 +334,8 @@ class BusServerManager {
                 }),
             });
             if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
+                const detail = await this.readErrorDetail(response);
+                throw new Error(`HTTP ${response.status}${detail ? `: ${detail}` : ''}`);
             }
             const payload = await response.json();
             this.updateIdeSessionState(payload);
@@ -342,7 +343,38 @@ class BusServerManager {
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.log(`IDE heartbeat failed: ${message}`, 'warning');
+            if (message.includes('HTTP 404') || message.includes('HTTP 403')) {
+                this.log('IDE session was rejected by the server. Clearing local session token and attempting re-registration...', 'warning');
+                this.stopIdeHeartbeat();
+                this.ideSessionToken = null;
+                this.updateIdeSessionState({
+                    registered: false,
+                    is_owner: false,
+                    can_shutdown: false,
+                });
+                const shouldClaimOwner = this.serverMetadata.startupMode !== 'external-service'
+                    || Boolean(this.ideSessionState.ownership_assignable);
+                const recovered = await this.ensureIdeSessionRegistered(shouldClaimOwner);
+                if (!recovered) {
+                    this.log('IDE heartbeat recovery failed: re-registration was not accepted.', 'error');
+                }
+            }
         }
+    }
+    async readErrorDetail(response) {
+        try {
+            const payload = await response.json();
+            if (typeof payload.detail === 'string') {
+                return payload.detail;
+            }
+            if (payload.detail && typeof payload.detail === 'object' && typeof payload.detail.message === 'string') {
+                return payload.detail.message;
+            }
+        }
+        catch {
+            // Ignore non-JSON error payloads.
+        }
+        return '';
     }
     async unregisterIdeSession() {
         this.stopIdeHeartbeat();
