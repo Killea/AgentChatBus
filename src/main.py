@@ -2916,16 +2916,16 @@ async def api_shutdown(request: Request, body: ShutdownRequest):
     if not _is_loopback_request(request):
         raise HTTPException(status_code=403, detail="Shutdown is only allowed from localhost")
 
+    if body.force:
+        threading.Timer(0.2, _trigger_process_force_shutdown).start()
+        return {"status": "accepted", "message": "AgentChatBus force shutdown requested", "force": True}
+
     try:
         _ide_ownership.authorize_shutdown(body.instance_id.strip(), body.session_token)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
-
-    if body.force:
-        threading.Timer(0.2, _trigger_process_force_shutdown).start()
-        return {"status": "accepted", "message": "AgentChatBus force shutdown requested", "force": True}
 
     threading.Timer(0.2, _trigger_process_shutdown).start()
     return {"status": "accepted", "message": "AgentChatBus shutdown requested", "force": False}

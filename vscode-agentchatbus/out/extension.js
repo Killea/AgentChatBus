@@ -136,9 +136,12 @@ function initializeMainViews(context, serverManager, cursorConfigManager) {
         if (confirmed === 'Force Stop') {
             const stopped = await serverManager.stopServer();
             if (!stopped) {
-                vscode.window.showWarningMessage(isExternal
-                    ? 'The external AgentChatBus service did not accept the shutdown request.'
-                    : 'No extension-managed MCP service could be force stopped.');
+                const failure = serverManager.getLastStopFailureMessage();
+                vscode.window.showWarningMessage(failure
+                    ? failure
+                    : isExternal
+                        ? 'The external AgentChatBus service did not accept the shutdown request.'
+                        : 'No extension-managed MCP service could be force stopped.');
             }
         }
     }), vscode.commands.registerCommand('agentchatbus.stopServerPending', () => {

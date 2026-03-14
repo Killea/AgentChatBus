@@ -54,6 +54,7 @@ class BusServerManager {
     externalLogPoller = null;
     externalLogCursor = 0;
     serverStopping = false;
+    lastStopFailureMessage = null;
     ideHeartbeatPoller = null;
     ideInstanceId = (0, crypto_1.randomUUID)();
     ideLabel = vscode.env.appName || 'VS Code';
@@ -87,6 +88,12 @@ class BusServerManager {
         if (this.mcpLogProvider) {
             this.mcpLogProvider.addLog(`[Extension] ${message}`);
         }
+    }
+    getLastStopFailureMessage() {
+        return this.lastStopFailureMessage;
+    }
+    setLastStopFailureMessage(message) {
+        this.lastStopFailureMessage = message;
     }
     resetResolutionAttempts() {
         this.serverMetadata.resolutionAttempts = [];
@@ -189,30 +196,16 @@ class BusServerManager {
     }
     async stopServer() {
         this.log('Force stop requested...', 'debug-stop');
+        this.setLastStopFailureMessage(null);
         if (this.serverStopping) {
-            this.log('Force stop is already in progress.', 'warning');
-            return false;
-        }
-        if (this.ideSessionState.registered && !this.ideSessionState.can_shutdown) {
-            this.log('Force stop denied because this IDE session does not currently hold shutdown ownership.', 'warning');
+            const message = 'Force stop is already in progress.';
+            this.setLastStopFailureMessage(message);
+            this.log(message, 'warning');
             return false;
         }
         this.setServerStopping(true);
         let success = false;
         try {
-            const claimOwner = this.serverMetadata.startupMode !== 'external-service';
-            if (!this.ideSessionToken || !this.ideSessionState.registered) {
-                this.log('IDE session is not registered yet. Attempting registration before force stop...', 'info');
-                const registered = await this.ensureIdeSessionRegistered(claimOwner);
-                if (!registered) {
-                    this.log('Force stop aborted because IDE registration could not be established.', 'error');
-                    return false;
-                }
-            }
-            if (!this.ideSessionState.can_shutdown) {
-                this.log(`Force stop denied because this IDE session does not own shutdown rights. Current owner=${this.ideSessionState.owner_instance_id || 'none'}.`, 'warning');
-                return false;
-            }
             const apiAccepted = await this.requestApiShutdown(true);
             if (apiAccepted) {
                 this.log('Force-shutdown API request was accepted. Waiting for server to stop...', 'debug-stop');
@@ -228,13 +221,17 @@ class BusServerManager {
             }
             const pid = await this.resolveServerPid();
             if (!pid) {
-                this.log('Server is still running, but no PID could be resolved for kill fallback.', 'error');
+                const message = 'Server is still running, but no PID could be resolved for kill fallback.';
+                this.setLastStopFailureMessage(message);
+                this.log(message, 'error');
                 return false;
             }
             this.log(`Server still responding after API force-shutdown. Attempting kill fallback for PID ${pid}...`, 'debug-stop');
             const killed = this.forceKillProcess(pid);
             if (!killed) {
-                this.log(`Kill fallback failed for PID ${pid}.`, 'error');
+                const message = `Kill fallback failed for PID ${pid}.`;
+                this.setLastStopFailureMessage(message);
+                this.log(message, 'error');
                 return false;
             }
             this.log(`Kill signal sent to PID ${pid}. Verifying shutdown...`, 'debug-stop');
@@ -244,7 +241,9 @@ class BusServerManager {
                 success = true;
                 return true;
             }
-            this.log(`Force stop failed: server still responds after kill fallback for PID ${pid}.`, 'error');
+            const message = `Force stop failed: server still responds after kill fallback for PID ${pid}.`;
+            this.setLastStopFailureMessage(message);
+            this.log(message, 'error');
             return false;
         }
         finally {
@@ -254,7 +253,34 @@ class BusServerManager {
         }
     }
     async stopExternalService() {
-        return await this.requestApiShutdown(false);
+        this.setLastStopFailureMessage(null);
+        const claimOwner = Boolean(this.ideSessionState.ownership_assignable);
+        if (!this.ideSessionToken || !this.ideSessionState.registered) {
+            this.log('IDE session is not registered yet. Attempting registration before external shutdown...', 'info');
+            const registered = await this.ensureIdeSessionRegistered(claimOwner);
+            if (!registered) {
+                const message = 'External shutdown aborted because IDE registration could not be established.';
+                this.setLastStopFailureMessage(message);
+                this.log(message, 'error');
+                return false;
+            }
+        }
+        if (!this.ideSessionState.can_shutdown) {
+            const ownerId = this.ideSessionState.owner_instance_id || 'none';
+            const message = this.ideSessionState.ownership_assignable
+                ? `External shutdown denied because this IDE session does not own shutdown rights. Current owner=${ownerId}.`
+                : 'External shutdown denied because this service was not started by an owning IDE session.';
+            this.setLastStopFailureMessage(message);
+            this.log(message, 'warning');
+            return false;
+        }
+        const accepted = await this.requestApiShutdown(false);
+        if (!accepted) {
+            const message = 'The shutdown API did not accept the external shutdown request.';
+            this.setLastStopFailureMessage(message);
+            return false;
+        }
+        return true;
     }
     async handleIdeDeactivate() {
         await this.unregisterIdeSession();
@@ -455,7 +481,7 @@ class BusServerManager {
         const serverUrl = this.getServerUrl();
         const mode = force ? 'force-shutdown' : 'shutdown';
         this.log(`Attempting ${mode} via API at ${serverUrl}/api/shutdown...`, 'debug-stop');
-        if (!this.ideSessionToken) {
+        if (!force && !this.ideSessionToken) {
             this.log(`Cannot call ${mode} API because IDE session token is unavailable.`, 'warning');
             return false;
         }
@@ -464,8 +490,8 @@ class BusServerManager {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    instance_id: this.ideInstanceId,
-                    session_token: this.ideSessionToken,
+                    instance_id: this.ideInstanceId || '',
+                    session_token: this.ideSessionToken || '',
                     force,
                 }),
             });
@@ -534,6 +560,7 @@ class BusServerManager {
         }
     }
     handleServerStopped(reason) {
+        this.setLastStopFailureMessage(null);
         this.serverProcess = null;
         this.stopExternalLogPolling();
         this.stopIdeHeartbeat();
