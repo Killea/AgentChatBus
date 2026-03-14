@@ -2,7 +2,7 @@
   "name": "agentchatbus",
   "displayName": "AgentChatBus",
   "description": "AgentChatBus client for VS Code",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "icon": "bus_128.png",
   "engines": {
     "vscode": "^1.93.0"
@@ -117,6 +117,11 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "agentchatbus.restartServer",
+        "title": "Restart Server",
+        "icon": "$(refresh)"
+      },
+      {
         "command": "agentchatbus.openWebConsole",
         "title": "Open Web Console",
         "icon": "$(browser)"
@@ -150,14 +155,19 @@
           "group": "navigation@2"
         },
         {
-          "command": "agentchatbus.openFullLog",
+          "command": "agentchatbus.restartServer",
           "when": "view == agentchatbus.mcpLogs",
           "group": "navigation@1"
         },
         {
-          "command": "agentchatbus.clearMcpLogs",
+          "command": "agentchatbus.openFullLog",
           "when": "view == agentchatbus.mcpLogs",
           "group": "navigation@2"
+        },
+        {
+          "command": "agentchatbus.clearMcpLogs",
+          "when": "view == agentchatbus.mcpLogs",
+          "group": "navigation@3"
         }
       ]
     }

@@ -89,6 +89,19 @@ class BusServerManager {
         this.log('Failed to start AgentChatBus server.', 'error');
         return false;
     }
+    async restartServer() {
+        this.log('Force restart initiated...', 'sync~spin');
+        if (this.serverProcess) {
+            this.serverProcess.kill();
+            this.serverProcess = null;
+        }
+        this.setServerReady(false);
+        if (this.mcpLogProvider) {
+            this.mcpLogProvider.clear();
+            this.mcpLogProvider.setIsManaged(false);
+        }
+        return await this.ensureServerRunning();
+    }
     setServerReady(ready) {
         vscode.commands.executeCommand('setContext', 'agentchatbus:serverReady', ready);
     }

@@ -67,6 +67,20 @@ export class BusServerManager {
         return false;
     }
 
+    async restartServer(): Promise<boolean> {
+        this.log('Force restart initiated...', 'sync~spin');
+        if (this.serverProcess) {
+            this.serverProcess.kill();
+            this.serverProcess = null;
+        }
+        this.setServerReady(false);
+        if (this.mcpLogProvider) {
+            this.mcpLogProvider.clear();
+            this.mcpLogProvider.setIsManaged(false);
+        }
+        return await this.ensureServerRunning();
+    }
+
     private setServerReady(ready: boolean) {
         vscode.commands.executeCommand('setContext', 'agentchatbus:serverReady', ready);
     }

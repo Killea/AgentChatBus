@@ -105,6 +105,11 @@ function initializeMainViews(context, serverManager) {
     context.subscriptions.push(vscode.window.registerTreeDataProvider('agentchatbus.threads', threadsProvider), vscode.window.registerTreeDataProvider('agentchatbus.agents', agentsProvider), vscode.window.registerTreeDataProvider('agentchatbus.settings', settingsProvider));
     context.subscriptions.push(vscode.commands.registerCommand('agentchatbus.refreshThreads', () => threadsProvider.refresh()), vscode.commands.registerCommand('agentchatbus.refreshAgents', () => agentsProvider.refresh()), vscode.commands.registerCommand('agentchatbus.toggleAgentFilter', () => agentsProvider.toggleRecentFilter()), vscode.commands.registerCommand('agentchatbus.clearMcpLogs', () => {
         mcpLogProvider?.clear();
+    }), vscode.commands.registerCommand('agentchatbus.restartServer', async () => {
+        const confirmed = await vscode.window.showWarningMessage('Restart AgentChatBus Server? This will disconnect all active agents and reset the message bus state.', { modal: true }, 'Restart');
+        if (confirmed === 'Restart') {
+            serverManager.restartServer();
+        }
     }), vscode.commands.registerCommand('agentchatbus.openFullLog', () => {
         const logs = mcpLogProvider?.getLogs() || [];
         const panel = vscode.window.createWebviewPanel('agentchatbusLogs', 'AgentChatBus Full Logs', vscode.ViewColumn.One, {});
