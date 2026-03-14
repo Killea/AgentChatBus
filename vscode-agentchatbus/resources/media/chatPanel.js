@@ -1,9 +1,26 @@
 (function () {
   const vscode = acquireVsCodeApi();
-  const config = window.ACB_CHAT_PANEL_CONFIG || {};
+
+  function readBootstrapConfig() {
+    const root = document.body;
+    if (!root) return {};
+    return {
+      threadId: root.dataset.threadId || '',
+      threadTopic: root.dataset.threadTopic || '',
+      threadStatus: root.dataset.threadStatus || '',
+      baseUrl: root.dataset.baseUrl || '',
+      mermaidScriptUrl: root.dataset.mermaidScriptUrl || '',
+      theme: root.dataset.theme || '',
+      nonce: root.dataset.nonce || '',
+    };
+  }
+
+  const config = readBootstrapConfig();
 
   const state = {
     baseUrl: String(config.baseUrl || '').replace(/\/+$/, ''),
+    mermaidScriptUrl: String(config.mermaidScriptUrl || ''),
+    nonce: String(config.nonce || ''),
     threadId: String(config.threadId || ''),
     messages: [],
     authorName: localStorage.getItem('acb-vscode-author') || 'human',
@@ -20,6 +37,7 @@
     pendingSend: false,
     toastTimer: null,
     renderToken: 0,
+    mermaidLoadPromise: null,
   };
 
   const INITIAL_RECENT_RENDER_COUNT = 36;
@@ -30,6 +48,7 @@
   function init() {
     refs.messagesScroll = document.getElementById('messages-scroll');
     refs.messageContainer = document.getElementById('message-container');
+    refs.loadingIndicator = document.getElementById('loading-indicator');
     refs.navSidebar = document.getElementById('nav-sidebar');
     refs.searchInput = document.getElementById('search-input');
     refs.searchCounter = document.getElementById('search-counter');
@@ -50,6 +69,8 @@
     refs.modalContent = document.getElementById('modal-content');
     refs.modalClose = document.getElementById('modal-close');
     refs.toast = document.getElementById('toast');
+
+    setLoading(true);
 
     refs.authorInput.value = state.authorName;
 
@@ -120,7 +141,14 @@
     switch (message.command) {
       case 'loadMessages':
         state.messages = normalizeMessages(message.messages || []);
-        renderAll(true);
+        setLoading(true);
+        // Yield one frame so loading state can paint before heavy DOM work starts.
+        void (async () => {
+          await nextFrame();
+          renderAll(true);
+          await nextFrame();
+          setLoading(false);
+        })();
         break;
       case 'appendMessages':
         for (const item of normalizeMessages(message.messages || [])) {
@@ -181,13 +209,10 @@
     }
   }
 
-  async function renderAll(keepBottom) {
+  function renderAll(keepBottom) {
     const token = ++state.renderToken;
     const shouldStickBottom = keepBottom || isNearBottom();
-    await renderMessages(token, shouldStickBottom);
-    if (token !== state.renderToken) {
-      return;
-    }
+    renderMessages(token, shouldStickBottom);
     rebuildNavSidebar();
     if (state.searchQuery) {
       runSearch(false);
@@ -197,7 +222,7 @@
     updateActiveNavEntry();
   }
 
-  async function renderMessages(token, shouldStickBottom) {
+  function renderMessages(token, shouldStickBottom) {
     refs.messageContainer.innerHTML = '';
 
     if (state.messages.length === 0) {
@@ -216,9 +241,7 @@
 
     appendMessageBatch(recentMessages, byId, refs.messageContainer);
 
-    if (window.AcbMessageRenderer && typeof window.AcbMessageRenderer.renderMermaidBlocks === 'function') {
-      window.AcbMessageRenderer.renderMermaidBlocks(refs.messageContainer);
-    }
+    void maybeRenderMermaidForMessages(recentMessages);
 
     if (shouldStickBottom) {
       scrollToBottom();
@@ -233,6 +256,10 @@
     loadingBanner.textContent = `Loading ${olderMessages.length} older messages...`;
     refs.messageContainer.prepend(loadingBanner);
 
+    void scheduleOlderMessageBackfill(token, olderMessages, byId, loadingBanner);
+  }
+
+  async function scheduleOlderMessageBackfill(token, olderMessages, byId, loadingBanner) {
     let cursor = olderMessages.length;
     while (cursor > 0 && token === state.renderToken) {
       await nextFrame();
@@ -241,9 +268,7 @@
       prependMessageBatch(batch, byId, loadingBanner);
       cursor = start;
 
-      if (window.AcbMessageRenderer && typeof window.AcbMessageRenderer.renderMermaidBlocks === 'function') {
-        window.AcbMessageRenderer.renderMermaidBlocks(refs.messageContainer);
-      }
+      void maybeRenderMermaidForMessages(batch);
 
       if (token === state.renderToken) {
         loadingBanner.textContent = cursor > 0
@@ -252,9 +277,16 @@
       }
     }
 
-    if (token === state.renderToken) {
+    if (token !== state.renderToken) {
       loadingBanner.remove();
+      return;
     }
+
+    loadingBanner.remove();
+    if (state.searchQuery) {
+      runSearch(false);
+    }
+    updateActiveNavEntry();
   }
 
   function appendMessageBatch(messages, byId, parent) {
@@ -280,6 +312,60 @@
     return new Promise((resolve) => {
       window.requestAnimationFrame(() => resolve());
     });
+  }
+
+  async function maybeRenderMermaidForMessages(messages) {
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return;
+    }
+    if (!messagesMayContainMermaid(messages)) {
+      return;
+    }
+    const ready = await ensureMermaidLoaded();
+    if (!ready) {
+      return;
+    }
+    if (window.AcbMessageRenderer && typeof window.AcbMessageRenderer.renderMermaidBlocks === 'function') {
+      await window.AcbMessageRenderer.renderMermaidBlocks(refs.messageContainer);
+    }
+  }
+
+  function messagesMayContainMermaid(messages) {
+    return messages.some((message) => {
+      const content = String(message?.content || '');
+      return content.includes('```mermaid') || /^(graph|flowchart)\s+(TD|TB|LR|RL)\b/im.test(content);
+    });
+  }
+
+  async function ensureMermaidLoaded() {
+    if (window.mermaid) {
+      return true;
+    }
+    if (!state.mermaidScriptUrl) {
+      return false;
+    }
+    if (state.mermaidLoadPromise) {
+      return state.mermaidLoadPromise;
+    }
+
+    state.mermaidLoadPromise = new Promise((resolve) => {
+      const script = document.createElement('script');
+      script.src = state.mermaidScriptUrl;
+      script.async = true;
+      if (state.nonce) {
+        script.setAttribute('nonce', state.nonce);
+      }
+      script.onload = () => resolve(Boolean(window.mermaid));
+      script.onerror = () => resolve(false);
+      document.head.appendChild(script);
+    });
+
+    return state.mermaidLoadPromise;
+  }
+
+  function setLoading(visible) {
+    if (!refs.loadingIndicator) return;
+    refs.loadingIndicator.classList.toggle('hidden', !visible);
   }
 
   function renderMessageRow(message, byId) {
@@ -1181,5 +1267,26 @@
     return String(error);
   }
 
-  window.AcbChatPanel = { init };
+  let _booted = false;
+  function boot() {
+    if (_booted) return;
+    _booted = true;
+    try {
+      init();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const root = document.getElementById('message-container');
+      if (root) {
+        root.innerHTML = `<div class="empty-state">Chat panel failed to initialize. ${message}</div>`;
+      }
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot, { once: true });
+  } else {
+    boot();
+  }
+
+  window.AcbChatPanel = { init: boot };
 })();

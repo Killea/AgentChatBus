@@ -236,7 +236,7 @@
         const codeText = tok.code || "";
 
         // -- Mermaid diagram rendering --
-        if (tok.lang === "mermaid" && window.mermaid) {
+        if (tok.lang === "mermaid") {
           let currentCode = codeText;
           const mermaidBlock = document.createElement("div");
           mermaidBlock.className = "mermaid-block";

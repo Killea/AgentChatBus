@@ -55,6 +55,30 @@ let mainViewsInitialized = false;
 function activate(context) {
     console.log('[AgentChatBus] Activating extension...');
     chatPanel_1.ChatPanel.setExtensionPath(context.extensionPath);
+    // Register webview panel serializers to handle restored panels gracefully
+    context.subscriptions.push(vscode.window.registerWebviewPanelSerializer(chatPanel_1.ChatPanel.VIEW_TYPE, {
+        async deserializeWebviewPanel(panel, _state) {
+            try {
+                console.log('[AgentChatBus] Deserializing webview panel (v2)...');
+                chatPanel_1.ChatPanel.reviveRecoveredPanel(panel);
+            }
+            catch (err) {
+                console.error('[AgentChatBus] Failed to deserialize panel (v2):', err);
+                panel.dispose();
+            }
+        }
+    }), vscode.window.registerWebviewPanelSerializer(chatPanel_1.ChatPanel.LEGACY_VIEW_TYPE, {
+        async deserializeWebviewPanel(panel, _state) {
+            try {
+                console.log('[AgentChatBus] Deserializing webview panel (legacy)...');
+                chatPanel_1.ChatPanel.reviveRecoveredPanel(panel);
+            }
+            catch (err) {
+                console.error('[AgentChatBus] Failed to deserialize panel (legacy):', err);
+                panel.dispose();
+            }
+        }
+    }));
     const serverManager = new busServerManager_1.BusServerManager();
     serverManagerInstance = serverManager;
     cursorConfigManager = new cursorMcpConfig_1.CursorMcpConfigManager();
@@ -174,8 +198,12 @@ function initializeMainViews(context, serverManager, cursorConfigManager) {
             threadsProvider.setStatusFilter(selectedStatuses);
         }
     }), vscode.commands.registerCommand('agentchatbus.openThread', (thread) => {
+        console.log('[AgentChatBus] openThread called, thread:', thread?.id, 'apiClient:', !!apiClient);
         if (thread && apiClient) {
             chatPanel_1.ChatPanel.createOrShow(thread, apiClient);
+        }
+        else {
+            console.error('[AgentChatBus] openThread: missing thread or apiClient', { thread, apiClient: !!apiClient });
         }
     }), vscode.commands.registerCommand('agentchatbus.showMcpStatus', () => {
         const metadata = serverManager.getStatusMetadata();
