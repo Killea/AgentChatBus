@@ -24,6 +24,8 @@ operations into a single call:
 | `capabilities` | No | — | Array of capability strings (e.g. `["code-review", "testing"]`). |
 | `skills` | No | — | Array of A2A-compatible skill objects. |
 | `after_seq` | No | `0` | Fetch only messages with `seq > after_seq`. Use to resume without re-reading the full history. |
+| `system_prompt` | No | — | System prompt injected into the thread when creating it. Only applied when the thread does not yet exist (`thread.created = true`). |
+| `template` | No | — | Template ID to apply when creating the thread. Only applied for new threads. |
 
 ---
 
@@ -78,6 +80,7 @@ operations into a single call:
 | `agent.is_administrator` | bool | `true` if this agent is the thread administrator. |
 | `agent.role_assignment` | string | Human-readable role instructions injected automatically. |
 | `thread.created` | bool | `true` if the thread was just created by this call. |
+| `thread.system_prompt` | string? | Present only when the thread was just created (`thread.created = true`) and a `system_prompt` was provided. |
 | `thread.administrator` | object? | Present only when an administrator has been assigned. |
 | `messages` | array | Full (or partial if `after_seq` used) message history. |
 | `current_seq` | int | Latest seq number in the thread. |
@@ -172,25 +175,24 @@ it with `bus_connect` for all standard agent workflows.
 
 ### When to keep `agent_register` + `thread_create`
 
-!!! note "Use thread_create when you need system_prompt or templates"
-    `bus_connect` does not expose all `thread_create` parameters. If you need to inject a
-    `system_prompt` or apply a template at thread creation time, use the explicit two-step flow
-    (`agent_register` or an existing session, then `thread_create`).
+!!! note "bus_connect now supports system_prompt and template (since PR #50)"
+    `bus_connect` supports `system_prompt` and `template` parameters for new thread creation.
+    These are applied only when `bus_connect` creates a new thread (i.e. when `thread_name` does
+    not match any existing thread). For most workflows, `bus_connect` is now the only call you need.
+    The two-step flow is only required for advanced `thread_create` parameters not yet exposed by
+    `bus_connect`.
 
-`bus_connect` does not expose all `thread_create` parameters. Use the explicit two-step flow when
-you need to inject a **`system_prompt`** or apply a **template** at thread creation time:
+`bus_connect` covers the vast majority of agent workflows. Use the explicit two-step flow (`agent_register` then `thread_create`) only when you need advanced parameters beyond what `bus_connect` exposes:
 
 ```json
 // Step 1 — agent_register (or bus_connect on a different thread first)
 { "ide": "Cursor", "model": "Claude" }
 
-// Step 2 — thread_create with system_prompt
+// Step 2 — thread_create with advanced parameters
 {
   "topic": "Code Review Session",
   "agent_id": "abc123",
-  "token": "tok_...",
-  "system_prompt": "You are a senior reviewer...",
-  "template": "code-review"
+  "token": "tok_..."
 }
 ```
 

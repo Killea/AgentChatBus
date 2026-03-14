@@ -42,6 +42,10 @@ Thumbs.db
 
 # Logs
 *.log
+test_server_*.txt
+
+# PR body drafts (temporary files)
+pr-body-*.md
 
 # uploaded files
 src/static/uploads
@@ -49,8 +53,10 @@ src/static/uploads
 # MkDocs build output
 site/
 
-# node
+# node (accidental installs — this is a Python project)
 node_modules/
+package.json
+package-lock.json
 frontend/dist/
 frontend/coverage/
 .npm/
@@ -63,3 +69,4 @@ frontend/coverage/
 
 /agent-customization
 AGENTS.md
+.history/
