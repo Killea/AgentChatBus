@@ -2,7 +2,7 @@
   "name": "agentchatbus",
   "displayName": "AgentChatBus",
   "description": "AgentChatBus client for VS Code",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "icon": "bus_128.png",
   "engines": {
     "vscode": "^1.90.0"
@@ -10,10 +10,7 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [
-    "onView:agentchatbus.threads",
-    "onView:agentchatbus.agents"
-  ],
+  "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
     "viewsContainers": {
@@ -29,11 +26,13 @@
       "agentchatbus": [
         {
           "id": "agentchatbus.threads",
-          "name": "Threads"
+          "name": "Threads",
+          "icon": "$(comment-discussion)"
         },
         {
           "id": "agentchatbus.agents",
-          "name": "Agents"
+          "name": "Agents",
+          "icon": "$(robot)"
         }
       ]
     },

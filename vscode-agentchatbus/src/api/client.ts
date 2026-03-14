@@ -24,8 +24,8 @@ export class AgentChatBusApiClient {
         return this.baseUrl;
     }
 
-    async getThreads(): Promise<Thread[]> {
-        const response = await fetch(`${this.baseUrl}/api/threads`);
+    async getThreads(includeArchived: boolean = false): Promise<Thread[]> {
+        const response = await fetch(`${this.baseUrl}/api/threads?include_archived=${includeArchived}`);
         if (!response.ok) throw new Error(`HTTP ${response.status} fetching threads`);
         const data = await response.json() as ThreadListResponse;
         return data.threads;

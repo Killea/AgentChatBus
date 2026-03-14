@@ -66,7 +66,8 @@ class ThreadsTreeProvider {
             return [];
         }
         try {
-            let threads = await this.apiClient.getThreads();
+            const includeArchived = this._statusFilter.has('archived');
+            let threads = await this.apiClient.getThreads(includeArchived);
             // Filter by status
             threads = threads.filter(t => this._statusFilter.has(t.status));
             // Sort by created_at desc as a proxy for activity

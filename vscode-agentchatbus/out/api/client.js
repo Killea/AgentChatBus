@@ -57,8 +57,8 @@ class AgentChatBusApiClient {
     getBaseUrl() {
         return this.baseUrl;
     }
-    async getThreads() {
-        const response = await fetch(`${this.baseUrl}/api/threads`);
+    async getThreads(includeArchived = false) {
+        const response = await fetch(`${this.baseUrl}/api/threads?include_archived=${includeArchived}`);
         if (!response.ok)
             throw new Error(`HTTP ${response.status} fetching threads`);
         const data = await response.json();

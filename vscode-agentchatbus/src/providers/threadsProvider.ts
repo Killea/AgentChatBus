@@ -38,7 +38,8 @@ export class ThreadsTreeProvider implements vscode.TreeDataProvider<ThreadItem> 
         }
 
         try {
-            let threads = await this.apiClient.getThreads();
+            const includeArchived = this._statusFilter.has('archived');
+            let threads = await this.apiClient.getThreads(includeArchived);
             
             // Filter by status
             threads = threads.filter(t => this._statusFilter.has(t.status));

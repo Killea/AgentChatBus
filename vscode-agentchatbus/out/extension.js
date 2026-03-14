@@ -53,14 +53,17 @@ function activate(context) {
         const items = statuses.map(s => ({
             label: s.charAt(0).toUpperCase() + s.slice(1),
             status: s,
-            picked: currentFilter.includes(s)
+            picked: currentFilter.includes(s),
+            description: s === 'archived' ? '(archived threads are hidden by default)' : undefined
         }));
         const result = await vscode.window.showQuickPick(items, {
             canPickMany: true,
-            placeHolder: 'Select thread statuses to display'
+            placeHolder: 'Select thread statuses to display',
+            ignoreFocusOut: true
         });
         if (result) {
-            threadsProvider.setStatusFilter(result.map(i => i.status));
+            const selectedStatuses = result.map(i => i.status);
+            threadsProvider.setStatusFilter(selectedStatuses);
         }
     }), vscode.commands.registerCommand('agentchatbus.openThread', (thread) => {
         if (thread) {
