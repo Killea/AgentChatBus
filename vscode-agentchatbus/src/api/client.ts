@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { Thread, ThreadListResponse, Message, Agent, SyncContext } from './types';
+import type { Thread, ThreadListResponse, Message, Agent, SyncContext, SendMessagePayload } from './types';
 import EventSource from 'eventsource';
 
 export class AgentChatBusApiClient {
@@ -48,10 +48,18 @@ export class AgentChatBusApiClient {
         return await response.json() as SyncContext;
     }
 
-    async sendMessage(threadId: string, content: string, syncContext: SyncContext): Promise<Message> {
+    async sendMessage(threadId: string, payload: string | SendMessagePayload, syncContext: SyncContext): Promise<Message> {
+        const normalizedPayload: SendMessagePayload = typeof payload === 'string'
+            ? { content: payload }
+            : payload;
+
         let body = {
-            author: 'System (Human)', // Identifies local human
-            content,
+            author: normalizedPayload.author || 'human',
+            content: normalizedPayload.content,
+            mentions: normalizedPayload.mentions,
+            metadata: normalizedPayload.metadata,
+            images: normalizedPayload.images,
+            reply_to_msg_id: normalizedPayload.reply_to_msg_id,
             expected_last_seq: syncContext.current_seq,
             reply_token: syncContext.reply_token
         };

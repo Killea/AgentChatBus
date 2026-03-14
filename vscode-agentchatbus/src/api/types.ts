@@ -21,6 +21,8 @@ export interface Message {
     seq: number;
     priority: number;
     author?: string;
+    author_id?: string;
+    author_name?: string;
     author_emoji?: string;
     role?: string;
     reply_to_msg_id?: string;
@@ -28,6 +30,8 @@ export interface Message {
     metadata?: any;
     reactions?: any[];
     created_at: string;
+    edited_at?: string | null;
+    edit_version?: number;
 }
 
 export interface Agent {
@@ -50,4 +54,13 @@ export interface Agent {
 export interface SyncContext {
     current_seq: number;
     reply_token: string;
+}
+
+export interface SendMessagePayload {
+    author?: string;
+    content: string;
+    mentions?: string[];
+    metadata?: Record<string, unknown>;
+    images?: Array<{ url: string; name?: string }>;
+    reply_to_msg_id?: string;
 }

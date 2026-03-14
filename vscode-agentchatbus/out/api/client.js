@@ -81,10 +81,17 @@ class AgentChatBusApiClient {
             throw new Error(`HTTP ${response.status} fetching sync-context`);
         return await response.json();
     }
-    async sendMessage(threadId, content, syncContext) {
+    async sendMessage(threadId, payload, syncContext) {
+        const normalizedPayload = typeof payload === 'string'
+            ? { content: payload }
+            : payload;
         let body = {
-            author: 'System (Human)', // Identifies local human
-            content,
+            author: normalizedPayload.author || 'human',
+            content: normalizedPayload.content,
+            mentions: normalizedPayload.mentions,
+            metadata: normalizedPayload.metadata,
+            images: normalizedPayload.images,
+            reply_to_msg_id: normalizedPayload.reply_to_msg_id,
             expected_last_seq: syncContext.current_seq,
             reply_token: syncContext.reply_token
         };
