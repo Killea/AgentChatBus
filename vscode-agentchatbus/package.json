@@ -6,7 +6,7 @@
   "version": "0.1.20",
   "icon": "bus_128.png",
   "engines": {
-    "vscode": "^1.93.0"
+    "vscode": "^1.110.0"
   },
   "categories": [
     "Other"
@@ -149,6 +149,11 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "agentchatbus.showMcpStatus",
+        "title": "MCP Integration Status",
+        "icon": "$(plug)"
+      },
+      {
         "command": "agentchatbus.showStatus",
         "title": "Server Status",
         "icon": "$(info)"
@@ -242,7 +247,7 @@
     "watch": "tsc -watch -p ./"
   },
   "devDependencies": {
-    "@types/vscode": "^1.90.0",
+    "@types/vscode": "^1.110.0",
     "@types/node": "20.x",
     "@types/eventsource": "^1.1.15",
     "typescript": "^5.4.5"

@@ -174,6 +174,10 @@ function initializeMainViews(context: vscode.ExtensionContext, serverManager: Bu
             const metadata = serverManager.getStatusMetadata();
             StatusPanel.createOrShow(metadata);
         }),
+        vscode.commands.registerCommand('agentchatbus.showMcpStatus', () => {
+            const metadata = serverManager.getStatusMetadata();
+            StatusPanel.createOrShow(metadata);
+        }),
         vscode.commands.registerCommand('agentchatbus.copyThreadId', (item: ThreadItem) => {
             if (item?.thread?.id) {
                 vscode.env.clipboard.writeText(item.thread.id);

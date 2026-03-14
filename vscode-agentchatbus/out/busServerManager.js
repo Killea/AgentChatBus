@@ -40,11 +40,13 @@ const child_process = __importStar(require("child_process"));
 const fs = __importStar(require("fs"));
 class BusServerManager {
     static MCP_PROVIDER_ID = 'agentchatbus.provider';
+    static MCP_PROVIDER_LABEL = 'AgentChatBus Local Server';
     outputChannel;
     serverProcess = null;
     setupProvider = null;
     mcpLogProvider = null;
     mcpDefinitionsChanged = new vscode.EventEmitter();
+    mcpProviderRegistered = false;
     lastStartTime = null;
     serverMetadata = {};
     constructor() {
@@ -139,6 +141,9 @@ class BusServerManager {
     notifyMcpDefinitionsChanged() {
         this.mcpDefinitionsChanged.fire();
     }
+    createMcpServerDefinition() {
+        return new vscode.McpHttpServerDefinition(BusServerManager.MCP_PROVIDER_LABEL, vscode.Uri.parse(`${this.getServerUrl()}/mcp/sse`), undefined, '1.0.0');
+    }
     async checkServer(url) {
         try {
             const controller = new AbortController();
@@ -152,6 +157,7 @@ class BusServerManager {
         }
     }
     getStatusMetadata() {
+        const serverUrl = this.getServerUrl();
         return {
             pid: this.serverProcess?.pid,
             startTime: this.lastStartTime?.toISOString(),
@@ -159,7 +165,17 @@ class BusServerManager {
             platform: process.platform,
             arch: process.arch,
             nodeVersion: process.version,
-            vscodeVersion: vscode.version
+            vscodeVersion: vscode.version,
+            mcp: {
+                apiAvailable: typeof vscode.lm?.registerMcpServerDefinitionProvider === 'function',
+                providerRegistered: this.mcpProviderRegistered,
+                providerId: BusServerManager.MCP_PROVIDER_ID,
+                providerLabel: BusServerManager.MCP_PROVIDER_LABEL,
+                transport: 'http+sse',
+                serverUrl,
+                sseEndpoint: `${serverUrl}/mcp/sse`,
+                requiredVscodeVersion: '^1.110.0'
+            }
         };
     }
     async startServer() {
@@ -354,29 +370,22 @@ class BusServerManager {
         return null;
     }
     async registerMcpProvider(context) {
-        const lm = vscode.lm;
-        if (!lm || !lm.registerMcpServerDefinitionProvider) {
-            this.log('VS Code MCP provider API is unavailable in this build.', 'warning');
-            return;
-        }
         const provider = {
             onDidChangeMcpServerDefinitions: this.mcpDefinitionsChanged.event,
             provideMcpServerDefinitions: () => {
-                const serverUri = vscode.Uri.parse(`${this.getServerUrl()}/mcp/sse`);
-                return [
-                    new vscode.McpHttpServerDefinition('AgentChatBus Local Server', serverUri, undefined, '1.0.0')
-                ];
+                return [this.createMcpServerDefinition()];
             },
             resolveMcpServerDefinition: async (_server) => {
                 const isReady = await this.ensureServerRunning();
                 if (!isReady) {
                     throw new Error('AgentChatBus server could not be started.');
                 }
-                return new vscode.McpHttpServerDefinition('AgentChatBus Local Server', vscode.Uri.parse(`${this.getServerUrl()}/mcp/sse`), undefined, '1.0.0');
+                return this.createMcpServerDefinition();
             }
         };
         context.subscriptions.push(this.mcpDefinitionsChanged);
-        context.subscriptions.push(lm.registerMcpServerDefinitionProvider(BusServerManager.MCP_PROVIDER_ID, provider));
+        context.subscriptions.push(vscode.lm.registerMcpServerDefinitionProvider(BusServerManager.MCP_PROVIDER_ID, provider));
+        this.mcpProviderRegistered = true;
         this.log('Registered AgentChatBus MCP definition provider.', 'plug');
     }
     dispose() {

@@ -13,6 +13,12 @@ export class SettingsProvider implements vscode.TreeDataProvider<SettingItem> {
 
         return [
             new SettingItem(
+                "MCP Integration Status",
+                "Inspect MCP provider registration, transport, and target endpoint",
+                "plug",
+                "agentchatbus.showMcpStatus"
+            ),
+            new SettingItem(
                 "Server Status", 
                 "View detailed server and environment diagnostics", 
                 "info", 

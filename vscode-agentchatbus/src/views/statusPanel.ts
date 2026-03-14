@@ -44,7 +44,11 @@ export class StatusPanel {
 
     private _getHtmlForWebview() {
         const m = this.metadata;
+        const mcp = m.mcp || {};
         const uptime = m.startTime ? this._getUptime(new Date(m.startTime)) : 'N/A';
+        const serverStatus = m.pid ? 'RUNNING' : 'STOPPED';
+        const mcpApiStatus = mcp.apiAvailable ? 'AVAILABLE' : 'UNAVAILABLE';
+        const mcpProviderStatus = mcp.providerRegistered ? 'REGISTERED' : 'PENDING';
         
         return `<!DOCTYPE html>
 <html lang="en">
@@ -79,7 +83,7 @@ export class StatusPanel {
     <div class="grid">
         <div class="card">
             <h2>🌍 Server Instance</h2>
-            <div><span class="label">Status:</span> <span class="status-badge">${m.pid ? 'RUNNING' : 'STOPPED'}</span></div>
+            <div><span class="label">Status:</span> <span class="status-badge">${serverStatus}</span></div>
             <div><span class="label">PID:</span> <span class="value">${m.pid || 'N/A'}</span></div>
             <div><span class="label">Uptime:</span> <span class="value">${uptime}</span></div>
             <div><span class="label">Started At:</span> <span class="value">${m.startTime || 'N/A'}</span></div>
@@ -97,6 +101,18 @@ export class StatusPanel {
             <div><span class="label">Platform:</span> <span class="value">${m.platform} (${m.arch})</span></div>
             <div><span class="label">Node.js:</span> <span class="value">${m.nodeVersion}</span></div>
             <div><span class="label">VS Code:</span> <span class="value">${m.vscodeVersion}</span></div>
+        </div>
+
+        <div class="card">
+            <h2>🔌 MCP Integration</h2>
+            <div><span class="label">API:</span> <span class="status-badge">${mcpApiStatus}</span></div>
+            <div><span class="label">Provider:</span> <span class="status-badge">${mcpProviderStatus}</span></div>
+            <div><span class="label">Provider ID:</span> <span class="value">${mcp.providerId || 'N/A'}</span></div>
+            <div><span class="label">Label:</span> <span class="value">${mcp.providerLabel || 'N/A'}</span></div>
+            <div><span class="label">Transport:</span> <span class="value">${mcp.transport || 'N/A'}</span></div>
+            <div><span class="label">Server URL:</span> <span class="value">${mcp.serverUrl || 'N/A'}</span></div>
+            <div><span class="label">SSE Endpoint:</span> <span class="value">${mcp.sseEndpoint || 'N/A'}</span></div>
+            <div><span class="label">Required VS Code:</span> <span class="value">${mcp.requiredVscodeVersion || 'N/A'}</span></div>
         </div>
     </div>
 
