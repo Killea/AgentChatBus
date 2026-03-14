@@ -14,6 +14,12 @@
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "agentchatbus.provider",
+        "label": "AgentChatBus Local Server"
+      }
+    ],
     "viewsContainers": {
       "activitybar": [
         {

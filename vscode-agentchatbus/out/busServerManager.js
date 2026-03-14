@@ -39,10 +39,12 @@ const path = __importStar(require("path"));
 const child_process = __importStar(require("child_process"));
 const fs = __importStar(require("fs"));
 class BusServerManager {
+    static MCP_PROVIDER_ID = 'agentchatbus.provider';
     outputChannel;
     serverProcess = null;
     setupProvider = null;
     mcpLogProvider = null;
+    mcpDefinitionsChanged = new vscode.EventEmitter();
     lastStartTime = null;
     serverMetadata = {};
     constructor() {
@@ -128,6 +130,14 @@ class BusServerManager {
     }
     setServerReady(ready) {
         vscode.commands.executeCommand('setContext', 'agentchatbus:serverReady', ready);
+    }
+    getServerUrl() {
+        const config = vscode.workspace.getConfiguration('agentchatbus');
+        const rawUrl = config.get('serverUrl', 'http://127.0.0.1:39765');
+        return rawUrl.replace(/\/+$/, '');
+    }
+    notifyMcpDefinitionsChanged() {
+        this.mcpDefinitionsChanged.fire();
     }
     async checkServer(url) {
         try {
@@ -248,8 +258,7 @@ class BusServerManager {
                 }
             });
             this.log('Waiting for health check response...', 'sync~spin');
-            const config = vscode.workspace.getConfiguration('agentchatbus');
-            const serverUrl = config.get('serverUrl', 'http://127.0.0.1:39765');
+            const serverUrl = this.getServerUrl();
             let retries = 20;
             while (retries > 0) {
                 await new Promise(r => setTimeout(r, 1000));
@@ -346,31 +355,29 @@ class BusServerManager {
     }
     async registerMcpProvider(context) {
         const lm = vscode.lm;
-        if (!lm || !lm.registerMcpServerDefinitionProvider)
+        if (!lm || !lm.registerMcpServerDefinitionProvider) {
+            this.log('VS Code MCP provider API is unavailable in this build.', 'warning');
             return;
-        const projectRoot = await this.findProjectRootAsync();
-        if (!projectRoot)
-            return;
-        const config = vscode.workspace.getConfiguration('agentchatbus');
-        let pythonPath = config.get('pythonPath', 'python');
-        const venvPython = path.join(projectRoot, '.venv', process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'python.exe' : 'python');
-        if (fs.existsSync(venvPython)) {
-            pythonPath = venvPython;
         }
-        lm.registerMcpServerDefinitionProvider('agentchatbus', {
-            provideMcpServerDefinitions: () => [
-                new vscode.McpStdioServerDefinition({
-                    label: 'AgentChatBus Bus',
-                    command: pythonPath,
-                    args: [path.join(projectRoot, 'stdio_main.py')],
-                    cwd: projectRoot,
-                    env: { PYTHONPATH: projectRoot }
-                })
-            ],
-            resolveMcpServerDefinition: async (server) => {
-                return server;
+        const provider = {
+            onDidChangeMcpServerDefinitions: this.mcpDefinitionsChanged.event,
+            provideMcpServerDefinitions: () => {
+                const serverUri = vscode.Uri.parse(`${this.getServerUrl()}/mcp/sse`);
+                return [
+                    new vscode.McpHttpServerDefinition('AgentChatBus Local Server', serverUri, undefined, '1.0.0')
+                ];
+            },
+            resolveMcpServerDefinition: async (_server) => {
+                const isReady = await this.ensureServerRunning();
+                if (!isReady) {
+                    throw new Error('AgentChatBus server could not be started.');
+                }
+                return new vscode.McpHttpServerDefinition('AgentChatBus Local Server', vscode.Uri.parse(`${this.getServerUrl()}/mcp/sse`), undefined, '1.0.0');
             }
-        });
+        };
+        context.subscriptions.push(this.mcpDefinitionsChanged);
+        context.subscriptions.push(lm.registerMcpServerDefinitionProvider(BusServerManager.MCP_PROVIDER_ID, provider));
+        this.log('Registered AgentChatBus MCP definition provider.', 'plug');
     }
     dispose() {
         if (this.serverProcess) {

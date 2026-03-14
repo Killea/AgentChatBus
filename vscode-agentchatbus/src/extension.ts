@@ -63,6 +63,18 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeConfiguration(event => {
+            if (!event.affectsConfiguration('agentchatbus.serverUrl') &&
+                !event.affectsConfiguration('agentchatbus.pythonPath') &&
+                !event.affectsConfiguration('agentchatbus.autoStartBusServer')) {
+                return;
+            }
+
+            serverManager.notifyMcpDefinitionsChanged();
+        })
+    );
+
     // Register MCP provider (asynchronous definition provision)
     serverManager.registerMcpProvider(context);
 
