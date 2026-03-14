@@ -13,6 +13,10 @@ export class McpLogProvider implements vscode.TreeDataProvider<LogLineItem> {
         this.refresh();
     }
 
+    getLogs(): string[] {
+        return this.logs;
+    }
+
     refresh(): void {
         this._onDidChangeTreeData.fire();
     }

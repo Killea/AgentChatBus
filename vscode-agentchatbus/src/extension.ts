@@ -7,9 +7,11 @@ import type { Thread } from './api/types';
 import { BusServerManager } from './busServerManager';
 import { SetupProvider } from './providers/setupProvider';
 import { McpLogProvider } from './providers/mcpLogProvider';
+import { SettingsProvider } from './providers/settingsProvider';
 
 let apiClient: AgentChatBusApiClient | undefined;
 let mcpLogProvider: McpLogProvider | undefined;
+let settingsProvider: SettingsProvider | undefined;
 let mainViewsInitialized = false;
 
 export function activate(context: vscode.ExtensionContext) {
@@ -79,10 +81,12 @@ function initializeMainViews(context: vscode.ExtensionContext, serverManager: Bu
 
     const threadsProvider = new ThreadsTreeProvider(apiClient);
     const agentsProvider = new AgentsTreeProvider(apiClient);
+    settingsProvider = new SettingsProvider();
 
     context.subscriptions.push(
         vscode.window.registerTreeDataProvider('agentchatbus.threads', threadsProvider),
-        vscode.window.registerTreeDataProvider('agentchatbus.agents', agentsProvider)
+        vscode.window.registerTreeDataProvider('agentchatbus.agents', agentsProvider),
+        vscode.window.registerTreeDataProvider('agentchatbus.settings', settingsProvider)
     );
 
     context.subscriptions.push(
@@ -91,6 +95,28 @@ function initializeMainViews(context: vscode.ExtensionContext, serverManager: Bu
         vscode.commands.registerCommand('agentchatbus.toggleAgentFilter', () => agentsProvider.toggleRecentFilter()),
         vscode.commands.registerCommand('agentchatbus.clearMcpLogs', () => {
             mcpLogProvider?.clear();
+        }),
+        vscode.commands.registerCommand('agentchatbus.openFullLog', () => {
+            const logs = mcpLogProvider?.getLogs() || [];
+            const panel = vscode.window.createWebviewPanel(
+                'agentchatbusLogs',
+                'AgentChatBus Full Logs',
+                vscode.ViewColumn.One,
+                {}
+            );
+            panel.webview.html = `<html><body><pre style="padding: 10px; font-family: monospace;">${logs.join('\n')}</pre></body></html>`;
+        }),
+        vscode.commands.registerCommand('agentchatbus.openWebConsole', () => {
+            const config = vscode.workspace.getConfiguration('agentchatbus');
+            const url = config.get<string>('serverUrl', 'http://127.0.0.1:39765');
+            vscode.env.openExternal(vscode.Uri.parse(url));
+        }),
+        vscode.commands.registerCommand('agentchatbus.serverSettings', () => {
+            vscode.window.showInformationMessage('Server settings are currently managed via VS Code Configuration.', { modal: true }, 'Open Settings').then(selection => {
+                if (selection === 'Open Settings') {
+                    vscode.commands.executeCommand('workbench.action.openSettings', 'agentchatbus');
+                }
+            });
         }),
         vscode.commands.registerCommand('agentchatbus.filterThreads', async () => {
             const statuses = ['discuss', 'implement', 'review', 'done', 'closed', 'archived'];

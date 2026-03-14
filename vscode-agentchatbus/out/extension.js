@@ -43,8 +43,10 @@ const chatPanel_1 = require("./views/chatPanel");
 const busServerManager_1 = require("./busServerManager");
 const setupProvider_1 = require("./providers/setupProvider");
 const mcpLogProvider_1 = require("./providers/mcpLogProvider");
+const settingsProvider_1 = require("./providers/settingsProvider");
 let apiClient;
 let mcpLogProvider;
+let settingsProvider;
 let mainViewsInitialized = false;
 function activate(context) {
     console.log('[AgentChatBus] Activating extension...');
@@ -99,9 +101,24 @@ function initializeMainViews(context, serverManager) {
     apiClient.connectSSE();
     const threadsProvider = new threadsProvider_1.ThreadsTreeProvider(apiClient);
     const agentsProvider = new agentsProvider_1.AgentsTreeProvider(apiClient);
-    context.subscriptions.push(vscode.window.registerTreeDataProvider('agentchatbus.threads', threadsProvider), vscode.window.registerTreeDataProvider('agentchatbus.agents', agentsProvider));
+    settingsProvider = new settingsProvider_1.SettingsProvider();
+    context.subscriptions.push(vscode.window.registerTreeDataProvider('agentchatbus.threads', threadsProvider), vscode.window.registerTreeDataProvider('agentchatbus.agents', agentsProvider), vscode.window.registerTreeDataProvider('agentchatbus.settings', settingsProvider));
     context.subscriptions.push(vscode.commands.registerCommand('agentchatbus.refreshThreads', () => threadsProvider.refresh()), vscode.commands.registerCommand('agentchatbus.refreshAgents', () => agentsProvider.refresh()), vscode.commands.registerCommand('agentchatbus.toggleAgentFilter', () => agentsProvider.toggleRecentFilter()), vscode.commands.registerCommand('agentchatbus.clearMcpLogs', () => {
         mcpLogProvider?.clear();
+    }), vscode.commands.registerCommand('agentchatbus.openFullLog', () => {
+        const logs = mcpLogProvider?.getLogs() || [];
+        const panel = vscode.window.createWebviewPanel('agentchatbusLogs', 'AgentChatBus Full Logs', vscode.ViewColumn.One, {});
+        panel.webview.html = `<html><body><pre style="padding: 10px; font-family: monospace;">${logs.join('\n')}</pre></body></html>`;
+    }), vscode.commands.registerCommand('agentchatbus.openWebConsole', () => {
+        const config = vscode.workspace.getConfiguration('agentchatbus');
+        const url = config.get('serverUrl', 'http://127.0.0.1:39765');
+        vscode.env.openExternal(vscode.Uri.parse(url));
+    }), vscode.commands.registerCommand('agentchatbus.serverSettings', () => {
+        vscode.window.showInformationMessage('Server settings are currently managed via VS Code Configuration.', { modal: true }, 'Open Settings').then(selection => {
+            if (selection === 'Open Settings') {
+                vscode.commands.executeCommand('workbench.action.openSettings', 'agentchatbus');
+            }
+        });
     }), vscode.commands.registerCommand('agentchatbus.filterThreads', async () => {
         const statuses = ['discuss', 'implement', 'review', 'done', 'closed', 'archived'];
         const currentFilter = threadsProvider.getStatusFilter();

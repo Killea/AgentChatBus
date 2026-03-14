@@ -47,6 +47,12 @@
           "name": "MCP Server Logs",
           "icon": "$(terminal)",
           "when": "agentchatbus:serverReady"
+        },
+        {
+          "id": "agentchatbus.settings",
+          "name": "Management",
+          "icon": "$(gear)",
+          "when": "agentchatbus:serverReady"
         }
       ]
     },
@@ -87,6 +93,11 @@
         "icon": "$(filter)"
       },
       {
+        "command": "agentchatbus.openFullLog",
+        "title": "Open Full Logs",
+        "icon": "$(link-external)"
+      },
+      {
         "command": "agentchatbus.clearMcpLogs",
         "title": "Clear Logs",
         "icon": "$(clear-all)"
@@ -104,6 +115,16 @@
         "command": "agentchatbus.retrySetup",
         "title": "Retry Setup",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "agentchatbus.openWebConsole",
+        "title": "Open Web Console",
+        "icon": "$(browser)"
+      },
+      {
+        "command": "agentchatbus.serverSettings",
+        "title": "Server Settings",
+        "icon": "$(settings-gear)"
       }
     ],
     "menus": {
@@ -129,9 +150,14 @@
           "group": "navigation@2"
         },
         {
+          "command": "agentchatbus.openFullLog",
+          "when": "view == agentchatbus.mcpLogs",
+          "group": "navigation@1"
+        },
+        {
           "command": "agentchatbus.clearMcpLogs",
           "when": "view == agentchatbus.mcpLogs",
-          "group": "navigation"
+          "group": "navigation@2"
         }
       ]
     }

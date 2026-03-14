@@ -45,6 +45,9 @@ class McpLogProvider {
         this.isManaged = managed;
         this.refresh();
     }
+    getLogs() {
+        return this.logs;
+    }
     refresh() {
         this._onDidChangeTreeData.fire();
     }
