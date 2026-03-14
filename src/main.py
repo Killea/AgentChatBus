@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import signal
+import sys
 import threading
 import time
 import uuid
@@ -198,6 +199,16 @@ def _is_loopback_request(request: Request) -> bool:
 def _trigger_process_shutdown() -> None:
     logger.warning("Shutdown requested via local /api/shutdown endpoint")
     os.kill(os.getpid(), signal.SIGTERM)
+
+
+def _trigger_process_force_shutdown() -> None:
+    logger.warning("Force shutdown requested via local /api/shutdown endpoint")
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    except Exception:
+        pass
+    os._exit(0)
 
 
 # Server start time — set in lifespan(), used by /api/metrics (UP-22)
@@ -1002,6 +1013,10 @@ class IdeSessionTokenRequest(BaseModel):
     session_token: str
 
 
+class ShutdownRequest(IdeSessionTokenRequest):
+    force: bool = False
+
+
 @app.get("/api/ide/status")
 async def api_ide_status(request: Request, instance_id: str | None = None, session_token: str | None = None):
     if not _is_loopback_request(request):
@@ -1590,6 +1605,7 @@ async def api_system_diagnostics(request: Request):
         "sse_agents_count": sse_agents_count,
         "stdio_agents_count": stdio_agents_count,
         "server_time_utc": datetime.now(timezone.utc).isoformat(),
+        "pid": os.getpid(),
         "total_latency_ms": total_lat,
         "app_dir": app_dir,
         "db_path": db_path_abs,
@@ -2896,7 +2912,7 @@ async def health():
 
 
 @app.post("/api/shutdown")
-async def api_shutdown(request: Request, body: IdeSessionTokenRequest):
+async def api_shutdown(request: Request, body: ShutdownRequest):
     if not _is_loopback_request(request):
         raise HTTPException(status_code=403, detail="Shutdown is only allowed from localhost")
 
@@ -2907,8 +2923,12 @@ async def api_shutdown(request: Request, body: IdeSessionTokenRequest):
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
 
+    if body.force:
+        threading.Timer(0.2, _trigger_process_force_shutdown).start()
+        return {"status": "accepted", "message": "AgentChatBus force shutdown requested", "force": True}
+
     threading.Timer(0.2, _trigger_process_shutdown).start()
-    return {"status": "accepted", "message": "AgentChatBus shutdown requested"}
+    return {"status": "accepted", "message": "AgentChatBus shutdown requested", "force": False}
 
 
 

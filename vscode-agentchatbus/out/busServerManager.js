@@ -53,6 +53,7 @@ class BusServerManager {
     mcpProviderRegistered = false;
     externalLogPoller = null;
     externalLogCursor = 0;
+    serverStopping = false;
     ideHeartbeatPoller = null;
     ideInstanceId = (0, crypto_1.randomUUID)();
     ideLabel = vscode.env.appName || 'VS Code';
@@ -69,6 +70,7 @@ class BusServerManager {
     serverMetadata = { resolutionAttempts: [] };
     constructor() {
         this.outputChannel = vscode.window.createOutputChannel('AgentChatBus Server');
+        void vscode.commands.executeCommand('setContext', 'agentchatbus:serverStopping', false);
     }
     setSetupProvider(provider) {
         this.setupProvider = provider;
@@ -136,6 +138,10 @@ class BusServerManager {
         return false;
     }
     async restartServer() {
+        if (this.serverStopping) {
+            this.log('Restart denied because a force-stop operation is currently in progress.', 'warning');
+            return false;
+        }
         if (this.mcpLogProvider) {
             this.mcpLogProvider.clear();
             this.mcpLogProvider.setIsManaged(false);
@@ -183,75 +189,72 @@ class BusServerManager {
     }
     async stopServer() {
         this.log('Force stop requested...', 'debug-stop');
+        if (this.serverStopping) {
+            this.log('Force stop is already in progress.', 'warning');
+            return false;
+        }
         if (this.ideSessionState.registered && !this.ideSessionState.can_shutdown) {
             this.log('Force stop denied because this IDE session does not currently hold shutdown ownership.', 'warning');
             return false;
         }
-        if (this.serverProcess) {
-            if (process.platform === 'win32' && this.serverProcess.pid) {
-                try {
-                    child_process.execSync(`taskkill /pid ${this.serverProcess.pid} /f /t`);
-                }
-                catch {
-                    this.serverProcess.kill();
+        this.setServerStopping(true);
+        let success = false;
+        try {
+            const claimOwner = this.serverMetadata.startupMode !== 'external-service';
+            if (!this.ideSessionToken || !this.ideSessionState.registered) {
+                this.log('IDE session is not registered yet. Attempting registration before force stop...', 'info');
+                const registered = await this.ensureIdeSessionRegistered(claimOwner);
+                if (!registered) {
+                    this.log('Force stop aborted because IDE registration could not be established.', 'error');
+                    return false;
                 }
             }
-            else {
-                this.serverProcess.kill('SIGKILL');
-            }
-            this.serverProcess = null;
-            this.stopExternalLogPolling();
-            this.stopIdeHeartbeat();
-            this.ideSessionToken = null;
-            this.setServerReady(false);
-            this.mcpLogProvider?.setIsManaged(false);
-            void vscode.commands.executeCommand('setContext', 'agentchatbus:mcpServerActive', false);
-            this.log('Managed AgentChatBus process was stopped.', 'stop-circle');
-            return true;
-        }
-        if (this.serverMetadata.startupMode === 'external-service') {
-            return this.stopExternalService();
-        }
-        this.log('No running AgentChatBus process is currently managed by the extension.', 'warning');
-        return false;
-    }
-    async stopExternalService() {
-        const serverUrl = this.getServerUrl();
-        this.log(`Requesting shutdown from external AgentChatBus service at ${serverUrl}...`, 'debug-stop');
-        if (!this.ideSessionToken || !this.ideSessionState.registered) {
-            this.log('IDE session is not registered yet. Attempting registration before external shutdown...', 'info');
-            const registered = await this.ensureIdeSessionRegistered(false);
-            if (!registered) {
-                this.log('Cannot request external shutdown because IDE registration could not be established.', 'warning');
+            if (!this.ideSessionState.can_shutdown) {
+                this.log(`Force stop denied because this IDE session does not own shutdown rights. Current owner=${this.ideSessionState.owner_instance_id || 'none'}.`, 'warning');
                 return false;
             }
-        }
-        if (!this.ideSessionState.can_shutdown) {
-            this.log(`External shutdown denied because this IDE session does not own shutdown rights. Current owner=${this.ideSessionState.owner_instance_id || 'none'}.`, 'warning');
-            return false;
-        }
-        try {
-            const response = await fetch(`${serverUrl}/api/shutdown`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    instance_id: this.ideInstanceId,
-                    session_token: this.ideSessionToken,
-                }),
-            });
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
+            const apiAccepted = await this.requestApiShutdown(true);
+            if (apiAccepted) {
+                this.log('Force-shutdown API request was accepted. Waiting for server to stop...', 'debug-stop');
             }
-            this.stopExternalLogPolling();
-            this.setServerReady(false);
-            this.log('External AgentChatBus service accepted the shutdown request.', 'stop-circle');
-            return true;
-        }
-        catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            this.log(`Failed to stop external AgentChatBus service: ${message}`, 'error');
+            else {
+                this.log('Force-shutdown API request was not accepted. Falling back to process kill if needed...', 'warning');
+            }
+            const stoppedByApi = await this.waitForServerShutdown(4000);
+            if (stoppedByApi) {
+                this.handleServerStopped('force-shutdown API');
+                success = true;
+                return true;
+            }
+            const pid = await this.resolveServerPid();
+            if (!pid) {
+                this.log('Server is still running, but no PID could be resolved for kill fallback.', 'error');
+                return false;
+            }
+            this.log(`Server still responding after API force-shutdown. Attempting kill fallback for PID ${pid}...`, 'debug-stop');
+            const killed = this.forceKillProcess(pid);
+            if (!killed) {
+                this.log(`Kill fallback failed for PID ${pid}.`, 'error');
+                return false;
+            }
+            this.log(`Kill signal sent to PID ${pid}. Verifying shutdown...`, 'debug-stop');
+            const stoppedByKill = await this.waitForServerShutdown(4000);
+            if (stoppedByKill) {
+                this.handleServerStopped(`kill fallback (PID ${pid})`);
+                success = true;
+                return true;
+            }
+            this.log(`Force stop failed: server still responds after kill fallback for PID ${pid}.`, 'error');
             return false;
         }
+        finally {
+            if (!success) {
+                this.setServerStopping(false);
+            }
+        }
+    }
+    async stopExternalService() {
+        return await this.requestApiShutdown(false);
     }
     async handleIdeDeactivate() {
         await this.unregisterIdeSession();
@@ -407,7 +410,106 @@ class BusServerManager {
         }
     }
     setServerReady(ready) {
+        if (ready) {
+            this.setServerStopping(false);
+        }
         void vscode.commands.executeCommand('setContext', 'agentchatbus:serverReady', ready);
+    }
+    setServerStopping(stopping) {
+        this.serverStopping = stopping;
+        void vscode.commands.executeCommand('setContext', 'agentchatbus:serverStopping', stopping);
+    }
+    async requestApiShutdown(force) {
+        const serverUrl = this.getServerUrl();
+        const mode = force ? 'force-shutdown' : 'shutdown';
+        this.log(`Attempting ${mode} via API at ${serverUrl}/api/shutdown...`, 'debug-stop');
+        if (!this.ideSessionToken) {
+            this.log(`Cannot call ${mode} API because IDE session token is unavailable.`, 'warning');
+            return false;
+        }
+        try {
+            const response = await fetch(`${serverUrl}/api/shutdown`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    instance_id: this.ideInstanceId,
+                    session_token: this.ideSessionToken,
+                    force,
+                }),
+            });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            this.log(`${mode} API request accepted by server.`, 'debug-stop');
+            return true;
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.log(`${mode} API request failed: ${message}`, 'warning');
+            return false;
+        }
+    }
+    async waitForServerShutdown(timeoutMs) {
+        const deadline = Date.now() + timeoutMs;
+        const serverUrl = this.getServerUrl();
+        while (Date.now() < deadline) {
+            const running = await this.checkServer(serverUrl);
+            if (!running) {
+                this.log('Server health check no longer responds. Shutdown confirmed.', 'check');
+                return true;
+            }
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        this.log('Server is still responding after shutdown wait window.', 'warning');
+        return false;
+    }
+    async resolveServerPid() {
+        if (this.serverProcess?.pid) {
+            this.log(`Using managed child PID ${this.serverProcess.pid} for kill fallback.`, 'info');
+            return this.serverProcess.pid;
+        }
+        try {
+            const response = await fetch(`${this.getServerUrl()}/api/system/diagnostics`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const payload = await response.json();
+            if (typeof payload.pid === 'number' && Number.isFinite(payload.pid) && payload.pid > 0) {
+                this.log(`Resolved external server PID from diagnostics: ${payload.pid}.`, 'info');
+                return payload.pid;
+            }
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.log(`Failed to resolve server PID from diagnostics: ${message}`, 'warning');
+        }
+        return null;
+    }
+    forceKillProcess(pid) {
+        try {
+            if (process.platform === 'win32') {
+                child_process.execFileSync('taskkill', ['/pid', String(pid), '/f', '/t']);
+            }
+            else {
+                process.kill(pid, 'SIGKILL');
+            }
+            return true;
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.log(`OS-level kill failed for PID ${pid}: ${message}`, 'error');
+            return false;
+        }
+    }
+    handleServerStopped(reason) {
+        this.serverProcess = null;
+        this.stopExternalLogPolling();
+        this.stopIdeHeartbeat();
+        this.ideSessionToken = null;
+        this.setServerReady(false);
+        this.mcpLogProvider?.setIsManaged(false);
+        void vscode.commands.executeCommand('setContext', 'agentchatbus:mcpServerActive', false);
+        this.log(`Force stop completed via ${reason}.`, 'stop-circle');
     }
     startExternalLogPolling(serverUrl) {
         this.stopExternalLogPolling();

@@ -177,6 +177,11 @@
         "icon": "$(debug-stop)"
       },
       {
+        "command": "agentchatbus.stopServerPending",
+        "title": "Force Stop In Progress",
+        "icon": "$(sync~spin)"
+      },
+      {
         "command": "agentchatbus.openWebConsole",
         "title": "Open Web Console",
         "icon": "$(browser)"
@@ -216,7 +221,12 @@
         },
         {
           "command": "agentchatbus.stopServer",
-          "when": "view == agentchatbus.mcpLogs",
+          "when": "view == agentchatbus.mcpLogs && !agentchatbus:serverStopping",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentchatbus.stopServerPending",
+          "when": "view == agentchatbus.mcpLogs && agentchatbus:serverStopping",
           "group": "navigation@2"
         },
         {

@@ -131,7 +131,7 @@ function initializeMainViews(context, serverManager, cursorConfigManager) {
         const status = serverManager.getStatusMetadata();
         const isExternal = status.startupMode === 'external-service';
         const confirmed = await vscode.window.showWarningMessage(isExternal
-            ? 'Force stop the externally managed AgentChatBus service? The extension will send a localhost shutdown request to the running MCP server.'
+            ? 'Force stop the externally managed AgentChatBus service? The extension will try force-shutdown via API, verify shutdown, then kill the server process if it still survives.'
             : 'Force stop AgentChatBus Server? This will immediately terminate the MCP service managed by the extension.', { modal: true }, 'Force Stop');
         if (confirmed === 'Force Stop') {
             const stopped = await serverManager.stopServer();
@@ -141,6 +141,8 @@ function initializeMainViews(context, serverManager, cursorConfigManager) {
                     : 'No extension-managed MCP service could be force stopped.');
             }
         }
+    }), vscode.commands.registerCommand('agentchatbus.stopServerPending', () => {
+        vscode.window.showInformationMessage('Force stop is already in progress. Waiting for shutdown verification or kill fallback.');
     }), vscode.commands.registerCommand('agentchatbus.openFullLog', () => {
         const logs = mcpLogProvider?.getLogs() || [];
         const panel = vscode.window.createWebviewPanel('agentchatbusLogs', 'AgentChatBus Full Logs', vscode.ViewColumn.One, {});
