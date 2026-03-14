@@ -248,7 +248,7 @@ class ChatPanel {
             threadTopic: this._thread.topic || this._thread.id.substring(0, 8),
             threadStatus: this._thread.status,
             baseUrl: this._apiClient.getBaseUrl(),
-            mermaidScriptUrl: '',
+            mermaidScriptUrl: webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'resources', 'media', 'mermaid.min.js')).toString(),
             theme: vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ? 'dark' : 'light'
         };
         const escAttr = (value) => String(value)
@@ -271,7 +271,7 @@ class ChatPanel {
             data-thread-topic="${escAttr(config.threadTopic)}"
             data-thread-status="${escAttr(config.threadStatus)}"
             data-base-url="${escAttr(config.baseUrl)}"
-            data-mermaid-script-url=""
+            data-mermaid-script-url="${escAttr(config.mermaidScriptUrl)}"
         >
             <div id="chat-shell">
                 <header id="chat-header">
