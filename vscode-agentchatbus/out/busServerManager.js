@@ -150,6 +150,53 @@ class BusServerManager {
         }
         return false;
     }
+    async stopServer() {
+        this.log('Force stop requested...', 'debug-stop');
+        if (this.serverProcess) {
+            if (process.platform === 'win32' && this.serverProcess.pid) {
+                try {
+                    child_process.execSync(`taskkill /pid ${this.serverProcess.pid} /f /t`);
+                }
+                catch {
+                    this.serverProcess.kill();
+                }
+            }
+            else {
+                this.serverProcess.kill('SIGKILL');
+            }
+            this.serverProcess = null;
+            this.stopExternalLogPolling();
+            this.setServerReady(false);
+            this.mcpLogProvider?.setIsManaged(false);
+            void vscode.commands.executeCommand('setContext', 'agentchatbus:mcpServerActive', false);
+            this.log('Managed AgentChatBus process was stopped.', 'stop-circle');
+            return true;
+        }
+        if (this.serverMetadata.startupMode === 'external-service') {
+            return this.stopExternalService();
+        }
+        this.log('No running AgentChatBus process is currently managed by the extension.', 'warning');
+        return false;
+    }
+    async stopExternalService() {
+        const serverUrl = this.getServerUrl();
+        this.log(`Requesting shutdown from external AgentChatBus service at ${serverUrl}...`, 'debug-stop');
+        try {
+            const response = await fetch(`${serverUrl}/api/shutdown`, { method: 'POST' });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            this.stopExternalLogPolling();
+            this.setServerReady(false);
+            this.log('External AgentChatBus service accepted the shutdown request.', 'stop-circle');
+            return true;
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.log(`Failed to stop external AgentChatBus service: ${message}`, 'error');
+            return false;
+        }
+    }
     setServerReady(ready) {
         void vscode.commands.executeCommand('setContext', 'agentchatbus:serverReady', ready);
     }

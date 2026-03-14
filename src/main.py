@@ -11,6 +11,8 @@ import hashlib
 import json
 import logging
 import os
+import signal
+import threading
 import time
 import uuid
 
@@ -183,6 +185,18 @@ def _runtime_diag_payload() -> dict[str, object]:
         "port": PORT,
         "db_path": DB_PATH,
     }
+
+
+def _is_loopback_request(request: Request) -> bool:
+    client = request.client
+    if client is None:
+        return False
+    return client.host in {"127.0.0.1", "::1", "localhost"}
+
+
+def _trigger_process_shutdown() -> None:
+    logger.warning("Shutdown requested via local /api/shutdown endpoint")
+    os.kill(os.getpid(), signal.SIGTERM)
 
 
 # Server start time — set in lifespan(), used by /api/metrics (UP-22)
@@ -2814,6 +2828,15 @@ async def api_search(
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "AgentChatBus"}
+
+
+@app.post("/api/shutdown")
+async def api_shutdown(request: Request):
+    if not _is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="Shutdown is only allowed from localhost")
+
+    threading.Timer(0.2, _trigger_process_shutdown).start()
+    return {"status": "accepted", "message": "AgentChatBus shutdown requested"}
 
 
 

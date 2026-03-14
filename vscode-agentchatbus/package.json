@@ -177,6 +177,11 @@
         "icon": "$(sync)"
       },
       {
+        "command": "agentchatbus.stopServer",
+        "title": "Force Stop MCP Service",
+        "icon": "$(debug-stop)"
+      },
+      {
         "command": "agentchatbus.openWebConsole",
         "title": "Open Web Console",
         "icon": "$(browser)"
@@ -215,14 +220,19 @@
           "group": "navigation@1"
         },
         {
-          "command": "agentchatbus.openFullLog",
+          "command": "agentchatbus.stopServer",
           "when": "view == agentchatbus.mcpLogs",
           "group": "navigation@2"
         },
         {
-          "command": "agentchatbus.clearMcpLogs",
+          "command": "agentchatbus.openFullLog",
           "when": "view == agentchatbus.mcpLogs",
           "group": "navigation@3"
+        },
+        {
+          "command": "agentchatbus.clearMcpLogs",
+          "when": "view == agentchatbus.mcpLogs",
+          "group": "navigation@4"
         }
       ],
       "view/item/context": [
