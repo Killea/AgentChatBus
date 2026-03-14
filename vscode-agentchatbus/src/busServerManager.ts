@@ -3,11 +3,13 @@ import * as path from 'path';
 import * as child_process from 'child_process';
 import * as fs from 'fs';
 import { SetupProvider } from './providers/setupProvider';
+import { McpLogProvider } from './providers/mcpLogProvider';
 
 export class BusServerManager {
     private outputChannel: vscode.OutputChannel;
     private serverProcess: child_process.ChildProcess | null = null;
     private setupProvider: SetupProvider | null = null;
+    private mcpLogProvider: McpLogProvider | null = null;
 
     constructor() {
         this.outputChannel = vscode.window.createOutputChannel('AgentChatBus Server');
@@ -17,38 +19,54 @@ export class BusServerManager {
         this.setupProvider = provider;
     }
 
-    private log(message: string, icon?: string, description?: string) {
+    setMcpLogProvider(provider: McpLogProvider) {
+        this.mcpLogProvider = provider;
+    }
+
+    log(message: string, icon?: string, description?: string) {
+        console.log(`[AgentChatBus Log] ${message}`);
         this.outputChannel.appendLine(`[AgentChatBus] ${message}`);
         if (this.setupProvider) {
             this.setupProvider.addLog(message, icon, description);
         }
+        if (this.mcpLogProvider) {
+            this.mcpLogProvider.addLog(message);
+        }
     }
 
     async ensureServerRunning(): Promise<boolean> {
+        this.log('Initialization sequence started.', 'info');
+        
         const config = vscode.workspace.getConfiguration('agentchatbus');
         const autoStart = config.get<boolean>('autoStartBusServer', true);
         const serverUrl = config.get<string>('serverUrl', 'http://127.0.0.1:39765');
 
         if (!autoStart) {
+            this.log('Auto-start is disabled in settings.', 'info');
             return true; 
         }
 
-        this.log('Checking if server is already running...', 'sync~spin');
+        this.log(`Probing server at ${serverUrl}...`, 'sync~spin');
 
-        const isRunning = await this.checkServer(serverUrl);
-        if (isRunning) {
-            this.log('Server is already running.', 'check');
-            this.setServerReady(true);
-            return true;
+        try {
+            const isRunning = await this.checkServer(serverUrl);
+            if (isRunning) {
+                this.log('Server detected and responding.', 'check');
+                this.setServerReady(true);
+                return true;
+            }
+        } catch (e: any) {
+            this.log(`Probe failed: ${e.message}`, 'warning');
         }
 
-        this.log('Server not detected. Starting setup...', 'info');
+        this.log('Server not responding. Attempting to start...', 'search');
         const started = await this.startServer();
         if (started) {
             this.setServerReady(true);
             return true;
         }
 
+        this.log('Failed to start AgentChatBus server.', 'error');
         return false;
     }
 
@@ -69,23 +87,26 @@ export class BusServerManager {
     }
 
     private async startServer(): Promise<boolean> {
-        const projectRoot = this.findProjectRoot();
+        this.log('Scanning environment for AgentChatBus...', 'search');
+        const projectRoot = await this.findProjectRootAsync();
         const config = vscode.workspace.getConfiguration('agentchatbus');
         let pythonPath = config.get<string>('pythonPath', 'python');
 
         // Case 1: In a project workspace
         if (projectRoot) {
-            this.log('Detected project workspace.', 'folder');
+            this.log(`Found project root: ${projectRoot}`, 'folder');
             
             // Auto-detect .venv if pythonPath is default
             if (pythonPath === 'python') {
-                this.log('Searching for virtual environment...', 'search');
-                const venvPath = path.join(projectRoot, '.venv', process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'python.exe' : 'python');
-                if (fs.existsSync(venvPath)) {
-                    pythonPath = venvPath;
+                this.log('Searching for virtual environment (.venv)...', 'search');
+                const venvBase = path.join(projectRoot, '.venv', process.platform === 'win32' ? 'Scripts' : 'bin');
+                const venvPython = path.join(venvBase, process.platform === 'win32' ? 'python.exe' : 'python');
+                
+                if (fs.existsSync(venvPython)) {
+                    pythonPath = venvPython;
                     this.log(`Using virtual env: ${pythonPath}`, 'terminal');
                 } else {
-                    this.log('No .venv found, using system python.', 'info');
+                    this.log('No .venv found, falling back to system python.', 'info');
                 }
             }
 
@@ -93,15 +114,15 @@ export class BusServerManager {
         }
 
         // Case 2: Use global 'agentchatbus' command
-        this.log('Searching for global "agentchatbus" command...', 'search');
+        this.log('Searching for "agentchatbus" command in PATH...', 'search');
         const globalCmd = await this.findAgentChatBusExecutable();
         if (globalCmd) {
-            this.log(`Found global command: ${globalCmd}`, 'terminal');
+            this.log(`Located global command: ${globalCmd}`, 'terminal');
             return await this.spawnServer(globalCmd, []);
         }
 
         // Case 3: Not found anywhere, offer to install
-        this.log('AgentChatBus not found in PATH or project.', 'error');
+        this.log('AgentChatBus not detected. Check system PATH or open an AgentChatBus project.', 'error');
         
         const selection = await vscode.window.showErrorMessage(
             'AgentChatBus server not found. Would you like to attempt to install it via pip?',
@@ -111,12 +132,12 @@ export class BusServerManager {
         if (selection === 'Install') {
             const installed = await this.installAgentChatBus();
             if (installed) {
-                this.log('Installation finished. Re-locating executable...', 'sync~spin');
+                this.log('Relocating executable after installation...', 'sync~spin');
                 const newCmd = await this.findAgentChatBusExecutable();
                 if (newCmd) {
                     return await this.spawnServer(newCmd, []);
                 } else {
-                    this.log('Installed but still cannot find "agentchatbus" in PATH.', 'error');
+                    this.log('Installation succeeded but executable still not found in PATH.', 'error');
                 }
             }
         }
@@ -125,7 +146,9 @@ export class BusServerManager {
     }
 
     private async spawnServer(command: string, args: string[], cwd?: string): Promise<boolean> {
-        this.log(`Starting server process: ${command} ${args.join(' ')}`, 'play');
+        this.log(`Starting server process...`, 'play');
+        const fullCmd = `${command} ${args.join(' ')}`;
+        this.log(`Exec: ${fullCmd}`, 'terminal');
         
         const env = { ...process.env };
         if (cwd) {
@@ -139,55 +162,77 @@ export class BusServerManager {
                 shell: true 
             });
 
+            // Set context that MCP server is active (started by extension)
+            vscode.commands.executeCommand('setContext', 'agentchatbus:mcpServerActive', true);
+
             this.serverProcess.stdout?.on('data', (data) => {
-                this.outputChannel.append(data.toString());
+                const text = data.toString();
+                this.outputChannel.append(text);
+                if (this.mcpLogProvider) {
+                    this.mcpLogProvider.addLog(text);
+                }
             });
 
             this.serverProcess.stderr?.on('data', (data) => {
-                this.outputChannel.append(data.toString());
+                const text = data.toString();
+                this.outputChannel.append(text);
+                if (this.mcpLogProvider) {
+                    this.mcpLogProvider.addLog(text);
+                }
             });
 
             this.serverProcess.on('error', (err) => {
-                this.log(`Process spawn error: ${err.message}`, 'error');
+                this.log(`Spawn error: ${err.message}`, 'error');
             });
 
             this.serverProcess.on('close', (code) => {
-                this.log(`Server process exited with code ${code}`, 'warning');
+                this.log(`Server exited (code ${code})`, 'warning');
                 this.serverProcess = null;
                 this.setServerReady(false);
+                vscode.commands.executeCommand('setContext', 'agentchatbus:mcpServerActive', false);
             });
 
-            this.log('Waiting for health check...', 'sync~spin');
+            this.log('Waiting for health check response...', 'sync~spin');
             const config = vscode.workspace.getConfiguration('agentchatbus');
             const serverUrl = config.get<string>('serverUrl', 'http://127.0.0.1:39765');
             let retries = 20;
             while (retries > 0) {
                 await new Promise(r => setTimeout(r, 1000));
                 if (await this.checkServer(serverUrl)) {
-                    this.log('Server is online and healthy.', 'check');
+                    this.log('Server is online and ready.', 'check');
                     return true;
                 }
                 retries--;
             }
 
-            this.log('Timeout: Server started but health check failed.', 'error');
+            this.log('Server failed to respond to health checks.', 'error');
             return false;
         } catch (e: any) {
-            this.log(`Spawn error: ${e.message}`, 'error');
+            this.log(`Fatal spawn error: ${e.message}`, 'error');
             return false;
         }
     }
 
     private async findAgentChatBusExecutable(): Promise<string | null> {
-        // 1. Check if it's in PATH
         try {
             const cmd = process.platform === 'win32' ? 'where' : 'which';
-            const out = child_process.execSync(`${cmd} agentchatbus`, { encoding: 'utf8' }).trim().split('\r\n')[0].split('\n')[0];
-            if (out && fs.existsSync(out)) return out;
-        } catch {}
+            const checkCmd = `${cmd} agentchatbus`;
+            this.log(`Checking PATH via: ${checkCmd}`, 'terminal');
+            
+            const out = await new Promise<string>((resolve, reject) => {
+                child_process.exec(checkCmd, { timeout: 3000 }, (err, stdout) => {
+                    if (err) reject(err);
+                    else resolve(stdout.trim());
+                });
+            });
+            const firstPath = out.split('\r\n')[0].split('\n')[0];
+            if (firstPath && fs.existsSync(firstPath)) return firstPath;
+        } catch (e: any) {
+            this.log(`Not found in PATH: ${e.message}`, 'info');
+        }
 
-        // 2. Check Windows specific user scripts folder
         if (process.platform === 'win32') {
+            this.log('Checking common Windows installation scripts...', 'search');
             const appData = process.env.APPDATA;
             if (appData) {
                 const localAppData = process.env.LOCALAPPDATA || path.join(path.dirname(appData), 'Local');
@@ -199,27 +244,18 @@ export class BusServerManager {
                         if (fs.existsSync(scriptsPath)) return scriptsPath;
                     }
                 }
-                const roamingPython = path.join(appData, 'Python');
-                if (fs.existsSync(roamingPython)) {
-                    const versions = fs.readdirSync(roamingPython);
-                    for (const v of versions) {
-                        const scriptsPath = path.join(roamingPython, v, 'Scripts', 'agentchatbus.exe');
-                        if (fs.existsSync(scriptsPath)) return scriptsPath;
-                    }
-                }
             }
         }
-
         return null;
     }
 
     private async installAgentChatBus(): Promise<boolean> {
-        this.log('Running: pip install agentchatbus...', 'cloud-download');
+        const cmd = 'python -m pip install agentchatbus';
+        this.log(`Installation started: ${cmd}`, 'cloud-download');
         this.outputChannel.show();
 
         return new Promise((resolve) => {
             const pkg = child_process.spawn('python', ['-m', 'pip', 'install', 'agentchatbus'], { shell: true });
-            
             pkg.stdout.on('data', (data) => this.outputChannel.append(data.toString()));
             pkg.stderr.on('data', (data) => this.outputChannel.append(data.toString()));
             
@@ -228,43 +264,45 @@ export class BusServerManager {
                     this.log('Installation successful.', 'check');
                     resolve(true);
                 } else {
-                    this.log(`Installation failed (code ${code}).`, 'error');
+                    this.log(`Installation failed (exit code ${code}).`, 'error');
                     resolve(false);
                 }
             });
-
             pkg.on('error', (err) => {
-                this.log(`Pip error: ${err.message}`, 'error');
+                this.log(`Execution error: ${err.message}`, 'error');
                 resolve(false);
             });
         });
     }
 
-    private findProjectRoot(): string | null {
+    private async findProjectRootAsync(): Promise<string | null> {
         if (vscode.workspace.workspaceFolders) {
             for (const folder of vscode.workspace.workspaceFolders) {
                 const mainPath = path.join(folder.uri.fsPath, 'src', 'main.py');
-                if (fs.existsSync(mainPath)) {
+                try {
+                    await fs.promises.access(mainPath);
                     return folder.uri.fsPath;
+                } catch {
+                    // Not found in this folder
                 }
             }
         }
         return null;
     }
 
-    registerMcpProvider(context: vscode.ExtensionContext): void {
-        const projectRoot = this.findProjectRoot();
-        if (!projectRoot) return;
-
+    async registerMcpProvider(context: vscode.ExtensionContext): Promise<void> {
         const lm = (vscode as any).lm;
         if (!lm || !lm.registerMcpServerDefinitionProvider) return;
+
+        const projectRoot = await this.findProjectRootAsync();
+        if (!projectRoot) return;
 
         const config = vscode.workspace.getConfiguration('agentchatbus');
         let pythonPath = config.get<string>('pythonPath', 'python');
         
-        const venvPath = path.join(projectRoot, '.venv', process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'python.exe' : 'python');
-        if (fs.existsSync(venvPath)) {
-            pythonPath = venvPath;
+        const venvPython = path.join(projectRoot, '.venv', process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'python.exe' : 'python');
+        if (fs.existsSync(venvPython)) {
+            pythonPath = venvPython;
         }
 
         lm.registerMcpServerDefinitionProvider('agentchatbus', {

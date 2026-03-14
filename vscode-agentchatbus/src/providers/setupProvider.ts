@@ -5,12 +5,17 @@ export class SetupProvider implements vscode.TreeDataProvider<SetupStep> {
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
     private steps: SetupStep[] = [];
+    private startTime: number = 0;
+    private timer: NodeJS.Timeout | undefined;
 
     constructor() {
         this.reset();
+        // Force refresh every 500ms to update the elapsed time shown in labels
+        this.timer = setInterval(() => this.refresh(), 500);
     }
 
     reset() {
+        this.startTime = Date.now();
         this.steps = [
             new SetupStep('Starting AgentChatBus...', vscode.TreeItemCollapsibleState.None, 'play')
         ];
@@ -18,6 +23,7 @@ export class SetupProvider implements vscode.TreeDataProvider<SetupStep> {
     }
 
     addLog(message: string, icon?: string, description?: string) {
+        console.log(`[SetupProvider] Log: ${message}`);
         const step = new SetupStep(message, vscode.TreeItemCollapsibleState.None, icon);
         step.description = description;
         this.steps.push(step);
@@ -38,23 +44,35 @@ export class SetupProvider implements vscode.TreeDataProvider<SetupStep> {
     }
 
     getTreeItem(element: SetupStep): vscode.TreeItem {
+        element.updateLabel(this.startTime);
         return element;
     }
 
     getChildren(element?: SetupStep): vscode.ProviderResult<SetupStep[]> {
-        return this.steps;
+        return [...this.steps];
+    }
+
+    dispose() {
+        if (this.timer) {
+            clearInterval(this.timer);
+        }
     }
 }
 
 class SetupStep extends vscode.TreeItem {
     constructor(
-        public readonly label: string,
+        public readonly originalLabel: string,
         public readonly collapsibleState: vscode.TreeItemCollapsibleState,
         public readonly icon?: string
     ) {
-        super(label, collapsibleState);
+        super(originalLabel, collapsibleState);
         if (icon) {
             this.iconPath = new vscode.ThemeIcon(icon);
         }
+    }
+
+    updateLabel(startTime: number) {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        this.label = `[${elapsed}s] ${this.originalLabel}`;
     }
 }

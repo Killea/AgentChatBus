@@ -6,47 +6,74 @@ import { ChatPanel } from './views/chatPanel';
 import type { Thread } from './api/types';
 import { BusServerManager } from './busServerManager';
 import { SetupProvider } from './providers/setupProvider';
+import { McpLogProvider } from './providers/mcpLogProvider';
 
 let apiClient: AgentChatBusApiClient | undefined;
+let mcpLogProvider: McpLogProvider | undefined;
 let mainViewsInitialized = false;
 
-export async function activate(context: vscode.ExtensionContext) {
-    console.log('AgentChatBus extension is now active!');
+export function activate(context: vscode.ExtensionContext) {
+    console.log('[AgentChatBus] Activating extension...');
 
     const serverManager = new BusServerManager();
     const setupProvider = new SetupProvider();
+    mcpLogProvider = new McpLogProvider();
+    
     serverManager.setSetupProvider(setupProvider);
+    serverManager.setMcpLogProvider(mcpLogProvider);
     
     context.subscriptions.push(serverManager);
+    context.subscriptions.push(setupProvider);
+    context.subscriptions.push(mcpLogProvider);
+    
     context.subscriptions.push(
-        vscode.window.registerTreeDataProvider('agentchatbus.setup', setupProvider)
+        vscode.window.registerTreeDataProvider('agentchatbus.setup', setupProvider),
+        vscode.window.registerTreeDataProvider('agentchatbus.mcpLogs', mcpLogProvider)
     );
 
-    // Initial check/start
+    // Set initial context for agent filter
+    vscode.commands.executeCommand('setContext', 'agentchatbus:agentsFilterActive', true);
+
     const runSetup = async () => {
-        const isReady = await serverManager.ensureServerRunning();
-        if (isReady) {
-            initializeMainViews(context);
+        try {
+            console.log('[AgentChatBus] Starting setup process...');
+            const isReady = await serverManager.ensureServerRunning();
+            if (isReady) {
+                console.log('[AgentChatBus] Server is ready, initializing main views.');
+                initializeMainViews(context, serverManager);
+            } else {
+                console.warn('[AgentChatBus] Server failed to start.');
+            }
+        } catch (error) {
+            console.error('[AgentChatBus] Fatal error during setup:', error);
+            serverManager.log(`Fatal error: ${error}`, 'error');
         }
     };
 
     context.subscriptions.push(
         vscode.commands.registerCommand('agentchatbus.retrySetup', () => {
+            console.log('[AgentChatBus] Retry command triggered.');
             setupProvider.reset();
             runSetup();
         })
     );
 
-    // Register MCP provider (if supported)
+    // Register MCP provider (asynchronous definition provision)
     serverManager.registerMcpProvider(context);
 
-    runSetup();
+    // Start setup asynchronously to avoid blocking the activate() call
+    Promise.resolve().then(() => {
+        setTimeout(() => {
+            runSetup();
+        }, 500);
+    });
 }
 
-function initializeMainViews(context: vscode.ExtensionContext) {
+function initializeMainViews(context: vscode.ExtensionContext, serverManager: BusServerManager) {
     if (mainViewsInitialized) return;
     mainViewsInitialized = true;
 
+    console.log('[AgentChatBus] Initializing main views...');
     apiClient = new AgentChatBusApiClient();
     apiClient.connectSSE();
 
@@ -61,6 +88,10 @@ function initializeMainViews(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('agentchatbus.refreshThreads', () => threadsProvider.refresh()),
         vscode.commands.registerCommand('agentchatbus.refreshAgents', () => agentsProvider.refresh()),
+        vscode.commands.registerCommand('agentchatbus.toggleAgentFilter', () => agentsProvider.toggleRecentFilter()),
+        vscode.commands.registerCommand('agentchatbus.clearMcpLogs', () => {
+            mcpLogProvider?.clear();
+        }),
         vscode.commands.registerCommand('agentchatbus.filterThreads', async () => {
             const statuses = ['discuss', 'implement', 'review', 'done', 'closed', 'archived'];
             const currentFilter = threadsProvider.getStatusFilter();

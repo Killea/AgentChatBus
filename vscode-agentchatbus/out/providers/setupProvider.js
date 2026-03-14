@@ -39,16 +39,22 @@ class SetupProvider {
     _onDidChangeTreeData = new vscode.EventEmitter();
     onDidChangeTreeData = this._onDidChangeTreeData.event;
     steps = [];
+    startTime = 0;
+    timer;
     constructor() {
         this.reset();
+        // Force refresh every 500ms to update the elapsed time shown in labels
+        this.timer = setInterval(() => this.refresh(), 500);
     }
     reset() {
+        this.startTime = Date.now();
         this.steps = [
             new SetupStep('Starting AgentChatBus...', vscode.TreeItemCollapsibleState.None, 'play')
         ];
         this.refresh();
     }
     addLog(message, icon, description) {
+        console.log(`[SetupProvider] Log: ${message}`);
         const step = new SetupStep(message, vscode.TreeItemCollapsibleState.None, icon);
         step.description = description;
         this.steps.push(step);
@@ -66,25 +72,35 @@ class SetupProvider {
         this._onDidChangeTreeData.fire();
     }
     getTreeItem(element) {
+        element.updateLabel(this.startTime);
         return element;
     }
     getChildren(element) {
-        return this.steps;
+        return [...this.steps];
+    }
+    dispose() {
+        if (this.timer) {
+            clearInterval(this.timer);
+        }
     }
 }
 exports.SetupProvider = SetupProvider;
 class SetupStep extends vscode.TreeItem {
-    label;
+    originalLabel;
     collapsibleState;
     icon;
-    constructor(label, collapsibleState, icon) {
-        super(label, collapsibleState);
-        this.label = label;
+    constructor(originalLabel, collapsibleState, icon) {
+        super(originalLabel, collapsibleState);
+        this.originalLabel = originalLabel;
         this.collapsibleState = collapsibleState;
         this.icon = icon;
         if (icon) {
             this.iconPath = new vscode.ThemeIcon(icon);
         }
+    }
+    updateLabel(startTime) {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        this.label = `[${elapsed}s] ${this.originalLabel}`;
     }
 }
 //# sourceMappingURL=setupProvider.js.map

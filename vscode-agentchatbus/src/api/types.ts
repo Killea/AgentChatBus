@@ -37,6 +37,9 @@ export interface Agent {
     model?: string;
     description?: string;
     is_online: boolean;
+    last_heartbeat: string;
+    last_activity?: string;
+    last_activity_time?: string;
     capabilities?: string[];
     skills?: any[];
     system_prompt?: string;

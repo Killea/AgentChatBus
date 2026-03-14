@@ -41,6 +41,12 @@
           "name": "Agents",
           "icon": "$(robot)",
           "when": "agentchatbus:serverReady"
+        },
+        {
+          "id": "agentchatbus.mcpLogs",
+          "name": "MCP Server Logs",
+          "icon": "$(terminal)",
+          "when": "agentchatbus:serverReady && agentchatbus:mcpServerActive"
         }
       ]
     },
@@ -76,6 +82,16 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "agentchatbus.toggleAgentFilter",
+        "title": "Toggle Filter (Last Hour)",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "agentchatbus.clearMcpLogs",
+        "title": "Clear Logs",
+        "icon": "$(clear-all)"
+      },
+      {
         "command": "agentchatbus.filterThreads",
         "title": "Filter Threads",
         "icon": "$(filter)"
@@ -105,6 +121,16 @@
         {
           "command": "agentchatbus.refreshAgents",
           "when": "view == agentchatbus.agents",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentchatbus.toggleAgentFilter",
+          "when": "view == agentchatbus.agents",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentchatbus.clearMcpLogs",
+          "when": "view == agentchatbus.mcpLogs",
           "group": "navigation"
         }
       ]
