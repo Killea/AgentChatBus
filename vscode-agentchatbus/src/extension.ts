@@ -4,11 +4,50 @@ import { ThreadsTreeProvider } from './providers/threadsProvider';
 import { AgentsTreeProvider } from './providers/agentsProvider';
 import { ChatPanel } from './views/chatPanel';
 import type { Thread } from './api/types';
+import { BusServerManager } from './busServerManager';
+import { SetupProvider } from './providers/setupProvider';
 
-export function activate(context: vscode.ExtensionContext) {
+let apiClient: AgentChatBusApiClient | undefined;
+let mainViewsInitialized = false;
+
+export async function activate(context: vscode.ExtensionContext) {
     console.log('AgentChatBus extension is now active!');
 
-    const apiClient = new AgentChatBusApiClient();
+    const serverManager = new BusServerManager();
+    const setupProvider = new SetupProvider();
+    serverManager.setSetupProvider(setupProvider);
+    
+    context.subscriptions.push(serverManager);
+    context.subscriptions.push(
+        vscode.window.registerTreeDataProvider('agentchatbus.setup', setupProvider)
+    );
+
+    // Initial check/start
+    const runSetup = async () => {
+        const isReady = await serverManager.ensureServerRunning();
+        if (isReady) {
+            initializeMainViews(context);
+        }
+    };
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('agentchatbus.retrySetup', () => {
+            setupProvider.reset();
+            runSetup();
+        })
+    );
+
+    // Register MCP provider (if supported)
+    serverManager.registerMcpProvider(context);
+
+    runSetup();
+}
+
+function initializeMainViews(context: vscode.ExtensionContext) {
+    if (mainViewsInitialized) return;
+    mainViewsInitialized = true;
+
+    apiClient = new AgentChatBusApiClient();
     apiClient.connectSSE();
 
     const threadsProvider = new ThreadsTreeProvider(apiClient);
@@ -45,15 +84,19 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }),
         vscode.commands.registerCommand('agentchatbus.openThread', (thread: Thread) => {
-            if (thread) {
+            if (thread && apiClient) {
                 ChatPanel.createOrShow(thread, apiClient);
             }
         })
     );
 
     context.subscriptions.push({
-        dispose: () => apiClient.disconnectSSE()
+        dispose: () => apiClient?.disconnectSSE()
     });
 }
 
-export function deactivate() {}
+export function deactivate() {
+    if (apiClient) {
+        apiClient.disconnectSSE();
+    }
+}

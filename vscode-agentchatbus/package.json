@@ -5,7 +5,7 @@
   "version": "0.1.10",
   "icon": "bus_128.png",
   "engines": {
-    "vscode": "^1.90.0"
+    "vscode": "^1.93.0"
   },
   "categories": [
     "Other"
@@ -25,14 +25,22 @@
     "views": {
       "agentchatbus": [
         {
+          "id": "agentchatbus.setup",
+          "name": "Setup AgentChatBus",
+          "icon": "$(gear)",
+          "when": "!agentchatbus:serverReady"
+        },
+        {
           "id": "agentchatbus.threads",
           "name": "Threads",
-          "icon": "$(comment-discussion)"
+          "icon": "$(comment-discussion)",
+          "when": "agentchatbus:serverReady"
         },
         {
           "id": "agentchatbus.agents",
           "name": "Agents",
-          "icon": "$(robot)"
+          "icon": "$(robot)",
+          "when": "agentchatbus:serverReady"
         }
       ]
     },
@@ -43,6 +51,16 @@
           "type": "string",
           "default": "http://127.0.0.1:39765",
           "description": "AgentChatBus server URL"
+        },
+        "agentchatbus.autoStartBusServer": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically start the AgentChatBus server if it is not running."
+        },
+        "agentchatbus.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Path to the Python executable to use for starting the server."
         }
       }
     },
@@ -65,6 +83,11 @@
       {
         "command": "agentchatbus.openThread",
         "title": "Open Thread"
+      },
+      {
+        "command": "agentchatbus.retrySetup",
+        "title": "Retry Setup",
+        "icon": "$(refresh)"
       }
     ],
     "menus": {
