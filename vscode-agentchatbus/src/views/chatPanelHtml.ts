@@ -121,13 +121,12 @@ export function buildChatPanelHtml(
                     <div id="image-preview" class="hidden"></div>
                     <div id="composer-layout">
                         <div id="composer-side-panel">
-                            <div id="author-wrap">
-                                <label for="author-input">Name</label>
-                                <input id="author-input" type="text" maxlength="60" />
+                            <div id="author-wrap" class="tooltip-anchor" data-tooltip="Edit the human display name used for new messages">
+                                <input id="author-input" type="text" maxlength="60" aria-label="Human display name" />
                             </div>
                             <div class="toolbar-actions composer-side-actions">
-                                <button id="mention-button" class="icon-btn" title="Mention an agent in this thread" aria-label="Mention an agent in this thread">@</button>
-                                <button id="upload-button" class="icon-btn" title="Upload an image from file" aria-label="Upload an image from file">Image</button>
+                                <button id="mention-button" class="icon-btn tooltip-anchor" data-tooltip="Mention an agent in this thread" aria-label="Mention an agent in this thread">@</button>
+                                <button id="upload-button" class="icon-btn tooltip-anchor" data-tooltip="Upload an image from file" aria-label="Upload an image from file">Image</button>
                             </div>
                         </div>
                         <div id="composer-main-panel">
