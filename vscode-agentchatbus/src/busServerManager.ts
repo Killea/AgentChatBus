@@ -51,7 +51,8 @@ export class BusServerManager {
         try {
             const isRunning = await this.checkServer(serverUrl);
             if (isRunning) {
-                this.log('Server detected and responding.', 'check');
+                this.log('Server detected (Managed Externally). Logs cannot be captured.', 'warning');
+                this.log('Use the "Restart Server" button to relaunch and capture logs.', 'info');
                 this.setServerReady(true);
                 return true;
             }
