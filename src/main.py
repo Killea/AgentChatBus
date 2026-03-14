@@ -53,6 +53,7 @@ from src.thread_creation_service import (
     CreatorAuthError,
     CreatorNotFoundError,
 )
+from src.ide_ownership import IdeOwnershipManager
 from src.log_buffer import get_log_entries, install_std_stream_capture
 
 install_std_stream_capture()
@@ -201,6 +202,7 @@ def _trigger_process_shutdown() -> None:
 
 # Server start time — set in lifespan(), used by /api/metrics (UP-22)
 _start_time: datetime | None = None
+_ide_ownership = IdeOwnershipManager(os.getenv("AGENTCHATBUS_OWNER_BOOT_TOKEN"))
 
 
 async def _cleanup_events_loop():
@@ -986,6 +988,69 @@ async def api_logs(after: int = 0, limit: int = 200):
         "entries": entries,
         "next_cursor": next_cursor,
     }
+
+
+class IdeRegisterRequest(BaseModel):
+    instance_id: str
+    ide_label: str
+    claim_owner: bool = False
+    owner_boot_token: str | None = None
+
+
+class IdeSessionTokenRequest(BaseModel):
+    instance_id: str
+    session_token: str
+
+
+@app.get("/api/ide/status")
+async def api_ide_status(request: Request, instance_id: str | None = None, session_token: str | None = None):
+    if not _is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="IDE registration APIs are only available from localhost")
+    return _ide_ownership.snapshot(instance_id=instance_id, session_token=session_token)
+
+
+@app.post("/api/ide/register")
+async def api_ide_register(request: Request, body: IdeRegisterRequest):
+    if not _is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="IDE registration APIs are only available from localhost")
+    if not body.instance_id.strip():
+        raise HTTPException(status_code=400, detail="instance_id must not be empty")
+    if not body.ide_label.strip():
+        raise HTTPException(status_code=400, detail="ide_label must not be empty")
+    return _ide_ownership.register(
+        instance_id=body.instance_id.strip(),
+        ide_label=body.ide_label.strip(),
+        claim_owner=body.claim_owner,
+        owner_boot_token=body.owner_boot_token,
+    )
+
+
+@app.post("/api/ide/heartbeat")
+async def api_ide_heartbeat(request: Request, body: IdeSessionTokenRequest):
+    if not _is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="IDE registration APIs are only available from localhost")
+    try:
+        return _ide_ownership.heartbeat(body.instance_id.strip(), body.session_token)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+
+
+@app.post("/api/ide/unregister")
+async def api_ide_unregister(request: Request, body: IdeSessionTokenRequest):
+    if not _is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="IDE registration APIs are only available from localhost")
+    try:
+        result = _ide_ownership.unregister(body.instance_id.strip(), body.session_token)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+
+    if result.get("shutdown_requested"):
+        threading.Timer(0.2, _trigger_process_shutdown).start()
+    return result
 
 
 @app.get("/api/threads/{thread_id}/messages")
@@ -2831,9 +2896,16 @@ async def health():
 
 
 @app.post("/api/shutdown")
-async def api_shutdown(request: Request):
+async def api_shutdown(request: Request, body: IdeSessionTokenRequest):
     if not _is_loopback_request(request):
         raise HTTPException(status_code=403, detail="Shutdown is only allowed from localhost")
+
+    try:
+        _ide_ownership.authorize_shutdown(body.instance_id.strip(), body.session_token)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
 
     threading.Timer(0.2, _trigger_process_shutdown).start()
     return {"status": "accepted", "message": "AgentChatBus shutdown requested"}

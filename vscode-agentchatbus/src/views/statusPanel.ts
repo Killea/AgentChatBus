@@ -44,6 +44,7 @@ export class StatusPanel {
 
     private _getHtmlForWebview() {
         const m = this.metadata;
+        const ide = m.ide || {};
         const mcp = m.mcp || {};
         const attempts = Array.isArray(m.resolutionAttempts) ? m.resolutionAttempts : [];
         const uptime = m.startTime ? this._getUptime(new Date(m.startTime)) : 'N/A';
@@ -106,6 +107,19 @@ export class StatusPanel {
             <div><span class="label">Platform:</span> <span class="value">${m.platform} (${m.arch})</span></div>
             <div><span class="label">Node.js:</span> <span class="value">${m.nodeVersion}</span></div>
             <div><span class="label">VS Code:</span> <span class="value">${m.vscodeVersion}</span></div>
+        </div>
+
+        <div class="card">
+            <h2>🪪 IDE Ownership</h2>
+            <div><span class="label">Instance ID:</span> <span class="value">${ide.instanceId || 'N/A'}</span></div>
+            <div><span class="label">Label:</span> <span class="value">${ide.label || 'N/A'}</span></div>
+            <div><span class="label">Registered:</span> <span class="value">${ide.registered ? 'yes' : 'no'}</span></div>
+            <div><span class="label">Is Owner:</span> <span class="value">${ide.isOwner ? 'yes' : 'no'}</span></div>
+            <div><span class="label">Can Shutdown:</span> <span class="value">${ide.canShutdown ? 'yes' : 'no'}</span></div>
+            <div><span class="label">Owner Assignable:</span> <span class="value">${ide.ownershipAssignable ? 'yes' : 'no'}</span></div>
+            <div><span class="label">Current Owner:</span> <span class="value">${ide.ownerInstanceId || 'none'}</span></div>
+            <div><span class="label">Owner Label:</span> <span class="value">${ide.ownerLabel || 'none'}</span></div>
+            <div><span class="label">Registered IDEs:</span> <span class="value">${ide.registeredSessionsCount ?? 0}</span></div>
         </div>
 
         <div class="card">

@@ -50,11 +50,13 @@ let apiClient;
 let mcpLogProvider;
 let settingsProvider;
 let cursorConfigManager;
+let serverManagerInstance;
 let mainViewsInitialized = false;
 function activate(context) {
     console.log('[AgentChatBus] Activating extension...');
     chatPanel_1.ChatPanel.setExtensionPath(context.extensionPath);
     const serverManager = new busServerManager_1.BusServerManager();
+    serverManagerInstance = serverManager;
     cursorConfigManager = new cursorMcpConfig_1.CursorMcpConfigManager();
     const setupProvider = new setupProvider_1.SetupProvider();
     mcpLogProvider = new mcpLogProvider_1.McpLogProvider();
@@ -268,7 +270,10 @@ function initializeMainViews(context, serverManager, cursorConfigManager) {
         dispose: () => apiClient?.disconnectSSE()
     });
 }
-function deactivate() {
+async function deactivate() {
+    if (serverManagerInstance) {
+        await serverManagerInstance.handleIdeDeactivate();
+    }
     if (apiClient) {
         apiClient.disconnectSSE();
     }

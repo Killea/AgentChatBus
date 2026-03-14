@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as child_process from 'child_process';
 import * as fs from 'fs';
+import { randomUUID } from 'crypto';
 import { promisify } from 'util';
 import { SetupProvider } from './providers/setupProvider';
 import { McpLogProvider } from './providers/mcpLogProvider';
@@ -39,6 +40,21 @@ type ServerMetadata = {
     resolutionAttempts?: string[];
 };
 
+type IdeSessionApiState = {
+    instance_id?: string | null;
+    session_token?: string | null;
+    registered?: boolean;
+    ownership_assignable?: boolean;
+    owner_instance_id?: string | null;
+    owner_ide_label?: string | null;
+    is_owner?: boolean;
+    can_shutdown?: boolean;
+    registered_sessions_count?: number;
+    shutdown_requested?: boolean;
+    transferred_to?: string | null;
+    was_owner?: boolean;
+};
+
 export class BusServerManager {
     private static readonly MCP_PROVIDER_ID = 'agentchatbus.provider';
     private static readonly MCP_PROVIDER_LABEL = 'AgentChatBus Local Server';
@@ -52,6 +68,18 @@ export class BusServerManager {
     private mcpProviderRegistered = false;
     private externalLogPoller: NodeJS.Timeout | null = null;
     private externalLogCursor = 0;
+    private ideHeartbeatPoller: NodeJS.Timeout | null = null;
+    private readonly ideInstanceId = randomUUID();
+    private readonly ideLabel = vscode.env.appName || 'VS Code';
+    private ideSessionToken: string | null = null;
+    private ownerBootToken: string | null = null;
+    private ideSessionState: IdeSessionApiState = {
+        registered: false,
+        ownership_assignable: false,
+        is_owner: false,
+        can_shutdown: false,
+        registered_sessions_count: 0,
+    };
     private lastStartTime: Date | null = null;
     private serverMetadata: ServerMetadata = { resolutionAttempts: [] };
 
@@ -111,9 +139,11 @@ export class BusServerManager {
             if (isRunning) {
                 this.serverMetadata.startupMode = 'external-service';
                 this.serverMetadata.resolvedBy = 'Existing service detected via /health';
+                this.ownerBootToken = null;
                 this.recordResolutionAttempt('Detected an already-running AgentChatBus service via /health probe.');
                 this.log('Server detected (Managed Externally). Switching to shared log API.', 'warning');
                 this.startExternalLogPolling(serverUrl);
+                await this.ensureIdeSessionRegistered(false);
                 this.setServerReady(true);
                 return true;
             }
@@ -135,6 +165,19 @@ export class BusServerManager {
 
     async restartServer(): Promise<boolean> {
         this.log('Force restart initiated...', 'sync~spin');
+
+        if (this.ideSessionState.registered && !this.ideSessionState.can_shutdown) {
+            this.log('Restart denied because this IDE session does not currently hold shutdown ownership.', 'warning');
+            return false;
+        }
+
+        if (!this.serverProcess && this.serverMetadata.startupMode === 'external-service') {
+            const stopped = await this.stopExternalService();
+            if (!stopped) {
+                return false;
+            }
+        }
+
         if (this.serverProcess) {
             if (process.platform === 'win32' && this.serverProcess.pid) {
                 try {
@@ -149,6 +192,8 @@ export class BusServerManager {
         }
         this.setServerReady(false);
         this.stopExternalLogPolling();
+        this.stopIdeHeartbeat();
+        this.ideSessionToken = null;
         if (this.mcpLogProvider) {
             this.mcpLogProvider.clear();
             this.mcpLogProvider.setIsManaged(false);
@@ -167,6 +212,11 @@ export class BusServerManager {
     async stopServer(): Promise<boolean> {
         this.log('Force stop requested...', 'debug-stop');
 
+        if (this.ideSessionState.registered && !this.ideSessionState.can_shutdown) {
+            this.log('Force stop denied because this IDE session does not currently hold shutdown ownership.', 'warning');
+            return false;
+        }
+
         if (this.serverProcess) {
             if (process.platform === 'win32' && this.serverProcess.pid) {
                 try {
@@ -180,6 +230,8 @@ export class BusServerManager {
 
             this.serverProcess = null;
             this.stopExternalLogPolling();
+            this.stopIdeHeartbeat();
+            this.ideSessionToken = null;
             this.setServerReady(false);
             this.mcpLogProvider?.setIsManaged(false);
             void vscode.commands.executeCommand('setContext', 'agentchatbus:mcpServerActive', false);
@@ -199,8 +251,20 @@ export class BusServerManager {
         const serverUrl = this.getServerUrl();
         this.log(`Requesting shutdown from external AgentChatBus service at ${serverUrl}...`, 'debug-stop');
 
+        if (!this.ideSessionToken) {
+            this.log('Cannot request external shutdown because this IDE session is not registered.', 'warning');
+            return false;
+        }
+
         try {
-            const response = await fetch(`${serverUrl}/api/shutdown`, { method: 'POST' });
+            const response = await fetch(`${serverUrl}/api/shutdown`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    instance_id: this.ideInstanceId,
+                    session_token: this.ideSessionToken,
+                }),
+            });
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
@@ -214,6 +278,135 @@ export class BusServerManager {
             this.log(`Failed to stop external AgentChatBus service: ${message}`, 'error');
             return false;
         }
+    }
+
+    async handleIdeDeactivate(): Promise<void> {
+        await this.unregisterIdeSession();
+    }
+
+    private async ensureIdeSessionRegistered(claimOwner: boolean): Promise<void> {
+        const serverUrl = this.getServerUrl();
+        const requestBody = {
+            instance_id: this.ideInstanceId,
+            ide_label: this.ideLabel,
+            claim_owner: claimOwner,
+            owner_boot_token: claimOwner ? this.ownerBootToken : null,
+        };
+
+        for (let attempt = 1; attempt <= 5; attempt++) {
+            try {
+                const response = await fetch(`${serverUrl}/api/ide/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody),
+                });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const payload = await response.json() as IdeSessionApiState;
+                this.ideSessionToken = payload.session_token || null;
+                this.updateIdeSessionState(payload);
+                this.startIdeHeartbeat();
+                this.log(
+                    `IDE session registered. shutdownPermission=${payload.can_shutdown ? 'yes' : 'no'} owner=${payload.owner_instance_id || 'none'}`,
+                    'plug'
+                );
+                return;
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                this.log(`IDE registration attempt ${attempt} failed: ${message}`, 'warning');
+                await new Promise(resolve => setTimeout(resolve, 400));
+            }
+        }
+    }
+
+    private startIdeHeartbeat(): void {
+        if (!this.ideSessionToken || this.ideHeartbeatPoller) {
+            return;
+        }
+        this.ideHeartbeatPoller = setInterval(() => {
+            void this.sendIdeHeartbeat();
+        }, 15000);
+    }
+
+    private stopIdeHeartbeat(): void {
+        if (this.ideHeartbeatPoller) {
+            clearInterval(this.ideHeartbeatPoller);
+            this.ideHeartbeatPoller = null;
+        }
+    }
+
+    private async sendIdeHeartbeat(): Promise<void> {
+        if (!this.ideSessionToken) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`${this.getServerUrl()}/api/ide/heartbeat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    instance_id: this.ideInstanceId,
+                    session_token: this.ideSessionToken,
+                }),
+            });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const payload = await response.json() as IdeSessionApiState;
+            this.updateIdeSessionState(payload);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.log(`IDE heartbeat failed: ${message}`, 'warning');
+        }
+    }
+
+    private async unregisterIdeSession(): Promise<void> {
+        this.stopIdeHeartbeat();
+        if (!this.ideSessionToken) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`${this.getServerUrl()}/api/ide/unregister`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    instance_id: this.ideInstanceId,
+                    session_token: this.ideSessionToken,
+                }),
+            });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const payload = await response.json() as IdeSessionApiState;
+            this.updateIdeSessionState(payload);
+            if (payload.transferred_to) {
+                this.log(`Shutdown ownership transferred to IDE session ${payload.transferred_to}.`, 'info');
+            }
+            if (payload.shutdown_requested) {
+                this.log('Server acknowledged last-owner exit and scheduled shutdown.', 'stop-circle');
+            }
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.log(`IDE unregister failed during deactivation: ${message}`, 'warning');
+        } finally {
+            this.ideSessionToken = null;
+            this.updateIdeSessionState({
+                registered: false,
+                is_owner: false,
+                can_shutdown: false,
+                owner_instance_id: null,
+                owner_ide_label: null,
+            });
+        }
+    }
+
+    private updateIdeSessionState(payload: IdeSessionApiState): void {
+        this.ideSessionState = {
+            ...this.ideSessionState,
+            ...payload,
+        };
     }
 
     private setServerReady(ready: boolean) {
@@ -306,6 +499,17 @@ export class BusServerManager {
             arch: process.arch,
             nodeVersion: process.version,
             vscodeVersion: vscode.version,
+            ide: {
+                instanceId: this.ideInstanceId,
+                label: this.ideLabel,
+                registered: this.ideSessionState.registered ?? false,
+                isOwner: this.ideSessionState.is_owner ?? false,
+                canShutdown: this.ideSessionState.can_shutdown ?? false,
+                ownershipAssignable: this.ideSessionState.ownership_assignable ?? false,
+                ownerInstanceId: this.ideSessionState.owner_instance_id ?? null,
+                ownerLabel: this.ideSessionState.owner_ide_label ?? null,
+                registeredSessionsCount: this.ideSessionState.registered_sessions_count ?? 0,
+            },
             mcp: {
                 apiAvailable: typeof lm?.registerMcpServerDefinitionProvider === 'function',
                 providerRegistered: this.mcpProviderRegistered,
@@ -440,7 +644,12 @@ export class BusServerManager {
     }
 
     private async spawnServer(spec: LaunchSpec): Promise<boolean> {
-        const env = { ...process.env, ...(spec.env || {}) };
+        this.ownerBootToken = randomUUID();
+        const env = {
+            ...process.env,
+            ...(spec.env || {}),
+            AGENTCHATBUS_OWNER_BOOT_TOKEN: this.ownerBootToken,
+        };
         this.serverMetadata = {
             command: spec.command,
             args: spec.args,
@@ -506,6 +715,7 @@ export class BusServerManager {
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 if (await this.checkServer(serverUrl)) {
                     this.log('Server is online and ready.', 'check');
+                    await this.ensureIdeSessionRegistered(true);
                     return true;
                 }
                 retries--;
@@ -769,9 +979,7 @@ export class BusServerManager {
 
     dispose() {
         this.stopExternalLogPolling();
-        if (this.serverProcess) {
-            this.serverProcess.kill();
-        }
+        this.stopIdeHeartbeat();
         this.outputChannel.dispose();
     }
 }

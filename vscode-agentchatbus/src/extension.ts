@@ -15,6 +15,7 @@ let apiClient: AgentChatBusApiClient | undefined;
 let mcpLogProvider: McpLogProvider | undefined;
 let settingsProvider: SettingsProvider | undefined;
 let cursorConfigManager: CursorMcpConfigManager | undefined;
+let serverManagerInstance: BusServerManager | undefined;
 let mainViewsInitialized = false;
 
 export function activate(context: vscode.ExtensionContext) {
@@ -23,6 +24,7 @@ export function activate(context: vscode.ExtensionContext) {
     ChatPanel.setExtensionPath(context.extensionPath);
 
     const serverManager = new BusServerManager();
+    serverManagerInstance = serverManager;
     cursorConfigManager = new CursorMcpConfigManager();
     const setupProvider = new SetupProvider();
     mcpLogProvider = new McpLogProvider();
@@ -307,7 +309,10 @@ function initializeMainViews(context: vscode.ExtensionContext, serverManager: Bu
     });
 }
 
-export function deactivate() {
+export async function deactivate() {
+    if (serverManagerInstance) {
+        await serverManagerInstance.handleIdeDeactivate();
+    }
     if (apiClient) {
         apiClient.disconnectSSE();
     }
