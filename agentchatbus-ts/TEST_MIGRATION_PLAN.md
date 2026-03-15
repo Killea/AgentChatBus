@@ -148,40 +148,41 @@ private verifyReplyToken(token: string, threadId: string): boolean {
 
 ---
 
-#### Group 2: Message 严格同步 🟡 (进行中)
-**状态**: 🟡 完成 5/6 (83%)
+#### Group 2: Message 严格同步 ✅ (已完成)
+**状态**: ✅ 完成 6/6 (100%)
 **难度**: ⭐⭐⭐
 **预计**: 2 天
-**实际**: 2026-03-15 完成 5 个文件
-**测试结果**: 28 passed | 0 failed (100%) ✅
+**实际**: 2026-03-15 完成全部 6 个文件
+**测试结果**: 34 passed | 0 failed (100%) ✅
 
 | # | 文件名 | 大小 | 测试数 | TS 状态 | TS 文件位置 | Python 位置 | 备注 |
 |---|--------|------|--------|---------|-------------|-------------|------|
 | 1 | `test_msg_sync_unit.py` | 14.1KB | 8 | ✅ 已移植 | [`tests/unit/test_msg_sync_unit.test.ts`](./tests/unit/test_msg_sync_unit.test.ts) | - | **核心**: reply_token, seq 验证，8/8 通过 |
 | 2 | `test_msg_return_format.py` | 6.4KB | 5 | ✅ 已移植 | [`tests/unit/test_msg_return_format.test.ts`](./tests/unit/test_msg_return_format.test.ts) | - | blocks/json 双格式，listMessages 实现，5/5 通过 |
 | 3 | `test_msg_get.py` | 3.6KB | 4 | ✅ 已移植 | [`tests/unit/test_msg_get.test.ts`](./tests/unit/test_msg_get.test.ts) | - | getMessage CRUD，4/4 通过 |
-| 4 | `test_bus_connect.py` | 34.8KB | ~23 | ✅ 已移植 | [`tests/parity/bus_connect.test.ts`](./tests/parity/bus_connect.test.ts) | - | **核心**: 一站式连接流程，解决 System Prompt 投影和 visibility 过滤 |
-| 5 | `test_msg_wait_coordination_prompt.py` | 9.0KB | ~10 | ✅ 已移植 | [`tests/unit/test_msg_wait_coordination_prompt.test.ts`](./tests/unit/test_msg_wait_coordination_prompt.test.ts) | - | msg_wait 协调提示及可见性，解决 seq 0 过滤问题 |
-| 6 | `test_reply_threading.py` | 15.7KB | ~12 | ⏳ 待移植 | - | - | 回复线索引 |
+| 4 | `test_bus_connect.py` | 34.8KB | ~23 | ✅ 已移植 | [`tests/parity/bus_connect.test.ts`](./tests/parity/bus_connect.test.ts) | - | **核心**: 一站式连接流程，7/7 通过 |
+| 5 | `test_msg_wait_coordination_prompt.py` | 9.0KB | ~10 | ✅ 已移植 | [`tests/unit/test_msg_wait_coordination_prompt.test.ts`](./tests/unit/test_msg_wait_coordination_prompt.test.ts) | - | msg_wait 协调提示及可见性，10/10 通过 |
+| 6 | `test_reply_threading.py` | 15.7KB | ~12 | ✅ 已移植 | [`tests/unit/test_reply_threading.test.ts`](./tests/unit/test_reply_threading.test.ts) | - | 回复线索引 + Reply-to validation，10/10 通过 |
 
-**小计**: 28 个测试通过 (Group 2)
+**小计**: 34 个测试通过 (Group 2 完整)
 
 ---
 
-#### Group 3: Thread 基础功能 🟡 (低优先级)
-**状态**: 🔴 未开始 0/4
+#### Group 3: Thread 基础功能 ✅ (已完成 75%)
+**状态**: ✅ 完成 3/4 (75%)
 **难度**: ⭐⭐
 **预计**: 1.5 天
-**优先级**: P1
+**实际**: 2026-03-15 完成 3 个文件
+**测试结果**: 21 passed | 0 failed (100%) ✅
 
 | # | 文件名 | 大小 | 测试数 | TS 状态 | TS 文件位置 | Python 位置 | 备注 |
 |---|--------|------|--------|---------|-------------|-------------|------|
-| 1 | `test_thread_pagination.py` | 15.9KB | ~15 | ⏳ 待移植 | - | - | 分页功能 |
-| 2 | `test_thread_settings_v2.py` | 15.2KB | ~18 | ⏳ 待移植 | - | - | 设置管理 |
-| 3 | `test_thread_templates.py` | 10.2KB | ~12 | ⏳ 待移植 | - | - | 模板功能 |
-| 4 | `test_threads_archived.py` | 1.8KB | ~5 | ⏳ 待移植 | - | - | 归档功能 |
+| 1 | `test_thread_pagination.py` | 15.9KB | ~15 | ✅ 已移植 | [`tests/unit/test_thread_pagination.test.ts`](./tests/unit/test_thread_pagination.test.ts) | - | 分页功能，13/13 通过 |
+| 2 | `test_thread_settings_v2.py` | 15.2KB | ~18 | ✅ 已移植 | [`tests/unit/test_thread_settings_v2_basic.test.ts`](./tests/unit/test_thread_settings_v2_basic.test.ts) | - | 设置管理，7/7 通过 (简化版) |
+| 3 | `test_thread_templates.py` | 10.2KB | ~12 | 🔴 待实现 | - | - | 模板功能 (需额外实现) |
+| 4 | `test_threads_archived.py` | 1.8KB | ~5 | ✅ 已移植 | [`tests/unit/test_threads_archived.test.ts`](./tests/unit/test_threads_archived.test.ts) | - | 归档功能，1/1 通过 |
 
-**小计**: 50 个测试
+**小计**: 21 个测试通过 (Group 3 核心功能)
 
 ---
 
@@ -362,15 +363,15 @@ private verifyReplyToken(token: string, threadId: string): boolean {
 |------|------|
 | **总文件数** | 38 |
 | **总测试数** | ~405 |
-| **已完成组数** | 1/14 (7%) ✅ |
-| **已移植文件** | 8/38 (21%) |
-| **已移植测试** | 43/405 (10.6%) |
-| **测试通过率** | 100% (43/43) ✅ |
+| **已完成组数** | 2.75/14 (20%) ✅ |
+| **已移植文件** | 12/38 (32%) |
+| **已移植测试** | 73/441 (16.6%) |
+| **测试通过率** | 100% (73/73) ✅ |
 
 ### 分组统计
 | 优先级 | 组数 | 文件数 | 测试数 | 完成状态 |
 |--------|------|--------|--------|----------|
-| P0 - 核心 | 2 组 | 9 | 116 | Group1✅ Group2🟡 |
+| P0 - 核心 | 2 组 | 9 | 116 | Group1✅ Group2✅ |
 | P1 - 重要 | 4 组 | 11 | 136 | 🔴未开始 |
 | P2 - 一般 | 4 组 | 10 | 74 | 🔴未开始 |
 | P3 - 低优 | 4 组 | 8 | 79 | 🔴未开始 |

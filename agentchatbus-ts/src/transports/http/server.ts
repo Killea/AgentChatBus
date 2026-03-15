@@ -247,7 +247,14 @@ export function createHttpServer() {
       // Prefer structured BusError handling
       if (error instanceof SeqMismatchError || (error as any)?.detail?.error === 'SEQ_MISMATCH') {
         reply.code(409);
-        return { detail: (error as any).detail || { error: 'SEQ_MISMATCH' } };
+        const err = error as SeqMismatchError | any;
+        return { 
+          error: 'SEQ_MISMATCH',
+          current_seq: err.current_seq,
+          expected_last_seq: err.expected_last_seq,
+          new_messages_1st_read: err.new_messages,
+          action: 'READ_MESSAGES_THEN_CALL_MSG_WAIT'
+        };
       }
       if (error instanceof ReplyTokenReplayError || (error as any)?.detail?.error === 'TOKEN_REPLAY') {
         // Tests expect TOKEN_REPLAY to surface as a 400 with detail.error = 'TOKEN_REPLAY'

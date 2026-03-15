@@ -268,6 +268,106 @@ export class MemoryStore {
     return row ? this.rowToThreadRecord(row) : undefined;
   }
 
+  updateThreadStatus(threadId: string, status: string): boolean {
+    const thread = this.getThread(threadId);
+    if (!thread) {
+      return false;
+    }
+    this.threads.set(threadId, thread);
+    thread.status = status as ThreadStatus;
+    this.appendLog(`thread state updated: ${threadId} ${status}`);
+    eventBus.emit({ type: "thread.updated", payload: thread });
+    this.upsertThread(thread);
+    this.persistState();
+    return true;
+  }
+
+  listThreads(options?: {
+    status?: string;
+    includeArchived?: boolean;
+    limit?: number;
+    before?: string;
+  }): { threads: ThreadRecord[]; has_more: boolean; next_cursor?: string } {
+    const {
+      status,
+      includeArchived = true,
+      limit = 0,
+      before
+    } = options || {};
+
+    // Build WHERE clauses
+    const clauses: string[] = [];
+    const params: (string | number)[] = [];
+
+    if (status) {
+      clauses.push("status = ?");
+      params.push(status);
+    } else if (!includeArchived) {
+      clauses.push("status != 'archived'");
+    }
+
+    if (before) {
+      clauses.push("created_at < ?");
+      params.push(before);
+    }
+
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+    
+    // Hard cap at 200
+    const effectiveLimit = limit > 0 ? Math.min(limit, 200) : 0;
+
+    let sql = `SELECT id, topic, status, created_at, system_prompt, template_id FROM threads ${where} ORDER BY created_at DESC`;
+    
+    if (effectiveLimit > 0) {
+      sql += ` LIMIT ?`;
+      params.push(effectiveLimit + 1); // Fetch one extra to check has_more
+    }
+
+    const rows = this.persistenceDb.prepare(sql).all(...params) as Array<Record<string, unknown>>;
+    
+    let threads = rows.map(row => this.rowToThreadRecord(row));
+    let hasMore = false;
+    let nextCursor: string | undefined;
+
+    if (effectiveLimit > 0 && threads.length > effectiveLimit) {
+      hasMore = true;
+      threads = threads.slice(0, effectiveLimit);
+      nextCursor = threads[threads.length - 1].created_at;
+    }
+
+    return {
+      threads,
+      has_more: hasMore,
+      next_cursor: nextCursor
+    };
+  }
+
+  countThreads(options?: {
+    status?: string;
+    includeArchived?: boolean;
+  }): number {
+    const {
+      status,
+      includeArchived = true
+    } = options || {};
+
+    const clauses: string[] = [];
+    const params: (string | number)[] = [];
+
+    if (status) {
+      clauses.push("status = ?");
+      params.push(status);
+    } else if (!includeArchived) {
+      clauses.push("status != 'archived'");
+    }
+
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+    const sql = `SELECT COUNT(*) as count FROM threads ${where}`;
+    
+    const result = this.persistenceDb.prepare(sql).get(...params) as Record<string, unknown>;
+    return (result.count as number) || 0;
+  }
+
   setThreadStatus(threadId: string, status: ThreadStatus): boolean {
     const thread = this.getThread(threadId);
     if (!thread) {
@@ -752,7 +852,7 @@ export class MemoryStore {
     const currentSeq = this.getLatestSeq(threadId);
     const token = randomUUID();
     const issuedAt = Date.now();
-    const expiresAt = issuedAt + 300_000; // 5 minutes
+    const expiresAt = NON_EXPIRING_TOKEN_TS; // Match Python: tokens never expire (9999-12-31)
 
     const record: ReplyTokenRecord = {
       threadId,

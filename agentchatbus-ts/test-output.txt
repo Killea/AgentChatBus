@@ -1,0 +1,45 @@
+
+> agentchatbus-ts@0.0.1 test
+> vitest run tests/unit/test_thread_settings_v2_basic.test.ts
+
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mC:/Users/hankw/Documents/AgentChatBus/agentchatbus-ts[39m
+
+(node:24240) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ [31m鉂?[39m tests/unit/test_thread_settings_v2_basic.test.ts [2m([22m[2m7 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 20[2mms[22m[39m
+[31m   [31m脳[31m Thread Settings V2 Basic Tests[2m > [22mget thread settings returns defaults[39m[32m 10[2mms[22m[39m
+[31m     鈫?expected 300 to be 60 // Object.is equality[39m
+   [32m鉁?[39m Thread Settings V2 Basic Tests[2m > [22mupdate thread settings timeout[32m 2[2mms[22m[39m
+   [32m鉁?[39m Thread Settings V2 Basic Tests[2m > [22mupdate thread settings auto_administrator[32m 1[2mms[22m[39m
+   [32m鉁?[39m Thread Settings V2 Basic Tests[2m > [22mupdate thread settings switch_timeout[32m 1[2mms[22m[39m
+   [32m鉁?[39m Thread Settings V2 Basic Tests[2m > [22msettings persist across thread status change[32m 2[2mms[22m[39m
+   [32m鉁?[39m Thread Settings V2 Basic Tests[2m > [22mconcurrent updates last wins[32m 1[2mms[22m[39m
+   [32m鉁?[39m Thread Settings V2 Basic Tests[2m > [22mget settings for non-existent thread returns undefined[32m 1[2mms[22m[39m
+
+鈳幆鈳幆鈳幆鈳?[39m Failed Tests 1 鈳幆鈳幆鈳幆鈳?[39m
+
+ FAIL  tests/unit/test_thread_settings_v2_basic.test.ts > Thread Settings V2 Basic Tests > get thread settings returns defaults
+AssertionError: expected 300 to be 60 // Object.is equality
+
+- Expected
++ Received
+
+- 60
++ 300
+
+ 鉂?[22m tests/unit/test_thread_settings_v2_basic.test.ts:39:46
+     37|         if (settings) {
+     38|             expect(settings.auto_administrator_enabled).toBe(true);
+     39|             expect(settings.timeout_seconds).toBe(60);
+       |                                              ^
+     40|             expect(settings.switch_timeout_seconds).toBe(300); // Defa鈥?     41|         }
+
+鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆[1/1]鈳?[22m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m6 passed[39m[22m[90m (7)[39m
+[2m   Start at [22m 18:45:01
+[2m   Duration [22m 689ms[2m (transform 142ms, setup 0ms, collect 219ms, tests 20ms, environment 0ms, prepare 173ms)[22m
+
