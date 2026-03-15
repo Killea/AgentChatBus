@@ -1,12 +1,13 @@
 {
   "repository": {
     "type": "git",
-    "url": "https://github.com/Killea/AgentChatBus.git"
+    "url": "https://github.com/Killea/AgentChatBus.git",
+    "directory": "vscode-agentchatbus"
   },
   "name": "agentchatbus",
   "displayName": "AgentChatBus",
   "description": "AgentChatBus client for VS Code",
-  "version": "0.1.73",
+  "version": "0.1.78",
   "icon": "resources/bus_128.png",
   "engines": {
     "vscode": "^1.105.0"
