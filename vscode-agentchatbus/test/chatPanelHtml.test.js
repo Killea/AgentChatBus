@@ -48,8 +48,8 @@ test('chat panel html keeps mermaid support without CSP worker breakage', () => 
   assert.match(html, /<script src="vscode-resource:\/panel\.js"><\/script>/);
   assert.match(html, /<input id="search-input" type="search" placeholder="Search this thread" spellcheck="false" \/>/);
   assert.match(html, /<div id="search-counter">0 \/ 0<\/div>/);
-  assert.match(html, /title="Previous match" aria-label="Previous match">⬆️<\/button>/);
-  assert.match(html, /title="Next match" aria-label="Next match">⬇️<\/button>/);
+  assert.match(html, /data-tooltip="Previous match" aria-label="Previous match">\s*<svg class="button-icon"/);
+  assert.match(html, /data-tooltip="Next match" aria-label="Next match">\s*<svg class="button-icon"/);
   assert.match(html, /data-thread-topic="Topic &lt;unsafe&gt;"/);
   assert.match(html, /data-tooltip="Edit the human display name used for new messages"/);
   assert.match(html, /data-tooltip="Mention an agent in this thread" aria-label="Mention an agent in this thread">@<\/button>/);

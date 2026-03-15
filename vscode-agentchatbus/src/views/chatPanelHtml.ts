@@ -99,8 +99,16 @@ export function buildChatPanelHtml(
                         <input id="search-input" type="search" placeholder="Search this thread" spellcheck="false" />
                         <div id="search-counter">0 / 0</div>
                         <div class="chat-header-actions">
-                            <button id="search-prev" class="icon-btn icon-only-btn" title="Previous match" aria-label="Previous match">⬆️</button>
-                            <button id="search-next" class="icon-btn icon-only-btn" title="Next match" aria-label="Next match">⬇️</button>
+                            <button id="search-prev" class="icon-btn icon-only-btn tooltip-anchor" data-tooltip="Previous match" aria-label="Previous match">
+                                <svg class="button-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                                    <path d="M8 3 3.5 7.5l.9.9L7.25 5.6V13h1.5V5.6l2.85 2.8.9-.9Z" fill="currentColor" />
+                                </svg>
+                            </button>
+                            <button id="search-next" class="icon-btn icon-only-btn tooltip-anchor" data-tooltip="Next match" aria-label="Next match">
+                                <svg class="button-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                                    <path d="M8 13l4.5-4.5-.9-.9-2.85 2.8V3h-1.5v7.4L4.4 7.6l-.9.9Z" fill="currentColor" />
+                                </svg>
+                            </button>
                         </div>
                     </div>
                 </header>
