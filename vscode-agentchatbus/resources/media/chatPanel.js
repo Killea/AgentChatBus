@@ -68,6 +68,7 @@
     refs.replyPreview = document.getElementById('reply-preview');
     refs.mentionMenu = document.getElementById('mention-menu');
     refs.reactionMenu = document.getElementById('reaction-menu');
+    refs.uiTooltip = document.getElementById('ui-tooltip');
     refs.modalBackdrop = document.getElementById('modal-backdrop');
     refs.modalTitle = document.getElementById('modal-title');
     refs.modalContent = document.getElementById('modal-content');
@@ -132,6 +133,35 @@
         hideReactionMenu();
       }
     });
+
+    document.addEventListener('mouseover', (event) => {
+      const anchor = event.target.closest('.tooltip-anchor[data-tooltip]');
+      if (!anchor) return;
+      showCustomTooltip(anchor);
+    });
+
+    document.addEventListener('mouseout', (event) => {
+      const anchor = event.target.closest('.tooltip-anchor[data-tooltip]');
+      if (!anchor) return;
+      if (anchor.contains(event.relatedTarget)) return;
+      hideCustomTooltip();
+    });
+
+    document.addEventListener('focusin', (event) => {
+      const anchor = event.target.closest('.tooltip-anchor[data-tooltip]');
+      if (!anchor) return;
+      showCustomTooltip(anchor);
+    });
+
+    document.addEventListener('focusout', (event) => {
+      const anchor = event.target.closest('.tooltip-anchor[data-tooltip]');
+      if (!anchor) return;
+      if (anchor.contains(event.relatedTarget)) return;
+      hideCustomTooltip();
+    });
+
+    window.addEventListener('scroll', hideCustomTooltip, true);
+    window.addEventListener('resize', hideCustomTooltip);
 
     window.addEventListener('message', handleHostMessage);
 
@@ -1037,6 +1067,51 @@
       left: Math.max(12, Math.min(buttonRect.left, composerRect.left)),
       bottom: Math.max(buttonRect.bottom, composerRect.top),
     };
+  }
+
+  function showCustomTooltip(anchor) {
+    if (!refs.uiTooltip) {
+      return;
+    }
+
+    const text = anchor.getAttribute('data-tooltip');
+    if (!text) {
+      hideCustomTooltip();
+      return;
+    }
+
+    refs.uiTooltip.textContent = text;
+    refs.uiTooltip.classList.remove('hidden');
+
+    const anchorRect = anchor.getBoundingClientRect();
+    const tooltipRect = refs.uiTooltip.getBoundingClientRect();
+    const margin = 12;
+    const gap = 10;
+
+    let left = anchorRect.left + (anchorRect.width / 2) - (tooltipRect.width / 2);
+    left = Math.max(margin, Math.min(window.innerWidth - tooltipRect.width - margin, left));
+
+    let top = anchorRect.top - tooltipRect.height - gap;
+    let side = 'top';
+    if (top < margin) {
+      top = Math.min(window.innerHeight - tooltipRect.height - margin, anchorRect.bottom + gap);
+      side = 'bottom';
+    }
+
+    refs.uiTooltip.dataset.side = side;
+    refs.uiTooltip.style.left = `${left}px`;
+    refs.uiTooltip.style.top = `${top}px`;
+  }
+
+  function hideCustomTooltip() {
+    if (!refs.uiTooltip) {
+      return;
+    }
+    refs.uiTooltip.classList.add('hidden');
+    refs.uiTooltip.textContent = '';
+    refs.uiTooltip.style.left = '';
+    refs.uiTooltip.style.top = '';
+    refs.uiTooltip.dataset.side = 'top';
   }
 
   function showReactionMenu(messageId, anchor) {

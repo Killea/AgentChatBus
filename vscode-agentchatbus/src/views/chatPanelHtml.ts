@@ -146,6 +146,7 @@ export function buildChatPanelHtml(
                         <button data-reaction="👀">👀</button>
                         <button data-reaction="✅">✅</button>
                     </div>
+                    <div id="ui-tooltip" class="ui-tooltip hidden" role="tooltip"></div>
                 </section>
             </div>
 

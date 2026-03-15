@@ -652,17 +652,9 @@ textarea {
   margin-top: 2px;
 }
 
-.tooltip-anchor {
-  position: relative;
-}
-
-.tooltip-anchor::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 10px);
-  transform: translateX(-50%) translateY(4px);
-  min-width: max-content;
+.ui-tooltip {
+  position: fixed;
+  z-index: 1300;
   max-width: 220px;
   padding: 6px 8px;
   border-radius: 8px;
@@ -673,38 +665,29 @@ textarea {
   line-height: 1.35;
   text-align: center;
   white-space: normal;
-  opacity: 0;
   pointer-events: none;
-  transition: opacity 120ms ease, transform 120ms ease;
-  z-index: 1300;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 
-.tooltip-anchor::before {
+.ui-tooltip::after {
   content: '';
   position: absolute;
   left: 50%;
-  bottom: calc(100% + 4px);
   width: 8px;
   height: 8px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 94%, black 6%);
   border-left: 1px solid var(--vscode-panel-border);
   border-bottom: 1px solid var(--vscode-panel-border);
-  background: color-mix(in srgb, var(--vscode-editor-background) 94%, black 6%);
   transform: translateX(-50%) rotate(-45deg);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 120ms ease, transform 120ms ease;
-  z-index: 1299;
 }
 
-.tooltip-anchor:hover::after,
-.tooltip-anchor:hover::before,
-.tooltip-anchor:focus-visible::after,
-.tooltip-anchor:focus-visible::before,
-.tooltip-anchor:focus-within::after,
-.tooltip-anchor:focus-within::before {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
+.ui-tooltip[data-side='top']::after {
+  bottom: -5px;
+}
+
+.ui-tooltip[data-side='bottom']::after {
+  top: -5px;
+  transform: translateX(-50%) rotate(135deg);
 }
 
 .menu-empty {
