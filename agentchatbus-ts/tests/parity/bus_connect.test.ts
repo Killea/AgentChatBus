@@ -2,18 +2,21 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { exec, ChildProcess } from 'child_process';
 
 const PORT = 39766; // different port for tests
 const BASE_URL = `http://127.0.0.1:${PORT}`;
-const DB_PATH = path.join(__dirname, 'bus_connect.test.db');
+let DB_PATH = path.join(__dirname, 'bus_connect.test.db');
 
 describe('Bus Connect Parity Tests', () => {
     let serverProcess: ChildProcess;
 
     beforeEach(async () => {
-        if (fs.existsSync(DB_PATH)) fs.unlinkSync(DB_PATH);
-        
+        // Use a per-test temp DB file to avoid Windows file-lock/unlink races
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "agentchatbus-"));
+        DB_PATH = path.join(tmpDir, `bus_connect-${randomUUID().slice(0,8)}.db`);
+
         // Start server in a separate process
         serverProcess = exec(`npx tsx src/cli/index.ts serve`, {
             env: {
@@ -40,10 +43,12 @@ describe('Bus Connect Parity Tests', () => {
 
     afterEach(() => {
         if (serverProcess) serverProcess.kill();
-        if (fs.existsSync(DB_PATH)) {
-            try {
-                // fs.unlinkSync(DB_PATH); // keep for debugging if needed, or delete
-            } catch (e) {}
+        try {
+            if (fs.existsSync(DB_PATH)) fs.unlinkSync(DB_PATH);
+            const parent = path.dirname(DB_PATH);
+            if (fs.existsSync(parent)) fs.rmdirSync(parent);
+        } catch (e) {
+            // ignore cleanup errors
         }
     });
 

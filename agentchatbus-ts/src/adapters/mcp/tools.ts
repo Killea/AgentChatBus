@@ -519,120 +519,22 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       const agentId = typeof args.agent_id === "string" ? args.agent_id : undefined;
       const token = typeof args.token === "string" ? args.token : undefined;
       const timeoutMs = typeof args.timeout_ms === "number" ? args.timeout_ms : 300_000;
-      const forAgent = typeof args.for_agent === "string" ? args.for_agent : undefined;
-      const returnFormat = typeof args.return_format === "string" ? args.return_format : "blocks";
-      const includeAttachments = typeof args.include_attachments === "boolean" ? args.include_attachments : true;
 
       // Verify credentials if provided
-      let verifiedAgent = false;
       if (agentId && token) {
-        verifiedAgent = memoryStore.verifyAgentToken(agentId, token);
-        if (!verifiedAgent) {
+        const ok = memoryStore.verifyAgentToken(agentId, token);
+        if (!ok) {
           return { error: "InvalidCredentials", detail: "Invalid agent_id/token for msg_wait." };
         }
       }
 
-      // Get current latest seq
-      const thread = memoryStore.getThread(threadId);
-      if (!thread) {
-        return { error: "Thread not found" };
+      try {
+        // Delegate to MemoryStore.waitForMessages which records wait states
+        const result = memoryStore.waitForMessages({ threadId, afterSeq, agentId, timeoutMs });
+        return result;
+      } catch (err) {
+        return { error: (err as Error).message };
       }
-
-      const startTime = Date.now();
-      let lastHeartbeat = startTime;
-      const HEARTBEAT_INTERVAL = 40_000; // 40 seconds
-
-      // Polling loop
-      while (Date.now() - startTime < timeoutMs) {
-        // Check for refresh request or fast return scenarios
-        const messages = memoryStore.getMessages(threadId, afterSeq);
-        
-        // Filter by for_agent if specified
-        let filteredMessages = messages;
-        if (forAgent && messages.length > 0) {
-          filteredMessages = messages.filter(m => {
-            const meta = m.metadata as any;
-            return meta?.handoff_target === forAgent;
-          });
-        }
-
-        if (filteredMessages.length > 0) {
-          // Exit wait state when returning messages
-          if (verifiedAgent && agentId) {
-            memoryStore.exitWaitState(threadId, agentId);
-          }
-
-          // Issue fresh sync context
-          const sync = memoryStore.issueSyncContext(threadId, verifiedAgent && agentId ? agentId : undefined, "msg_wait");
-
-          if (returnFormat === "blocks") {
-            const blocks: any[] = [];
-            blocks.push({
-              type: "text",
-              text: JSON.stringify({
-                type: "sync_context",
-                current_seq: sync.current_seq,
-                reply_token: sync.reply_token,
-                reply_window: sync.reply_window
-              })
-            });
-            for (const msg of filteredMessages) {
-              blocks.push({
-                type: "text",
-                text: `[${msg.seq}] ${msg.author_name || msg.author} (${msg.role}) ${msg.created_at}`
-              });
-              if (msg.content) {
-                blocks.push({ type: "text", text: msg.content });
-              }
-            }
-            return { messages: blocks };
-          } else {
-            return {
-              messages: filteredMessages.map(m => ({
-                msg_id: m.id,
-                seq: m.seq,
-                author: m.author,
-                content: m.content,
-                created_at: m.created_at
-              })),
-              current_seq: sync.current_seq,
-              reply_token: sync.reply_token,
-              reply_window: sync.reply_window
-            };
-          }
-        }
-
-        // Heartbeat refresh
-        if (Date.now() - lastHeartbeat >= HEARTBEAT_INTERVAL && verifiedAgent && agentId && token) {
-          memoryStore.heartbeatAgent(agentId, token);
-          lastHeartbeat = Date.now();
-        }
-
-        // Wait for next message or timeout
-        await new Promise<void>((resolve) => {
-          const timeout = setTimeout(resolve, 1000); // Poll every 1s
-          const unsubscribe = eventBus.subscribe((event) => {
-            if (event.type === "msg.new" && (event.payload as any).thread_id === threadId) {
-              clearTimeout(timeout);
-              unsubscribe();
-              resolve();
-            }
-          });
-        });
-      }
-
-      // Timeout - return empty with sync context
-      if (verifiedAgent && agentId) {
-        memoryStore.exitWaitState(threadId, agentId);
-      }
-      const sync = memoryStore.issueSyncContext(threadId, verifiedAgent && agentId ? agentId : undefined, "msg_wait");
-      
-      return {
-        messages: [],
-        current_seq: sync.current_seq,
-        reply_token: sync.reply_token,
-        reply_window: sync.reply_window
-      };
     }
     case "template_list": {
       const templates = memoryStore.getTemplates();

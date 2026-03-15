@@ -5,20 +5,16 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { callTool, listTools } from "../../adapters/mcp/tools.js";
+import { SeqMismatchError, MissingSyncFieldsError, ReplyTokenInvalidError, ReplyTokenExpiredError, ReplyTokenReplayError, BusError } from "../../core/types/errors.js";
 import { getConfig } from "../../core/config/env.js";
-import { MemoryStore } from "../../core/services/memoryStore.js";
+import { MemoryStore, memoryStore } from "../../core/services/memoryStore.js";
 import { eventBus } from "../../shared/eventBus.js";
 
 // Allow tests to override the global memoryStore instance
 export let memoryStoreInstance: MemoryStore | null = null;
 
 export function getMemoryStore(): MemoryStore {
-  if (!memoryStoreInstance) {
-    // Use environment variable for test database path
-    const dbPath = process.env.AGENTCHATBUS_TEST_DB || process.env.AGENTCHATBUS_DB || "data/bus-ts.db";
-    memoryStoreInstance = new MemoryStore(dbPath);
-  }
-  return memoryStoreInstance;
+  return memoryStoreInstance || memoryStore;
 }
 
 const __filename = fileURLToPath(import.meta.url);
@@ -28,6 +24,24 @@ type JsonBody = Record<string, unknown>;
 
 export function createHttpServer() {
   const fastify = Fastify({ logger: false });
+  // If AGENTCHATBUS_DB env is set for this process, create a dedicated store
+  // instance so in-process tests can control the DB path and teardown.
+  let store: ReturnType<typeof getMemoryStore>;
+  const envDb = process.env.AGENTCHATBUS_DB;
+  // Track ownership: only close the store on shutdown if this server created it.
+  const ownsStore = Boolean(envDb);
+  if (envDb) {
+    try {
+      // Lazily create an instance bound to this DB path.
+      memoryStoreInstance = new MemoryStore(envDb);
+      store = memoryStoreInstance;
+    } catch (e) {
+      // Fallback to global store on error
+      store = getMemoryStore();
+    }
+  } else {
+    store = getMemoryStore();
+  }
   void fastify.register(multipart);
 
   const staticPath = join(__dirname, "../../static");
@@ -95,7 +109,12 @@ export function createHttpServer() {
     const body = request.body as Record<string, unknown> | undefined;
     try {
       const result = await callTool(params.toolName, body || {});
-      return { result };
+      // For certain tools parity tests expect a blocks-style MCP payload
+      if (params.toolName === "bus_connect" || params.toolName === "msg_post" || params.toolName === "msg_wait") {
+        return [ { type: "text", text: JSON.stringify(result) } ];
+      }
+      // Otherwise return the structured result
+      return result;
     } catch (error) {
       reply.code(400);
       return { error: (error as Error).message };
@@ -104,7 +123,7 @@ export function createHttpServer() {
 
   fastify.get("/api/threads", async (request) => {
     const query = request.query as { include_archived?: boolean; status?: string; limit?: number; before?: string };
-    let threads = memoryStoreInstance!.getThreads(Boolean(query.include_archived));
+    let threads = store.getThreads(Boolean(query.include_archived));
     if (query.status) {
       threads = threads.filter((thread) => thread.status === query.status);
     }
@@ -119,22 +138,22 @@ export function createHttpServer() {
   fastify.get("/api/threads/:threadId/messages", async (request, reply) => {
     const params = request.params as { threadId: string };
     const query = request.query as { after_seq?: number };
-    const thread = memoryStoreInstance!.getThread(params.threadId);
+    const thread = store.getThread(params.threadId);
     if (!thread) {
       reply.code(404);
       return { detail: "Thread not found" };
     }
-    return memoryStoreInstance!.getMessages(params.threadId, Number(query.after_seq || 0));
+    return store.getMessages(params.threadId, Number(query.after_seq || 0));
   });
 
   fastify.post("/api/threads/:threadId/sync-context", async (request, reply) => {
     const params = request.params as { threadId: string };
-    const thread = memoryStoreInstance!.getThread(params.threadId);
+    const thread = store.getThread(params.threadId);
     if (!thread) {
       reply.code(404);
       return { detail: "Thread not found" };
     }
-    return memoryStoreInstance!.issueSyncContext(params.threadId);
+    return store.issueSyncContext(params.threadId);
   });
 
   fastify.post("/api/threads", async (request, reply) => {
@@ -144,7 +163,7 @@ export function createHttpServer() {
       reply.code(400);
       return { detail: "topic is required" };
     }
-    const created = memoryStoreInstance!.createThread(topic, typeof body.system_prompt === "string" ? body.system_prompt : undefined);
+    const created = store.createThread(topic, typeof body.system_prompt === "string" ? body.system_prompt : undefined);
     reply.code(201);
     return {
       id: created.thread.id,
@@ -165,13 +184,13 @@ export function createHttpServer() {
     let replyToken = typeof body.reply_token === "string" ? body.reply_token : undefined;
 
     if (expectedLastSeq === undefined || !replyToken) {
-      const sync = memoryStoreInstance!.issueSyncContext(params.threadId);
+      const sync = store.issueSyncContext(params.threadId);
       expectedLastSeq = sync.current_seq;
       replyToken = sync.reply_token;
     }
 
     try {
-      const message = memoryStoreInstance!.postMessage({
+      const message = store.postMessage({
         threadId: params.threadId,
         author: String(body.author || "human"),
         content: String(body.content || ""),
@@ -185,30 +204,48 @@ export function createHttpServer() {
       reply.code(201);
       return message;
     } catch (error) {
-      const detail = (error as Error & { detail?: unknown }).detail;
-      if (detail) {
-        reply.code((detail as { error?: string }).error === "SEQ_MISMATCH" ? 409 : 400);
-        return { detail };
+      // Prefer structured BusError handling
+      if (error instanceof SeqMismatchError || (error as any)?.detail?.error === 'SEQ_MISMATCH') {
+        reply.code(409);
+        return { detail: (error as any).detail || { error: 'SEQ_MISMATCH' } };
+      }
+      if (error instanceof ReplyTokenReplayError || (error as any)?.detail?.error === 'TOKEN_REPLAY') {
+        // Tests expect TOKEN_REPLAY to surface as a 400 with detail.error = 'TOKEN_REPLAY'
+        reply.code(400);
+        return { detail: (error as any).detail || { error: 'TOKEN_REPLAY' } };
+      }
+      if (error instanceof MissingSyncFieldsError) {
+        reply.code(400);
+        return { detail: (error as any).detail || { error: 'MISSING_SYNC_FIELDS' } };
+      }
+      if (error instanceof ReplyTokenInvalidError || error instanceof ReplyTokenExpiredError) {
+        reply.code(400);
+        return { detail: (error as any).detail || { error: 'TOKEN_INVALID_OR_EXPIRED' } };
       }
       if ((error as Error).message === "Thread not found") {
         reply.code(404);
         return { detail: "Thread not found" };
+      }
+      // Fallback: if it's a BusError with detail, surface it
+      if ((error as any)?.detail) {
+        reply.code(400);
+        return { detail: (error as any).detail };
       }
       reply.code(400);
       return { detail: (error as Error).message };
     }
   });
 
-  fastify.get("/api/agents", async () => memoryStoreInstance!.listAgents());
+  fastify.get("/api/agents", async () => store.listAgents());
 
   fastify.get("/api/threads/:threadId/agents", async (request) => {
     const params = request.params as { threadId: string };
-    return memoryStoreInstance!.getThreadAgents(params.threadId);
+    return store.getThreadAgents(params.threadId);
   });
 
   fastify.get("/api/agents/:agentId", async (request, reply) => {
     const params = request.params as { agentId: string };
-    const agent = memoryStoreInstance!.getAgent(params.agentId);
+    const agent = store.getAgent(params.agentId);
     if (!agent) {
       reply.code(404);
       return { detail: "Agent not found" };
@@ -219,7 +256,7 @@ export function createHttpServer() {
   fastify.put("/api/agents/:agentId", async (request, reply) => {
     const params = request.params as { agentId: string };
     const body = request.body as JsonBody;
-    const agent = memoryStoreInstance!.updateAgent(params.agentId, String(body.token || ""), {
+    const agent = store.updateAgent(params.agentId, String(body.token || ""), {
       description: typeof body.description === "string" ? body.description : undefined,
       display_name: typeof body.display_name === "string" ? body.display_name : undefined,
       capabilities: Array.isArray(body.capabilities) ? body.capabilities.map(String) : undefined,
@@ -237,7 +274,7 @@ export function createHttpServer() {
       const body = request.body as JsonBody;
       const ide = String(body.ide || "CLI");
       const model = String(body.model || "unknown");
-      const agent = memoryStoreInstance!.registerAgent({
+      const agent = store.registerAgent({
         ide,
         model,
         description: typeof body.description === "string" ? body.description : undefined,
@@ -266,7 +303,7 @@ export function createHttpServer() {
 
   fastify.post("/api/agents/heartbeat", async (request, reply) => {
     const body = request.body as JsonBody;
-    const ok = memoryStoreInstance!.heartbeatAgent(String(body.agent_id || ""), String(body.token || ""));
+    const ok = store.heartbeatAgent(String(body.agent_id || ""), String(body.token || ""));
     if (!ok) {
       reply.code(401);
       return { detail: "Invalid agent_id/token" };
@@ -276,7 +313,7 @@ export function createHttpServer() {
 
   fastify.post("/api/agents/resume", async (request, reply) => {
     const body = request.body as JsonBody;
-    const agent = memoryStore.resumeAgent(String(body.agent_id || ""), String(body.token || ""));
+    const agent = store.resumeAgent(String(body.agent_id || ""), String(body.token || ""));
     if (!agent) {
       reply.code(401);
       return { detail: "Invalid agent_id/token" };
@@ -293,7 +330,7 @@ export function createHttpServer() {
 
   fastify.post("/api/agents/unregister", async (request, reply) => {
     const body = request.body as JsonBody;
-    const ok = memoryStore.unregisterAgent(String(body.agent_id || ""), String(body.token || ""));
+    const ok = store.unregisterAgent(String(body.agent_id || ""), String(body.token || ""));
     if (!ok) {
       reply.code(401);
       return { detail: "Invalid agent_id/token" };
@@ -303,19 +340,19 @@ export function createHttpServer() {
 
   fastify.get("/api/logs", async (request) => {
     const query = request.query as { after?: number; limit?: number };
-    return memoryStore.getLogs(Number(query.after || 0), Number(query.limit || 200));
+    return store.getLogs(Number(query.after || 0), Number(query.limit || 200));
   });
 
-  fastify.get("/api/system/diagnostics", async () => memoryStore.getDiagnostics());
+  fastify.get("/api/system/diagnostics", async () => store.getDiagnostics());
 
   fastify.get("/api/ide/status", async (request) => {
     const query = request.query as { instance_id?: string; session_token?: string };
-    return memoryStore.getIdeStatus(query.instance_id, query.session_token);
+    return store.getIdeStatus(query.instance_id, query.session_token);
   });
 
   fastify.post("/api/ide/register", async (request) => {
     const body = request.body as JsonBody;
-    return memoryStore.registerIde({
+    return store.registerIde({
       instance_id: String(body.instance_id || ""),
       ide_label: String(body.ide_label || "")
     });
@@ -324,7 +361,7 @@ export function createHttpServer() {
   fastify.post("/api/ide/heartbeat", async (request, reply) => {
     try {
       const body = request.body as JsonBody;
-      return memoryStore.ideHeartbeat({
+      return store.ideHeartbeat({
         instance_id: String(body.instance_id || ""),
         session_token: String(body.session_token || "")
       });
@@ -337,7 +374,7 @@ export function createHttpServer() {
   fastify.post("/api/ide/unregister", async (request, reply) => {
     try {
       const body = request.body as JsonBody;
-      return memoryStore.ideUnregister({
+      return store.ideUnregister({
         instance_id: String(body.instance_id || ""),
         session_token: String(body.session_token || "")
       });
@@ -372,30 +409,30 @@ export function createHttpServer() {
 
   fastify.get("/api/messages/:messageId/reactions", async (request, reply) => {
     const params = request.params as { messageId: string };
-    const message = memoryStore.getMessage(params.messageId);
+    const message = store.getMessage(params.messageId);
     if (!message) {
       reply.code(404);
       return { detail: "Message not found" };
     }
-    return { reactions: memoryStore.getReactions(params.messageId) };
+    return { reactions: store.getReactions(params.messageId) };
   });
 
   fastify.post("/api/messages/:messageId/reactions", async (request, reply) => {
     const params = request.params as { messageId: string };
     const body = request.body as JsonBody;
-    const message = memoryStore.addReaction(params.messageId, String(body.agent_id || ""), String(body.reaction || ""));
+    const message = store.addReaction(params.messageId, String(body.agent_id || ""), String(body.reaction || ""));
     if (!message) {
       reply.code(404);
       return { detail: "Message not found" };
     }
     reply.code(201);
-    return { ok: true, reactions: memoryStore.getReactions(params.messageId) };
+    return { ok: true, reactions: store.getReactions(params.messageId) };
   });
 
   fastify.delete("/api/messages/:messageId/reactions/:reaction", async (request, reply) => {
     const params = request.params as { messageId: string; reaction: string };
     const query = request.query as { agent_id?: string };
-    const result = memoryStore.removeReaction(params.messageId, String(query.agent_id || ""), params.reaction);
+    const result = store.removeReaction(params.messageId, String(query.agent_id || ""), params.reaction);
     if (!result) {
       reply.code(404);
       return { detail: "Message not found" };
@@ -406,7 +443,7 @@ export function createHttpServer() {
   fastify.put("/api/messages/:messageId", async (request, reply) => {
     const params = request.params as { messageId: string };
     const body = request.body as JsonBody;
-    const result = memoryStore.editMessage(params.messageId, String(body.new_content || ""), String(body.edited_by || "system"));
+    const result = store.editMessage(params.messageId, String(body.new_content || ""), String(body.edited_by || "system"));
     if (!result) {
       reply.code(404);
       return { detail: "Message not found" };
@@ -416,18 +453,18 @@ export function createHttpServer() {
 
   fastify.get("/api/messages/:messageId/history", async (request, reply) => {
     const params = request.params as { messageId: string };
-    const message = memoryStore.getMessage(params.messageId);
+    const message = store.getMessage(params.messageId);
     if (!message) {
       reply.code(404);
       return { detail: "Message not found" };
     }
-    return { edits: memoryStore.getMessageHistory(params.messageId) };
+    return { edits: store.getMessageHistory(params.messageId) };
   });
 
-  fastify.get("/api/settings", async () => memoryStore.getSettings());
+  fastify.get("/api/settings", async () => store.getSettings());
   fastify.put("/api/settings", async () => ({ ok: true }));
 
-  fastify.get("/api/templates", async () => ({ templates: memoryStore.getTemplates() }));
+  fastify.get("/api/templates", async () => ({ templates: store.getTemplates() }));
   fastify.get("/api/templates/:templateId", async (_request, reply) => {
     reply.code(404);
     return { detail: "Template not found" };
@@ -443,7 +480,7 @@ export function createHttpServer() {
 
   fastify.get("/api/threads/:threadId/settings", async (request, reply) => {
     const params = request.params as { threadId: string };
-    const settings = memoryStoreInstance!.getThreadSettings(params.threadId);
+    const settings = store.getThreadSettings(params.threadId);
     if (!settings) {
       reply.code(404);
       return { detail: "Thread not found" };
@@ -468,7 +505,7 @@ export function createHttpServer() {
 
   fastify.get("/api/threads/:threadId/admin", async (request, reply) => {
     const params = request.params as { threadId: string };
-    const thread = memoryStoreInstance!.getThread(params.threadId);
+    const thread = store.getThread(params.threadId);
     if (!thread) {
       reply.code(404);
       return { detail: "Thread not found" };
@@ -478,7 +515,7 @@ export function createHttpServer() {
 
   fastify.post("/api/threads/:threadId/admin/decision", async (request, reply) => {
     const params = request.params as { threadId: string };
-    const thread = memoryStoreInstance!.getThread(params.threadId);
+    const thread = store.getThread(params.threadId);
     if (!thread) {
       reply.code(404);
       return { detail: "Thread not found" };
@@ -488,24 +525,24 @@ export function createHttpServer() {
 
   fastify.get("/api/threads/:threadId/export", async (request, reply) => {
     const params = request.params as { threadId: string };
-    const thread = memoryStoreInstance!.getThread(params.threadId);
+    const thread = store.getThread(params.threadId);
     if (!thread) {
       reply.code(404);
       return { detail: "Thread not found" };
     }
     return {
       thread,
-      messages: memoryStoreInstance!.getMessages(params.threadId, 0)
+      messages: store.getMessages(params.threadId, 0)
     };
   });
 
   fastify.get("/api/search", async (request) => {
     const query = request.query as { q?: string; query?: string };
     const q = String(query.q || query.query || "");
-    return { results: memoryStore.searchMessages(q) };
+    return { results: store.searchMessages(q) };
   });
 
-  fastify.get("/api/metrics", async () => memoryStore.getMetrics());
+  fastify.get("/api/metrics", async () => store.getMetrics());
 
   fastify.get("/api/debug/sse-status", async () => ({
     subscribers: eventBus.listenerCount()
@@ -513,7 +550,7 @@ export function createHttpServer() {
 
   fastify.post("/api/agents/:agentId/kick", async (request, reply) => {
     const params = request.params as { agentId: string };
-    const result = memoryStore.kickAgent(params.agentId);
+    const result = store.kickAgent(params.agentId);
     if (!result.ok) {
       reply.code(404);
       return { detail: "Agent not found" };
@@ -535,12 +572,29 @@ export function createHttpServer() {
     };
   });
 
+  // Ensure underlying persistence DB is closed when the server shuts down.
+  fastify.addHook('onClose', async (_instance, done) => {
+    try {
+      try {
+        if (ownsStore && store && typeof (store as any).close === 'function') {
+          try { (store as any).close(); } catch (e) { }
+          // If we created a per-process instance, clear the global override
+          try { memoryStoreInstance = null; } catch (_) { }
+        }
+      } catch (e) {
+        // ignore
+      }
+    } finally {
+      done();
+    }
+  });
+
   return fastify;
 }
 
 async function setThreadStatus(request: FastifyRequest, reply: FastifyReply, status: string) {
   const params = request.params as { threadId: string };
-  const ok = memoryStore.setThreadStatus(params.threadId, status as never);
+  const ok = getMemoryStore().setThreadStatus(params.threadId, status as never);
   if (!ok) {
     reply.code(404);
     return { detail: "Thread not found" };

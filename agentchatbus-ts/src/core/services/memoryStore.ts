@@ -13,6 +13,7 @@ import {
 } from "../types/errors.js";
 import { eventBus } from "../../shared/eventBus.js";
 import { generateAgentEmoji } from "../../main.js";
+import { registerStore } from "./storeSingleton.js";
 
 type IdeSession = {
   instanceId: string;
@@ -83,7 +84,7 @@ export class MemoryStore {
   private readonly persistencePath: string;
   private readonly persistenceDb: DatabaseSync;
 
-  constructor(persistencePath = process.env.AGENTCHATBUS_DB || "data/bus-ts.db") {
+  constructor(persistencePath = process.env.AGENTCHATBUS_DB || (process.env.VITEST_WORKER_ID ? `data/bus-ts-${process.env.VITEST_WORKER_ID}.db` : "data/bus-ts.db")) {
     this.persistencePath = persistencePath;
     
     // Support in-memory database for testing
@@ -173,18 +174,32 @@ export class MemoryStore {
     this.messageEditHistory.clear();
     this.ideOwnerInstanceId = null;
     this.logCursor = 0;
-    this.persistenceDb.exec(`
-      DELETE FROM threads;
-      DELETE FROM messages;
-      DELETE FROM agents;
-      DELETE FROM reply_tokens;
-      DELETE FROM thread_settings;
-      DELETE FROM thread_wait_states;
-      DELETE FROM message_edits;
-      DELETE FROM reactions;
-      DELETE FROM state_snapshots;
-    `);
-    this.persistState();
+    try {
+      // Attempt graceful close of DB if available to release file handles used in tests
+      // Some sqlite implementations expose a close() method on the DatabaseSync object.
+      // If present, call it and recreate an in-memory DB for a clean slate.
+      if (typeof (this.persistenceDb as any).close === 'function') {
+        try {
+          (this.persistenceDb as any).close();
+        } catch (e) {
+          // ignore close errors during reset
+        }
+      }
+    } finally {
+      // Reinitialize persistence DB using the configured persistencePath so
+      // tests that call reset() continue to operate against the same file.
+      try {
+        // Recreate the DatabaseSync using the original persistence path.
+        // Some runtimes may throw if the DB was closed; handle gracefully.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (this as any).persistenceDb = new (DatabaseSync as any)(this.persistencePath);
+        this.initializeRelationalTables();
+        this.persistState();
+      } catch (e) {
+        // If reinitialization fails, keep internal maps cleared; callers
+        // should set an explicit DB path when running in separate processes.
+      }
+    }
   }
 
   createThread(topic: string, systemPrompt?: string, templateId?: string): { thread: ThreadRecord; sync: SyncContext } {
@@ -1749,6 +1764,25 @@ export class MemoryStore {
     this.logCursor += 1;
     this.logEntries.push({ id: this.logCursor, line });
   }
+
+  // Close underlying persistence DB if supported by the runtime.
+  // Tests on Windows require explicit DB close before unlinking files.
+  close(): void {
+    try {
+      const dbAny = this.persistenceDb as any;
+      if (dbAny && typeof dbAny.close === 'function') {
+        try {
+          dbAny.close();
+        } catch (e) {
+          // ignore close errors
+        }
+      }
+    } catch (e) {
+      // swallow
+    }
+  }
 }
 
 export const memoryStore = new MemoryStore();
+// Register the default global instance so other modules can resolve the active store.
+try { registerStore(memoryStore); } catch (e) { }
