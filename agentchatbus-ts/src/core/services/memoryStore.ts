@@ -297,6 +297,89 @@ export class MemoryStore {
     return rows.map((row) => this.rowToMessageRecord(row));
   }
 
+  /**
+   * List messages with format options (Python: handle_msg_list)
+   * Support both 'json' and 'blocks' return formats
+   */
+  listMessages(params: {
+    threadId: string;
+    afterSeq: number;
+    limit?: number;
+    includeSystemPrompt?: boolean;
+    returnFormat?: 'json' | 'blocks';
+    includeAttachments?: boolean;
+  }): any[] {
+    const {
+      threadId,
+      afterSeq,
+      limit = 100,
+      includeSystemPrompt = false,
+      returnFormat = 'blocks',
+      includeAttachments = true
+    } = params;
+
+    // Get messages from DB
+    const messages = this.getMessages(threadId, afterSeq).slice(0, limit);
+
+    if (returnFormat === 'json') {
+      // Return JSON format - array of message objects
+      const jsonPayload = messages.map(msg => ({
+        id: msg.id,
+        content: msg.content,
+        author: msg.author,
+        role: msg.role,
+        seq: msg.seq,
+        created_at: msg.created_at,
+        attachments: (includeAttachments && msg.metadata?.attachments) ? msg.metadata.attachments : undefined
+      }));
+
+      // Wrap in TextContent as MCP SDK expects
+      return [{
+        type: 'text',
+        text: JSON.stringify(jsonPayload)
+      }];
+    } else {
+      // Return blocks format - TextContent + ImageContent
+      const blocks: any[] = [];
+      
+      for (const msg of messages) {
+        // Add text content
+        blocks.push({
+          type: 'text',
+          text: msg.content
+        });
+
+        // Add image attachments if requested
+        if (includeAttachments && msg.metadata?.attachments) {
+          const attachments = Array.isArray(msg.metadata.attachments) ? msg.metadata.attachments : [];
+          for (const attachment of attachments) {
+            if (attachment.type === 'image') {
+              let imageData = attachment.data;
+              let mimeType = attachment.mimeType;
+
+              // Handle data URL prefix stripping (Python logic)
+              if (imageData && imageData.startsWith('data:')) {
+                const match = imageData.match(/^data:([^;]+);base64,(.*)$/);
+                if (match) {
+                  mimeType = match[1];
+                  imageData = match[2];
+                }
+              }
+
+              blocks.push({
+                type: 'image',
+                data: imageData,
+                mimeType: mimeType || 'image/png'
+              });
+            }
+          }
+        }
+      }
+
+      return blocks;
+    }
+  }
+
   waitForMessages(input: { threadId: string; afterSeq: number; agentId?: string; timeoutMs?: number }): {
     messages: MessageRecord[];
     current_seq: number;
@@ -444,6 +527,17 @@ export class MemoryStore {
       }
 
       this.consumeReplyToken(token.token);
+    }
+
+    // Reply-to validation (UP-14)
+    if (input.replyToMsgId) {
+      const parentMsg = this.getMessage(input.replyToMsgId);
+      if (!parentMsg) {
+        throw new Error(`Message ${input.replyToMsgId} does not exist`);
+      }
+      if (parentMsg.thread_id !== input.threadId) {
+        throw new Error("Cannot reply to a message in a different thread");
+      }
     }
 
     this.sequence += 1;

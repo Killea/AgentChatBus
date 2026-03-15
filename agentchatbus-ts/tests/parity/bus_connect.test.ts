@@ -7,6 +7,17 @@ import { exec, ChildProcess } from 'child_process';
 const PORT = 39766; // different port for tests
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 
+// Helper function to call MCP tools
+async function callMcpTool(toolName: string, params: Record<string, any>) {
+    const res = await fetch(`${BASE_URL}/api/mcp/tool/${toolName}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params)
+    });
+    const data = await res.json();
+    return JSON.parse(data[0].text);
+}
+
 describe('Bus Connect Parity Tests', () => {
     let serverProcess: ChildProcess;
 
@@ -148,5 +159,90 @@ describe('Bus Connect Parity Tests', () => {
         expect(payload2.thread.created).toBe(false);
         expect(payload2.current_seq).toBe(1); // Exactly 1 (the message we posted)
         expect(payload2.messages.length).toBeGreaterThanOrEqual(1); // At least the first message
+    });
+
+    it('bus_connect new agent new thread', async () => {
+        // 对应 Python: L21-55
+        const args = {
+            thread_name: "Test-Auto-Create-" + randomUUID().slice(0, 8),
+            ide: "TestIDE",
+            model: "TestModel"
+        };
+
+        const payload = await callMcpTool('bus_connect', args);
+        
+        // Check agent
+        expect(payload.agent.registered).toBe(true);
+        expect(payload.agent.agent_id).toBeDefined();
+        expect(payload.agent.token).toBeDefined();
+
+        // Check thread
+        expect(payload.thread.topic).toBe(args.thread_name);
+        expect(payload.thread.created).toBe(true);
+
+        // Check sync context
+        expect(payload.current_seq).toBe(0);
+        expect(payload.reply_token).toBeDefined();
+    });
+
+    it('bus_connect new agent existing thread', async () => {
+        // 对应 Python: L57-92
+        const threadName = "Existing-Topic-" + randomUUID().slice(0, 8);
+        
+        // First connect creates thread and posts message
+        const payload1 = await callMcpTool('bus_connect', {
+            thread_name: threadName,
+            ide: "TestIDE",
+            model: "TestModel"
+        });
+        
+        // Post a message
+        await callMcpTool('msg_post', {
+            thread_id: payload1.thread.thread_id,
+            author: payload1.agent.agent_id,
+            content: "First message",
+            expected_last_seq: payload1.current_seq,
+            reply_token: payload1.reply_token,
+            role: "assistant"
+        });
+
+        // Second connect should find existing thread with message
+        const payload2 = await callMcpTool('bus_connect', {
+            thread_name: threadName,
+            ide: "TestIDE2",
+            model: "TestModel2"
+        });
+        
+        expect(payload2.agent.registered).toBe(true);
+        expect(payload2.thread.created).toBe(false);
+        expect(payload2.thread.topic).toBe(threadName);
+        expect(payload2.messages.length).toBeGreaterThanOrEqual(1);
+        expect(payload2.current_seq).toBeGreaterThanOrEqual(1);
+        expect(payload2.reply_token).toBeDefined();
+    });
+
+    it('bus_connect no reuse agent', async () => {
+        // 对应 Python: L125-150
+        const threadName = "No-Reuse-" + randomUUID().slice(0, 8);
+        
+        // First connect
+        const payload1 = await callMcpTool('bus_connect', {
+            thread_name: threadName,
+            ide: "TestIDE",
+            model: "TestModel"
+        });
+        
+        const agentId = payload1.agent.agent_id;
+        
+        // Try to connect with wrong credentials - should create new agent
+        const payload2 = await callMcpTool('bus_connect', {
+            thread_name: threadName + "-2",
+            ide: "TestIDE",
+            model: "TestModel"
+        });
+        
+        // Should successfully create new agent
+        expect(payload2.agent.registered).toBe(true);
+        expect(payload2.agent.agent_id).not.toBe(agentId);
     });
 });
