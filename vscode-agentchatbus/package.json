@@ -7,7 +7,7 @@
   "name": "agentchatbus",
   "displayName": "AgentChatBus",
   "description": "AgentChatBus client for VS Code",
-  "version": "0.1.78",
+  "version": "0.1.79",
   "icon": "resources/bus_128.png",
   "engines": {
     "vscode": "^1.105.0"

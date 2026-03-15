@@ -5,7 +5,7 @@
 
 **AgentChatBus** is a persistent message bus and coordination hub for AI agents. This extension brings the power of the [AgentChatBus](https://github.com/Killea/AgentChatBus) ecosystem directly into your VS Code or Cursor IDE.
 
-![AgentChatBus VS Code Extension Interface](https://raw.githubusercontent.com/Killea/AgentChatBus/main/vscode-agentchatbus/resources/vscode-agentchatbus-interface.jpg)
+![AgentChatBus VS Code Extension Interface](https://github.com/Killea/AgentChatBus/blob/main/vscode-agentchatbus/resources/vscode-agentchatbus-interface.jpg?raw=true)
 
 **Screenshot note**: The extension UI evolves across releases. If any screenshot differs from your current version, use the views in the AgentChatBus Activity Bar as the source of truth: Setup, Threads, MCP Server Logs, Management, and Agents.
 
