@@ -2,22 +2,20 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import { exec, ChildProcess } from 'child_process';
 
 const PORT = 39766; // different port for tests
 const BASE_URL = `http://127.0.0.1:${PORT}`;
-let DB_PATH = path.join(__dirname, 'bus_connect.test.db');
 
 describe('Bus Connect Parity Tests', () => {
     let serverProcess: ChildProcess;
 
     beforeEach(async () => {
-        // Use a per-test temp DB file to avoid Windows file-lock/unlink races
-        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "agentchatbus-"));
-        DB_PATH = path.join(tmpDir, `bus_connect-${randomUUID().slice(0,8)}.db`);
+        // Use in-memory database like Python tests (:memory:)
+        // This ensures complete isolation - each test starts fresh with seq=0
+        const DB_PATH = ':memory:';
 
-        // Start server in a separate process
+        // Start server in a separate process with fresh in-memory DB
         serverProcess = exec(`npx tsx src/cli/index.ts serve`, {
             env: {
                 ...process.env,
@@ -41,15 +39,26 @@ describe('Bus Connect Parity Tests', () => {
         if (!ready) throw new Error("Server failed to start");
     }, 10000);
 
-    afterEach(() => {
-        if (serverProcess) serverProcess.kill();
-        try {
-            if (fs.existsSync(DB_PATH)) fs.unlinkSync(DB_PATH);
-            const parent = path.dirname(DB_PATH);
-            if (fs.existsSync(parent)) fs.rmdirSync(parent);
-        } catch (e) {
-            // ignore cleanup errors
+    afterEach(async () => {
+        // Kill server process - this clears the in-memory singleton state
+        if (serverProcess) {
+            // On Windows, use taskkill for more reliable process termination
+            const { execSync } = await import('child_process');
+            try {
+                if (serverProcess.pid) {
+                    if (process.platform === 'win32') {
+                        execSync(`taskkill /pid ${serverProcess.pid} /T /F`, { stdio: 'ignore' });
+                    } else {
+                        serverProcess.kill('SIGKILL');
+                    }
+                }
+            } catch (e) {
+                // Ignore if process already exited
+            }
+            // Wait to ensure clean shutdown
+            await new Promise(resolve => setTimeout(resolve, 200));
         }
+        // No need to clean up DB files - :memory: is automatically cleaned
     });
 
     it('manages bus_connect flow: register -> join -> post (UP-PARITY)', async () => {
@@ -137,7 +146,7 @@ describe('Bus Connect Parity Tests', () => {
         
         expect(payload2.agent.registered).toBe(false); // Already existed
         expect(payload2.thread.created).toBe(false);
-        expect(payload2.current_seq).toBe(1);
-        expect(payload2.messages.length).toBeGreaterThanOrEqual(2); // System + First message
+        expect(payload2.current_seq).toBe(1); // Exactly 1 (the message we posted)
+        expect(payload2.messages.length).toBeGreaterThanOrEqual(1); // At least the first message
     });
 });

@@ -216,7 +216,7 @@ describe("HTTP compatibility shell", () => {
 
   it("supports msg_wait fast-return through the MCP adapter", async () => {
     const server = createHttpServer();
-    const connected = (await server.inject({
+    const connectResponse = await server.inject({
       method: "POST",
       url: "/mcp/messages/",
       payload: {
@@ -226,7 +226,13 @@ describe("HTTP compatibility shell", () => {
           arguments: { thread_name: "wait-thread", ide: "VSCode", model: "GPT-5.4" }
         }
       }
-    })).json().result;
+    });
+    
+    // Parse MCP response structure: { result: [{ type: "text", text: "{payload}" }] }
+    const connectResult = connectResponse.json().result;
+    expect(Array.isArray(connectResult)).toBe(true);
+    expect(connectResult[0].type).toBe("text");
+    const connected = JSON.parse(connectResult[0].text);
 
     await server.inject({
       method: "POST",
@@ -248,7 +254,7 @@ describe("HTTP compatibility shell", () => {
           name: "msg_wait",
           arguments: {
             thread_id: connected.thread.id,
-            after_seq: 0,
+            after_seq: connected.current_seq,  // Use current_seq to check if agent is behind
             agent_id: connected.agent.id,
             timeout_ms: 1000
           }
@@ -257,7 +263,10 @@ describe("HTTP compatibility shell", () => {
     });
 
     expect(waitResponse.statusCode).toBe(200);
-    const waitBody = waitResponse.json().result;
+    const waitResult = waitResponse.json().result;
+    expect(Array.isArray(waitResult)).toBe(true);
+    expect(waitResult[0].type).toBe("text");
+    const waitBody = JSON.parse(waitResult[0].text);
     expect(Array.isArray(waitBody.messages)).toBe(true);
     expect(waitBody.messages.length).toBeGreaterThan(0);
     expect(waitBody.reply_token).toBeTruthy();
@@ -268,7 +277,7 @@ describe("HTTP compatibility shell", () => {
 
   it("surfaces waiting agents in thread listing", async () => {
     const server = createHttpServer();
-    const connected = (await server.inject({
+    const connectResponse = await server.inject({
       method: "POST",
       url: "/mcp/messages/",
       payload: {
@@ -278,7 +287,13 @@ describe("HTTP compatibility shell", () => {
           arguments: { thread_name: "waiting-thread", ide: "VSCode", model: "GPT-5.4" }
         }
       }
-    })).json().result;
+    });
+    
+    // Parse MCP response structure: { result: [{ type: "text", text: "{payload}" }] }
+    const connectResult = connectResponse.json().result;
+    expect(Array.isArray(connectResult)).toBe(true);
+    expect(connectResult[0].type).toBe("text");
+    const connected = JSON.parse(connectResult[0].text);
 
     await server.inject({
       method: "POST",
@@ -312,7 +327,7 @@ describe("HTTP compatibility shell", () => {
 
   it("clears expired waiting agents from thread listing", async () => {
     const server = createHttpServer();
-    const connected = (await server.inject({
+    const connectResponse = await server.inject({
       method: "POST",
       url: "/mcp/messages/",
       payload: {
@@ -322,7 +337,13 @@ describe("HTTP compatibility shell", () => {
           arguments: { thread_name: "expired-wait-thread", ide: "VSCode", model: "GPT-5.4" }
         }
       }
-    })).json().result;
+    });
+    
+    // Parse MCP response structure: { result: [{ type: "text", text: "{payload}" }] }
+    const connectResult = connectResponse.json().result;
+    expect(Array.isArray(connectResult)).toBe(true);
+    expect(connectResult[0].type).toBe("text");
+    const connected = JSON.parse(connectResult[0].text);
 
     await server.inject({
       method: "POST",

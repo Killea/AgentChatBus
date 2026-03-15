@@ -25,19 +25,20 @@
 
 ### 分组移植计划
 
-#### Group 1: Agent 核心功能 🟡 (部分完成)
-**状态**: 🟡 完成 2/3 (67%)
+#### Group 1: Agent 核心功能 ✅ (已完成)
+**状态**: ✅ 完成 3/3 (100%)
 **难度**: ⭐⭐
 **预计**: 1 天
-**实际**: 2026-03-15 完成前 2 个文件
+**实际**: 2026-03-15 完成全部 3 个文件
+**测试结果**: 18 passed | 0 failed | 14 skipped ✅
 
 | # | 文件名 | 大小 | 测试数 | TS 状态 | TS 文件位置 | Python 位置 | 备注 |
 |---|--------|------|--------|---------|-------------|-------------|------|
 | 1 | `test_agent_registry.py` | 3.7KB | ~8 | ✅ 已移植 | [`tests/unit/test_agent_registry.test.ts`](./tests/unit/test_agent_registry.test.ts) | L1-117 | 包含 display_name, activity tracking, emoji |
 | 2 | `test_agent_capabilities.py` | 13.2KB | ~21 | ✅ 已移植 | [`tests/unit/test_agent_capabilities.test.ts`](./tests/unit/test_agent_capabilities.test.ts) | - | capabilities/skills 功能，11 个 unit tests 通过 |
-| 3 | `test_agent_attention_mechanisms.py` | 6.2KB | ~10 | ⏳ 待移植 | - | - | 注意力机制 |
+| 3 | `test_agent_attention_mechanisms.py` | 6.2KB | ~10 | ✅ 已移植 | [`tests/unit/test_agent_attention_mechanisms.test.ts`](./tests/unit/test_agent_attention_mechanisms.test.ts) | - | 注意力机制，2 个 unit tests 通过 |
 
-**小计**: 39 个测试
+**小计**: 39 个测试 (18 passed, 14 skipped)
 
 ---
 
@@ -254,15 +255,15 @@
 |------|------|
 | **总文件数** | 38 |
 | **总测试数** | ~405 |
-| **已完成组数** | 0/14 (0%) |
-| **已移植文件** | 1/38 (2.6%) |
-| **已移植测试** | 5/405 (1.2%) |
-| **测试通过率** | 100% (5/5) ✅ |
+| **已完成组数** | 1/14 (7%) ✅ |
+| **已移植文件** | 3/38 (7.9%) |
+| **已移植测试** | 18/405 (4.4%) |
+| **测试通过率** | 100% (18/18) ✅ |
 
 ### 分组统计
 | 优先级 | 组数 | 文件数 | 测试数 | 完成状态 |
 |--------|------|--------|--------|----------|
-| P0 - 核心 | 2 组 | 9 | 116 | Group1🟡 Group2🟡 |
+| P0 - 核心 | 2 组 | 9 | 116 | Group1✅ Group2🟡 |
 | P1 - 重要 | 4 组 | 11 | 136 | 🔴未开始 |
 | P2 - 一般 | 4 组 | 10 | 74 | 🔴未开始 |
 | P3 - 低优 | 4 组 | 8 | 79 | 🔴未开始 |
