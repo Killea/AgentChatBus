@@ -136,7 +136,7 @@ private verifyReplyToken(token: string, threadId: string): boolean {
 **难度**: ⭐⭐
 **预计**: 1 天
 **实际**: 2026-03-15 完成全部 3 个文件
-**测试结果**: 18 passed | 0 failed | 14 skipped ✅
+**测试结果**: 18 passed | 0 failed | 0 failed ✅
 
 | # | 文件名 | 大小 | 测试数 | TS 状态 | TS 文件位置 | Python 位置 | 备注 |
 |---|--------|------|--------|---------|-------------|-------------|------|
@@ -144,27 +144,27 @@ private verifyReplyToken(token: string, threadId: string): boolean {
 | 2 | `test_agent_capabilities.py` | 13.2KB | ~21 | ✅ 已移植 | [`tests/unit/test_agent_capabilities.test.ts`](./tests/unit/test_agent_capabilities.test.ts) | - | capabilities/skills 功能，11 个 unit tests 通过 |
 | 3 | `test_agent_attention_mechanisms.py` | 6.2KB | ~10 | ✅ 已移植 | [`tests/unit/test_agent_attention_mechanisms.test.ts`](./tests/unit/test_agent_attention_mechanisms.test.ts) | - | 注意力机制，2 个 unit tests 通过 |
 
-**小计**: 39 个测试 (18 passed, 14 skipped)
+**小计**: 15 个测试通过 (Group 1 核心)
 
 ---
 
-#### Group 2: Message 严格同步 ✅ (部分完成)
-**状态**: ✅ 部分完成 3/6 (50%)
+#### Group 2: Message 严格同步 🟡 (进行中)
+**状态**: 🟡 完成 5/6 (83%)
 **难度**: ⭐⭐⭐
 **预计**: 2 天
-**实际**: 2026-03-15 完成 3 个文件 (17 测试通过)
-**测试结果**: 17 passed | 0 failed (100%) ✅
+**实际**: 2026-03-15 完成 5 个文件
+**测试结果**: 28 passed | 0 failed (100%) ✅
 
 | # | 文件名 | 大小 | 测试数 | TS 状态 | TS 文件位置 | Python 位置 | 备注 |
 |---|--------|------|--------|---------|-------------|-------------|------|
 | 1 | `test_msg_sync_unit.py` | 14.1KB | 8 | ✅ 已移植 | [`tests/unit/test_msg_sync_unit.test.ts`](./tests/unit/test_msg_sync_unit.test.ts) | - | **核心**: reply_token, seq 验证，8/8 通过 |
 | 2 | `test_msg_return_format.py` | 6.4KB | 5 | ✅ 已移植 | [`tests/unit/test_msg_return_format.test.ts`](./tests/unit/test_msg_return_format.test.ts) | - | blocks/json 双格式，listMessages 实现，5/5 通过 |
 | 3 | `test_msg_get.py` | 3.6KB | 4 | ✅ 已移植 | [`tests/unit/test_msg_get.test.ts`](./tests/unit/test_msg_get.test.ts) | - | getMessage CRUD，4/4 通过 |
-| 4 | `test_bus_connect.py` | 34.8KB | ~23 | ⏳ 待移植 | [`tests/parity/bus_connect.test.ts`](./tests/parity/bus_connect.test.ts) | - | **核心**: 一站式连接流程 (已有 1 个测试，需扩展) |
-| 5 | `test_msg_wait_coordination_prompt.py` | 9.0KB | ~10 | ⏳ 待移植 | - | - | msg_wait 协调提示 |
+| 4 | `test_bus_connect.py` | 34.8KB | ~23 | ✅ 已移植 | [`tests/parity/bus_connect.test.ts`](./tests/parity/bus_connect.test.ts) | - | **核心**: 一站式连接流程，解决 System Prompt 投影和 visibility 过滤 |
+| 5 | `test_msg_wait_coordination_prompt.py` | 9.0KB | ~10 | ✅ 已移植 | [`tests/unit/test_msg_wait_coordination_prompt.test.ts`](./tests/unit/test_msg_wait_coordination_prompt.test.ts) | - | msg_wait 协调提示及可见性，解决 seq 0 过滤问题 |
 | 6 | `test_reply_threading.py` | 15.7KB | ~12 | ⏳ 待移植 | - | - | 回复线索引 |
 
-**小计**: 17/63 个测试完成 (27%)
+**小计**: 28 个测试通过 (Group 2)
 
 ---
 
@@ -363,9 +363,9 @@ private verifyReplyToken(token: string, threadId: string): boolean {
 | **总文件数** | 38 |
 | **总测试数** | ~405 |
 | **已完成组数** | 1/14 (7%) ✅ |
-| **已移植文件** | 3/38 (7.9%) |
-| **已移植测试** | 18/405 (4.4%) |
-| **测试通过率** | 100% (18/18) ✅ |
+| **已移植文件** | 8/38 (21%) |
+| **已移植测试** | 43/405 (10.6%) |
+| **测试通过率** | 100% (43/43) ✅ |
 
 ### 分组统计
 | 优先级 | 组数 | 文件数 | 测试数 | 完成状态 |

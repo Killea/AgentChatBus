@@ -98,40 +98,40 @@ describe('Message Synchronization Unit Tests', () => {
         }).toThrow("TOKEN_REPLAY");
     });
 
-    it('seq mismatch returns new messages context', () => {
+    it('seq mismatch returns new messages context', async () => {
         // 对应 Python: L75-101
         const SEQ_TOLERANCE = 5; // 从 config 导入
         const thread = store.createThread("sync-seq-mismatch").thread;
         const baseline = store.issueSyncContext(thread.id, "human", "test");
 
         // 对应 Python: L82-84 - Move thread ahead beyond tolerance
-        // ⚠️ 注意：必须使用 await，因为 postWithFreshToken 是 async
-        (async () => {
-            for (let i = 0; i < SEQ_TOLERANCE + 1; i++) {
-                await postWithFreshToken(store, thread.id, "human", `msg-${i}`);
-            }
+        for (let i = 0; i < SEQ_TOLERANCE + 1; i++) {
+            await postWithFreshToken(store, thread.id, "human", `msg-${i}`);
+        }
 
-            const fresh = store.issueSyncContext(thread.id, "human", "test");
+        const fresh = store.issueSyncContext(thread.id, "human", "test");
+        
+        // 对应 Python: L87-95
+        try {
+            store.postMessage({
+                threadId: thread.id,
+                author: "human",
+                content: "stale-context-post",
+                expectedLastSeq: baseline.current_seq,
+                replyToken: fresh.reply_token,
+                role: "assistant"
+            });
+            throw new Error("Should have thrown SeqMismatchError but succeeded");
+        } catch (err: any) {
+            // 对应 Python: L97-99
+            if (err.message.includes("Should have thrown")) throw err;
             
-            // 对应 Python: L87-95
-            try {
-                store.postMessage({
-                    threadId: thread.id,
-                    author: "human",
-                    content: "stale-context-post",
-                    expectedLastSeq: baseline.current_seq,
-                    replyToken: fresh.reply_token,
-                    role: "assistant"
-                });
-                throw new Error("Should have thrown SeqMismatchError");
-            } catch (err: any) {
-                // 对应 Python: L97-99
-                expect(err.name).toBe("SeqMismatchError");
-                expect(err.current_seq).toBeGreaterThan(baseline.current_seq);
-                expect(err.new_messages).toBeDefined();
-                expect(err.new_messages.length).toBeGreaterThanOrEqual(SEQ_TOLERANCE);
-            }
-        })();
+            expect(err.name).oneOf(["SeqMismatchError", "BusError"]);
+            expect(err.message).toContain("SEQ_MISMATCH");
+            expect(err.current_seq).toBeGreaterThan(baseline.current_seq);
+            expect(err.new_messages).toBeDefined();
+            expect(err.new_messages.length).toBeGreaterThanOrEqual(SEQ_TOLERANCE);
+        }
     });
 
     it('invalid token is rejected', () => {

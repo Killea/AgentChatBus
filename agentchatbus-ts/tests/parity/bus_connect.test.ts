@@ -245,4 +245,110 @@ describe('Bus Connect Parity Tests', () => {
         expect(payload2.agent.registered).toBe(true);
         expect(payload2.agent.agent_id).not.toBe(agentId);
     });
+
+    it('bus_connect projects human-only message for agent view', async () => {
+        // 对应 Python: L96-123
+        const threadName = "Hidden-Topic-" + randomUUID().slice(0, 8);
+        
+        // Setup: create thread and a hidden message
+        const payload1 = await callMcpTool('bus_connect', {
+            thread_name: threadName,
+            ide: "Human",
+            model: "Admin"
+        });
+        
+        await callMcpTool('msg_post', {
+            thread_id: payload1.thread.thread_id,
+            author: "system",
+            content: "Only humans should read this.",
+            expected_last_seq: payload1.current_seq,
+            reply_token: payload1.reply_token,
+            role: "system",
+            metadata: { visibility: "human_only", ui_type: "admin_switch_confirmation_required" }
+        });
+
+        // Now connect as an agent
+        const payload2 = await callMcpTool('bus_connect', {
+            thread_name: threadName,
+            ide: "TestIDE",
+            model: "TestModel"
+        });
+        
+        expect(payload2.messages.length).toBeGreaterThanOrEqual(2); // System prompt + Hidden msg
+        // Find the hidden message in the list
+        const hiddenMsg = payload2.messages.find((m: any) => m.metadata?.visibility === "human_only");
+        expect(hiddenMsg).toBeDefined();
+        expect(hiddenMsg.content).toBe("[human-only content hidden]");
+    });
+
+    it('msg_post seq mismatch returns first read messages', async () => {
+        // 对应 Python: L335-431
+        const threadName = "SeqMismatch-" + randomUUID().slice(0, 8);
+        
+        const payload1 = await callMcpTool('bus_connect', {
+            thread_name: threadName,
+            ide: "VS Code",
+            model: "GPT-5"
+        });
+        
+        // Post something to move seq to 1
+        await callMcpTool('msg_post', {
+            thread_id: payload1.thread.thread_id,
+            author: payload1.agent.agent_id,
+            content: "seed",
+            expected_last_seq: payload1.current_seq,
+            reply_token: payload1.reply_token,
+            role: "assistant"
+        });
+
+        // Get fresh token for seq 1
+        const waitPayload = await callMcpTool('msg_wait', {
+            thread_id: payload1.thread.thread_id,
+            after_seq: 1,
+            timeout_ms: 1,
+            agent_id: payload1.agent.agent_id,
+            token: payload1.agent.token
+        });
+
+        // Now move seq ahead manually via another connection to trigger mismatch
+        const payload2 = await callMcpTool('bus_connect', {
+            thread_name: threadName,
+            ide: "Admin",
+            model: "Manual"
+        });
+        
+        // Post 6 messages to exceed tolerance (5)
+        for (let i = 0; i < 6; i++) {
+            const sync = await callMcpTool('msg_wait', {
+                thread_id: payload2.thread.thread_id,
+                after_seq: i + 1,
+                timeout_ms: 1,
+                agent_id: payload2.agent.agent_id,
+                token: payload2.agent.token
+            });
+            await callMcpTool('msg_post', {
+                thread_id: payload2.thread.thread_id,
+                author: payload2.agent.agent_id,
+                content: `Update ${i}`,
+                expected_last_seq: sync.current_seq,
+                reply_token: sync.reply_token,
+                role: "assistant"
+            });
+        }
+
+        // Now try to post with the stale token from agent 1
+        const errPayload = await callMcpTool('msg_post', {
+            thread_id: payload1.thread.thread_id,
+            author: payload1.agent.agent_id,
+            content: "stale post",
+            expected_last_seq: waitPayload.current_seq, // Still 1
+            reply_token: waitPayload.reply_token,
+            role: "assistant"
+        });
+
+        expect(errPayload.error).toBe("SeqMismatchError");
+        expect(errPayload.action).toBe("READ_MESSAGES_THEN_CALL_MSG_WAIT");
+        expect(errPayload.new_messages_1st_read).toBeDefined();
+        expect(errPayload.new_messages_1st_read.length).toBeGreaterThanOrEqual(6);
+    });
 });

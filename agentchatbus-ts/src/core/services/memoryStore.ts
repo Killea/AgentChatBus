@@ -49,6 +49,20 @@ type WaitStateRecord = {
 
 const NON_EXPIRING_TOKEN_TS = Date.parse("9999-12-31T23:59:59Z");
 
+const GLOBAL_SYSTEM_PROMPT = `**SYSTEM DIRECTIVE: ACTIVE AGENT COLLABORATION WORKSPACE**
+
+Welcome to this Thread. You are participating in a multi-agent workspace sharing the same underlying codebase and execution environment. You MUST collaborate proactively and keep progress moving.
+
+1. Shared Context: All agents are using the same repository, file system, memory state, and runtime environment.
+2. Active Execution: Do not stay passive. Propose concrete next steps, claim work, and execute non-destructive changes promptly.
+3. Safe Coordination: Before destructive commands or broad refactors, briefly announce intent and wait for feedback. For normal scoped edits, coordinate quickly and continue.
+4. Conflict Avoidance: Announce target files/modules before editing. Avoid simultaneous edits to the same file.
+5. Discussion Cadence: Keep the thread active with meaningful updates. If waiting too long, send a short structured update (status, blocker, next action) and optionally @ a relevant online agent.
+6. msg_wait Behavior: Use msg_wait for listening, but do not remain silent forever. If repeated timeouts occur, post a useful progress message instead of idle chatter.
+7. Message Quality: Avoid noise like "still waiting". Every message should include new information, a decision, or a concrete action request.
+
+Operate like a delivery-focused engineering team: communicate clearly, move work forward, and resolve blockers quickly.`;
+
 type PersistedState = {
   sequence: number;
   threads: ThreadRecord[];
@@ -175,9 +189,18 @@ export class MemoryStore {
     this.ideOwnerInstanceId = null;
     this.logCursor = 0;
     try {
+      // Clear relational tables
+      this.persistenceDb.exec("DELETE FROM messages");
+      this.persistenceDb.exec("DELETE FROM threads");
+      this.persistenceDb.exec("DELETE FROM reply_tokens");
+      this.persistenceDb.exec("DELETE FROM thread_settings");
+      this.persistenceDb.exec("DELETE FROM message_edits");
+      this.persistenceDb.exec("DELETE FROM reactions");
+      this.persistenceDb.exec("DELETE FROM msg_wait_refresh_requests");
+      this.persistenceDb.exec("DELETE FROM thread_wait_states");
+      this.persistenceDb.exec("DELETE FROM state_snapshots");
+      
       // Attempt graceful close of DB if available to release file handles used in tests
-      // Some sqlite implementations expose a close() method on the DatabaseSync object.
-      // If present, call it and recreate an in-memory DB for a clean slate.
       if (typeof (this.persistenceDb as any).close === 'function') {
         try {
           (this.persistenceDb as any).close();
@@ -186,18 +209,14 @@ export class MemoryStore {
         }
       }
     } finally {
-      // Reinitialize persistence DB using the configured persistencePath so
-      // tests that call reset() continue to operate against the same file.
+      // Reinitialize persistence DB using the configured persistencePath
       try {
-        // Recreate the DatabaseSync using the original persistence path.
-        // Some runtimes may throw if the DB was closed; handle gracefully.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (this as any).persistenceDb = new (DatabaseSync as any)(this.persistencePath);
+        // @ts-ignore
+        this.persistenceDb = new DatabaseSync(this.persistencePath);
         this.initializeRelationalTables();
         this.persistState();
       } catch (e) {
-        // If reinitialization fails, keep internal maps cleared; callers
-        // should set an explicit DB path when running in separate processes.
+        // If reinitialization fails, keep internal maps cleared
       }
     }
   }
@@ -284,7 +303,7 @@ export class MemoryStore {
     return deleted;
   }
 
-  getMessages(threadId: string, afterSeq: number): MessageRecord[] {
+  getMessages(threadId: string, afterSeq: number, includeSystemPrompt = false): MessageRecord[] {
     const rows = this.persistenceDb.prepare(
       `
         SELECT id, thread_id, seq, priority, author, author_id, author_name, author_emoji,
@@ -294,7 +313,40 @@ export class MemoryStore {
         ORDER BY seq ASC
       `
     ).all(threadId, afterSeq) as Array<Record<string, unknown>>;
-    return rows.map((row) => this.rowToMessageRecord(row));
+    const dbMessages = rows.map((row) => this.rowToMessageRecord(row));
+
+    if (includeSystemPrompt && afterSeq === 0) {
+      const thread = this.getThread(threadId);
+      const threadPrompt = thread?.system_prompt;
+      let finalContent = GLOBAL_SYSTEM_PROMPT;
+      
+      if (threadPrompt) {
+        finalContent = `## Section: System (Built-in)\n\n${GLOBAL_SYSTEM_PROMPT}\n\n## Section: Thread Create (Provided By Creator)\n\n${threadPrompt}`;
+      }
+
+      const sysMsg: MessageRecord = {
+        id: `sys-${threadId}`,
+        thread_id: threadId,
+        seq: 0,
+        priority: "normal",
+        author: "system",
+        author_id: "system",
+        author_name: "system",
+        author_emoji: "🤖",
+        role: "system",
+        content: finalContent,
+        metadata: {},
+        reactions: [],
+        created_at: thread?.created_at || new Date().toISOString(),
+        edited_at: null,
+        edit_version: 1,
+        reply_to_msg_id: undefined
+      };
+
+      return [sysMsg, ...dbMessages];
+    }
+
+    return dbMessages;
   }
 
   /**
@@ -319,7 +371,8 @@ export class MemoryStore {
     } = params;
 
     // Get messages from DB
-    const messages = this.getMessages(threadId, afterSeq).slice(0, limit);
+    const rawMessages = this.getMessages(threadId, afterSeq, includeSystemPrompt).slice(0, limit);
+    const messages = this.projectMessagesForAgent(rawMessages);
 
     if (returnFormat === 'json') {
       // Return JSON format - array of message objects
@@ -380,7 +433,7 @@ export class MemoryStore {
     }
   }
 
-  waitForMessages(input: { threadId: string; afterSeq: number; agentId?: string; timeoutMs?: number }): {
+  waitForMessages(input: { threadId: string; afterSeq: number; agentId?: string; timeoutMs?: number; forAgent?: string }): {
     messages: MessageRecord[];
     current_seq: number;
     reply_token: string;
@@ -431,7 +484,20 @@ export class MemoryStore {
       }
     }
 
-    const messages = this.getMessages(input.threadId, input.afterSeq);
+    const allMessages = this.getMessages(input.threadId, input.afterSeq);
+    let messages = allMessages;
+    
+    // Support forAgent filtering (Python handle_msg_wait _poll logic)
+    if (input.forAgent) {
+      messages = allMessages.filter(m => {
+        const meta = m.metadata as any;
+        return meta?.handoff_target === input.forAgent;
+      });
+      // If we filtered out all messages, and it wasn't a fast return,
+      // it should behave as if there are no messages (but we don't have async polling here yet).
+      // For unit tests, if no messages match forAgent, return empty.
+    }
+
     const sync = this.issueSyncContext(input.threadId, input.agentId, "msg_wait");
     
     return {
@@ -444,7 +510,7 @@ export class MemoryStore {
     };
   }
 
-  private projectMessagesForAgent(messages: MessageRecord[]): MessageRecord[] {
+  public projectMessagesForAgent(messages: MessageRecord[], audience: "agent" | "human" = "agent"): MessageRecord[] {
     return messages.map(m => this.projectMessageForAgent(m));
   }
 

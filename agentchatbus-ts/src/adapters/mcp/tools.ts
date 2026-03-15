@@ -1,6 +1,7 @@
 import { /* memoryStore replaced by getStore */ } from "../../core/services/memoryStore.js";
 import { eventBus } from "../../shared/eventBus.js";
 import { getStore } from "../../core/services/storeSingleton.js";
+import { BusError, SeqMismatchError } from "../../core/types/errors.js";
 
 export type ToolDefinition = {
   name: string;
@@ -405,11 +406,20 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         };
         return [{ type: "text", text: JSON.stringify(postPayload) }];
       } catch (error) {
-        const err = error as any;
-        if (err.detail) {
-          throw new Error(JSON.stringify(err.detail));
+        if (error instanceof SeqMismatchError) {
+          const detail = {
+            error: "SeqMismatchError",
+            action: "READ_MESSAGES_THEN_CALL_MSG_WAIT",
+            expected_last_seq: error.expected_last_seq,
+            current_seq: error.current_seq,
+            new_messages_1st_read: error.new_messages
+          };
+          return [{ type: "text", text: JSON.stringify(detail) }];
         }
-        throw err;
+        if (error instanceof BusError && error.detail) {
+          return [{ type: "text", text: JSON.stringify(error.detail) }];
+        }
+        throw error;
       }
     }
     case "msg_list": {
@@ -420,7 +430,9 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       const returnFormat = typeof args.return_format === "string" ? args.return_format : "blocks";
       const includeAttachments = typeof args.include_attachments === "boolean" ? args.include_attachments : true;
 
-      let messages = getStore().getMessages(threadId, afterSeq);
+      const includeSystemPrompt = typeof args.include_system_prompt === "boolean" ? args.include_system_prompt : true;
+
+      let messages = getStore().projectMessagesForAgent(getStore().getMessages(threadId, afterSeq, includeSystemPrompt));
 
       // Filter by priority if provided
       if (priority) {
@@ -486,7 +498,10 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
     }
     case "msg_get": {
       const messageId = String(args.message_id || "");
-      const message = getStore().getMessage(messageId);
+      let message = getStore().getMessage(messageId);
+      if (message) {
+        message = getStore().projectMessagesForAgent([message])[0];
+      }
       
       if (!message) {
         return { found: false, message: null };
@@ -812,7 +827,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
 
       // Phase 3: Fetch Messages + Sync Context
       const afterSeq = typeof args.after_seq === "number" ? args.after_seq : 0;
-      const messages = getStore().getMessages(thread.id, afterSeq);
+      const messages = getStore().getMessages(thread.id, afterSeq, true);
 
       // Invalidate old bus_connect tokens and issue new one
       getStore().invalidateReplyTokensForAgentSource(thread.id, agent.id, "bus_connect");
@@ -849,12 +864,13 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
           ...(threadCreated && thread.system_prompt ? { system_prompt: thread.system_prompt } : {}),
           ...(adminId ? { administrator: { id: adminId, agent_id: adminId, name: adminName } } : {})
         },
-        messages: messages.map(m => ({
+        messages: getStore().projectMessagesForAgent(messages).map(m => ({
           seq: m.seq,
           author: m.author_name || m.author,
           role: m.role,
           content: m.content,
-          created_at: m.created_at
+          created_at: m.created_at,
+          metadata: m.metadata
         })),
         current_seq: sync.current_seq,
         reply_token: sync.reply_token,
