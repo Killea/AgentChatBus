@@ -1,4 +1,5 @@
 import io
+import re
 import sys
 import threading
 from collections import deque
@@ -11,6 +12,18 @@ class LogEntry:
     line: str
 
 
+_NOISY_LINE_PATTERNS = (
+    re.compile(r'"GET /api/logs\?'),
+    re.compile(r'"POST /api/ide/heartbeat '),
+)
+
+
+def _should_skip_line(text: str) -> bool:
+    if text == "--- Logging error ---":
+        return True
+    return any(pattern.search(text) for pattern in _NOISY_LINE_PATTERNS)
+
+
 class _RingBuffer:
     def __init__(self, max_entries: int = 2000):
         self._entries: deque[LogEntry] = deque(maxlen=max_entries)
@@ -20,6 +33,8 @@ class _RingBuffer:
     def append(self, line: str) -> None:
         text = line.strip()
         if not text:
+            return
+        if _should_skip_line(text):
             return
         with self._lock:
             entry = LogEntry(id=self._next_id, line=text)

@@ -881,6 +881,22 @@ for _ln in ("uvicorn.error", "uvicorn"):
     logging.getLogger(_ln).addFilter(_AsgiDisconnectFilter())
 
 
+class _AccessNoiseFilter(logging.Filter):
+    """Suppress self-polling access logs that only feed the IDE UI."""
+
+    _NOISE = (
+        "/api/logs",
+        "/api/ide/heartbeat",
+    )
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        return not any(path in message for path in self._NOISE)
+
+
+logging.getLogger("uvicorn.access").addFilter(_AccessNoiseFilter())
+
+
 
 # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # Public SSE broadcast for the web console
