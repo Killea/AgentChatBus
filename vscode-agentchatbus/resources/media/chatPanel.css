@@ -152,28 +152,45 @@ textarea {
 }
 
 #nav-sidebar {
-  width: 84px;
-  padding: 12px 8px;
+  width: 76px;
+  padding: 10px 6px;
   border-left: 1px solid var(--vscode-panel-border);
-  overflow: hidden;
-  flex: 0 0 84px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  flex: 0 0 76px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   background: color-mix(in srgb, var(--vscode-sideBar-background) 72%, transparent);
+  scrollbar-gutter: stable;
+}
+
+#nav-sidebar::-webkit-scrollbar {
+  width: 8px;
+}
+
+#nav-sidebar::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--vscode-scrollbarSlider-background, var(--vscode-panel-border)) 80%, transparent);
+  border-radius: 999px;
+}
+
+#nav-sidebar::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .nav-entry {
   border: 1px solid transparent;
   background: transparent;
   color: inherit;
-  border-radius: 10px;
-  padding: 6px 4px;
+  border-radius: 999px;
+  padding: 4px 5px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
+  justify-content: space-between;
   gap: 4px;
   cursor: pointer;
+  min-width: 0;
 }
 
 .nav-entry:hover,
@@ -183,13 +200,19 @@ textarea {
 }
 
 .nav-entry-emoji {
-  font-size: 18px;
+  font-size: 13px;
   line-height: 1;
+  flex: 0 0 auto;
 }
 
 .nav-entry-time {
-  font-size: 10px;
+  font-size: 9px;
   opacity: 0.72;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .msg-row {
@@ -577,6 +600,7 @@ textarea {
     flex-wrap: nowrap;
     overflow-x: auto;
     overflow-y: hidden;
+    scrollbar-gutter: auto;
   }
 
   .msg-body {

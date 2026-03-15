@@ -1341,10 +1341,10 @@
     for (const message of state.messages) {
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'nav-entry';
+      button.className = 'nav-entry tooltip-anchor';
       button.dataset.id = message.id;
+      button.setAttribute('data-tooltip', `${getAuthorLabel(message)} · ${shortTime(message.created_at)} · seq ${message.seq}`);
       button.innerHTML = `<span class="nav-entry-emoji">${escapeHtml(message.author_emoji || '💬')}</span><span class="nav-entry-time">${escapeHtml(shortTime(message.created_at))}</span>`;
-      button.title = `${getAuthorLabel(message)} · seq ${message.seq}`;
       button.addEventListener('click', () => scrollRowIntoView(message.id));
       refs.navSidebar.appendChild(button);
     }
@@ -1419,7 +1419,11 @@
   function shortTime(value) {
     if (!value) return '';
     try {
-      return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return new Intl.DateTimeFormat(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).format(new Date(value));
     } catch {
       return '';
     }
