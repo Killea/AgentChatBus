@@ -1,10 +1,17 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { createHttpServer } from "../../src/transports/http/server.js";
-import { memoryStore } from "../../src/core/services/memoryStore.js";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { createHttpServer, getMemoryStore, memoryStoreInstance } from "../../src/transports/http/server.js";
 
 describe("HTTP compatibility shell", () => {
+  // Set test database to use in-memory database
+  beforeAll(() => {
+    process.env.AGENTCHATBUS_TEST_DB = ':memory:';
+  });
+
   beforeEach(() => {
-    memoryStore.reset();
+    // Reset the global memory store instance for each test
+    if (memoryStoreInstance) {
+      memoryStoreInstance.reset();
+    }
   });
 
   it("creates a thread and returns initial sync context", async () => {

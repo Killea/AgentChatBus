@@ -84,8 +84,15 @@ export class MemoryStore {
 
   constructor(persistencePath = process.env.AGENTCHATBUS_DB || "data/bus-ts.db") {
     this.persistencePath = persistencePath;
-    mkdirSync(dirname(this.persistencePath), { recursive: true });
-    this.persistenceDb = new DatabaseSync(this.persistencePath);
+    
+    // Support in-memory database for testing
+    if (persistencePath === ':memory:') {
+      this.persistenceDb = new DatabaseSync(':memory:');
+    } else {
+      mkdirSync(dirname(this.persistencePath), { recursive: true });
+      this.persistenceDb = new DatabaseSync(this.persistencePath);
+    }
+    
     this.persistenceDb.exec(`
       CREATE TABLE IF NOT EXISTS state_snapshots (
         id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -310,6 +317,13 @@ export class MemoryStore {
     this.pruneExpiredWaitStates(input.threadId);
     if (!fastReturn && input.agentId) {
       this.enterWaitState(input.threadId, input.agentId, input.timeoutMs || 300_000);
+      // Update agent activity to msg_wait
+      const agent = this.getAgent(input.agentId);
+      if (agent) {
+        agent.last_activity = 'msg_wait';
+        agent.last_activity_time = new Date().toISOString();
+        this.upsertAgent(agent);
+      }
     }
 
     const messages = this.getMessages(input.threadId, input.afterSeq);

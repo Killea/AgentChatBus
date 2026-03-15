@@ -3,7 +3,7 @@ import { MemoryStore } from "../../src/core/services/memoryStore.js";
 
 describe("MemoryStore", () => {
   it("creates a thread and returns initial sync context", () => {
-    const store = new MemoryStore();
+    const store = new MemoryStore(':memory:');
     const result = store.createThread("demo-thread");
 
     expect(result.thread.topic).toBe("demo-thread");

@@ -6,8 +6,20 @@ import { fileURLToPath } from "node:url";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { callTool, listTools } from "../../adapters/mcp/tools.js";
 import { getConfig } from "../../core/config/env.js";
-import { memoryStore } from "../../core/services/memoryStore.js";
+import { MemoryStore } from "../../core/services/memoryStore.js";
 import { eventBus } from "../../shared/eventBus.js";
+
+// Allow tests to override the global memoryStore instance
+export let memoryStoreInstance: MemoryStore | null = null;
+
+export function getMemoryStore(): MemoryStore {
+  if (!memoryStoreInstance) {
+    // Use environment variable for test database path
+    const dbPath = process.env.AGENTCHATBUS_TEST_DB || process.env.AGENTCHATBUS_DB || "data/bus-ts.db";
+    memoryStoreInstance = new MemoryStore(dbPath);
+  }
+  return memoryStoreInstance;
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -77,9 +89,22 @@ export function createHttpServer() {
     };
   });
 
+  // REST-style MCP tool endpoints (for easier testing)
+  fastify.post("/api/mcp/tool/:toolName", async (request, reply) => {
+    const params = request.params as { toolName: string };
+    const body = request.body as Record<string, unknown> | undefined;
+    try {
+      const result = await callTool(params.toolName, body || {});
+      return { result };
+    } catch (error) {
+      reply.code(400);
+      return { error: (error as Error).message };
+    }
+  });
+
   fastify.get("/api/threads", async (request) => {
     const query = request.query as { include_archived?: boolean; status?: string; limit?: number; before?: string };
-    let threads = memoryStore.getThreads(Boolean(query.include_archived));
+    let threads = memoryStoreInstance!.getThreads(Boolean(query.include_archived));
     if (query.status) {
       threads = threads.filter((thread) => thread.status === query.status);
     }
@@ -94,22 +119,22 @@ export function createHttpServer() {
   fastify.get("/api/threads/:threadId/messages", async (request, reply) => {
     const params = request.params as { threadId: string };
     const query = request.query as { after_seq?: number };
-    const thread = memoryStore.getThread(params.threadId);
+    const thread = memoryStoreInstance!.getThread(params.threadId);
     if (!thread) {
       reply.code(404);
       return { detail: "Thread not found" };
     }
-    return memoryStore.getMessages(params.threadId, Number(query.after_seq || 0));
+    return memoryStoreInstance!.getMessages(params.threadId, Number(query.after_seq || 0));
   });
 
   fastify.post("/api/threads/:threadId/sync-context", async (request, reply) => {
     const params = request.params as { threadId: string };
-    const thread = memoryStore.getThread(params.threadId);
+    const thread = memoryStoreInstance!.getThread(params.threadId);
     if (!thread) {
       reply.code(404);
       return { detail: "Thread not found" };
     }
-    return memoryStore.issueSyncContext(params.threadId);
+    return memoryStoreInstance!.issueSyncContext(params.threadId);
   });
 
   fastify.post("/api/threads", async (request, reply) => {
@@ -119,7 +144,7 @@ export function createHttpServer() {
       reply.code(400);
       return { detail: "topic is required" };
     }
-    const created = memoryStore.createThread(topic, typeof body.system_prompt === "string" ? body.system_prompt : undefined);
+    const created = memoryStoreInstance!.createThread(topic, typeof body.system_prompt === "string" ? body.system_prompt : undefined);
     reply.code(201);
     return {
       id: created.thread.id,
@@ -140,13 +165,13 @@ export function createHttpServer() {
     let replyToken = typeof body.reply_token === "string" ? body.reply_token : undefined;
 
     if (expectedLastSeq === undefined || !replyToken) {
-      const sync = memoryStore.issueSyncContext(params.threadId);
+      const sync = memoryStoreInstance!.issueSyncContext(params.threadId);
       expectedLastSeq = sync.current_seq;
       replyToken = sync.reply_token;
     }
 
     try {
-      const message = memoryStore.postMessage({
+      const message = memoryStoreInstance!.postMessage({
         threadId: params.threadId,
         author: String(body.author || "human"),
         content: String(body.content || ""),
@@ -174,16 +199,16 @@ export function createHttpServer() {
     }
   });
 
-  fastify.get("/api/agents", async () => memoryStore.listAgents());
+  fastify.get("/api/agents", async () => memoryStoreInstance!.listAgents());
 
   fastify.get("/api/threads/:threadId/agents", async (request) => {
     const params = request.params as { threadId: string };
-    return memoryStore.getThreadAgents(params.threadId);
+    return memoryStoreInstance!.getThreadAgents(params.threadId);
   });
 
   fastify.get("/api/agents/:agentId", async (request, reply) => {
     const params = request.params as { agentId: string };
-    const agent = memoryStore.getAgent(params.agentId);
+    const agent = memoryStoreInstance!.getAgent(params.agentId);
     if (!agent) {
       reply.code(404);
       return { detail: "Agent not found" };
@@ -194,7 +219,7 @@ export function createHttpServer() {
   fastify.put("/api/agents/:agentId", async (request, reply) => {
     const params = request.params as { agentId: string };
     const body = request.body as JsonBody;
-    const agent = memoryStore.updateAgent(params.agentId, String(body.token || ""), {
+    const agent = memoryStoreInstance!.updateAgent(params.agentId, String(body.token || ""), {
       description: typeof body.description === "string" ? body.description : undefined,
       display_name: typeof body.display_name === "string" ? body.display_name : undefined,
       capabilities: Array.isArray(body.capabilities) ? body.capabilities.map(String) : undefined,
@@ -212,7 +237,7 @@ export function createHttpServer() {
       const body = request.body as JsonBody;
       const ide = String(body.ide || "CLI");
       const model = String(body.model || "unknown");
-      const agent = memoryStore.registerAgent({
+      const agent = memoryStoreInstance!.registerAgent({
         ide,
         model,
         description: typeof body.description === "string" ? body.description : undefined,
@@ -241,7 +266,7 @@ export function createHttpServer() {
 
   fastify.post("/api/agents/heartbeat", async (request, reply) => {
     const body = request.body as JsonBody;
-    const ok = memoryStore.heartbeatAgent(String(body.agent_id || ""), String(body.token || ""));
+    const ok = memoryStoreInstance!.heartbeatAgent(String(body.agent_id || ""), String(body.token || ""));
     if (!ok) {
       reply.code(401);
       return { detail: "Invalid agent_id/token" };
@@ -418,7 +443,7 @@ export function createHttpServer() {
 
   fastify.get("/api/threads/:threadId/settings", async (request, reply) => {
     const params = request.params as { threadId: string };
-    const settings = memoryStore.getThreadSettings(params.threadId);
+    const settings = memoryStoreInstance!.getThreadSettings(params.threadId);
     if (!settings) {
       reply.code(404);
       return { detail: "Thread not found" };
@@ -443,7 +468,7 @@ export function createHttpServer() {
 
   fastify.get("/api/threads/:threadId/admin", async (request, reply) => {
     const params = request.params as { threadId: string };
-    const thread = memoryStore.getThread(params.threadId);
+    const thread = memoryStoreInstance!.getThread(params.threadId);
     if (!thread) {
       reply.code(404);
       return { detail: "Thread not found" };
@@ -453,7 +478,7 @@ export function createHttpServer() {
 
   fastify.post("/api/threads/:threadId/admin/decision", async (request, reply) => {
     const params = request.params as { threadId: string };
-    const thread = memoryStore.getThread(params.threadId);
+    const thread = memoryStoreInstance!.getThread(params.threadId);
     if (!thread) {
       reply.code(404);
       return { detail: "Thread not found" };
@@ -463,14 +488,14 @@ export function createHttpServer() {
 
   fastify.get("/api/threads/:threadId/export", async (request, reply) => {
     const params = request.params as { threadId: string };
-    const thread = memoryStore.getThread(params.threadId);
+    const thread = memoryStoreInstance!.getThread(params.threadId);
     if (!thread) {
       reply.code(404);
       return { detail: "Thread not found" };
     }
     return {
       thread,
-      messages: memoryStore.getMessages(params.threadId, 0)
+      messages: memoryStoreInstance!.getMessages(params.threadId, 0)
     };
   });
 
