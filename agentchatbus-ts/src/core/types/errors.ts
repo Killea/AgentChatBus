@@ -7,56 +7,39 @@ export class BusError extends Error {
 
 export class MissingSyncFieldsError extends BusError {
   constructor(missingFields: string[]) {
-    super("MISSING_SYNC_FIELDS", {
-      error: "MISSING_SYNC_FIELDS",
-      missing_fields: missingFields,
-      action: "CALL_SYNC_CONTEXT_THEN_RETRY"
-    });
+    super(`Missing required sync fields: ${missingFields.join(', ')}`);
     this.name = "MissingSyncFieldsError";
   }
 }
 
 export class SeqMismatchError extends BusError {
-  constructor(expected: number, current: number, newMessages: any[]) {
-    super("SEQ_MISMATCH", {
-      error: "SEQ_MISMATCH",
-      expected_last_seq: expected,
-      current_seq: current,
-      new_messages: newMessages,
-      action: "RE_READ_AND_RETRY"
-    });
+  constructor(
+    public expected_last_seq: number,
+    public current_seq: number,
+    public new_messages: any[]
+  ) {
+    super(`SEQ_MISMATCH: expected_last_seq=${expected_last_seq}, current_seq=${current_seq}`);
     this.name = "SeqMismatchError";
   }
 }
 
 export class ReplyTokenInvalidError extends BusError {
-  constructor() {
-    super("TOKEN_INVALID", {
-      error: "TOKEN_INVALID",
-      action: "CALL_SYNC_CONTEXT_THEN_RETRY"
-    });
+  constructor(public token?: string) {
+    super("TOKEN_INVALID");
     this.name = "ReplyTokenInvalidError";
   }
 }
 
 export class ReplyTokenExpiredError extends BusError {
-  constructor(expiresAt: string) {
-    super("TOKEN_EXPIRED", {
-      error: "TOKEN_EXPIRED",
-      expires_at: expiresAt,
-      action: "CALL_SYNC_CONTEXT_THEN_RETRY"
-    });
+  constructor(public token: string, public expires_at?: string) {
+    super("TOKEN_EXPIRED");
     this.name = "ReplyTokenExpiredError";
   }
 }
 
 export class ReplyTokenReplayError extends BusError {
-  constructor(consumedAt?: string) {
-    super("TOKEN_REPLAY", {
-      error: "TOKEN_REPLAY",
-      consumed_at: consumedAt,
-      action: "CALL_SYNC_CONTEXT_THEN_RETRY"
-    });
+  constructor(public token?: string, public consumed_at?: string) {
+    super("TOKEN_REPLAY");
     this.name = "ReplyTokenReplayError";
   }
 }

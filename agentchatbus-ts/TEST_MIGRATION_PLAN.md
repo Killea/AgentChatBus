@@ -6,6 +6,112 @@
 2. **完全一致**: 测试逻辑、断言必须与 Python 版本一致
 3. **修复代码**: 如果测试失败，必须修复 TS 源代码，而不是跳过测试
 4. **直接翻译**: 将 Python 测试“翻译”为 TypeScript，不重新设计
+5. **逻辑优先**: 移植测试的目的是验证逻辑正确性，不是追求通过率
+
+---
+
+## 测试失败处理流程 (强制执行) ⚠️
+
+### 核心原则
+**🎯 目的**: 确保 TS 版本逻辑与 Python **完全一致**,不是让测试"通过"
+
+### 当测试失败时
+
+#### ❌ **严格禁止**的做法
+1. ❌ 修改测试断言使其"通过"
+2. ❌ 使用 `.skip` 或 `test.skip()` 跳过失败测试
+3. ❌ 添加 placeholder 或 mock 绕过问题
+4. ❌ 降低断言标准 (如 `toBe()` 改为 `toBeTruthy()`)
+5. ❌ 忽略错误消息、Error name 的差异
+
+#### ✅ **必须执行**的步骤
+1. ✅ **检查 Python 源代码**: 读取对应的 Python 测试和实现代码
+2. ✅ **理解预期行为**: 确认 Python 版本的真实逻辑是什么
+3. ✅ **检查 TS 实现**: 对比 TS 版本的逻辑差异在哪里
+4. ✅ **修复 TS 源代码**: 修改 TS 实现以匹配 Python 行为
+5. ✅ **验证测试通过**: 确保测试通过是因为逻辑正确，不是降低标准
+6. ✅ **添加 TODO 注释**: 在代码中标注与 Python 的差异 (如有)
+
+### 示例场景
+
+#### 场景 1: Error Message 不匹配
+```typescript
+// ❌ 错误：修改测试适应 TS
+expect(err.message).toContain("MISSING_SYNC_FIELDS");
+
+// ✅ 正确：修复 TS 代码匹配 Python
+// src/core/types/errors.ts
+export class MissingSyncFieldsError extends BusError {
+  constructor(message = "Missing sync fields") {  // ← 修复为 Python 的消息
+    super(message);
+    this.name = "MissingSyncFieldsError";
+  }
+}
+```
+
+#### 场景 2: Error 缺少属性
+```typescript
+// ❌ 错误：跳过属性检查
+expect(err.current_seq).toBeDefined(); // 实际是 undefined
+
+// ✅ 正确：增强 Error 类添加属性
+// src/core/types/errors.ts
+export class SeqMismatchError extends BusError {
+  constructor(
+    message: string,
+    public current_seq: number,        // ← 添加 Python 有的属性
+    public expected_last_seq: number,
+    public new_messages: MessageRecord[]
+  ) {
+    super(message);
+    this.name = "SeqMismatchError";
+  }
+}
+```
+
+#### 场景 3: Token Expiry 未实现
+```typescript
+// ❌ 错误：删除 expiry 测试
+it.skip('token expired after timeout', ...); // 跳过
+
+// ✅ 正确：实现 expiry 检查逻辑
+// memoryStore.ts - verifyReplyToken()
+private verifyReplyToken(token: string, threadId: string): boolean {
+  const tokens = this.replyTokens.get(threadId) || [];
+  const valid = tokens.find(t => t.token === token);
+  if (!valid) return false;
+  
+  // ← 添加 Python 的过期检查
+  const now = Date.now();
+  if (valid.expiresAt && now > valid.expiresAt) {
+    return false; // Token expired
+  }
+  
+  return true;
+}
+```
+
+### 质量检查清单
+
+每个测试文件必须满足:
+- [ ] 所有 Python 测试都有对应的 TS 测试
+- [ ] 测试逻辑与 Python 完全一致
+- [ ] 断言强度不低于 Python 版本
+- [ ] Error name/message/属性完全匹配
+- [ ] 边界条件处理与 Python 一致
+- [ ] 没有使用 `.skip` 跳过任何测试
+- [ ] 如果有 TODO 标注，说明已计划修复
+
+### 完成标准
+
+**一个测试文件被认为"已完成"必须满足**:
+1. ✅ 所有 Python 测试都已移植
+2. ✅ 所有测试都能运行 (无语法错误)
+3. ✅ **所有测试都通过** (不是跳过，不是降低标准)
+4. ✅ 如果测试失败，TS 源代码已被修复以匹配 Python
+5. ✅ 生成的文档说明修复了哪些差异
+
+---
 
 ## 分组策略
 
@@ -43,14 +149,15 @@
 ---
 
 #### Group 2: Message 严格同步 🔴 (进行中)
-**状态**: 🟡 部分完成 1/6
+**状态**: ⚠️ 部分完成 1/6
 **难度**: ⭐⭐⭐
 **预计**: 2 天
 **优先级**: P0
+**强制规则**: ⚠️ 适用《测试移植强制执行规范》 - 测试失败必须修复 TS 代码
 
 | # | 文件名 | 大小 | 测试数 | TS 状态 | TS 文件位置 | Python 位置 | 备注 |
 |---|--------|------|--------|---------|-------------|-------------|------|
-| 1 | `test_msg_sync_unit.py` | 14.1KB | ~20 | ⏳ 待移植 | - | - | **核心**: reply_token, seq 验证 |
+| 1 | `test_msg_sync_unit.py` | 14.1KB | ~20 | ⚠️ 部分移植 | [`tests/unit/test_msg_sync_unit.test.ts`](./tests/unit/test_msg_sync_unit.test.ts) | - | **核心**: reply_token, seq 验证，8 个测试创建完成，需修复 TS error 类以匹配 Python |
 | 2 | `test_msg_return_format.py` | 6.4KB | ~10 | ⏳ 待移植 | - | - | 消息返回格式 |
 | 3 | `test_msg_get.py` | 3.6KB | ~8 | ⏳ 待移植 | - | - | 获取单条消息 |
 | 4 | `test_bus_connect.py` | 34.8KB | ~23 | ⚠️ 部分移植 | [`tests/parity/bus_connect.test.ts`](./tests/parity/bus_connect.test.ts) | - | **核心**: 一站式连接流程 |

@@ -432,7 +432,9 @@ export class MemoryStore {
         throw new ReplyTokenExpiredError(new Date(token.expiresAt).toISOString());
       }
 
-      if (input.expectedLastSeq !== undefined && Math.abs(latestSeq - input.expectedLastSeq) > MemoryStore.SEQ_TOLERANCE) {
+      // Check seq tolerance (Python logic: new_messages_count > SEQ_TOLERANCE)
+      const newMessagesCount = latestSeq - input.expectedLastSeq;
+      if (input.expectedLastSeq !== undefined && newMessagesCount > MemoryStore.SEQ_TOLERANCE) {
         if (agent) {
           this.invalidateReplyTokensForAgent(thread.id, agent.id);
           this.setRefreshRequest(thread.id, agent.id, "SEQ_MISMATCH");
