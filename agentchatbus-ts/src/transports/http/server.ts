@@ -13,6 +13,7 @@ import { MemoryStore, memoryStore } from "../../core/services/memoryStore.js";
 import { registerStore } from "../../core/services/storeSingleton.js";
 import { eventBus } from "../../shared/eventBus.js";
 import { handleMcpRequest } from "../mcp/handlers.js";
+import { getOrCreateTransport, deleteTransport } from "../mcp/streamableHttp.js";
 
 // Allow tests to override the global memoryStore instance
 export let memoryStoreInstance: MemoryStore | null = null;
@@ -79,76 +80,72 @@ export function createHttpServer() {
     return reply;
   });
 
-  // MCP SSE endpoint - handles both GET (SSE stream) and POST (messages)
-  // Simple session tracking for GET connections
-  const mcpSessionIds = new Set<string>();
-
-  // GET /mcp/sse - SSE stream endpoint for MCP (for Claude Desktop and similar clients)
-  fastify.get("/mcp/sse", async (request, reply) => {
-    const sessionId = randomUUID();
-    const lang = (request.query as any)?.lang;
-
-    console.log(`[MCP-SSE] New connection: session=${sessionId.slice(0, 8)}, lang=${lang || 'default'}`);
-
-    // Set SSE headers
-    reply.raw.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
-      "mcp-session-id": sessionId,
-    });
-
-    // Send endpoint event for client to know where to POST messages
-    const endpointUrl = `/mcp/sse?session_id=${sessionId}`;
-    reply.raw.write(`event: endpoint\ndata: ${JSON.stringify(endpointUrl)}\n\n`);
-
-    // Track session
-    mcpSessionIds.add(sessionId);
-
-    // Keep the connection alive and send heartbeats
-    const heartbeatInterval = setInterval(() => {
-      if (!reply.raw.writableEnded) {
-        reply.raw.write(": heartbeat\n\n");
-      }
-    }, 30000);
-
-    // Cleanup on close
-    reply.raw.on("close", () => {
-      clearInterval(heartbeatInterval);
-      mcpSessionIds.delete(sessionId);
-      console.log(`[MCP-SSE] Session closed: ${sessionId.slice(0, 8)}`);
-    });
-
-    // Keep connection open
-    return reply;
-  });
-
   // POST /mcp/sse - Streamable HTTP endpoint (for VS Code and new MCP clients)
+  // Uses official MCP SDK StreamableHTTPServerTransport
   fastify.post("/mcp/sse", async (request, reply) => {
-    const query = request.query as { session_id?: string; sessionId?: string };
-    const sessionId = query.session_id || query.sessionId;
-
-    console.log(`[MCP-SSE] POST request: session=${sessionId?.slice(0, 8) || 'new'}`);
-
-    // Handle the MCP request
-    const body = request.body as any;
+    // Get session ID from header (MCP SDK uses 'mcp-session-id')
+    const headerSessionId = request.headers["mcp-session-id"] as string | undefined;
+    
+    console.log(`[MCP-SSE] POST request: session=${headerSessionId?.slice(0, 8) || 'new'}`);
 
     try {
-      const result = await handleMcpRequest(body);
+      // Get or create transport
+      const { transport, sessionId, isNew } = getOrCreateTransport(headerSessionId);
       
-      // For notifications, no response needed
-      if (result === null) {
-        reply.code(202);
-        return "";
+      // Set session ID header in response
+      if (isNew) {
+        reply.header("mcp-session-id", sessionId);
       }
       
-      reply.header("Content-Type", "application/json");
-      return result;
+      // Use native Node.js request/response objects for StreamableHTTPServerTransport
+      await transport.handleRequest(request.raw, reply.raw, request.body);
+      
+      // Return undefined to let the transport handle the response
+      return reply;
     } catch (error: any) {
       console.error(`[MCP-SSE] Error: ${error.message}`);
-      reply.header("Content-Type", "application/json");
-      return { jsonrpc: "2.0", id: body?.id, error: { code: -32603, message: error.message } };
+      reply.code(500);
+      return { error: error.message };
     }
+  });
+
+  // GET /mcp/sse - SSE stream endpoint for server-initiated notifications
+  fastify.get("/mcp/sse", async (request, reply) => {
+    const headerSessionId = request.headers["mcp-session-id"] as string | undefined;
+    
+    console.log(`[MCP-SSE] GET request: session=${headerSessionId?.slice(0, 8) || 'new'}`);
+
+    try {
+      // Get or create transport
+      const { transport, sessionId, isNew } = getOrCreateTransport(headerSessionId);
+      
+      // Set session ID header in response
+      if (isNew) {
+        reply.header("mcp-session-id", sessionId);
+      }
+      
+      // Use native Node.js request/response objects
+      await transport.handleRequest(request.raw, reply.raw);
+      
+      return reply;
+    } catch (error: any) {
+      console.error(`[MCP-SSE] GET Error: ${error.message}`);
+      reply.code(500);
+      return { error: error.message };
+    }
+  });
+
+  // DELETE /mcp/sse - Close session endpoint
+  fastify.delete("/mcp/sse", async (request, reply) => {
+    const headerSessionId = request.headers["mcp-session-id"] as string | undefined;
+    
+    if (headerSessionId) {
+      deleteTransport(headerSessionId);
+      console.log(`[MCP-SSE] DELETE session: ${headerSessionId.slice(0, 8)}`);
+    }
+    
+    reply.code(204);
+    return reply;
   });
 
   // Legacy endpoint for backwards compatibility
