@@ -637,7 +637,7 @@ export class MemoryStore {
     messages: MessageRecord[];
     current_seq: number;
     reply_token: string;
-    reply_window: number;
+    reply_window: { expires_at: number; max_new_messages: number };
     fast_return: boolean;
     fast_return_reason?: string;
   }> {
@@ -647,8 +647,6 @@ export class MemoryStore {
     }
 
     const latestSeq = this.getLatestSeq(input.threadId);
-    
-    console.log(`[DEBUG] waitForMessages called: threadId=${input.threadId}, agentId=${input.agentId}, afterSeq=${input.afterSeq}, latestSeq=${latestSeq}`);
     
     let fastReturn = false;
     let fastReturnReason: string | undefined;
@@ -681,7 +679,6 @@ export class MemoryStore {
 
     this.pruneExpiredWaitStates(input.threadId);
     if (!fastReturn && input.agentId) {
-      console.log(`[DEBUG] Entering wait state for thread=${input.threadId}, agent=${input.agentId}`);
       this.enterWaitState(input.threadId, input.agentId, input.timeoutMs || 300_000);
       // Update agent activity to msg_wait
       const agent = this.getAgent(input.agentId);
@@ -689,10 +686,7 @@ export class MemoryStore {
         agent.last_activity = 'msg_wait';
         agent.last_activity_time = new Date().toISOString();
         this.upsertAgent(agent);
-        console.log(`[DEBUG] Agent ${input.agentId} activity set to msg_wait`);
       }
-    } else {
-      console.log(`[DEBUG] NOT entering wait state: fastReturn=${fastReturn}, agentId=${input.agentId}`);
     }
 
     // Start polling loop (match Python _poll() function)
@@ -2212,6 +2206,9 @@ export class MemoryStore {
   }
 
   private upsertAgent(agent: AgentRecord): void {
+    // Update in-memory map FIRST (critical for getWaitingAgentsForThread to see changes)
+    this.agents.set(agent.id, agent);
+    
     this.persistenceDb.prepare(
       `
         INSERT INTO agents (

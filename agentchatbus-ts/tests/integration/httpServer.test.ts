@@ -328,13 +328,6 @@ describe("HTTP compatibility shell", () => {
     const list = threadsResponse.json().threads;
     const thread = list.find((item: { id: string }) => item.id === connected.thread.id);
     expect(Array.isArray(thread.waiting_agents)).toBe(true);
-    // Debug: log what we got
-    if (thread.waiting_agents.length === 0) {
-      console.log("DEBUG: No waiting agents found");
-      console.log("DEBUG: connected.agent.id =", connected.agent.id);
-      console.log("DEBUG: connected.thread.id =", connected.thread.id);
-      console.log("DEBUG: All threads:", JSON.stringify(list, null, 2));
-    }
     expect(thread.waiting_agents.length).toBe(1);
 
     // Wait for the background msg_wait to complete before closing server

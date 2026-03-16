@@ -4,6 +4,7 @@ import fastifyStatic from "@fastify/static";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { callTool, listTools } from "../../adapters/mcp/tools.js";
 import { SeqMismatchError, MissingSyncFieldsError, ReplyTokenInvalidError, ReplyTokenExpiredError, ReplyTokenReplayError, BusError } from "../../core/types/errors.js";
@@ -11,6 +12,7 @@ import { getConfig } from "../../core/config/env.js";
 import { MemoryStore, memoryStore } from "../../core/services/memoryStore.js";
 import { registerStore } from "../../core/services/storeSingleton.js";
 import { eventBus } from "../../shared/eventBus.js";
+import { handleMcpRequest } from "../mcp/handlers.js";
 
 // Allow tests to override the global memoryStore instance
 export let memoryStoreInstance: MemoryStore | null = null;
@@ -77,16 +79,79 @@ export function createHttpServer() {
     return reply;
   });
 
-  fastify.get("/mcp/sse", async (_request, reply) => {
+  // MCP SSE endpoint - handles both GET (SSE stream) and POST (messages)
+  // Simple session tracking for GET connections
+  const mcpSessionIds = new Set<string>();
+
+  // GET /mcp/sse - SSE stream endpoint for MCP (for Claude Desktop and similar clients)
+  fastify.get("/mcp/sse", async (request, reply) => {
+    const sessionId = randomUUID();
+    const lang = (request.query as any)?.lang;
+
+    console.log(`[MCP-SSE] New connection: session=${sessionId.slice(0, 8)}, lang=${lang || 'default'}`);
+
+    // Set SSE headers
     reply.raw.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
-      Connection: "keep-alive"
+      "Connection": "keep-alive",
+      "mcp-session-id": sessionId,
     });
-    reply.raw.write(`data: ${JSON.stringify({ message: "TS MCP SSE skeleton ready" })}\n\n`);
+
+    // Send endpoint event for client to know where to POST messages
+    const endpointUrl = `/mcp/sse?session_id=${sessionId}`;
+    reply.raw.write(`event: endpoint\ndata: ${JSON.stringify(endpointUrl)}\n\n`);
+
+    // Track session
+    mcpSessionIds.add(sessionId);
+
+    // Keep the connection alive and send heartbeats
+    const heartbeatInterval = setInterval(() => {
+      if (!reply.raw.writableEnded) {
+        reply.raw.write(": heartbeat\n\n");
+      }
+    }, 30000);
+
+    // Cleanup on close
+    reply.raw.on("close", () => {
+      clearInterval(heartbeatInterval);
+      mcpSessionIds.delete(sessionId);
+      console.log(`[MCP-SSE] Session closed: ${sessionId.slice(0, 8)}`);
+    });
+
+    // Keep connection open
     return reply;
   });
 
+  // POST /mcp/sse - Streamable HTTP endpoint (for VS Code and new MCP clients)
+  fastify.post("/mcp/sse", async (request, reply) => {
+    const query = request.query as { session_id?: string; sessionId?: string };
+    const sessionId = query.session_id || query.sessionId;
+
+    console.log(`[MCP-SSE] POST request: session=${sessionId?.slice(0, 8) || 'new'}`);
+
+    // Handle the MCP request
+    const body = request.body as any;
+
+    try {
+      const result = await handleMcpRequest(body);
+      
+      // For notifications, no response needed
+      if (result === null) {
+        reply.code(202);
+        return "";
+      }
+      
+      reply.header("Content-Type", "application/json");
+      return result;
+    } catch (error: any) {
+      console.error(`[MCP-SSE] Error: ${error.message}`);
+      reply.header("Content-Type", "application/json");
+      return { jsonrpc: "2.0", id: body?.id, error: { code: -32603, message: error.message } };
+    }
+  });
+
+  // Legacy endpoint for backwards compatibility
   fastify.post("/mcp/messages/", async (_request, reply) => {
     const request = _request.body as { method?: string; params?: Record<string, unknown> } | undefined;
     if (request?.method === "tools/list") {
@@ -630,19 +695,15 @@ export function createHttpServer() {
   });
 
   // Ensure underlying persistence DB is closed when the server shuts down.
-  fastify.addHook('onClose', async (_instance, done) => {
+  fastify.addHook('onClose', async () => {
     try {
-      try {
-        if (ownsStore && store && typeof (store as any).close === 'function') {
-          try { (store as any).close(); } catch (e) { }
-          // If we created a per-process instance, clear the global override
-          try { memoryStoreInstance = null; } catch (_) { }
-        }
-      } catch (e) {
-        // ignore
+      if (ownsStore && store && typeof (store as any).close === 'function') {
+        try { (store as any).close(); } catch (e) { }
+        // If we created a per-process instance, clear the global override
+        try { memoryStoreInstance = null; } catch (_) { }
       }
-    } finally {
-      done();
+    } catch (e) {
+      // ignore
     }
   });
 
