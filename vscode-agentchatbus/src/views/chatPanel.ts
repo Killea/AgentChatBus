@@ -39,6 +39,9 @@ export class ChatPanel {
                     case 'sendMessage':
                         await this._handleSendMessage(message.payload);
                         return;
+                    case 'createThread':
+                        await this._handleCreateThread(message.topic);
+                        return;
                     case 'uploadImage':
                         await this._handleUploadImage(message.requestId, message.payload);
                         return;
@@ -251,6 +254,21 @@ export class ChatPanel {
             this._panel.webview.postMessage({
                 command: 'agentsResult',
                 requestId,
+                ok: false,
+                error: e?.message || String(e),
+            });
+        }
+    }
+
+    private async _handleCreateThread(topicRaw: unknown) {
+        const topic = String(topicRaw || '').trim() || `New Thread ${new Date().toLocaleString()}`;
+        try {
+            const thread = await this._apiClient.createThread(topic);
+            this._switchThread(thread);
+            void vscode.commands.executeCommand('agentchatbus.refreshThreads');
+        } catch (e: any) {
+            this._panel.webview.postMessage({
+                command: 'createThreadResult',
                 ok: false,
                 error: e?.message || String(e),
             });

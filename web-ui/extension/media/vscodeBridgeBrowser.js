@@ -6,7 +6,9 @@
     eventSource: null,
     extensionState: {},
     started: false,
+    uiAgentAuth: null,
   };
+  const UI_AGENT_SESSION_KEY = "acb-ui-agent";
 
   function readConfig() {
     const root = document.body;
@@ -27,6 +29,52 @@
       throw new Error(`HTTP ${response.status} ${text}`);
     }
     return response.json();
+  }
+
+  async function ensureUiAgentAuth() {
+    if (bridgeState.uiAgentAuth?.agent_id && bridgeState.uiAgentAuth?.token) {
+      return bridgeState.uiAgentAuth;
+    }
+
+    const cached = sessionStorage.getItem(UI_AGENT_SESSION_KEY);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (parsed?.agent_id && parsed?.token) {
+          bridgeState.uiAgentAuth = {
+            agent_id: String(parsed.agent_id),
+            token: String(parsed.token),
+          };
+          return bridgeState.uiAgentAuth;
+        }
+      } catch {
+        // Ignore corrupted cache and re-register.
+      }
+    }
+
+    const response = await fetch(`${bridgeState.baseUrl}/api/agents/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "ui-human",
+        display_name: "Browser User",
+        ide: "browser",
+        model: "human",
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} registering UI agent`);
+    }
+    const payload = await response.json();
+    if (!payload?.agent_id || !payload?.token) {
+      throw new Error("Invalid UI agent registration payload");
+    }
+    bridgeState.uiAgentAuth = {
+      agent_id: String(payload.agent_id),
+      token: String(payload.token),
+    };
+    sessionStorage.setItem(UI_AGENT_SESSION_KEY, JSON.stringify(bridgeState.uiAgentAuth));
+    return bridgeState.uiAgentAuth;
   }
 
   async function resolveThread() {
@@ -185,6 +233,31 @@
     hostToWebview({ command: "agentsResult", requestId, ok: true, agents });
   }
 
+  async function createThread(topicRaw) {
+    const topic = String(topicRaw || "").trim() || `New Thread ${new Date().toLocaleString()}`;
+    const auth = await ensureUiAgentAuth();
+    const response = await fetch(`${bridgeState.baseUrl}/api/threads`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Agent-Token": auth.token,
+      },
+      body: JSON.stringify({
+        topic,
+        creator_agent_id: auth.agent_id,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} creating thread: ${await response.text()}`);
+    }
+    const thread = await response.json();
+    const next = new URL(window.location.href);
+    next.searchParams.set("threadId", String(thread.id));
+    next.searchParams.set("threadTopic", String(thread.topic || topic));
+    next.searchParams.set("threadStatus", String(thread.status || "discuss"));
+    window.location.assign(next.toString());
+  }
+
   function wireEventStream() {
     if (bridgeState.eventSource) {
       bridgeState.eventSource.close();
@@ -229,6 +302,16 @@
             hostToWebview({
               command: "agentsResult",
               requestId: message.requestId,
+              ok: false,
+              error: String(error?.message || error),
+            });
+          });
+          return;
+        }
+        if (command === "createThread") {
+          void createThread(message.topic).catch((error) => {
+            hostToWebview({
+              command: "createThreadResult",
               ok: false,
               error: String(error?.message || error),
             });

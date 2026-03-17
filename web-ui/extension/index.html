@@ -4,6 +4,57 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AgentChatBus Extension Panel (Browser Debug)</title>
+  <style>
+    :root {
+      --vscode-font-family: "Segoe UI", "Inter", sans-serif;
+      --vscode-editor-font-family: "Consolas", "JetBrains Mono", monospace;
+      --vscode-editor-background: #11161f;
+      --vscode-editor-foreground: #d9e1ea;
+      --vscode-panel-border: #243140;
+      --vscode-input-border: #334455;
+      --vscode-input-background: #161e2a;
+      --vscode-input-foreground: #d9e1ea;
+      --vscode-input-placeholderForeground: #7f90a3;
+      --vscode-button-background: #2f7bd8;
+      --vscode-button-foreground: #ffffff;
+      --vscode-button-hoverBackground: #3e8ae6;
+      --vscode-toolbar-hoverBackground: #1e2a3a;
+      --vscode-focusBorder: #4c94ef;
+      --vscode-textLink-foreground: #67a8ff;
+      --vscode-descriptionForeground: #95a7bc;
+      --vscode-sideBar-background: #0f141d;
+      --vscode-list-hoverBackground: #1c2736;
+      --vscode-errorForeground: #f26d78;
+      --vscode-notifications-background: #1a2533;
+      --vscode-notifications-foreground: #dbe5f0;
+      --vscode-editor-inactiveSelectionBackground: #1d2838;
+      --vscode-scrollbarSlider-background: #3a4a5c;
+    }
+
+    body[data-theme="light"] {
+      --vscode-editor-background: #f3f6fa;
+      --vscode-editor-foreground: #202733;
+      --vscode-panel-border: #ced8e4;
+      --vscode-input-border: #b9c7d8;
+      --vscode-input-background: #ffffff;
+      --vscode-input-foreground: #202733;
+      --vscode-input-placeholderForeground: #6c7f95;
+      --vscode-button-background: #1f6feb;
+      --vscode-button-foreground: #ffffff;
+      --vscode-button-hoverBackground: #2b7cf5;
+      --vscode-toolbar-hoverBackground: #e6edf5;
+      --vscode-focusBorder: #1f6feb;
+      --vscode-textLink-foreground: #1f6feb;
+      --vscode-descriptionForeground: #5f7289;
+      --vscode-sideBar-background: #ecf1f7;
+      --vscode-list-hoverBackground: #dde6f0;
+      --vscode-errorForeground: #d32f45;
+      --vscode-notifications-background: #f3f7fc;
+      --vscode-notifications-foreground: #1f2a38;
+      --vscode-editor-inactiveSelectionBackground: #dce6f2;
+      --vscode-scrollbarSlider-background: #a5b5c8;
+    }
+  </style>
   <link rel="stylesheet" href="/static/extension/media/messageRenderer.css" />
   <link rel="stylesheet" href="/static/extension/media/chatPanel.css" />
 </head>
@@ -17,6 +68,36 @@
 >
   <div id="chat-shell">
     <header id="chat-header">
+      <div id="chat-topbar">
+        <div id="topbar-left">
+          <div id="engine-badge" class="topbar-chip" title="Backend engine">
+            <span id="engine-icon" aria-hidden="true"></span>
+          </div>
+          <div id="connection-badge" class="topbar-chip">
+            <span id="connection-dot" class="connection-dot"></span>
+            <span id="connection-text">Connected</span>
+          </div>
+        </div>
+        <div id="topbar-actions">
+          <button id="theme-toggle-btn" class="icon-btn icon-only-btn tooltip-anchor" data-tooltip="Toggle theme" aria-label="Toggle theme">
+            <svg id="theme-icon-sun" class="button-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="5"></circle>
+              <line x1="12" y1="1" x2="12" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="23"></line>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+              <line x1="1" y1="12" x2="3" y2="12"></line>
+              <line x1="21" y1="12" x2="23" y2="12"></line>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+            </svg>
+            <svg id="theme-icon-moon" class="button-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+            </svg>
+          </button>
+          <button id="new-thread-btn" class="icon-btn topbar-cta tooltip-anchor" data-tooltip="Create and switch to a new thread" aria-label="Create and switch to a new thread">+ New Thread</button>
+        </div>
+      </div>
       <div id="search-bar">
         <input id="search-input" type="search" placeholder="Search this thread" spellcheck="false" />
         <div id="search-counter">0 / 0</div>
@@ -102,10 +183,7 @@
       const threadId = (params.get("threadId") || "").trim();
       const threadTopic = (params.get("threadTopic") || "").trim();
       const threadStatus = (params.get("threadStatus") || "discuss").trim();
-      const theme =
-        (params.get("theme") || localStorage.getItem("acb-theme") || "dark").trim().toLowerCase() === "light"
-          ? "light"
-          : "dark";
+      const theme = (params.get("theme") || "dark").trim().toLowerCase() === "light" ? "light" : "dark";
 
       root.dataset.baseUrl = baseUrl;
       root.dataset.threadId = threadId;

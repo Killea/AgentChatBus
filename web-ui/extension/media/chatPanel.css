@@ -35,11 +35,99 @@ textarea {
 
 #chat-header {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
   padding: 10px 8px;
   border-bottom: 1px solid var(--vscode-panel-border);
   background: color-mix(in srgb, var(--vscode-editor-background) 92%, var(--vscode-button-background) 8%);
   flex: 0 0 auto;
+}
+
+#chat-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+#topbar-left,
+#topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#topbar-left {
+  min-width: 0;
+}
+
+.topbar-chip {
+  border: 1px solid var(--vscode-panel-border);
+  background: color-mix(in srgb, var(--vscode-editor-background) 90%, var(--vscode-button-background) 10%);
+  color: var(--vscode-editor-foreground);
+  border-radius: 999px;
+  min-height: 34px;
+  padding: 0 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+#engine-badge {
+  width: 34px;
+  min-width: 34px;
+  justify-content: center;
+  padding: 0;
+}
+
+#engine-icon {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#engine-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.connection-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #2eb872;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #2eb872 24%, transparent);
+}
+
+#connection-badge.disconnected .connection-dot {
+  background: #f26d78;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #f26d78 24%, transparent);
+}
+
+#connection-badge.disconnected #connection-text {
+  color: var(--vscode-descriptionForeground);
+}
+
+.topbar-cta {
+  border-radius: 12px;
+  padding: 6px 14px;
+  min-height: 34px;
+  border-color: color-mix(in srgb, var(--vscode-button-background) 55%, var(--vscode-panel-border));
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  font-weight: 600;
+}
+
+.topbar-cta:hover {
+  background: var(--vscode-button-hoverBackground);
+  color: var(--vscode-button-foreground);
 }
 
 .chat-header-actions,
@@ -624,6 +712,20 @@ textarea {
 }
 
 @media (max-width: 640px) {
+  #chat-topbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #topbar-left,
+  #topbar-actions {
+    justify-content: space-between;
+  }
+
+  #topbar-actions .topbar-cta {
+    flex: 1;
+  }
+
   #search-bar,
   #composer-layout,
   #composer-box {
