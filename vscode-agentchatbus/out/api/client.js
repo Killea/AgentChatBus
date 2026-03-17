@@ -42,6 +42,7 @@ const eventsource_1 = __importDefault(require("eventsource"));
 class AgentChatBusApiClient {
     baseUrl;
     eventSource = null;
+    uiAgentAuth = null;
     onSseEvent = new vscode.EventEmitter();
     constructor() {
         const config = vscode.workspace.getConfiguration('agentchatbus');
@@ -150,6 +151,63 @@ class AgentChatBusApiClient {
             throw new Error(`HTTP ${response.status} fetching thread agents`);
         const data = await response.json();
         return data.agents || data;
+    }
+    async getMetrics() {
+        const response = await fetch(`${this.baseUrl}/api/metrics`);
+        if (!response.ok)
+            throw new Error(`HTTP ${response.status} fetching metrics`);
+        return await response.json();
+    }
+    async ensureUiAgentAuth() {
+        if (this.uiAgentAuth?.agent_id && this.uiAgentAuth?.token) {
+            return this.uiAgentAuth;
+        }
+        const response = await fetch(`${this.baseUrl}/api/agents/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: 'vscode-ui-human',
+                display_name: 'VSCode User',
+                ide: 'vscode',
+                model: 'human',
+            }),
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status} registering UI agent`);
+        }
+        const payload = await response.json();
+        if (!payload?.agent_id || !payload?.token) {
+            throw new Error('Invalid UI agent registration payload');
+        }
+        this.uiAgentAuth = {
+            agent_id: String(payload.agent_id),
+            token: String(payload.token),
+        };
+        return this.uiAgentAuth;
+    }
+    async createThread(topic) {
+        const auth = await this.ensureUiAgentAuth();
+        const response = await fetch(`${this.baseUrl}/api/threads`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Agent-Token': auth.token,
+            },
+            body: JSON.stringify({
+                topic,
+                creator_agent_id: auth.agent_id,
+            }),
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status} creating thread: ${await response.text()}`);
+        }
+        const payload = await response.json();
+        return {
+            id: String(payload.id),
+            topic: String(payload.topic || topic),
+            status: String(payload.status || 'discuss'),
+            created_at: String(payload.created_at || new Date().toISOString()),
+        };
     }
     async deleteThread(threadId) {
         const response = await fetch(`${this.baseUrl}/api/threads/${threadId}`, {

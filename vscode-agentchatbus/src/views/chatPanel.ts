@@ -42,6 +42,9 @@ export class ChatPanel {
                     case 'createThread':
                         await this._handleCreateThread(message.topic);
                         return;
+                    case 'getServerIndicators':
+                        await this._handleServerIndicators(message.requestId);
+                        return;
                     case 'uploadImage':
                         await this._handleUploadImage(message.requestId, message.payload);
                         return;
@@ -270,6 +273,30 @@ export class ChatPanel {
             this._panel.webview.postMessage({
                 command: 'createThreadResult',
                 ok: false,
+                error: e?.message || String(e),
+            });
+        }
+    }
+
+    private async _handleServerIndicators(requestId: string | undefined) {
+        if (!requestId) {
+            return;
+        }
+        try {
+            const metrics = await this._apiClient.getMetrics();
+            this._panel.webview.postMessage({
+                command: 'serverIndicatorsResult',
+                requestId,
+                ok: true,
+                connected: true,
+                engine: String(metrics?.engine || 'node'),
+            });
+        } catch (e: any) {
+            this._panel.webview.postMessage({
+                command: 'serverIndicatorsResult',
+                requestId,
+                ok: false,
+                connected: false,
                 error: e?.message || String(e),
             });
         }

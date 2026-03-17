@@ -826,6 +826,7 @@ class BusServerManager {
             ...process.env,
             ...(spec.env || {}),
             AGENTCHATBUS_OWNER_BOOT_TOKEN: this.ownerBootToken,
+            AGENTCHATBUS_RELOAD: '0',
         };
         this.serverMetadata = {
             command: spec.command,

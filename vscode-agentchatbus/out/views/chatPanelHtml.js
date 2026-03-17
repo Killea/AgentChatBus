@@ -71,6 +71,20 @@ function buildChatPanelHtml(resources, config) {
         >
             <div id="chat-shell">
                 <header id="chat-header">
+                    <div id="chat-topbar">
+                        <div id="topbar-left">
+                            <div id="engine-badge" class="topbar-chip" title="Backend engine">
+                                <span id="engine-icon" aria-hidden="true"></span>
+                            </div>
+                            <div id="connection-badge" class="topbar-chip">
+                                <span id="connection-dot" class="connection-dot"></span>
+                                <span id="connection-text">Connected</span>
+                            </div>
+                        </div>
+                        <div id="topbar-actions">
+                            <button id="new-thread-btn" class="icon-btn topbar-cta tooltip-anchor" data-tooltip="Create and switch to a new thread" aria-label="Create and switch to a new thread">+ New Thread</button>
+                        </div>
+                    </div>
                     <div id="search-bar">
                         <input id="search-input" type="search" placeholder="Search this thread" spellcheck="false" />
                         <div id="search-counter">0 / 0</div>

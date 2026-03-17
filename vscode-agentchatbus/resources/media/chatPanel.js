@@ -45,6 +45,8 @@
     agentsLoadPromise: null,
     connectionTimer: null,
     engineTapTimes: [],
+    indicatorResolvers: new Map(),
+    indicatorRequestSeq: 0,
   };
 
   const INITIAL_RECENT_RENDER_COUNT = 36;
@@ -83,10 +85,12 @@
     refs.engineBadge = document.getElementById('engine-badge');
     refs.connectionBadge = document.getElementById('connection-badge');
     refs.connectionText = document.getElementById('connection-text');
-    refs.themeToggleBtn = document.getElementById('theme-toggle-btn');
     refs.newThreadBtn = document.getElementById('new-thread-btn');
 
     setLoading(true);
+    if (refs.engineIcon) {
+      refs.engineIcon.innerHTML = NODE_ENGINE_SVG;
+    }
     applyTheme(state.theme || config.theme || 'dark');
     void refreshServerIndicators();
     state.connectionTimer = window.setInterval(() => {
@@ -106,15 +110,6 @@
     });
     refs.searchPrev.addEventListener('click', () => moveSearch(-1));
     refs.searchNext.addEventListener('click', () => moveSearch(1));
-    if (refs.themeToggleBtn) {
-      refs.themeToggleBtn.addEventListener('click', () => {
-        const next = document.body.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
-        applyTheme(next);
-        if (window.AcbMessageRenderer && typeof window.AcbMessageRenderer.renderMermaidBlocks === 'function') {
-          void window.AcbMessageRenderer.renderMermaidBlocks(refs.messageContainer);
-        }
-      });
-    }
     if (refs.newThreadBtn) {
       refs.newThreadBtn.addEventListener('click', () => {
         void requestNewThread();
@@ -270,6 +265,19 @@
           showToast(message.error || 'Failed to create thread.');
         }
         break;
+      case 'serverIndicatorsResult': {
+        const resolver = state.indicatorResolvers.get(message.requestId);
+        if (!resolver) {
+          break;
+        }
+        state.indicatorResolvers.delete(message.requestId);
+        if (message.ok) {
+          resolver.resolve(message);
+        } else {
+          resolver.reject(new Error(message.error || 'Failed to load server indicators.'));
+        }
+        break;
+      }
     }
   }
 
@@ -278,41 +286,38 @@
     state.theme = normalized;
     document.body.setAttribute('data-theme', normalized);
     localStorage.setItem('acb-vscode-theme', normalized);
-    if (refs.themeToggleBtn) {
-      refs.themeToggleBtn.setAttribute(
-        'data-tooltip',
-        normalized === 'light' ? 'Switch to dark theme' : 'Switch to light theme'
-      );
-      refs.themeToggleBtn.setAttribute(
-        'aria-label',
-        normalized === 'light' ? 'Switch to dark theme' : 'Switch to light theme'
-      );
-    }
-    const sun = document.getElementById('theme-icon-sun');
-    const moon = document.getElementById('theme-icon-moon');
-    if (sun && moon) {
-      sun.style.display = normalized === 'light' ? 'none' : 'block';
-      moon.style.display = normalized === 'light' ? 'block' : 'none';
-    }
   }
 
   async function refreshServerIndicators() {
+    const isWebview = String(window.location.protocol || '').startsWith('vscode-webview');
     try {
-      const response = await fetch(`${state.baseUrl}/api/metrics`);
-      if (!response.ok) {
-        throw new Error(await response.text());
+      if (isWebview) {
+        const requestId = `ind-${Date.now()}-${state.indicatorRequestSeq++}`;
+        const indicatorsPromise = new Promise((resolve, reject) => {
+          state.indicatorResolvers.set(requestId, { resolve, reject });
+        });
+        vscode.postMessage({ command: 'getServerIndicators', requestId });
+        const indicators = await indicatorsPromise;
+        const engine = String(indicators?.engine || '').toLowerCase();
+        if (refs.engineIcon) {
+          refs.engineIcon.innerHTML = engine === 'python' ? PYTHON_ENGINE_SVG : NODE_ENGINE_SVG;
+        }
+        if (refs.connectionBadge) {
+          refs.connectionBadge.classList.toggle('disconnected', !Boolean(indicators?.connected));
+        }
+        if (refs.connectionText) {
+          refs.connectionText.textContent = indicators?.connected ? 'Connected' : 'Reconnecting';
+        }
+        return;
       }
+
+      const response = await fetch(`${state.baseUrl}/api/metrics`);
+      if (!response.ok) throw new Error(await response.text());
       const metrics = await response.json();
       const engine = String(metrics?.engine || '').toLowerCase();
-      if (refs.engineIcon) {
-        refs.engineIcon.innerHTML = engine === 'python' ? PYTHON_ENGINE_SVG : NODE_ENGINE_SVG;
-      }
-      if (refs.connectionBadge) {
-        refs.connectionBadge.classList.remove('disconnected');
-      }
-      if (refs.connectionText) {
-        refs.connectionText.textContent = 'Connected';
-      }
+      if (refs.engineIcon) refs.engineIcon.innerHTML = engine === 'python' ? PYTHON_ENGINE_SVG : NODE_ENGINE_SVG;
+      if (refs.connectionBadge) refs.connectionBadge.classList.remove('disconnected');
+      if (refs.connectionText) refs.connectionText.textContent = 'Connected';
     } catch {
       if (refs.connectionBadge) {
         refs.connectionBadge.classList.add('disconnected');
@@ -349,11 +354,8 @@
   }
 
   async function requestNewThread() {
-    const defaultTopic = `New Thread ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-    const topic = window.prompt('Thread topic', defaultTopic);
-    if (topic === null) return;
-    const finalTopic = String(topic).trim() || defaultTopic;
-    vscode.postMessage({ command: 'createThread', topic: finalTopic });
+    const topic = `New Thread ${new Date().toLocaleString()}`;
+    vscode.postMessage({ command: 'createThread', topic });
   }
 
   function normalizeMessages(items) {

@@ -126,6 +126,12 @@ export class AgentChatBusApiClient {
         return data.agents || data;
     }
 
+    async getMetrics(): Promise<any> {
+        const response = await fetch(`${this.baseUrl}/api/metrics`);
+        if (!response.ok) throw new Error(`HTTP ${response.status} fetching metrics`);
+        return await response.json();
+    }
+
     private async ensureUiAgentAuth(): Promise<{ agent_id: string; token: string }> {
         if (this.uiAgentAuth?.agent_id && this.uiAgentAuth?.token) {
             return this.uiAgentAuth;

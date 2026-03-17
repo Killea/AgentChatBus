@@ -61,6 +61,12 @@ class ChatPanel {
                 case 'sendMessage':
                     await this._handleSendMessage(message.payload);
                     return;
+                case 'createThread':
+                    await this._handleCreateThread(message.topic);
+                    return;
+                case 'getServerIndicators':
+                    await this._handleServerIndicators(message.requestId);
+                    return;
                 case 'uploadImage':
                     await this._handleUploadImage(message.requestId, message.payload);
                     return;
@@ -246,6 +252,45 @@ class ChatPanel {
                 command: 'agentsResult',
                 requestId,
                 ok: false,
+                error: e?.message || String(e),
+            });
+        }
+    }
+    async _handleCreateThread(topicRaw) {
+        const topic = String(topicRaw || '').trim() || `New Thread ${new Date().toLocaleString()}`;
+        try {
+            const thread = await this._apiClient.createThread(topic);
+            this._switchThread(thread);
+            void vscode.commands.executeCommand('agentchatbus.refreshThreads');
+        }
+        catch (e) {
+            this._panel.webview.postMessage({
+                command: 'createThreadResult',
+                ok: false,
+                error: e?.message || String(e),
+            });
+        }
+    }
+    async _handleServerIndicators(requestId) {
+        if (!requestId) {
+            return;
+        }
+        try {
+            const metrics = await this._apiClient.getMetrics();
+            this._panel.webview.postMessage({
+                command: 'serverIndicatorsResult',
+                requestId,
+                ok: true,
+                connected: true,
+                engine: String(metrics?.engine || 'node'),
+            });
+        }
+        catch (e) {
+            this._panel.webview.postMessage({
+                command: 'serverIndicatorsResult',
+                requestId,
+                ok: false,
+                connected: false,
                 error: e?.message || String(e),
             });
         }
