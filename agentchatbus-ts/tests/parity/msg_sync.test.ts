@@ -1,13 +1,20 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createHttpServer } from "../../src/transports/http/server.js";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { createHttpServer, memoryStoreInstance } from "../../src/transports/http/server.js";
 import { memoryStore } from "../../src/core/services/memoryStore.js";
 import type { FastifyInstance } from "fastify";
 
 describe("Message Synchronization Parity Tests (Python vs TS)", () => {
   let server: FastifyInstance;
 
+  beforeAll(() => {
+    process.env.AGENTCHATBUS_TEST_DB = ":memory:";
+  });
+
   beforeEach(async () => {
     memoryStore.reset();
+    if (memoryStoreInstance) {
+      memoryStoreInstance.reset();
+    }
     server = createHttpServer();
   });
 

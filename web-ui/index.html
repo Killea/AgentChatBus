@@ -35,6 +35,7 @@
       PyPI: agentchatbus
     </a>
     <div class="sep"></div>
+    <div id="backend-icon" style="display: none; align-items: center; justify-content: center; margin-right: 8px; opacity: 0.8; height: 18px; width: 18px;" title="Backend Engine"></div>
     <div id="status-dot"></div>
     <div class="status-label" id="status-label">Connected</div>
     <!-- <button id="btn-theme-toggle" type="button" onclick="toggleTheme()">Light</button> -->
@@ -383,6 +384,27 @@
       let _cacheTs = 0;
       const CACHE_TTL = 30000; // 30s
 
+      function _updateBackendIcon(engine) {
+        const el = document.getElementById('backend-icon');
+        if (!el) return;
+        if (!engine) { el.style.display = 'none'; return; }
+        
+        const pythonSvg = `<svg width="100%" height="100%" viewBox="0 0 256 255" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" preserveAspectRatio="xMidYMid"><defs><linearGradient x1="12.9593594%" y1="12.0393928%" x2="79.6388325%" y2="78.2008538%" id="pyGrad1"><stop stop-color="#387EB8" offset="0%"/><stop stop-color="#366994" offset="100%"/></linearGradient><linearGradient x1="19.127525%" y1="20.5791813%" x2="90.7415328%" y2="88.4290372%" id="pyGrad2"><stop stop-color="#FFE052" offset="0%"/><stop stop-color="#FFC331" offset="100%"/></linearGradient></defs><g><path d="M126.915866,0.0722755491 C62.0835831,0.0722801733 66.1321288,28.1874648 66.1321288,28.1874648 L66.2044043,57.3145115 L128.072276,57.3145115 L128.072276,66.0598532 L41.6307171,66.0598532 C41.6307171,66.0598532 0.144551098,61.3549438 0.144551098,126.771315 C0.144546474,192.187673 36.3546019,189.867871 36.3546019,189.867871 L57.9649915,189.867871 L57.9649915,159.51214 C57.9649915,159.51214 56.8001363,123.302089 93.5968379,123.302089 L154.95878,123.302089 C154.95878,123.302089 189.434218,123.859386 189.434218,89.9830604 L189.434218,33.9695088 C189.434218,33.9695041 194.668541,0.0722755491 126.915866,0.0722755491 L126.915866,0.0722755491 L126.915866,0.0722755491 Z M92.8018069,19.6589497 C98.9572068,19.6589452 103.932242,24.6339846 103.932242,30.7893845 C103.932246,36.9447844 98.9572068,41.9198193 92.8018069,41.9198193 C86.646407,41.9198239 81.6713721,36.9447844 81.6713721,30.7893845 C81.6713674,24.6339846 86.646407,19.6589497 92.8018069,19.6589497 L92.8018069,19.6589497 L92.8018069,19.6589497 Z" fill="url(#pyGrad1)"/><path d="M128.757101,254.126271 C193.589403,254.126271 189.540839,226.011081 189.540839,226.011081 L189.468564,196.884035 L127.600692,196.884035 L127.600692,188.138693 L214.042251,188.138693 C214.042251,188.138693 255.528417,192.843589 255.528417,127.427208 C255.52844,62.0108566 219.318366,64.3306589 219.318366,64.3306589 L197.707976,64.3306589 L197.707976,94.6863832 C197.707976,94.6863832 198.87285,130.896434 162.07613,130.896434 L100.714182,130.896434 C100.714182,130.896434 66.238745,130.339138 66.238745,164.215486 L66.238745,220.229038 C66.238745,220.229038 61.0044225,254.126271 128.757101,254.126271 L128.757101,254.126271 L128.757101,254.126271 Z M162.87116,234.539597 C156.715759,234.539597 151.740726,229.564564 151.740726,223.409162 C151.740726,217.253759 156.715759,212.278727 162.87116,212.278727 C169.026563,212.278727 174.001595,217.253759 174.001595,223.409162 C174.001618,229.564564 169.026563,234.539597 162.87116,234.539597 L162.87116,234.539597 L162.87116,234.539597 Z" fill="url(#pyGrad2)"/></g></svg>`;
+        
+        const nodeSvg = `<svg width="100%" height="100%" viewBox="0 0 256 289" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" preserveAspectRatio="xMidYMid"><g><path d="M127.999999,288.463771 C124.024844,288.463771 120.314699,287.403728 116.869564,285.548656 L81.6231884,264.612838 C76.32298,261.697724 78.9730854,260.637682 80.5631458,260.107661 C87.7184259,257.72257 89.0434775,257.192547 96.4637688,252.952381 C97.2587979,252.422361 98.3188405,252.687372 99.1138718,253.217392 L126.144927,269.383024 C127.20497,269.913045 128.530021,269.913045 129.325053,269.383024 L235.064182,208.165634 C236.124225,207.635611 236.654245,206.575571 236.654245,205.250519 L236.654245,83.0807467 C236.654245,81.7556929 236.124225,80.6956526 235.064182,80.1656324 L129.325053,19.2132506 C128.26501,18.6832305 126.939959,18.6832305 126.144927,19.2132506 L20.4057954,80.1656324 C19.3457551,80.6956526 18.8157349,82.0207041 18.8157349,83.0807467 L18.8157349,205.250519 C18.8157349,206.31056 19.3457551,207.635611 20.4057954,208.165634 L49.2919247,224.861286 C64.9275364,232.811595 74.7329196,223.536234 74.7329196,214.260871 L74.7329196,93.681159 C74.7329196,92.0910985 76.0579711,90.5010358 77.9130428,90.5010358 L91.4285716,90.5010358 C93.0186343,90.5010358 94.6086948,91.8260873 94.6086948,93.681159 L94.6086948,214.260871 C94.6086948,235.196689 83.2132512,247.387164 63.3374737,247.387164 C57.2422362,247.387164 52.4720502,247.387164 38.9565214,240.761906 L11.1304347,224.861286 C4.24016581,220.886129 0,213.46584 0,205.515528 L0,83.3457557 C0,75.3954465 4.24016581,67.9751552 11.1304347,64.0000006 L116.869564,2.78260752 C123.494824,-0.927535841 132.505176,-0.927535841 139.130436,2.78260752 L244.869565,64.0000006 C251.759834,67.9751552 256,75.3954465 256,83.3457557 L256,205.515528 C256,213.46584 251.759834,220.886129 244.869565,224.861286 L139.130436,286.078676 C135.685299,287.668739 131.710145,288.463771 127.999999,288.463771 L127.999999,288.463771 Z M160.596274,204.455488 C114.219461,204.455488 104.679089,183.254659 104.679089,165.233955 C104.679089,163.643893 106.004141,162.053832 107.859212,162.053832 L121.639752,162.053832 C123.229813,162.053832 124.554864,163.113872 124.554864,164.703935 C126.674947,178.749484 132.770187,185.639753 160.861283,185.639753 C183.122154,185.639753 192.662526,180.604556 192.662526,168.67909 C192.662526,161.788821 190.012423,156.753624 155.296065,153.308489 C126.409938,150.393375 108.389235,144.033126 108.389235,120.977226 C108.389235,99.5113875 126.409938,86.7908901 156.621119,86.7908901 C190.542443,86.7908901 207.238095,98.4513472 209.358178,123.89234 C209.358178,124.687371 209.093167,125.482403 208.563147,126.277434 C208.033127,126.807454 207.238095,127.337474 206.443064,127.337474 L192.662526,127.337474 C191.337475,127.337474 190.012423,126.277434 189.747412,124.952382 C186.567289,110.376813 178.351966,105.606625 156.621119,105.606625 C132.240165,105.606625 129.325053,114.086957 129.325053,120.447205 C129.325053,128.132506 132.770187,130.5176 165.631471,134.757766 C198.227744,138.997931 213.598344,145.093169 213.598344,167.884058 C213.333333,191.20497 194.252589,204.455488 160.596274,204.455488 L160.596274,204.455488 Z" fill="#539E43"/></g></svg>`;
+        
+        el.innerHTML = engine.toLowerCase() === 'python' ? pythonSvg : nodeSvg;
+        el.title = `Backend Engine: ${engine}`;
+        el.style.display = 'flex';
+      }
+
+      // Initial fetch to show engine icon
+      window.AcbApi.api('/api/metrics').then(m => {
+        if (m?.engine) _updateBackendIcon(m.engine);
+        _metricsCache = m;
+        _cacheTs = Date.now();
+      }).catch(() => {});
+
       function _fmtUptime(seconds) {
         if (seconds == null) return '—';
         const s = Math.round(seconds);
@@ -463,6 +485,7 @@
           try {
             _metricsCache = await window.AcbApi.api('/api/metrics');
             _cacheTs = Date.now();
+            if (_metricsCache?.engine) _updateBackendIcon(_metricsCache.engine);
           } catch {
             _metricsCache = null;
           }
@@ -1203,6 +1226,15 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         return;
       }
 
+      // DEBUG: Log message author fields
+      console.log('[DEBUG] appendBubble msg:', {
+        seq: m.seq,
+        author: m.author,
+        author_name: m.author_name,
+        author_id: m.author_id,
+        role: m.role,
+        content_preview: m.content?.slice(0, 50)
+      });
       const authorLabel = String(m.author_name ?? m.author ?? '').trim() || 'unknown';
       const isSystem = String(m.role ?? '').toLowerCase() === 'system' || authorLabel.toLowerCase() === 'system';
       const isHuman = !m.author_id && (
@@ -1213,8 +1245,14 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       const color = authorColor(authorKey);
       const avatarEmoji = String(m.author_emoji || '').trim()
         || String(currentAgents?.find((a) => a.id === String(m.author_id ?? ''))?.emoji || '').trim()
-        || (isHuman ? '👤' : (isSystem ? '☑️' : '🤖'));
-      const bgAlpha = `${color}22`;  // ~13% alpha tint for avatar bg
+        || (isHuman ? '👤' : (isSystem ? '⚙️' : '🤖'));
+      
+      const analysis = window.AcbUtils.getEmojiAnalysis(avatarEmoji);
+      const isDarkTheme = document.body.getAttribute('data-theme') !== 'light';
+      const styles = window.AcbUtils.getEmojiStyledBackground(avatarEmoji, isDarkTheme);
+      const avatarBg = styles.bg;
+      const avatarBorder = styles.border;
+
       const isAgentMessage = !isHuman && !isSystem;
       const sentAtLabel = fmtTime(m.created_at);
 
@@ -1262,7 +1300,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         : '';
 
       row.innerHTML = `
-      <div class="msg-avatar" style="background:${bgAlpha};color:${color};border:1px solid ${color}44">${avatarEmoji}</div>
+      <div class="msg-avatar" data-emoji="${avatarEmoji}" style="background:${avatarBg};border:1px solid ${avatarBorder}">${avatarEmoji}</div>
       <div class="msg-col">
         <div class="msg-header">
           <span class="msg-author-label" style="color:${color}">${esc(authorLabel)}</span>

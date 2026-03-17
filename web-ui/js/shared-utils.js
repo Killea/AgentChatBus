@@ -101,7 +101,87 @@
     return color;
   }
 
+  const _emojiAnalysisCache = {};
+  /**
+   * Analyzes an emoji by rendering it to a small canvas and calculating 
+   * its average brightness and dominant colors.
+   */
+  function getEmojiAnalysis(emoji) {
+    if (!emoji) return { brightness: 128, color: "transparent" };
+    if (_emojiAnalysisCache[emoji]) return _emojiAnalysisCache[emoji];
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 32;
+    canvas.height = 32;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return { brightness: 128, color: "transparent" };
+
+    // Standard emoji font stack for consistency (mostly uses system default)
+    ctx.font = '24px "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", serif';
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(emoji, 16, 16);
+
+    const data = ctx.getImageData(0, 0, 32, 32).data;
+    let r = 0, g = 0, b = 0, a = 0;
+    let count = 0;
+    let lum = 0;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const alpha = data[i + 3];
+      if (alpha > 40) { // Count visible pixels
+        r += data[i];
+        g += data[i + 1];
+        b += data[i + 2];
+        // Relative luminance: https://www.w3.org/TR/WCAG20/#relativeluminancedef
+        lum += (0.2126 * data[i]) + (0.7152 * data[i + 1]) + (0.0722 * data[i + 2]);
+        count++;
+      }
+    }
+
+    if (count === 0) return { brightness: 128, color: "transparent" };
+
+    const avgR = Math.round(r / count);
+    const avgG = Math.round(g / count);
+    const avgB = Math.round(b / count);
+    const avgLum = lum / count;
+
+    const hex = "#" + ((1 << 24) + (avgR << 16) + (avgG << 8) + avgB).toString(16).slice(1);
+    const analysis = { brightness: avgLum, color: hex };
+    _emojiAnalysisCache[emoji] = analysis;
+    return analysis;
+  }
+
+  /**
+   * Returns background and border styles for an emoji based on its brightness 
+   * and the current theme.
+   */
+  function getEmojiStyledBackground(emoji, isDark) {
+    const analysis = getEmojiAnalysis(emoji);
+    let bg, border;
+    if (isDark) {
+      if (analysis.brightness < 140) {
+        // Softened contrast for dark emojis in dark mode
+        bg = `linear-gradient(rgba(255,255,255,0.4), rgba(255,255,255,0.4)), ${analysis.color}`;
+        border = 'rgba(255, 255, 255, 0.2)';
+      } else {
+        bg = analysis.color + '22';
+        border = analysis.color + '44';
+      }
+    } else {
+      if (analysis.brightness > 180) {
+        bg = 'rgba(0, 0, 0, 0.08)';
+        border = 'rgba(0, 0, 0, 0.15)';
+      } else {
+        bg = analysis.color + '15';
+        border = analysis.color + '33';
+      }
+    }
+    return { bg, border };
+  }
+
   function shouldGroupWithPrevious(prevAuthorKey, prevTimestamp, currentAuthorKey, currentTimestamp, isSystem, isHuman) {
+
     if (isSystem || isHuman) return false;
     if (!prevAuthorKey || prevAuthorKey !== currentAuthorKey) return false;
     if (!prevTimestamp || !currentTimestamp) return false;
@@ -117,6 +197,8 @@
     autoResize,
     copyTextWithFallback,
     authorColor,
+    getEmojiAnalysis,
+    getEmojiStyledBackground,
     getBackendAgentEmoji,
     shouldGroupWithPrevious,
   };

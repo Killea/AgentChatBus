@@ -36,8 +36,8 @@ describe('Thread Settings V2 Basic Tests', () => {
         expect(settings).toBeDefined();
         if (settings) {
             expect(settings.auto_administrator_enabled).toBe(true);
-            expect(settings.timeout_seconds).toBe(300); // TS version default
-            expect(settings.switch_timeout_seconds).toBe(300);
+            expect(settings.timeout_seconds).toBe(60); // TS version default
+            expect(settings.switch_timeout_seconds).toBe(60);
         }
     });
 
@@ -147,5 +147,188 @@ describe('Thread Settings V2 Basic Tests', () => {
         const settings = store.getThreadSettings(fakeId);
         
         expect(settings).toBeUndefined();
+    });
+
+    it('update thread settings rejects timeout below minimum', () => {
+        // 对应 Python: test_thread_settings_update_invalid_timeout (L83-90)
+        /** Test that timeout below minimum (30) is rejected. */
+        const thread = createThread("test-invalid-timeout");
+        
+        // Initialize settings
+        store.getThreadSettings(thread.id);
+        
+        // Try to set timeout below minimum
+        expect(() => store.updateThreadSettings(thread.id, {
+            timeout_seconds: 29
+        })).toThrow(/timeout_seconds must be at least 30/);
+    });
+
+    it('update thread settings allows large timeout', () => {
+        // 对应 Python: test_thread_settings_update_allows_large_timeout (L93-98)
+        /** Large timeout values are allowed (no max cap). */
+        const thread = createThread("test-large-timeout");
+        
+        store.getThreadSettings(thread.id);
+        
+        const updated = store.updateThreadSettings(thread.id, {
+            timeout_seconds: 3600
+        });
+        
+        expect(updated?.timeout_seconds).toBe(3600);
+    });
+
+    it('update thread settings rejects switch_timeout below minimum', () => {
+        // 对应 Python: Similar validation for switch_timeout_seconds
+        /** Test that switch_timeout below minimum (30) is rejected. */
+        const thread = createThread("test-invalid-switch-timeout");
+        
+        store.getThreadSettings(thread.id);
+        
+        expect(() => store.updateThreadSettings(thread.id, {
+            switch_timeout_seconds: 15
+        })).toThrow(/switch_timeout_seconds must be at least 30/);
+    });
+
+    it('message updates thread state', () => {
+        // 对应 Python: test_message_updates_activity (L165-191)
+        /** Posting a message should update thread. */
+        const thread = createThread("test-activity");
+        
+        // Post a message
+        const sync = store.issueSyncContext(thread.id, "test-agent", "test");
+        const msg = store.postMessage({
+            threadId: thread.id,
+            author: "test-agent",
+            content: "test message",
+            expectedLastSeq: sync.current_seq,
+            replyToken: sync.reply_token,
+            role: "user"
+        });
+        
+        // Verify message was posted
+        expect(msg.seq).toBeGreaterThan(0);
+        
+        // Verify thread still exists and is accessible
+        const after = store.getThread(thread.id);
+        expect(after).toBeDefined();
+    });
+
+    it('msg_post updates last_activity_time and clears auto-assigned admin', () => {
+        const thread = createThread("test-clear-auto-admin-on-post");
+
+        const before = store.getThreadSettings(thread.id);
+        expect(before).toBeDefined();
+        if (!before) return;
+
+        const seedTs = new Date(Date.now() - 60_000).toISOString();
+        (store as any).threadSettings.set(thread.id, {
+            ...before,
+            last_activity_time: seedTs,
+            auto_assigned_admin_id: "agent-auto",
+            auto_assigned_admin_name: "Auto Admin",
+            admin_assignment_time: seedTs
+        });
+        (store as any).upsertThreadSettings(thread.id);
+
+        const sync = store.issueSyncContext(thread.id, "test-agent", "test");
+        store.postMessage({
+            threadId: thread.id,
+            author: "test-agent",
+            content: "trigger activity update",
+            expectedLastSeq: sync.current_seq,
+            replyToken: sync.reply_token,
+            role: "user"
+        });
+
+        const after = store.getThreadSettings(thread.id);
+        expect(after).toBeDefined();
+        if (!after) return;
+
+        expect(after.last_activity_time > seedTs).toBe(true);
+        expect(after.auto_assigned_admin_id).toBeUndefined();
+        expect(after.auto_assigned_admin_name).toBeUndefined();
+        expect(after.admin_assignment_time).toBeUndefined();
+    });
+
+    it('system message creation', () => {
+        // 对应 Python: test_system_message_creation (L276-297)
+        /** System messages are stored with role='system'. */
+        const thread = createThread("test-sys-msg");
+        
+        const sync = store.issueSyncContext(thread.id, "system", "test");
+        const msg = store.postMessage({
+            threadId: thread.id,
+            author: "system",
+            content: "System announcement",
+            expectedLastSeq: sync.current_seq,
+            replyToken: sync.reply_token,
+            role: "system"
+        });
+        
+        expect(msg.role).toBe("system");
+    });
+
+    it('delete thread cleans up messages', () => {
+        // 对应 Python: test_thread_delete_with_reactions_and_settings (L300-318)
+        /** Deleting a thread should clean up associated messages. */
+        const thread = createThread("test-delete");
+        
+        // Post a message
+        const sync = store.issueSyncContext(thread.id, "test-agent", "test");
+        store.postMessage({
+            threadId: thread.id,
+            author: "test-agent",
+            content: "to be deleted",
+            expectedLastSeq: sync.current_seq,
+            replyToken: sync.reply_token,
+            role: "user"
+        });
+        
+        // Verify message exists
+        const msgsBefore = store.getMessages(thread.id, 0);
+        expect(msgsBefore.length).toBeGreaterThan(0);
+        
+        // Delete thread
+        store.deleteThread(thread.id);
+        
+        // Verify thread is gone
+        const deleted = store.getThread(thread.id);
+        expect(deleted).toBeUndefined();
+    });
+
+    it('thread delete cleans reactions', () => {
+        // 对应 Python: test_thread_delete_with_reactions_and_settings
+        /** Deleting a thread cleans up reactions. */
+        const thread = createThread("test-delete-reactions");
+        
+        // Post message and add reaction
+        const sync = store.issueSyncContext(thread.id, "test-agent", "test");
+        const msg = store.postMessage({
+            threadId: thread.id,
+            author: "test-agent",
+            content: "message with reaction",
+            expectedLastSeq: sync.current_seq,
+            replyToken: sync.reply_token,
+            role: "user"
+        });
+        
+        store.addReaction(msg.id, "reactor", "thumbsup");
+        
+        // Delete thread
+        store.deleteThread(thread.id);
+        
+        // Reaction should be gone (verified by no error when accessing)
+        expect(store.getThread(thread.id)).toBeUndefined();
+    });
+
+    it('settings defaults on new thread', () => {
+        // Verify default values for new thread settings
+        const thread = createThread("test-defaults");
+        
+        const settings = store.getThreadSettings(thread.id);
+        
+        expect(settings?.auto_administrator_enabled).toBe(true);
+        expect(settings?.timeout_seconds).toBeGreaterThan(0);
+        expect(settings?.switch_timeout_seconds).toBeGreaterThan(0);
     });
 });

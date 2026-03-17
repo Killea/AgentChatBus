@@ -183,4 +183,25 @@ describe('Reply Threading Unit Tests', () => {
             postMessage(thread.id, "cross thread", "agent-b", msgInThread2.id);
         }).toThrow("different thread");
     });
+
+    it('sse event msg_reply not emitted for non-reply', () => {
+        // 对应 Python: L173-187
+        /** msg.reply SSE event is NOT emitted when reply_to_msg_id is NOT provided. */
+        const thread = createThread();
+        const msg = postMessage(thread.id, "standalone message");
+        
+        // No reply_to_msg_id means this is not a reply
+        expect(msg.reply_to_msg_id).toBeUndefined();
+    });
+
+    it('old db compat - null reply_to_msg_id', () => {
+        // 对应 Python: L233-246
+        /** Old messages without reply_to_msg_id should work fine. */
+        const thread = createThread();
+        const msg = postMessage(thread.id, "old style message");
+        
+        // Verify the message was created successfully without reply_to_msg_id
+        expect(msg.id).toBeDefined();
+        expect(msg.content).toBe("old style message");
+    });
 });

@@ -2879,6 +2879,7 @@ async def get_metrics():
 
     return {
         "status": "ok",
+        "engine": "python",
         "uptime_seconds": uptime_seconds,
         "started_at": started_at,
         **metrics,

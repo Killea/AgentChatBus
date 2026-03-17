@@ -15,6 +15,21 @@
     }
     localStorage.setItem("agentchatbus-theme", effectiveTheme);
 
+    // Update all dynamic emoji avatars for the new theme
+    if (window.AcbUtils && window.AcbUtils.getEmojiStyledBackground) {
+      const isDark = effectiveTheme === 'dark';
+      document.querySelectorAll('.msg-avatar[data-emoji], .ti-waiting-agent[data-emoji]').forEach(el => {
+        const emoji = el.getAttribute('data-emoji');
+        const styles = window.AcbUtils.getEmojiStyledBackground(emoji, isDark);
+        el.style.background = styles.bg;
+        el.style.border = `1px solid ${styles.border}`;
+      });
+      // Also update agent status items (custom elements will handle their own update via attribute or event)
+      document.querySelectorAll('acb-agent-status-item').forEach(el => {
+        if (typeof el._render === 'function') el._render();
+      });
+    }
+
     // Re-render any existing mermaid diagrams with the new theme
     if (window.AcbMessageRenderer && window.AcbMessageRenderer.reRenderAllMermaidBlocks) {
       window.AcbMessageRenderer.reRenderAllMermaidBlocks();

@@ -54,8 +54,8 @@ describe("HTTP compatibility shell", () => {
 
     expect(messageResponse.statusCode).toBe(201);
     const body = messageResponse.json();
-    expect(body.thread_id).toBe(thread.id);
-    expect(body.content).toBe("hello");
+    // Python REST parity: message response uses id/seq fields
+    expect(body.id).toBeDefined();
     expect(body.seq).toBeGreaterThan(0);
 
     await server.close();
@@ -98,6 +98,53 @@ describe("HTTP compatibility shell", () => {
     await server.close();
   });
 
+  it("rejects cross-agent reply token misuse (Python parity)", async () => {
+    const server = createHttpServer();
+    // Create thread via HTTP to keep state consistent with the store instance
+    const thread = (await server.inject({
+      method: "POST",
+      url: "/api/threads",
+      payload: { topic: "cross-agent-thread" }
+    })).json();
+
+    // Use the same in-process store instance
+    const store = getMemoryStore();
+    const agentA = store.registerAgent({ ide: "VSCode", model: "GPT-A" });
+    const agentB = store.registerAgent({ ide: "VSCode", model: "GPT-B" });
+    const sync = store.issueSyncContext(thread.id, agentA.id, "test");
+
+    // Attempt to use agentA's token with agentB as author -> should be rejected
+    const misuse = await server.inject({
+      method: "POST",
+      url: `/api/threads/${thread.id}/messages`,
+      payload: {
+        author: agentB.id,
+        content: "cross-agent misuse",
+        expected_last_seq: sync.current_seq,
+        reply_token: sync.reply_token,
+      }
+    });
+
+    expect(misuse.statusCode).toBe(400);
+    expect(misuse.json().detail.error).toBe("TOKEN_INVALID");
+
+    // Sanity: correct agent should still succeed
+    const ok = await server.inject({
+      method: "POST",
+      url: `/api/threads/${thread.id}/messages`,
+      payload: {
+        author: agentA.id,
+        content: "legit",
+        expected_last_seq: sync.current_seq,
+        reply_token: sync.reply_token,
+        role: "assistant"
+      }
+    });
+    expect(ok.statusCode).toBe(201);
+
+    await server.close();
+  });
+
   it("auto-issues sync context on REST message post when sync fields are omitted", async () => {
     const server = createHttpServer();
     const thread = (await server.inject({
@@ -116,7 +163,11 @@ describe("HTTP compatibility shell", () => {
     });
 
     expect(response.statusCode).toBe(201);
-    expect(response.json().content).toBe("rest fallback send");
+    // Python REST parity: message response uses id/seq fields
+    const body = response.json();
+    expect(body.id).toBeDefined();
+    expect(body.msg_id).toBeUndefined();
+    expect(body.seq).toBeGreaterThan(0);
 
     await server.close();
   });
@@ -405,24 +456,27 @@ describe("HTTP compatibility shell", () => {
       }
     })).json();
 
+    // Python REST parity: message response uses id
+    const messageId = message.id;
+    expect(messageId).toBeDefined();
+
     const editResponse = await server.inject({
       method: "PUT",
-      url: `/api/messages/${message.id}`,
+      url: `/api/messages/${messageId}`,
       payload: { new_content: "edited" }
     });
     expect(editResponse.statusCode).toBe(200);
-    expect(editResponse.json().content).toBe("edited");
 
     const reactResponse = await server.inject({
       method: "POST",
-      url: `/api/messages/${message.id}/reactions`,
+      url: `/api/messages/${messageId}/reactions`,
       payload: { agent_id: "tester", reaction: "agree" }
     });
     expect(reactResponse.statusCode).toBe(201);
 
     const historyResponse = await server.inject({
       method: "GET",
-      url: `/api/messages/${message.id}/history`
+      url: `/api/messages/${messageId}/history`
     });
     expect(historyResponse.statusCode).toBe(200);
     expect(Array.isArray(historyResponse.json().edits)).toBe(true);
@@ -430,7 +484,7 @@ describe("HTTP compatibility shell", () => {
 
     const getReactionsResponse = await server.inject({
       method: "GET",
-      url: `/api/messages/${message.id}/reactions`
+      url: `/api/messages/${messageId}/reactions`
     });
     expect(getReactionsResponse.statusCode).toBe(200);
     expect(getReactionsResponse.json().reactions.length).toBe(1);

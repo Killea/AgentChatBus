@@ -9,11 +9,15 @@ import {
   SeqMismatchError, 
   ReplyTokenInvalidError, 
   ReplyTokenExpiredError, 
-  ReplyTokenReplayError 
+  ReplyTokenReplayError,
+  RateLimitExceeded,
+  PermissionError
 } from "../types/errors.js";
 import { eventBus } from "../../shared/eventBus.js";
 import { generateAgentEmoji } from "../../main.js";
 import { registerStore } from "./storeSingleton.js";
+import { checkContentOrThrow, ContentFilterError } from "./contentFilter.js";
+import { ENABLE_HANDOFF_TARGET, ENABLE_STOP_REASON, ENABLE_PRIORITY } from "../config/env.js";
 
 /**
  * AsyncEvent - 模拟 Python asyncio.Event 语义
@@ -159,7 +163,18 @@ type PersistedState = {
   ideSessions: IdeSession[];
   ideOwnerInstanceId: string | null;
   logCursor: number;
-  threadSettings: Array<[string, { auto_administrator_enabled: boolean; timeout_seconds: number; switch_timeout_seconds: number }]>;
+  threadSettings: Array<[string, {
+    auto_administrator_enabled: boolean;
+    timeout_seconds: number;
+    switch_timeout_seconds: number;
+    last_activity_time: string;
+    auto_assigned_admin_id?: string;
+    auto_assigned_admin_name?: string;
+    admin_assignment_time?: string;
+    creator_admin_id?: string;
+    creator_admin_name?: string;
+    creator_assignment_time?: string;
+  }]>;
   messageEditHistory: Array<[string, Array<{ version: number; old_content: string; edited_by: string; created_at: string }>]>;
 };
 
@@ -177,7 +192,18 @@ export class MemoryStore {
   private readonly syncTokens = new Map<string, ReplyTokenRecord>();
   private readonly logEntries: Array<{ id: number; line: string }> = [];
   private readonly ideSessions = new Map<string, IdeSession>();
-  private readonly threadSettings = new Map<string, { auto_administrator_enabled: boolean; timeout_seconds: number; switch_timeout_seconds: number }>();
+  private readonly threadSettings = new Map<string, {
+    auto_administrator_enabled: boolean;
+    timeout_seconds: number;
+    switch_timeout_seconds: number;
+    last_activity_time: string;
+    auto_assigned_admin_id?: string;
+    auto_assigned_admin_name?: string;
+    admin_assignment_time?: string;
+    creator_admin_id?: string;
+    creator_admin_name?: string;
+    creator_assignment_time?: string;
+  }>();
   private readonly messageEditHistory = new Map<string, Array<{ version: number; old_content: string; edited_by: string; created_at: string }>>();
   private ideOwnerInstanceId: string | null = null;
   // Per-thread AsyncEvent registry for event-driven msg_wait wake-ups (matching Python _thread_events)
@@ -251,7 +277,76 @@ export class MemoryStore {
       byStatus[t.status] = (byStatus[t.status] || 0) + 1;
     }
 
+    // Calculate message rates (last 1m, 5m, 15m)
+    const now = new Date();
+    const cutoffs = {
+      last_1m: new Date(now.getTime() - 60 * 1000).toISOString(),
+      last_5m: new Date(now.getTime() - 5 * 60 * 1000).toISOString(),
+      last_15m: new Date(now.getTime() - 15 * 60 * 1000).toISOString(),
+    };
+    const messageRate: Record<string, number> = { last_1m: 0, last_5m: 0, last_15m: 0 };
+    try {
+      for (const [key, cutoff] of Object.entries(cutoffs)) {
+        const row = this.persistenceDb.prepare(
+          "SELECT COUNT(*) as count FROM messages WHERE created_at >= ?"
+        ).get(cutoff) as { count: number };
+        messageRate[key] = row.count;
+      }
+    } catch {}
+
+    // Calculate stop_reasons distribution
+    const canonicalReasons = ["convergence", "timeout", "complete", "error", "impasse"];
+    const stopReasons: Record<string, number> = {};
+    for (const r of canonicalReasons) {
+      stopReasons[r] = 0;
+    }
+    try {
+      const rows = this.persistenceDb.prepare(
+        `SELECT json_extract(metadata, '$.stop_reason') AS reason, COUNT(*) AS cnt
+         FROM messages
+         WHERE json_extract(metadata, '$.stop_reason') IS NOT NULL
+         GROUP BY reason`
+      ).all() as Array<{ reason: string; cnt: number }>;
+      for (const row of rows) {
+        stopReasons[row.reason] = (stopReasons[row.reason] || 0) + row.cnt;
+      }
+    } catch {}
+
+    // Calculate avg_latency_ms
+    let avgLatencyMs: number | null = null;
+    try {
+      const lagSql = `
+        WITH gaps AS (
+          SELECT
+            (julianday(created_at) - julianday(
+              LAG(created_at) OVER (PARTITION BY thread_id ORDER BY seq)
+            )) * 86400000.0 AS gap_ms
+          FROM messages
+          WHERE thread_id IN (
+            SELECT DISTINCT thread_id FROM messages WHERE created_at >= ?
+          )
+        )
+        SELECT AVG(gap_ms) AS avg_gap FROM gaps WHERE gap_ms IS NOT NULL
+      `;
+      const row = this.persistenceDb.prepare(lagSql).get(cutoffs.last_15m) as { avg_gap: number | null } | undefined;
+      if (row && row.avg_gap !== null) {
+        avgLatencyMs = Math.round(row.avg_gap * 10) / 10;
+      }
+    } catch {}
+
+    // Count online agents based on heartbeat timeout (Python parity)
+    const heartbeatTimeoutMs = 30 * 1000; // 30 seconds
+    const heartbeatCutoff = new Date(now.getTime() - heartbeatTimeoutMs).toISOString();
+    let agentsOnline = 0;
+    try {
+      const row = this.persistenceDb.prepare(
+        "SELECT COUNT(*) as count FROM agents WHERE last_heartbeat >= ?"
+      ).get(heartbeatCutoff) as { count: number };
+      agentsOnline = row.count;
+    } catch {}
+
     return {
+      engine: "node",
       uptime_seconds: (Date.now() - this.startTime) / 1000,
       started_at: new Date(this.startTime).toISOString(),
       schema_version: "1.0",
@@ -261,15 +356,13 @@ export class MemoryStore {
       },
       messages: {
         total: messageCount,
-        rate: {
-          last_1m: 0,
-          last_5m: 0,
-          last_15m: 0
-        }
+        rate: messageRate,
+        avg_latency_ms: avgLatencyMs,
+        stop_reasons: stopReasons
       },
       agents: {
         total: agents.length,
-        online: agents.filter(a => a.is_online).length
+        online: agentsOnline
       }
     };
   }
@@ -336,6 +429,11 @@ export class MemoryStore {
       }
     }
 
+    // QW-07: Content filter for system_prompt (Python parity)
+    if (finalSystemPrompt) {
+      checkContentOrThrow(finalSystemPrompt);
+    }
+
     const thread: ThreadRecord = {
       id: randomUUID(),
       topic,
@@ -348,10 +446,12 @@ export class MemoryStore {
     this.threadMessages.set(thread.id, []);
     this.threadParticipants.set(thread.id, new Set());
     this.threadWaitStates.set(thread.id, new Map());
+    const now = new Date().toISOString();
     this.threadSettings.set(thread.id, {
       auto_administrator_enabled: true,
-      timeout_seconds: 300,
-      switch_timeout_seconds: 300
+      timeout_seconds: 60,
+      switch_timeout_seconds: 60,
+      last_activity_time: now
     });
     this.appendLog(`thread created: ${thread.id} ${topic}`);
     eventBus.emit({ type: "thread.created", payload: thread });
@@ -380,6 +480,89 @@ export class MemoryStore {
     this.upsertThread(thread);
     this.persistState();
     return true;
+  }
+
+  closeThread(threadId: string, summary?: string): boolean {
+    const thread = this.getThread(threadId);
+    if (!thread) {
+      return false;
+    }
+    const now = new Date().toISOString();
+    this.persistenceDb.prepare(
+      "UPDATE threads SET status = 'closed', closed_at = ?, summary = ? WHERE id = ?"
+    ).run(now, summary || null, threadId);
+    thread.status = "closed";
+    this.threads.set(threadId, thread);
+    this.appendLog(`thread closed: ${threadId}`);
+    eventBus.emit({ type: "thread.closed", payload: { thread_id: threadId, summary } });
+    this.persistState();
+    return true;
+  }
+
+  /**
+   * Close open threads whose last message is older than timeout_minutes.
+   * Returns the list of thread IDs that were closed.
+   * Ported from Python crud.py thread_timeout_sweep.
+   */
+  threadTimeoutSweep(timeoutMinutes: number): string[] {
+    if (timeoutMinutes <= 0) {
+      return [];
+    }
+
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - timeoutMinutes * 60 * 1000).toISOString();
+    const nowIso = now.toISOString();
+
+    // Find threads that are open and whose last activity is before the cutoff.
+    // Use LEFT JOIN so threads with no messages are also considered.
+    const rows = this.persistenceDb.prepare(`
+      SELECT t.id, t.topic,
+             COALESCE(MAX(m.created_at), t.created_at) AS last_activity
+      FROM threads t
+      LEFT JOIN messages m ON m.thread_id = t.id
+      WHERE t.status = 'discuss'
+      GROUP BY t.id
+      HAVING last_activity < ?
+    `).all(cutoff) as Array<{ id: string; topic: string; last_activity: string }>;
+
+    const closedIds: string[] = [];
+    for (const row of rows) {
+      const threadId = row.id;
+      const topic = row.topic;
+      const lastActivity = row.last_activity;
+
+      this.persistenceDb.prepare(
+        "UPDATE threads SET status = 'closed', closed_at = ? WHERE id = ?"
+      ).run(nowIso, threadId);
+
+      // Update in-memory cache
+      const thread = this.threads.get(threadId);
+      if (thread) {
+        thread.status = "closed";
+        this.threads.set(threadId, thread);
+      }
+
+      // Emit event
+      eventBus.emit({
+        type: "thread.timeout",
+        payload: {
+          thread_id: threadId,
+          topic,
+          last_activity: lastActivity,
+          timeout_minutes: timeoutMinutes,
+          closed_at: nowIso
+        }
+      });
+
+      closedIds.push(threadId);
+      this.appendLog(`thread timeout: ${threadId} (topic: ${topic})`);
+    }
+
+    if (closedIds.length > 0) {
+      this.persistState();
+    }
+
+    return closedIds;
   }
 
   listThreads(options?: {
@@ -503,16 +686,31 @@ export class MemoryStore {
     return deleted;
   }
 
-  getMessages(threadId: string, afterSeq: number, includeSystemPrompt = false): MessageRecord[] {
-    const rows = this.persistenceDb.prepare(
-      `
+  getMessages(threadId: string, afterSeq: number, includeSystemPrompt = false, priority?: string): MessageRecord[] {
+    let sql: string;
+    let params: (string | number)[];
+    
+    if (priority) {
+      sql = `
+        SELECT id, thread_id, seq, priority, author, author_id, author_name, author_emoji,
+               role, content, metadata, reply_to_msg_id, created_at, edited_at, edit_version
+        FROM messages
+        WHERE thread_id = ? AND seq > ? AND priority = ?
+        ORDER BY seq ASC
+      `;
+      params = [threadId, afterSeq, priority];
+    } else {
+      sql = `
         SELECT id, thread_id, seq, priority, author, author_id, author_name, author_emoji,
                role, content, metadata, reply_to_msg_id, created_at, edited_at, edit_version
         FROM messages
         WHERE thread_id = ? AND seq > ?
         ORDER BY seq ASC
-      `
-    ).all(threadId, afterSeq) as Array<Record<string, unknown>>;
+      `;
+      params = [threadId, afterSeq];
+    }
+    
+    const rows = this.persistenceDb.prepare(sql).all(...params) as Array<Record<string, unknown>>;
     const dbMessages = rows.map((row) => this.rowToMessageRecord(row));
 
     if (includeSystemPrompt && afterSeq === 0) {
@@ -532,14 +730,14 @@ export class MemoryStore {
         author: "system",
         author_id: "system",
         author_name: "system",
-        author_emoji: "🤖",
+        author_emoji: "⚙️",
         role: "system",
         content: finalContent,
         metadata: {},
         reactions: [],
         created_at: thread?.created_at || new Date().toISOString(),
         edited_at: null,
-        edit_version: 1,
+        edit_version: 0,
         reply_to_msg_id: undefined
       };
 
@@ -890,6 +1088,91 @@ export class MemoryStore {
     };
   }
 
+  /**
+   * Filter metadata fields based on attention mechanism feature flags (UP-17).
+   * Ported from Python dispatch.py _filter_metadata_fields.
+   * Strips handoff_target and stop_reason from metadata when respective flags are disabled.
+   */
+  private filterMetadataFields(
+    metadata: Record<string, unknown> | null,
+    options: { enableHandoffTarget?: boolean; enableStopReason?: boolean } = {}
+  ): Record<string, unknown> | null {
+    const { enableHandoffTarget = ENABLE_HANDOFF_TARGET, enableStopReason = ENABLE_STOP_REASON } = options;
+    if (!metadata) return null;
+
+    const filtered = { ...metadata };
+
+    if (!enableHandoffTarget && "handoff_target" in filtered) {
+      delete filtered.handoff_target;
+    }
+    if (!enableStopReason && "stop_reason" in filtered) {
+      delete filtered.stop_reason;
+    }
+
+    return Object.keys(filtered).length > 0 ? filtered : null;
+  }
+
+  /**
+   * Format a message for agent consumption, applying attention mechanism filters.
+   * Ported from Python dispatch.py handle_msg_get/list/wait logic.
+   * 
+   * @param msg - The raw message record
+   * @param options - Optional flags to control attention fields (defaults follow env vars)
+   * @returns Formatted message with attention fields stripped based on feature flags
+   */
+  formatMessageForAgent(
+    msg: MessageRecord,
+    options: {
+      includePriority?: boolean;
+      enableHandoffTarget?: boolean;
+      enableStopReason?: boolean;
+    } = {}
+  ): MessageRecord & { handoff_target?: string; stop_reason?: string } {
+    const {
+      includePriority = ENABLE_PRIORITY,
+      enableHandoffTarget = ENABLE_HANDOFF_TARGET,
+      enableStopReason = ENABLE_STOP_REASON
+    } = options;
+
+    const filteredMeta = this.filterMetadataFields(msg.metadata, { enableHandoffTarget, enableStopReason });
+
+    // Build result with conditional fields
+    const result: MessageRecord & { handoff_target?: string; stop_reason?: string } = {
+      ...msg,
+      metadata: filteredMeta
+    };
+
+    // Handle priority field
+    if (!includePriority) {
+      delete (result as Partial<MessageRecord>).priority;
+    }
+
+    // Handle metadata-based attention fields (only include if enabled and present)
+    if (enableHandoffTarget && filteredMeta?.handoff_target) {
+      result.handoff_target = String(filteredMeta.handoff_target);
+    }
+    if (enableStopReason && filteredMeta?.stop_reason) {
+      result.stop_reason = String(filteredMeta.stop_reason);
+    }
+
+    return result;
+  }
+
+  /**
+   * Format multiple messages for agent consumption.
+   * Applies attention mechanism filters to each message.
+   */
+  formatMessagesForAgent(
+    messages: MessageRecord[],
+    options: {
+      includePriority?: boolean;
+      enableHandoffTarget?: boolean;
+      enableStopReason?: boolean;
+    } = {}
+  ): Array<MessageRecord & { handoff_target?: string; stop_reason?: string }> {
+    return messages.map(m => this.formatMessageForAgent(m, options));
+  }
+
   postMessage(input: {
     threadId: string;
     author: string;
@@ -906,8 +1189,63 @@ export class MemoryStore {
       throw new BusError("THREAD_NOT_FOUND");
     }
 
+    // Validate priority (UP-16) - match Python crud.py L1166, L1191-1192
+    const validPriorities = new Set(["normal", "urgent", "system"]);
+    const priority = input.priority || "normal";
+    if (!validPriorities.has(priority)) {
+      throw new Error(`Invalid priority '${priority}'. Must be one of: ${Array.from(validPriorities).sort().join(", ")}`);
+    }
+
+    // Validate stop_reason in metadata (UP-17) - match Python crud.py L1188, L1196-1199
+    const validStopReasons = new Set(["convergence", "timeout", "error", "complete", "impasse"]);
+    if (input.metadata) {
+      const stopReason = input.metadata.stop_reason;
+      if (stopReason && !validStopReasons.has(stopReason as string)) {
+        throw new Error(`Invalid stop_reason '${stopReason}'. Must be one of: ${Array.from(validStopReasons).sort().join(", ")}`);
+      }
+    }
+
+    // Content filter check (UP-07)
+    checkContentOrThrow(input.content);
+
+    // Vecteur B: role escalation prevention (Python parity: main.py L1867-1868)
+    // A message with role='system' from author='human' must be rejected
+    if (input.role === "system" && (input.author === "human" || input.author === "")) {
+      throw new Error("role 'system' is not allowed for human messages");
+    }
+
     const latestSeq = this.getLatestSeq(input.threadId);
     const agent = this.getAgentById(input.author);
+
+    // Rate limiting check - match Python crud.py L1232-1253
+    const rateLimitEnabled = process.env.AGENTCHATBUS_RATE_LIMIT_ENABLED !== "false";
+    const rateLimitPerMinute = parseInt(process.env.AGENTCHATBUS_RATE_LIMIT || "30", 10);
+    
+    if (rateLimitEnabled && rateLimitPerMinute > 0) {
+      const windowSeconds = 60;
+      const cutoff = new Date(Date.now() - windowSeconds * 1000).toISOString();
+      
+      let count: number;
+      let scope: string;
+      
+      if (agent?.id) {
+        const row = this.persistenceDb.prepare(
+          "SELECT COUNT(*) AS cnt FROM messages WHERE author_id = ? AND created_at > ?"
+        ).get(agent.id, cutoff) as { cnt: number };
+        count = row.cnt;
+        scope = "author_id";
+      } else {
+        const row = this.persistenceDb.prepare(
+          "SELECT COUNT(*) AS cnt FROM messages WHERE author = ? AND created_at > ?"
+        ).get(input.author, cutoff) as { cnt: number };
+        count = row.cnt;
+        scope = "author";
+      }
+      
+      if (count >= rateLimitPerMinute) {
+        throw new RateLimitExceeded(rateLimitPerMinute, windowSeconds, windowSeconds, scope);
+      }
+    }
 
     // Strict Sync Logic (UP-14/15/16)
     if (input.expectedLastSeq !== undefined || input.replyToken !== undefined) {
@@ -919,6 +1257,13 @@ export class MemoryStore {
 
       const token = this.syncTokens.get(input.replyToken);
       if (!token || token.threadId !== input.threadId) {
+        if (agent) this.setRefreshRequest(thread.id, agent.id, "TOKEN_INVALID");
+        throw new ReplyTokenInvalidError();
+      }
+
+      // Enforce agent binding only when author resolves to a registered agent.
+      // Python parity (crud.py): if token_agent_id and author_id and token_agent_id != author_id -> invalid.
+      if (token.agentId && agent?.id && token.agentId !== agent.id) {
         if (agent) this.setRefreshRequest(thread.id, agent.id, "TOKEN_INVALID");
         throw new ReplyTokenInvalidError();
       }
@@ -964,16 +1309,16 @@ export class MemoryStore {
       thread_id: input.threadId,
       seq: this.sequence,
       priority: input.priority || "normal",
-      author: input.author,
-      author_id: input.author,
-      author_name: input.author,
-      author_emoji: "🤖",
+      author: agent?.name || input.author,
+      author_id: agent?.id || undefined,
+      author_name: agent?.name || input.author,
+      author_emoji: agent?.emoji || (input.role === "system" ? "⚙️" : ((input.author === "human" || input.role === "user") ? "👤" : "🤖")),
       role: input.role || "user",
       content: input.content,
       metadata: input.metadata || null,
       reactions: [],
       edited_at: null,
-      edit_version: 1,
+      edit_version: 0,
       reply_to_msg_id: input.replyToMsgId,
       created_at: new Date().toISOString()
     };
@@ -995,6 +1340,34 @@ export class MemoryStore {
     this.appendLog(`message posted: ${message.id} seq=${message.seq}`);
     eventBus.emit({ type: "msg.new", payload: message });
     
+    // Emit msg.handoff and msg.stop events (UP-17) - match Python crud.py L1332-1344
+    if (message.metadata) {
+      const handoffTarget = message.metadata.handoff_target;
+      if (handoffTarget) {
+        eventBus.emit({
+          type: "msg.handoff",
+          payload: {
+            msg_id: message.id,
+            thread_id: message.thread_id,
+            from_agent: message.author_name || message.author,
+            to_agent: handoffTarget
+          }
+        });
+      }
+      const stopReason = message.metadata.stop_reason;
+      if (stopReason) {
+        eventBus.emit({
+          type: "msg.stop",
+          payload: {
+            msg_id: message.id,
+            thread_id: message.thread_id,
+            agent: message.author_name || message.author,
+            reason: stopReason
+          }
+        });
+      }
+    }
+    
     // Notify any msg_wait callers on this thread that a new message is available.
     // This allows event-driven wake-up instead of waiting for the 1s poll tick.
     // Matches Python dispatch.py L847-848:
@@ -1003,6 +1376,9 @@ export class MemoryStore {
     if (this._threadEvents.has(input.threadId)) {
       this._threadEvents.get(input.threadId)!.set();
     }
+    
+    // Update thread activity time (match Python crud.py L1325)
+    this.threadSettingsUpdateActivity(input.threadId);
     
     this.insertMessage(message);
     this.persistState();
@@ -1017,20 +1393,42 @@ export class MemoryStore {
         FROM messages WHERE id = ?
       `
     ).get(messageId) as Record<string, unknown> | undefined;
-    return row ? this.rowToMessageRecord(row) : undefined;
+    if (!row) return undefined;
+    const message = this.rowToMessageRecord(row);
+    // Load reactions from database
+    message.reactions = this.getReactions(messageId);
+    return message;
   }
 
-  editMessage(messageId: string, newContent: string, editedBy = "system"): MessageRecord | { no_change: true } | undefined {
+  editMessage(messageId: string, newContent: string, editedBy = "system"): MessageRecord | { no_change: true; version: number } | undefined {
     const message = this.getMessage(messageId);
     if (!message) {
       return undefined;
     }
-    if (message.content === newContent) {
-      return { no_change: true };
+
+    // System role messages cannot be edited
+    if (message.role === "system") {
+      throw new PermissionError("System messages cannot be edited");
     }
+
+    // Only author (author_id or author) or system can edit
+    const allowedEditors = new Set([message.author]);
+    if (message.author_id) {
+      allowedEditors.add(message.author_id);
+    }
+    if (!allowedEditors.has(editedBy) && editedBy !== "system") {
+      throw new PermissionError(
+        `Only the original author ('${message.author_id || message.author}') or 'system' can edit this message`
+      );
+    }
+
+    if (message.content === newContent) {
+      return { no_change: true, version: message.edit_version || 0 };
+    }
+    const newVersion = (message.edit_version || 0) + 1;
     const edits = this.messageEditHistory.get(messageId) || [];
     edits.push({
-      version: message.edit_version || 1,
+      version: newVersion,
       old_content: message.content,
       edited_by: editedBy,
       created_at: new Date().toISOString()
@@ -1038,7 +1436,7 @@ export class MemoryStore {
     this.messageEditHistory.set(messageId, edits);
     message.content = newContent;
     message.edited_at = new Date().toISOString();
-    message.edit_version = (message.edit_version || 1) + 1;
+    message.edit_version = newVersion;
     eventBus.emit({ type: "msg.updated", payload: message });
     this.insertMessage(message);
     this.insertMessageEdit(messageId, edits.at(-1));
@@ -1248,10 +1646,11 @@ export class MemoryStore {
     const rows = this.persistenceDb.prepare(
       `
         SELECT id, name, display_name, alias_source, ide, model, description, is_online, last_heartbeat,
-               last_activity, last_activity_time, capabilities, skills, token, emoji
+               last_activity, last_activity_time, capabilities, skills, emoji
         FROM agents
       `
     ).all() as Array<Record<string, unknown>>;
+    // Token should NOT be exposed in agent list for security (Python parity)
     return rows.map((row) => this.rowToAgentRecord(row));
   }
 
@@ -1406,7 +1805,7 @@ export class MemoryStore {
     this.pruneExpiredWaitStates(threadId);
     const rows = this.persistenceDb.prepare(
       `
-        SELECT a.id, a.display_name, a.name
+        SELECT a.id, a.display_name, a.name, a.emoji
         FROM thread_wait_states w
         JOIN agents a ON a.id = w.agent_id
         WHERE w.thread_id = ? AND a.is_online = 1
@@ -1416,7 +1815,7 @@ export class MemoryStore {
       .map((agent) => ({
         id: String(agent.id),
         display_name: agent.display_name ? String(agent.display_name) : String(agent.name),
-        emoji: "🤖"
+        emoji: agent.emoji ? String(agent.emoji) : "🤖"
       }));
   }
 
@@ -1430,33 +1829,42 @@ export class MemoryStore {
   }
 
   getTemplates() {
-    // Built-in templates (UP-18)
+    // Built-in templates (UP-18) - match Python crud.py builtin templates
     const builtinTemplates = [
       {
-        id: "default",
-        name: "Default Discussion",
-        description: "Standard discussion thread with auto-admin enabled",
+        id: "code-review",
+        name: "Code Review",
+        description: "Code review thread for systematic analysis",
         is_builtin: true,
-        system_prompt: "You are a helpful AI assistant collaborating with other agents and humans. Follow the thread's coordination rules.",
+        system_prompt: "You are a code reviewer. Critically analyze the code for bugs, security issues, and best practices.",
         default_metadata: {},
         created_at: new Date().toISOString()
       },
       {
-        id: "implement",
-        name: "Implementation Task",
-        description: "Focused implementation thread with extended timeout",
+        id: "security-audit",
+        name: "Security Audit",
+        description: "Security-focused review thread",
         is_builtin: true,
-        system_prompt: "You are an implementation specialist. Focus on producing working code and tests.",
-        default_metadata: { task_type: "implementation" },
+        system_prompt: "You are a security auditor. Focus on identifying vulnerabilities, injection risks, and security best practices.",
+        default_metadata: {},
         created_at: new Date().toISOString()
       },
       {
-        id: "review",
-        name: "Code Review",
-        description: "Code review thread with strict validation",
+        id: "architecture",
+        name: "Architecture",
+        description: "System architecture discussion thread",
         is_builtin: true,
-        system_prompt: "You are a code reviewer. Critically analyze the code for bugs, security issues, and best practices.",
-        default_metadata: { task_type: "review" },
+        system_prompt: "You are a system architect. Focus on high-level design, component relationships, and scalability.",
+        default_metadata: {},
+        created_at: new Date().toISOString()
+      },
+      {
+        id: "brainstorm",
+        name: "Brainstorm",
+        description: "Creative brainstorming thread",
+        is_builtin: true,
+        system_prompt: "You are a creative brainstorming assistant. Help explore ideas, consider alternatives, and think outside the box.",
+        default_metadata: {},
         created_at: new Date().toISOString()
       }
     ];
@@ -1491,7 +1899,9 @@ export class MemoryStore {
   getThreadSettings(threadId: string) {
     const row = this.persistenceDb.prepare(
       `
-        SELECT thread_id, auto_administrator_enabled, timeout_seconds, switch_timeout_seconds
+        SELECT thread_id, auto_administrator_enabled, timeout_seconds, switch_timeout_seconds,
+               last_activity_time, auto_assigned_admin_id, auto_assigned_admin_name, admin_assignment_time,
+               creator_admin_id, creator_admin_name, creator_assignment_time
         FROM thread_settings WHERE thread_id = ?
       `
     ).get(threadId) as Record<string, unknown> | undefined;
@@ -1501,7 +1911,14 @@ export class MemoryStore {
     return {
       auto_administrator_enabled: Boolean(row.auto_administrator_enabled),
       timeout_seconds: Number(row.timeout_seconds),
-      switch_timeout_seconds: Number(row.switch_timeout_seconds)
+      switch_timeout_seconds: Number(row.switch_timeout_seconds),
+      last_activity_time: String(row.last_activity_time),
+      auto_assigned_admin_id: row.auto_assigned_admin_id ? String(row.auto_assigned_admin_id) : undefined,
+      auto_assigned_admin_name: row.auto_assigned_admin_name ? String(row.auto_assigned_admin_name) : undefined,
+      admin_assignment_time: row.admin_assignment_time ? String(row.admin_assignment_time) : undefined,
+      creator_admin_id: row.creator_admin_id ? String(row.creator_admin_id) : undefined,
+      creator_admin_name: row.creator_admin_name ? String(row.creator_admin_name) : undefined,
+      creator_assignment_time: row.creator_assignment_time ? String(row.creator_assignment_time) : undefined
     };
   }
 
@@ -1510,6 +1927,21 @@ export class MemoryStore {
     if (!existing) {
       return undefined;
     }
+    
+    // Validate timeout_seconds minimum (match Python crud.py L847-849)
+    if (input.timeout_seconds !== undefined) {
+      if (input.timeout_seconds < 30) {
+        throw new Error("timeout_seconds must be at least 30");
+      }
+    }
+    
+    // Validate switch_timeout_seconds minimum (match Python crud.py L851-853)
+    if (input.switch_timeout_seconds !== undefined) {
+      if (input.switch_timeout_seconds < 30) {
+        throw new Error("switch_timeout_seconds must be at least 30");
+      }
+    }
+    
     if (input.auto_administrator_enabled !== undefined) {
       existing.auto_administrator_enabled = input.auto_administrator_enabled;
     }
@@ -1525,17 +1957,146 @@ export class MemoryStore {
     return existing;
   }
 
-  searchMessages(query: string): MessageRecord[] {
+  /**
+   * Update last_activity_time for thread settings and clear auto-assigned admin.
+   * Match Python crud.py thread_settings_update_activity.
+   */
+  threadSettingsUpdateActivity(threadId: string): void {
+    const settings = this.threadSettings.get(threadId);
+    if (!settings) {
+      return;
+    }
+    const now = new Date().toISOString();
+    settings.last_activity_time = now;
+    settings.auto_assigned_admin_id = undefined;
+    settings.auto_assigned_admin_name = undefined;
+    settings.admin_assignment_time = undefined;
+    this.threadSettings.set(threadId, settings);
+    this.upsertThreadSettings(threadId);
+    this.persistState();
+  }
+
+  /**
+   * Assign an admin to the thread (automatic coordinator selection).
+   * Ported from Python crud.py thread_settings_assign_admin.
+   */
+  assignAdmin(threadId: string, adminId: string, adminName: string): ReturnType<typeof this.getThreadSettings> | undefined {
+    const settings = this.threadSettings.get(threadId);
+    if (!settings || !settings.auto_administrator_enabled) {
+      return undefined;
+    }
+    const now = new Date().toISOString();
+    settings.auto_assigned_admin_id = adminId;
+    settings.auto_assigned_admin_name = adminName;
+    settings.admin_assignment_time = now;
+    this.threadSettings.set(threadId, settings);
+    this.upsertThreadSettings(threadId);
+    this.persistState();
+    return this.getThreadSettings(threadId);
+  }
+
+  /**
+   * Set the thread creator as the default admin.
+   * Ported from Python crud.py thread_settings_set_creator_admin.
+   */
+  setCreatorAdmin(threadId: string, creatorId: string, creatorName: string): ReturnType<typeof this.getThreadSettings> | undefined {
+    const settings = this.threadSettings.get(threadId);
+    if (!settings || !settings.auto_administrator_enabled) {
+      return undefined;
+    }
+    const now = new Date().toISOString();
+    settings.creator_admin_id = creatorId;
+    settings.creator_admin_name = creatorName;
+    settings.creator_assignment_time = now;
+    this.threadSettings.set(threadId, settings);
+    this.upsertThreadSettings(threadId);
+    this.persistState();
+    return this.getThreadSettings(threadId);
+  }
+
+  /**
+   * Build a Markdown transcript for thread_id.
+   * Returns null if thread does not exist.
+   * Ported from Python crud.py thread_export_markdown.
+   */
+  exportThreadMarkdown(threadId: string): string | null {
+    const thread = this.getThread(threadId);
+    if (!thread) {
+      return null;
+    }
+
+    // Get messages without system prompt
+    const msgs = this.getMessages(threadId, 0, false);
+
+    const createdLabel = this.formatDate(thread.created_at);
+    const exportedLabel = this.formatDate(new Date().toISOString());
+
+    const lines: string[] = [
+      `# ${thread.topic}`,
+      "",
+      `> **Status:** ${thread.status} | **Created:** ${createdLabel}`,
+      `> **Messages:** ${msgs.length} | **Exported:** ${exportedLabel}`,
+      "",
+      "---",
+      ""
+    ];
+
+    for (const m of msgs) {
+      const author = m.author_name || m.author;
+      const timestamp = this.formatDate(m.created_at);
+      lines.push(`### ${author} — ${timestamp}`);
+      lines.push("");
+      lines.push(m.content);
+      lines.push("");
+      lines.push("---");
+      lines.push("");
+    }
+
+    return lines.join("\n");
+  }
+
+  private formatDate(isoString: string): string {
+    try {
+      const d = new Date(isoString);
+      const year = d.getUTCFullYear();
+      const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(d.getUTCDate()).padStart(2, '0');
+      const hours = String(d.getUTCHours()).padStart(2, '0');
+      const minutes = String(d.getUTCMinutes()).padStart(2, '0');
+      return `${year}-${month}-${day} ${hours}:${minutes} UTC`;
+    } catch {
+      return isoString;
+    }
+  }
+
+  searchMessages(query: string, threadId?: string, limit = 50): MessageRecord[] {
     const normalized = query.toLowerCase();
-    const rows = this.persistenceDb.prepare(
-      `
+    let sql: string;
+    let params: (string | number)[];
+
+    if (threadId) {
+      sql = `
+        SELECT id, thread_id, seq, priority, author, author_id, author_name, author_emoji,
+               role, content, metadata, reply_to_msg_id, created_at, edited_at, edit_version
+        FROM messages
+        WHERE LOWER(content) LIKE ? AND thread_id = ?
+        ORDER BY created_at DESC
+        LIMIT ?
+      `;
+      params = [`%${normalized}%`, threadId, limit];
+    } else {
+      sql = `
         SELECT id, thread_id, seq, priority, author, author_id, author_name, author_emoji,
                role, content, metadata, reply_to_msg_id, created_at, edited_at, edit_version
         FROM messages
         WHERE LOWER(content) LIKE ?
-        ORDER BY seq ASC
-      `
-    ).all(`%${normalized}%`) as Array<Record<string, unknown>>;
+        ORDER BY created_at DESC
+        LIMIT ?
+      `;
+      params = [`%${normalized}%`, limit];
+    }
+
+    const rows = this.persistenceDb.prepare(sql).all(...params) as Array<Record<string, unknown>>;
     return rows.map((row) => this.rowToMessageRecord(row));
   }
 
@@ -1567,9 +2128,21 @@ export class MemoryStore {
       );
       return true;
     } catch (error) {
-      console.error("Failed to create template:", error);
-      return false;
+      // Re-throw the error to allow tests to catch it
+      throw error;
     }
+  }
+
+  deleteTemplate(templateId: string): boolean {
+    // Check if it's a built-in template
+    const builtinTemplates = this.getTemplates().filter(t => t.is_builtin);
+    if (builtinTemplates.some(t => t.id === templateId)) {
+      throw new Error("Cannot delete built-in template");
+    }
+
+    // Delete from database
+    const result = this.persistenceDb.prepare("DELETE FROM templates WHERE id = ? AND is_builtin = 0").run(templateId);
+    return result.changes > 0;
   }
 
   getLogs(after: number, limit: number): { entries: Array<{ id: number; line: string }>; next_cursor: number } {
@@ -1859,6 +2432,17 @@ export class MemoryStore {
   }
 
   private rowToMessageRecord(row: Record<string, unknown>): MessageRecord {
+    // DEBUG: Log raw row data for troubleshooting
+    if (Math.random() < 0.01) {  // Log 1% of messages to avoid spam
+      console.log('[DEBUG] rowToMessageRecord raw row:', {
+        id: row.id,
+        author: row.author,
+        author_id: row.author_id,
+        author_name: row.author_name,
+        role: row.role,
+        content_preview: String(row.content)?.slice(0, 30)
+      });
+    }
     return {
       id: String(row.id),
       thread_id: String(row.thread_id),
@@ -1898,7 +2482,8 @@ export class MemoryStore {
       skills: row.skills && String(row.skills).trim() !== '' && String(row.skills) !== 'null' 
         ? JSON.parse(String(row.skills)) as unknown[] 
         : undefined,
-      token: String(row.token),
+      // Token is optional - not exposed in listAgents for security (Python parity)
+      token: row.token ? String(row.token) : undefined,
       emoji: row.emoji ? String(row.emoji) : undefined
     };
   }
@@ -2041,13 +2626,20 @@ export class MemoryStore {
     }
 
     const settings = this.persistenceDb.prepare(
-      "SELECT thread_id, auto_administrator_enabled, timeout_seconds, switch_timeout_seconds FROM thread_settings"
+      "SELECT * FROM thread_settings"
     ).all() as Array<Record<string, unknown>>;
     for (const row of settings) {
       this.threadSettings.set(String(row.thread_id), {
         auto_administrator_enabled: Boolean(row.auto_administrator_enabled),
         timeout_seconds: Number(row.timeout_seconds),
-        switch_timeout_seconds: Number(row.switch_timeout_seconds)
+        switch_timeout_seconds: Number(row.switch_timeout_seconds),
+        last_activity_time: String(row.last_activity_time || ""),
+        auto_assigned_admin_id: row.auto_assigned_admin_id ? String(row.auto_assigned_admin_id) : undefined,
+        auto_assigned_admin_name: row.auto_assigned_admin_name ? String(row.auto_assigned_admin_name) : undefined,
+        admin_assignment_time: row.admin_assignment_time ? String(row.admin_assignment_time) : undefined,
+        creator_admin_id: row.creator_admin_id ? String(row.creator_admin_id) : undefined,
+        creator_admin_name: row.creator_admin_name ? String(row.creator_admin_name) : undefined,
+        creator_assignment_time: row.creator_assignment_time ? String(row.creator_assignment_time) : undefined
       });
     }
 
@@ -2090,6 +2682,8 @@ export class MemoryStore {
         topic TEXT NOT NULL,
         status TEXT NOT NULL,
         created_at TEXT NOT NULL,
+        closed_at TEXT,
+        summary TEXT,
         system_prompt TEXT,
         template_id TEXT
       );
@@ -2148,7 +2742,16 @@ export class MemoryStore {
         thread_id TEXT PRIMARY KEY,
         auto_administrator_enabled INTEGER NOT NULL,
         timeout_seconds INTEGER NOT NULL,
-        switch_timeout_seconds INTEGER NOT NULL
+        switch_timeout_seconds INTEGER NOT NULL,
+        last_activity_time TEXT NOT NULL,
+        auto_assigned_admin_id TEXT,
+        auto_assigned_admin_name TEXT,
+        admin_assignment_time TEXT,
+        creator_admin_id TEXT,
+        creator_admin_name TEXT,
+        creator_assignment_time TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS thread_wait_states (
         thread_id TEXT NOT NULL,
@@ -2229,6 +2832,13 @@ export class MemoryStore {
       addColumnIfMissing("thread_settings", "creator_admin_name", "TEXT");
       addColumnIfMissing("thread_settings", "creator_assignment_time", "TEXT");
       addColumnIfMissing("thread_settings", "switch_timeout_seconds", "INTEGER NOT NULL DEFAULT 60");
+      // New fields for thread activity tracking and admin assignment
+      addColumnIfMissing("thread_settings", "last_activity_time", "TEXT NOT NULL DEFAULT ''");
+      addColumnIfMissing("thread_settings", "auto_assigned_admin_id", "TEXT");
+      addColumnIfMissing("thread_settings", "auto_assigned_admin_name", "TEXT");
+      addColumnIfMissing("thread_settings", "admin_assignment_time", "TEXT");
+      addColumnIfMissing("thread_settings", "created_at", "TEXT NOT NULL DEFAULT ''");
+      addColumnIfMissing("thread_settings", "updated_at", "TEXT NOT NULL DEFAULT ''");
     };
 
     runMigrations();
@@ -2343,16 +2953,43 @@ export class MemoryStore {
     if (!settings) {
       return;
     }
+    const now = new Date().toISOString();
     this.persistenceDb.prepare(
       `
-        INSERT INTO thread_settings (thread_id, auto_administrator_enabled, timeout_seconds, switch_timeout_seconds)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO thread_settings (
+          thread_id, auto_administrator_enabled, timeout_seconds, switch_timeout_seconds,
+          last_activity_time, auto_assigned_admin_id, auto_assigned_admin_name, admin_assignment_time,
+          creator_admin_id, creator_admin_name, creator_assignment_time, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(thread_id) DO UPDATE SET
           auto_administrator_enabled = excluded.auto_administrator_enabled,
           timeout_seconds = excluded.timeout_seconds,
-          switch_timeout_seconds = excluded.switch_timeout_seconds
+          switch_timeout_seconds = excluded.switch_timeout_seconds,
+          last_activity_time = excluded.last_activity_time,
+          auto_assigned_admin_id = excluded.auto_assigned_admin_id,
+          auto_assigned_admin_name = excluded.auto_assigned_admin_name,
+          admin_assignment_time = excluded.admin_assignment_time,
+          creator_admin_id = excluded.creator_admin_id,
+          creator_admin_name = excluded.creator_admin_name,
+          creator_assignment_time = excluded.creator_assignment_time,
+          updated_at = excluded.updated_at
       `
-    ).run(threadId, settings.auto_administrator_enabled ? 1 : 0, settings.timeout_seconds, settings.switch_timeout_seconds);
+    ).run(
+      threadId,
+      settings.auto_administrator_enabled ? 1 : 0,
+      settings.timeout_seconds,
+      settings.switch_timeout_seconds,
+      settings.last_activity_time,
+      settings.auto_assigned_admin_id || null,
+      settings.auto_assigned_admin_name || null,
+      settings.admin_assignment_time || null,
+      settings.creator_admin_id || null,
+      settings.creator_admin_name || null,
+      settings.creator_assignment_time || null,
+      now,
+      now
+    );
   }
 
   private replaceThreadWaitStates(threadId: string): void {
@@ -2435,7 +3072,7 @@ export class MemoryStore {
     this.persistState();
   }
 
-  private invalidateReplyTokensForAgent(threadId: string, agentId: string): void {
+  invalidateReplyTokensForAgent(threadId: string, agentId: string): void {
     const tokens = [...this.syncTokens.values()].filter(
       t => t.threadId === threadId && t.agentId === agentId && t.status === "issued"
     );

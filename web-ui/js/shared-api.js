@@ -1,10 +1,16 @@
 (function () {
   async function api(path, opts) {
     const options = opts || {};
-    const { headers: extraHeaders, ...restOptions } = options;
+    const { headers: extraHeaders, body, ...restOptions } = options;
+    const finalHeaders = { ...extraHeaders };
+    if (body) {
+      finalHeaders["Content-Type"] = "application/json";
+    }
+    
     try {
       const response = await fetch(path, {
-        headers: { "Content-Type": "application/json", ...extraHeaders },
+        headers: finalHeaders,
+        body,
         ...restOptions,
       });
       if (!response.ok) {

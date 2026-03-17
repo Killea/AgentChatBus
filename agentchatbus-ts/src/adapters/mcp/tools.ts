@@ -1,7 +1,14 @@
 import { /* memoryStore replaced by getStore */ } from "../../core/services/memoryStore.js";
 import { eventBus } from "../../shared/eventBus.js";
 import { getStore } from "../../core/services/storeSingleton.js";
-import { BusError, SeqMismatchError } from "../../core/types/errors.js";
+import {
+  BusError,
+  SeqMismatchError,
+  MissingSyncFieldsError,
+  ReplyTokenInvalidError,
+  ReplyTokenExpiredError,
+  ReplyTokenReplayError
+} from "../../core/types/errors.js";
 
 export type ToolDefinition = {
   name: string;
@@ -407,7 +414,6 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         return [{ type: "text", text: JSON.stringify(postPayload) }];
       } catch (error) {
         if (error instanceof SeqMismatchError) {
-          // Match Python dispatch.py L780-796: include CRITICAL_REMINDER
           const detail = {
             error: "SeqMismatchError",
             detail: `expected_last_seq=${error.expected_last_seq}, current_seq=${error.current_seq}`,
@@ -427,6 +433,57 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
           };
           return [{ type: "text", text: JSON.stringify(detail) }];
         }
+
+        if (error instanceof MissingSyncFieldsError) {
+          return [{
+            type: "text",
+            text: JSON.stringify({
+              error: "MissingSyncFieldsError",
+              detail: error.message,
+              REMINDER: "Your reply_token is no longer usable. Call 'msg_wait' now to get a fresh reply_token before posting again.",
+              action: "CALL_MSG_WAIT"
+            })
+          }];
+        }
+
+        if (error instanceof ReplyTokenInvalidError) {
+          return [{
+            type: "text",
+            text: JSON.stringify({
+              error: "ReplyTokenInvalidError",
+              detail: error.message,
+              REMINDER: "Your reply_token is no longer usable. Call 'msg_wait' now to get a fresh reply_token before posting again.",
+              action: "CALL_MSG_WAIT"
+            })
+          }];
+        }
+
+        if (error instanceof ReplyTokenExpiredError) {
+          return [{
+            type: "text",
+            text: JSON.stringify({
+              error: "ReplyTokenExpiredError",
+              detail: error.message,
+              REMINDER: "Your reply_token is no longer usable. Call 'msg_wait' now to get a fresh reply_token before posting again.",
+              action: "CALL_MSG_WAIT",
+              expires_at: error.expires_at
+            })
+          }];
+        }
+
+        if (error instanceof ReplyTokenReplayError) {
+          return [{
+            type: "text",
+            text: JSON.stringify({
+              error: "ReplyTokenReplayError",
+              detail: error.message,
+              REMINDER: "Your reply_token is no longer usable. Call 'msg_wait' now to get a fresh reply_token before posting again.",
+              action: "CALL_MSG_WAIT",
+              consumed_at: error.consumed_at
+            })
+          }];
+        }
+
         if (error instanceof BusError && error.detail) {
           return [{ type: "text", text: JSON.stringify(error.detail) }];
         }

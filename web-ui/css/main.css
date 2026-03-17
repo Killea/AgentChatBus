@@ -213,6 +213,29 @@ body[data-theme="light"] .msg-row.message-has-mentions .bubble-v2 {
   color: var(--text-1);
 }
 
+#backend-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-right: 8px;
+  opacity: 0.8;
+  cursor: help;
+  transition: transform 0.2s, opacity 0.2s;
+}
+
+#backend-icon:hover {
+  opacity: 1;
+  transform: scale(1.15);
+}
+
+#backend-icon svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));
+}
+
 /* ====================================================================================
    Toolbar buttons — shared style for topbar + thread header icon buttons
    Applied via .toolbar-btn utility class; also targets acb-icon-button rendered buttons
@@ -560,6 +583,7 @@ body[data-theme="light"] .thread-item.context-highlight {
   background: rgba(251, 191, 36, .9);
   font-size: 10px;
   line-height: 1;
+  filter: drop-shadow(0 0 0.5px rgba(255, 255, 255, 0.4));
 }
 
 .thread-item .ti-waiting-agent--count {
@@ -881,6 +905,7 @@ body[data-theme="light"] .thread-item .ti-waiting-agents {
   font-weight: 600;
   letter-spacing: 0;
   margin-top: 2px;
+  filter: drop-shadow(0 0 0.7px rgba(255, 255, 255, 0.5));
 }
 
 .msg-avatar-interactive {
@@ -1987,6 +2012,7 @@ body[data-theme="light"] #empty-state .es-ad-banner-note {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.5));
 }
 
 /* Right: 24x48 status panel with two 12x24 boxes */

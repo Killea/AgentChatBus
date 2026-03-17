@@ -12,7 +12,10 @@ class EventBus {
 
   emit(event: Record<string, unknown>): void {
     for (const listener of this.listeners) {
-      listener(event);
+      try {
+        listener(event);
+      } catch {
+      }
     }
   }
 

@@ -253,4 +253,90 @@ describe('Message Synchronization Unit Tests', () => {
         // At least some messages should succeed
         expect(results.length).toBeGreaterThan(0);
     });
+
+    it('token rejects cross thread use', () => {
+        // Test 1: Token issued for thread A must not work for thread B
+        const threadA = store.createThread("cross-thread-a").thread;
+        const threadB = store.createThread("cross-thread-b").thread;
+        
+        // Issue token for thread A
+        const syncA = store.issueSyncContext(threadA.id, "human", "test");
+        
+        // Try to use token_a in thread_b → should reject
+        expect(() => {
+            store.postMessage({
+                threadId: threadB.id,  // ← Different thread!
+                author: "human",
+                content: "wrong-thread-use",
+                expectedLastSeq: syncA.current_seq,
+                replyToken: syncA.reply_token,  // ← Token from thread A
+                role: "assistant"
+            });
+        }).toThrow();
+    });
+
+    it('token rejects cross agent use', () => {
+        // Token bound to agent_a must not be usable by agent_b (Python parity)
+        const thread = store.createThread("cross-agent").thread;
+        
+        // Register two agents
+        const agentA = store.registerAgent({ ide: "VSCode", model: "GPT-A" });
+        const agentB = store.registerAgent({ ide: "VSCode", model: "GPT-B" });
+        
+        // Issue token bound to agent_a
+        const sync = store.issueSyncContext(thread.id, agentA.id, "test");
+        
+        // Attempt to use agent_a token for agent_b
+        expect(() => {
+            store.postMessage({
+                threadId: thread.id,
+                author: agentB.id,
+                content: "cross-agent misuse",
+                expectedLastSeq: sync.current_seq,
+                replyToken: sync.reply_token,
+                role: "assistant"
+            });
+        }).toThrow();
+    });
+
+    it('chain token issued for registered agent', () => {
+        // UP-32: msg_post with a registered agent should issue a chain reply_token
+        // Note: Chain token is issued at dispatch layer (handle_msg_post), not CRUD layer
+        // This test verifies the CRUD layer behavior - actual chain token is in HTTP response
+        const thread = store.createThread("chain-token").thread;
+        const agent = store.registerAgent({ ide: "Cursor", model: "test-model" });
+        const sync = store.issueSyncContext(thread.id, agent.id, "test");
+
+        const result = store.postMessage({
+            threadId: thread.id,
+            author: agent.id,
+            content: "first message",
+            expectedLastSeq: sync.current_seq,
+            replyToken: sync.reply_token,
+            role: "assistant"
+        });
+
+        // CRUD layer returns the message, chain_token is added at dispatch layer
+        expect(result.id).toBeDefined();
+        expect(result.seq).toBeGreaterThan(0);
+    });
+
+    it('anonymous author message posts successfully', () => {
+        // Verify anonymous authors can still post messages
+        const thread = store.createThread("anon-post").thread;
+        const sync = store.issueSyncContext(thread.id, "anonymous-user", "test");
+
+        const result = store.postMessage({
+            threadId: thread.id,
+            author: "anonymous-user",
+            content: "anon message",
+            expectedLastSeq: sync.current_seq,
+            replyToken: sync.reply_token,
+            role: "assistant"
+        });
+
+        // Message should be posted successfully
+        expect(result.id).toBeDefined();
+        expect(result.author).toBe("anonymous-user");
+    });
 });

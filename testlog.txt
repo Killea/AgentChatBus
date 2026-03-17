@@ -1,0 +1,470 @@
+
+> agentchatbus-ts@0.0.1 test
+> vitest run --reporter=verbose --silent
+
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mc:/Users/hankw/Documents/AgentChatBus/agentchatbus-ts[39m
+
+(node:53340) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:29352) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:5636) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:51436) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:22008) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:27228) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ [32m✓[39m tests/unit/test_thread_pagination.test.ts[2m > [22mThread Pagination Unit Tests[2m > [22mdefault returns all[32m 27[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_pagination.test.ts[2m > [22mThread Pagination Unit Tests[2m > [22mlimit zero returns all[32m 21[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_pagination.test.ts[2m > [22mThread Pagination Unit Tests[2m > [22mlimit returns correct count[32m 9[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_pagination.test.ts[2m > [22mThread Pagination Unit Tests[2m > [22mlimit larger than total[32m 8[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_pagination.test.ts[2m > [22mThread Pagination Unit Tests[2m > [22morder desc by created_at[32m 18[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_pagination.test.ts[2m > [22mThread Pagination Unit Tests[2m > [22mbefore cursor[32m 16[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_pagination.test.ts[2m > [22mThread Pagination Unit Tests[2m > [22mbefore and limit combined[32m 19[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_pagination.test.ts[2m > [22mThread Pagination Unit Tests[2m > [22mwith status filter[32m 12[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_pagination.test.ts[2m > [22mThread Pagination Unit Tests[2m > [22mwith include_archived[32m 10[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_pagination.test.ts[2m > [22mThread Pagination Unit Tests[2m > [22mhard cap 200[32m 118[2mms[22m[39m
+(node:54788) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:22156) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:41832) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:61804) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:53436) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:27128) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:40384) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ [32m✓[39m tests/unit/test_thread_pagination.test.ts[2m > [22mThread Pagination Unit Tests[2m > [22msequential pages no overlap[32m 31[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_pagination.test.ts[2m > [22mThread Pagination Unit Tests[2m > [22mbefore no results[32m 7[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_pagination.test.ts[2m > [22mThread Pagination Unit Tests[2m > [22mthread count basic[32m 10[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_templates.test.ts[2m > [22mBuilt-in Templates[2m > [22mbuiltin templates seeded[32m 208[2mms[22m[39m
+ [32m✓[39m tests/unit/test_sysprompt.test.ts[2m > [22mSystem Prompt[2m > [22mmsg_list uses builtin prompt when thread has no custom prompt[33m 310[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reactions_priority.test.ts[2m > [22mPriority (UP-16)[2m > [22mmsg_post default priority normal[33m 393[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_templates.test.ts[2m > [22mBuilt-in Templates[2m > [22mbuiltin templates are builtin[32m 184[2mms[22m[39m
+ [32m✓[39m tests/unit/test_structured_metadata.test.ts[2m > [22mMetadata Storage[2m > [22mmsg_post with handoff_target[33m 446[2mms[22m[39m
+ [32m✓[39m tests/unit/test_sysprompt.test.ts[2m > [22mSystem Prompt[2m > [22mmsg_list appends thread prompt without overriding builtin prompt[32m 270[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_templates.test.ts[2m > [22mBuilt-in Templates[2m > [22mtemplate list[32m 190[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_templates.test.ts[2m > [22mBuilt-in Templates[2m > [22mtemplate get existing[32m 196[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reactions_priority.test.ts[2m > [22mPriority (UP-16)[2m > [22mmsg_post with urgent priority[33m 395[2mms[22m[39m
+ [32m✓[39m tests/integration/httpServer.test.ts[2m > [22mHTTP compatibility shell[2m > [22mcreates a thread and returns initial sync context[32m 153[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_settings.test.ts[2m > [22mthread settings admin parity[2m > [22mcreates default settings for a thread[32m 81[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_settings.test.ts[2m > [22mthread settings admin parity[2m > [22mallows updating thread settings[32m 89[2mms[22m[39m
+ [32m✓[39m tests/unit/test_content_filter.test.ts[2m > [22mcontent filter parity[2m > [22mrejects messages with OpenAI API key pattern[32m 188[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_capabilities.test.ts[2m > [22mAgent Capabilities (Ported from test_agent_capabilities.py)[2m > [22mregister with skills[32m 13[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_capabilities.test.ts[2m > [22mAgent Capabilities (Ported from test_agent_capabilities.py)[2m > [22mregister without skills[32m 7[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_capabilities.test.ts[2m > [22mAgent Capabilities (Ported from test_agent_capabilities.py)[2m > [22mregister with capabilities and skills[32m 6[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_capabilities.test.ts[2m > [22mAgent Capabilities (Ported from test_agent_capabilities.py)[2m > [22magent get[32m 4[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_capabilities.test.ts[2m > [22mAgent Capabilities (Ported from test_agent_capabilities.py)[2m > [22magent get nonexistent[32m 2[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_capabilities.test.ts[2m > [22mAgent Capabilities (Ported from test_agent_capabilities.py)[2m > [22mupdate capabilities[32m 3[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_capabilities.test.ts[2m > [22mAgent Capabilities (Ported from test_agent_capabilities.py)[2m > [22mupdate skills[32m 4[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_capabilities.test.ts[2m > [22mAgent Capabilities (Ported from test_agent_capabilities.py)[2m > [22mupdate display_name[32m 3[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_capabilities.test.ts[2m > [22mAgent Capabilities (Ported from test_agent_capabilities.py)[2m > [22mupdate partial[32m 3[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_capabilities.test.ts[2m > [22mAgent Capabilities (Ported from test_agent_capabilities.py)[2m > [22mupdate invalid token[32m 3[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_capabilities.test.ts[2m > [22mAgent Capabilities (Ported from test_agent_capabilities.py)[2m > [22mupdate nonexistent agent[32m 3[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_capabilities.test.ts[2m > [22mAgent Capabilities HTTP integration (Ported from test_agent_capabilities.py)[2m > [22mapi register returns capabilities[32m 156[2mms[22m[39m
+ [32m✓[39m tests/unit/test_structured_metadata.test.ts[2m > [22mMetadata Storage[2m > [22mmsg_post with stop_reason[33m 387[2mms[22m[39m
+ [32m✓[39m tests/unit/test_database_safety_contract.test.ts[2m > [22mdatabase safety contract (TS parity)[2m > [22mtest files must not hardcode production database paths[33m 1510[2mms[22m[39m
+ [32m✓[39m tests/integration/httpServer.test.ts[2m > [22mHTTP compatibility shell[2m > [22mposts a message with sync fields[32m 40[2mms[22m[39m
+ [32m✓[39m tests/integration/httpServer.test.ts[2m > [22mHTTP compatibility shell[2m > [22mrejects replayed reply tokens[32m 38[2mms[22m[39m
+ [32m✓[39m tests/integration/msgWaitIntegration.test.ts[2m > [22mmsg_wait integration parity[2m > [22mreturns immediately when agent is behind (fast-return)[32m 174[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_settings.test.ts[2m > [22mthread settings admin parity[2m > [22mvalidates minimum timeout_seconds[32m 60[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_settings.test.ts[2m > [22mthread settings admin parity[2m > [22mallows large timeout_seconds values[32m 86[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_settings.test.ts[2m > [22mthread settings admin parity[2m > [22mreturns undefined for non-existent thread settings[32m 2[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_capabilities.test.ts[2m > [22mAgent Capabilities HTTP integration (Ported from test_agent_capabilities.py)[2m > [22mapi register returns skills[32m 40[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_capabilities.test.ts[2m > [22mAgent Capabilities HTTP integration (Ported from test_agent_capabilities.py)[2m > [22mapi register returns emoji[32m 20[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_capabilities.test.ts[2m > [22mAgent Capabilities HTTP integration (Ported from test_agent_capabilities.py)[2m > [22mapi agents includes capabilities[32m 21[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_capabilities.test.ts[2m > [22mAgent Capabilities HTTP integration (Ported from test_agent_capabilities.py)[2m > [22mapi agents includes skills[32m 45[2mms[22m[39m
+(node:58776) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ [32m✓[39m tests/integration/httpServer.test.ts[2m > [22mHTTP compatibility shell[2m > [22mrejects cross-agent reply token misuse (Python parity)[32m 30[2mms[22m[39m
+ [32m✓[39m tests/integration/httpServer.test.ts[2m > [22mHTTP compatibility shell[2m > [22mauto-issues sync context on REST message post when sync fields are omitted[32m 32[2mms[22m[39m
+ [32m✓[39m tests/integration/httpServer.test.ts[2m > [22mHTTP compatibility shell[2m > [22mregisters and lists agents[32m 40[2mms[22m[39m
+ [32m✓[39m tests/integration/httpServer.test.ts[2m > [22mHTTP compatibility shell[2m > [22muploads an image and returns a data URL[32m 35[2mms[22m[39m
+ [32m✓[39m tests/unit/test_sysprompt.test.ts[2m > [22mSystem Prompt[2m > [22mmsg_list without include_system_prompt does not include system message[33m 437[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_templates.test.ts[2m > [22mBuilt-in Templates[2m > [22mtemplate get nonexistent[32m 229[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_sync_unit.test.ts[2m > [22mMessage Synchronization Unit Tests[2m > [22mmsg_post requires sync fields[33m 395[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_capabilities.test.ts[2m > [22mAgent Capabilities HTTP integration (Ported from test_agent_capabilities.py)[2m > [22mapi agents includes emoji[32m 31[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_capabilities.test.ts[2m > [22mAgent Capabilities HTTP integration (Ported from test_agent_capabilities.py)[2m > [22mapi agent get by id[32m 23[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_capabilities.test.ts[2m > [22mAgent Capabilities HTTP integration (Ported from test_agent_capabilities.py)[2m > [22mapi agent get 404[32m 28[2mms[22m[39m
+ [32m✓[39m tests/integration/msgWaitIntegration.test.ts[2m > [22mmsg_wait integration parity[2m > [22mwaits for new messages when agent is up-to-date[32m 166[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_capabilities.test.ts[2m > [22mAgent Capabilities HTTP integration (Ported from test_agent_capabilities.py)[2m > [22mapi agent update[32m 36[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_capabilities.test.ts[2m > [22mAgent Capabilities HTTP integration (Ported from test_agent_capabilities.py)[2m > [22mapi agent update wrong token[32m 27[2mms[22m[39m
+ [32m✓[39m tests/integration/httpServer.test.ts[2m > [22mHTTP compatibility shell[2m > [22mlists MCP tools through the HTTP MCP message endpoint[32m 40[2mms[22m[39m
+ [32m✓[39m tests/integration/httpServer.test.ts[2m > [22mHTTP compatibility shell[2m > [22mcalls an MCP tool through the HTTP MCP message endpoint[32m 35[2mms[22m[39m
+ [32m✓[39m tests/unit/test_content_filter.test.ts[2m > [22mcontent filter parity[2m > [22mrejects messages with GitHub token pattern[32m 99[2mms[22m[39m
+ [32m✓[39m tests/unit/test_content_filter.test.ts[2m > [22mcontent filter parity[2m > [22mallows normal messages without keys[32m 238[2mms[22m[39m
+ [32m✓[39m tests/integration/httpServer.test.ts[2m > [22mHTTP compatibility shell[2m > [22msupports msg_wait fast-return through the MCP adapter[32m 48[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_edit.test.ts[2m > [22mMessage Edit Unit Tests[2m > [22mmsg_edit updates content[33m 675[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_templates.test.ts[2m > [22mCustom Templates[2m > [22mtemplate create custom[33m 323[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reactions_priority.test.ts[2m > [22mPriority (UP-16)[2m > [22mmsg_post with system priority[33m 569[2mms[22m[39m
+ [32m✓[39m tests/unit/test_structured_metadata.test.ts[2m > [22mMetadata Storage[2m > [22mmsg_post with both[33m 609[2mms[22m[39m
+ [32m✓[39m tests/unit/test_content_filter.test.ts[2m > [22mcontent filter parity[2m > [22mcan be disabled via environment variable[33m 334[2mms[22m[39m
+ [32m✓[39m tests/integration/msgWaitIntegration.test.ts[2m > [22mmsg_wait integration parity[2m > [22mreturns timeout after specified duration[33m 539[2mms[22m[39m
+ [32m✓[39m tests/unit/test_sysprompt.test.ts[2m > [22mSystem Prompt[2m > [22mmsg_list with after_seq > 0 does not include system prompt[33m 821[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_sync_unit.test.ts[2m > [22mMessage Synchronization Unit Tests[2m > [22mreply token replay is rejected[33m 542[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_templates.test.ts[2m > [22mCustom Templates[2m > [22mtemplate create duplicate id raises[32m 284[2mms[22m[39m
+ [32m✓[39m tests/parity/msg_sync.test.ts[2m > [22mMessage Synchronization Parity Tests (Python vs TS)[2m > [22mhandles sequence tolerance (UP-PARITY)[33m 829[2mms[22m[39m
+ [32m✓[39m tests/integration/test_search_integration.test.ts[2m > [22mSearch Integration (Ported from tests/test_search_integration.py)[2m > [22msearch endpoint basic[32m 153[2mms[22m[39m
+ [32m✓[39m tests/integration/test_search_integration.test.ts[2m > [22mSearch Integration (Ported from tests/test_search_integration.py)[2m > [22msearch endpoint no results[32m 26[2mms[22m[39m
+ [32m✓[39m tests/integration/test_search_integration.test.ts[2m > [22mSearch Integration (Ported from tests/test_search_integration.py)[2m > [22msearch endpoint result fields[32m 42[2mms[22m[39m
+ [32m✓[39m tests/integration/test_search_integration.test.ts[2m > [22mSearch Integration (Ported from tests/test_search_integration.py)[2m > [22msearch endpoint should return envelope fields total/query (python parity)[32m 30[2mms[22m[39m
+ [32m✓[39m tests/integration/test_search_integration.test.ts[2m > [22mSearch Integration (Ported from tests/test_search_integration.py)[2m > [22msearch endpoint should reject missing query (python parity)[32m 30[2mms[22m[39m
+ [32m✓[39m tests/integration/test_search_integration.test.ts[2m > [22mSearch Integration (Ported from tests/test_search_integration.py)[2m > [22msearch endpoint should support thread_id filter (python parity)[32m 43[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reactions_priority.test.ts[2m > [22mPriority (UP-16)[2m > [22mmsg_post invalid priority raises[33m 453[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_edit.test.ts[2m > [22mMessage Edit Unit Tests[2m > [22mmsg_edit creates history entry[33m 557[2mms[22m[39m
+ [32m✓[39m tests/unit/test_structured_metadata.test.ts[2m > [22mMetadata Storage[2m > [22mmsg_post invalid stop_reason raises[33m 455[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_templates.test.ts[2m > [22mCustom Templates[2m > [22mtemplate delete custom[33m 337[2mms[22m[39m
+(node:34192) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:42600) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ [32m✓[39m tests/unit/test_thread_templates.test.ts[2m > [22mCustom Templates[2m > [22mtemplate delete builtin raises[32m 243[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reactions_priority.test.ts[2m > [22mPriority (UP-16)[2m > [22mpriority in message object[33m 554[2mms[22m[39m
+ [32m✓[39m tests/unit/test_structured_metadata.test.ts[2m > [22mMetadata Storage[2m > [22mmsg_post backward compat[33m 529[2mms[22m[39m
+ [32m✓[39m tests/unit/test_database_safety_contract.test.ts[2m > [22mdatabase safety contract (TS parity)[2m > [22mAGENTCHATBUS_DB assignments in tests must point to test-scoped DBs[33m 1585[2mms[22m[39m
+ [32m✓[39m tests/unit/test_database_safety_contract.test.ts[2m > [22mdatabase safety contract (TS parity)[2m > [22mruntime AGENTCHATBUS_DB must be set to a test database[32m 29[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_edit.test.ts[2m > [22mMessage Edit Unit Tests[2m > [22mmsg_edit increments version[33m 656[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_templates.test.ts[2m > [22mThread Creation with Template[2m > [22mthread_create with template[33m 353[2mms[22m[39m
+(node:62684) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ [32m✓[39m tests/parity/msg_sync.test.ts[2m > [22mMessage Synchronization Parity Tests (Python vs TS)[2m > [22mrejects when beyond sequence tolerance[33m 989[2mms[22m[39m
+(node:25324) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:26372) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:57612) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ [32m✓[39m tests/scenarios/test_multi_agent_chat_scenarios.test.ts[2m > [22mMulti-Agent Chat Scenarios (Ported from Python)[2m > [22mthree_agent_chat_recovers_from_rejected_stale_post_via_fast_wait_refresh[32m 70[2mms[22m[39m
+ [32m✓[39m tests/integration/errorHandling.test.ts[2m > [22merror handling and edge cases parity[2m > [22mreturns 404 for non-existent thread[32m 212[2mms[22m[39m
+ [32m✓[39m tests/parity/msg_sync.test.ts[2m > [22mMessage Synchronization Parity Tests (Python vs TS)[2m > [22mreturns naked array for /api/agents (frontend parity)[32m 223[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_templates.test.ts[2m > [22mThread Creation with Template[2m > [22mthread_create template override prompt[33m 363[2mms[22m[39m
+ [32m✓[39m tests/scenarios/test_multi_agent_chat_scenarios.test.ts[2m > [22mMulti-Agent Chat Scenarios (Ported from Python)[2m > [22msingle_agent_empty_room_waits_normally_instead_of_fast_returning[32m 136[2mms[22m[39m
+ [32m✓[39m tests/integration/errorHandling.test.ts[2m > [22merror handling and edge cases parity[2m > [22mreturns 404 for non-existent agent[32m 26[2mms[22m[39m
+ [32m✓[39m tests/integration/errorHandling.test.ts[2m > [22merror handling and edge cases parity[2m > [22mreturns 400 for missing required fields[32m 51[2mms[22m[39m
+ [32m✓[39m tests/integration/errorHandling.test.ts[2m > [22merror handling and edge cases parity[2m > [22mhandles concurrent message posts correctly[32m 49[2mms[22m[39m
+ [32m✓[39m tests/scenarios/test_multi_agent_chat_scenarios.test.ts[2m > [22mMulti-Agent Chat Scenarios (Ported from Python)[2m > [22mthree_agent_chat_can_recover_from_two_separate_stale_post_failures[32m 56[2mms[22m[39m
+ [32m✓[39m tests/scenarios/test_multi_agent_chat_scenarios.test.ts[2m > [22mMulti-Agent Chat Scenarios (Ported from Python)[2m > [22mreplayed_msg_post_token_failure_triggers_one_shot_fast_refresh_without_fake_new_messages[32m 17[2mms[22m[39m
+ [32m✓[39m tests/unit/test_structured_metadata.test.ts[2m > [22mMetadata Storage[2m > [22mmetadata preserved in msg_list[33m 543[2mms[22m[39m
+ [32m✓[39m tests/parity/msg_sync.test.ts[2m > [22mMessage Synchronization Parity Tests (Python vs TS)[2m > [22mregisters and lists agents (UP-PARITY)[32m 274[2mms[22m[39m
+ [32m✓[39m tests/integration/errorHandling.test.ts[2m > [22merror handling and edge cases parity[2m > [22mvalidates reply_to_msg_id exists[32m 32[2mms[22m[39m
+ [32m✓[39m tests/integration/searchIntegration.test.ts[2m > [22mmessage search parity[2m > [22msearches messages by content[32m 247[2mms[22m[39m
+ [32m✓[39m tests/integration/searchIntegration.test.ts[2m > [22mmessage search parity[2m > [22mreturns empty results for non-matching query[32m 28[2mms[22m[39m
+ [32m✓[39m tests/integration/searchIntegration.test.ts[2m > [22mmessage search parity[2m > [22mrejects empty query[32m 30[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_sync_unit.test.ts[2m > [22mMessage Synchronization Unit Tests[2m > [22mseq mismatch returns new messages context[33m 1417[2mms[22m[39m
+ [32m✓[39m tests/integration/searchIntegration.test.ts[2m > [22mmessage search parity[2m > [22mlimits search results[32m 59[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_edit.test.ts[2m > [22mMessage Edit Unit Tests[2m > [22mmsg_edit sets edited_at[33m 527[2mms[22m[39m
+ [32m✓[39m tests/integration/httpServer.test.ts[2m > [22mHTTP compatibility shell[2m > [22msurfaces waiting agents in thread listing[33m 2047[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reactions_priority.test.ts[2m > [22mPriority (UP-16)[2m > [22mmsg_list filter by priority[33m 887[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_templates.test.ts[2m > [22mThread Creation with Template[2m > [22mthread_create nonexistent template[33m 350[2mms[22m[39m
+ [32m✓[39m tests/integration/httpServer.test.ts[2m > [22mHTTP compatibility shell[2m > [22mclears expired waiting agents from thread listing[32m 61[2mms[22m[39m
+ [32m✓[39m tests/integration/httpServer.test.ts[2m > [22mHTTP compatibility shell[2m > [22msupports message edit history and reactions[32m 27[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_sync_unit.test.ts[2m > [22mMessage Synchronization Unit Tests[2m > [22minvalid token is rejected[32m 285[2mms[22m[39m
+ [32m✓[39m tests/integration/httpServer.test.ts[2m > [22mHTTP compatibility shell[2m > [22msupports agent register, resume, update, and kick flows[32m 25[2mms[22m[39m
+ [32m✓[39m tests/integration/httpServer.test.ts[2m > [22mHTTP compatibility shell[2m > [22msupports IDE register, status, heartbeat, and unregister flows[32m 17[2mms[22m[39m
+ [32m✓[39m tests/integration/test_metrics_integration.test.ts[2m > [22mMetrics Integration (Ported from tests/test_metrics.py)[2m > [22mGET /api/metrics returns 200 with required top-level keys[32m 171[2mms[22m[39m
+ [32m✓[39m tests/integration/httpServer.test.ts[2m > [22mHTTP compatibility shell[2m > [22mstreams msg.new events over /events[32m 93[2mms[22m[39m
+ [32m✓[39m tests/integration/busConnectIntegration.test.ts[2m > [22mbus_connect integration parity[2m > [22mcreates new agent and thread on first call[32m 219[2mms[22m[39m
+ [32m✓[39m tests/unit/test_structured_metadata.test.ts[2m > [22mEvent Emission[2m > [22mmsg_post handoff event[33m 492[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_edit.test.ts[2m > [22mMessage Edit Unit Tests[2m > [22mmsg_edit same content returns no_change[33m 442[2mms[22m[39m
+ [32m✓[39m tests/integration/test_metrics_integration.test.ts[2m > [22mMetrics Integration (Ported from tests/test_metrics.py)[2m > [22mGET /api/metrics reflects thread and message increments[32m 70[2mms[22m[39m
+ [32m✓[39m tests/integration/test_metrics_integration.test.ts[2m > [22mMetrics Integration (Ported from tests/test_metrics.py)[2m > [22mGET /health remains lightweight without metrics payload[32m 30[2mms[22m[39m
+ [32m✓[39m tests/integration/chainTokenIntegration.test.ts[2m > [22mchain token integration parity[2m > [22mreturns new chain token per post and rejects replay[32m 262[2mms[22m[39m
+ [32m✓[39m tests/integration/busConnectIntegration.test.ts[2m > [22mbus_connect integration parity[2m > [22mreuses existing thread with same name[32m 60[2mms[22m[39m
+ [32m✓[39m tests/integration/busConnectIntegration.test.ts[2m > [22mbus_connect integration parity[2m > [22mreturns system prompt in initial messages[32m 37[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_templates.test.ts[2m > [22mThread Creation with Template[2m > [22mthread_create template stores template_id[33m 319[2mms[22m[39m
+(node:61724) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:48960) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:50688) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ [32m✓[39m tests/unit/test_thread_templates.test.ts[2m > [22mTemplate System Prompts[2m > [22mcode-review template has review prompt[32m 246[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_edit.test.ts[2m > [22mMessage Edit Unit Tests[2m > [22mmsg_edit message not found returns undefined[32m 180[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_sync_unit.test.ts[2m > [22mMessage Synchronization Unit Tests[2m > [22mtoken expired after timeout[33m 552[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_wait_coordination_prompt.test.ts[2m > [22mMessage Wait Coordination and Visibility[2m > [22mtest_msg_wait_no_admin_prompt_when_no_agent_online[32m 22[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_wait_coordination_prompt.test.ts[2m > [22mMessage Wait Coordination and Visibility[2m > [22mtest_msg_wait_single_online_agent_has_no_dispatch_coordination_prompt[32m 89[2mms[22m[39m
+ [32m✓[39m tests/unit/test_metrics.test.ts[2m > [22mMetrics Unit Tests[2m > [22mmetrics returns empty db baseline[32m 18[2mms[22m[39m
+ [32m✓[39m tests/unit/test_metrics.test.ts[2m > [22mMetrics Unit Tests[2m > [22mmetrics thread counts by status[32m 11[2mms[22m[39m
+ [32m✓[39m tests/unit/test_metrics.test.ts[2m > [22mMetrics Unit Tests[2m > [22mmetrics message total[32m 13[2mms[22m[39m
+ [32m✓[39m tests/unit/test_metrics.test.ts[2m > [22mMetrics Unit Tests[2m > [22mmetrics stop_reason distribution[32m 18[2mms[22m[39m
+ [32m✓[39m tests/unit/test_metrics.test.ts[2m > [22mMetrics Unit Tests[2m > [22mmetrics agent counts[32m 10[2mms[22m[39m
+ [32m✓[39m tests/unit/test_metrics.test.ts[2m > [22mMetrics Unit Tests[2m > [22mmetrics has required fields[32m 7[2mms[22m[39m
+ [32m✓[39m tests/unit/test_metrics.test.ts[2m > [22mMetrics Unit Tests[2m > [22mmetrics message rate windows[32m 8[2mms[22m[39m
+ [32m✓[39m tests/unit/test_metrics.test.ts[2m > [22mMetrics Unit Tests[2m > [22mmetrics avg_latency_ms with multiple messages[32m 7[2mms[22m[39m
+ [32m✓[39m tests/unit/test_metrics.test.ts[2m > [22mMetrics Unit Tests[2m > [22mmetrics avg_latency_ms null with single message[32m 8[2mms[22m[39m
+ [32m✓[39m tests/unit/test_structured_metadata.test.ts[2m > [22mEvent Emission[2m > [22mmsg_post stop event[33m 497[2mms[22m[39m
+ [32m✓[39m tests/unit/test_metrics.test.ts[2m > [22mMetrics Unit Tests[2m > [22mmetrics stop_reason empty when no stop_reasons in messages[32m 9[2mms[22m[39m
+ [32m✓[39m tests/unit/test_metrics.test.ts[2m > [22mMetrics Unit Tests[2m > [22mmetrics agent counts total[32m 7[2mms[22m[39m
+ [32m✓[39m tests/unit/test_metrics.test.ts[2m > [22mMetrics Unit Tests[2m > [22mmetrics agent online offline status[32m 10[2mms[22m[39m
+ [32m✓[39m tests/unit/test_metrics.test.ts[2m > [22mMetrics Unit Tests[2m > [22mmetrics returns valid json structure[32m 7[2mms[22m[39m
+ [32m✓[39m tests/unit/test_metrics.test.ts[2m > [22mMetrics Unit Tests[2m > [22mmetrics schema has all required keys[32m 7[2mms[22m[39m
+ [32m✓[39m tests/unit/test_metrics.test.ts[2m > [22mMetrics Unit Tests[2m > [22mmetrics uptime is positive after start[32m 13[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_wait_coordination_prompt.test.ts[2m > [22mMessage Wait Coordination and Visibility[2m > [22mtest_msg_wait_and_msg_list_project_human_only_system_messages[32m 11[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_wait_coordination_prompt.test.ts[2m > [22mMessage Wait Coordination and Visibility[2m > [22mtest_msg_wait_returns_targeted_takeover_instruction_to_agent[32m 9[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_wait_coordination_prompt.test.ts[2m > [22mMessage Wait Coordination and Visibility[2m > [22mtest_msg_wait_for_agent_unmatched_message_timeout_clears_wait_state[32m 51[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_templates.test.ts[2m > [22mTemplate System Prompts[2m > [22msecurity-audit template has security prompt[32m 206[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_wait_coordination_prompt.test.ts[2m > [22mMessage Wait Coordination and Visibility[2m > [22mtest_msg_wait_timeout_clears_wait_state[32m 40[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reactions_priority.test.ts[2m > [22mPriority (UP-16)[2m > [22mmsg_list no priority filter returns all[33m 813[2mms[22m[39m
+(node:59140) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ [32m✓[39m tests/unit/test_msg_edit.test.ts[2m > [22mMessage Edit Unit Tests[2m > [22mmsg_edit preserves thread association[33m 473[2mms[22m[39m
+(node:50188) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:37620) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:46064) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:56500) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ [32m✓[39m tests/unit/test_thread_templates.test.ts[2m > [22mTemplate System Prompts[2m > [22marchitecture template has architecture prompt[32m 214[2mms[22m[39m
+(node:49836) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ [32m✓[39m tests/unit/test_thread_templates.test.ts[2m > [22mTemplate System Prompts[2m > [22mbrainstorm template has brainstorm prompt[32m 229[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_settings_v2_basic.test.ts[2m > [22mThread Settings V2 Basic Tests[2m > [22mget thread settings returns defaults[32m 14[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_settings_v2_basic.test.ts[2m > [22mThread Settings V2 Basic Tests[2m > [22mupdate thread settings timeout[32m 8[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_settings_v2_basic.test.ts[2m > [22mThread Settings V2 Basic Tests[2m > [22mupdate thread settings auto_administrator[32m 11[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_settings_v2_basic.test.ts[2m > [22mThread Settings V2 Basic Tests[2m > [22mupdate thread settings switch_timeout[32m 12[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_settings_v2_basic.test.ts[2m > [22mThread Settings V2 Basic Tests[2m > [22msettings persist across thread status change[32m 22[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_settings_v2_basic.test.ts[2m > [22mThread Settings V2 Basic Tests[2m > [22mconcurrent updates last wins[32m 17[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_sync_unit.test.ts[2m > [22mMessage Synchronization Unit Tests[2m > [22mfast return scenarios[33m 446[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reply_threading.test.ts[2m > [22mReply Threading Unit Tests[2m > [22mmsg_post no reply[32m 15[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reply_threading.test.ts[2m > [22mReply Threading Unit Tests[2m > [22mmsg_post with reply[32m 12[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reply_threading.test.ts[2m > [22mReply Threading Unit Tests[2m > [22mmsg_post reply nonexistent[32m 13[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reply_threading.test.ts[2m > [22mReply Threading Unit Tests[2m > [22mmsg_post reply wrong thread[32m 22[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reply_threading.test.ts[2m > [22mReply Threading Unit Tests[2m > [22mmsg_list includes reply_to[32m 9[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reply_threading.test.ts[2m > [22mReply Threading Unit Tests[2m > [22mmsg_get existing[32m 8[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reply_threading.test.ts[2m > [22mReply Threading Unit Tests[2m > [22mmsg_get nonexistent[32m 8[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reply_threading.test.ts[2m > [22mReply Threading Unit Tests[2m > [22msse event msg_reply emitted[32m 12[2mms[22m[39m
+ [32m✓[39m tests/unit/test_search.test.ts[2m > [22mSearch Unit Tests[2m > [22msearchMessages returns matching messages[32m 19[2mms[22m[39m
+ [32m✓[39m tests/unit/test_search.test.ts[2m > [22mSearch Unit Tests[2m > [22msearchMessages is case insensitive[32m 10[2mms[22m[39m
+ [32m✓[39m tests/unit/test_search.test.ts[2m > [22mSearch Unit Tests[2m > [22msearchMessages returns empty for no match[32m 11[2mms[22m[39m
+ [32m✓[39m tests/unit/test_search.test.ts[2m > [22mSearch Unit Tests[2m > [22msearchMessages returns message fields[32m 27[2mms[22m[39m
+ [32m✓[39m tests/unit/test_search.test.ts[2m > [22mSearch Unit Tests[2m > [22msearchMessages returns results across multiple threads without filter[32m 8[2mms[22m[39m
+ [32m✓[39m tests/unit/test_search.test.ts[2m > [22mSearch Unit Tests[2m > [22msearchMessages invalid query does not throw and returns array[32m 10[2mms[22m[39m
+ [32m✓[39m tests/unit/test_search.test.ts[2m > [22mSearch Unit Tests[2m > [22msearchMessages with thread filter[32m 10[2mms[22m[39m
+ [32m✓[39m tests/unit/test_search.test.ts[2m > [22mSearch Unit Tests[2m > [22msearchMessages respects limit parameter[32m 17[2mms[22m[39m
+ [32m✓[39m tests/unit/test_rate_limit.test.ts[2m > [22mRate Limit Unit Tests[2m > [22mRateLimitExceeded exposes attributes[32m 17[2mms[22m[39m
+ [32m✓[39m tests/unit/test_rate_limit.test.ts[2m > [22mRate Limit Unit Tests[2m > [22mRateLimitExceeded string contains limit and window[32m 15[2mms[22m[39m
+ [32m✓[39m tests/unit/test_rate_limit.test.ts[2m > [22mRate Limit Unit Tests[2m > [22mrate limit allows within limit[32m 29[2mms[22m[39m
+ [32m✓[39m tests/unit/test_rate_limit.test.ts[2m > [22mRate Limit Unit Tests[2m > [22mrate limit blocks on exceed with detailed exception fields[32m 12[2mms[22m[39m
+ [32m✓[39m tests/unit/test_rate_limit.test.ts[2m > [22mRate Limit Unit Tests[2m > [22mrate limit uses author_id scope for registered agent[32m 19[2mms[22m[39m
+ [32m✓[39m tests/unit/test_structured_metadata.test.ts[2m > [22mEvent Emission[2m > [22mmsg_post no handoff event when missing[33m 477[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_settings_v2_basic.test.ts[2m > [22mThread Settings V2 Basic Tests[2m > [22mget settings for non-existent thread returns undefined[32m 16[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_settings_v2_basic.test.ts[2m > [22mThread Settings V2 Basic Tests[2m > [22mupdate thread settings rejects timeout below minimum[32m 7[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_settings_v2_basic.test.ts[2m > [22mThread Settings V2 Basic Tests[2m > [22mupdate thread settings allows large timeout[32m 7[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_settings_v2_basic.test.ts[2m > [22mThread Settings V2 Basic Tests[2m > [22mupdate thread settings rejects switch_timeout below minimum[32m 10[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_settings_v2_basic.test.ts[2m > [22mThread Settings V2 Basic Tests[2m > [22mmessage updates thread state[32m 10[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_settings_v2_basic.test.ts[2m > [22mThread Settings V2 Basic Tests[2m > [22msystem message creation[32m 9[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_settings_v2_basic.test.ts[2m > [22mThread Settings V2 Basic Tests[2m > [22mdelete thread cleans up messages[32m 10[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_settings_v2_basic.test.ts[2m > [22mThread Settings V2 Basic Tests[2m > [22mthread delete cleans reactions[32m 11[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_settings_v2_basic.test.ts[2m > [22mThread Settings V2 Basic Tests[2m > [22msettings defaults on new thread[32m 7[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reply_threading.test.ts[2m > [22mReply Threading Unit Tests[2m > [22mreply chain multiple levels[32m 15[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reply_threading.test.ts[2m > [22mReply Threading Unit Tests[2m > [22mreply validation strict mode[32m 14[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reply_threading.test.ts[2m > [22mReply Threading Unit Tests[2m > [22msse event msg_reply not emitted for non-reply[32m 7[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reply_threading.test.ts[2m > [22mReply Threading Unit Tests[2m > [22mold db compat - null reply_to_msg_id[32m 7[2mms[22m[39m
+ [32m✓[39m tests/unit/test_rate_limit.test.ts[2m > [22mRate Limit Unit Tests[2m > [22mrate limit scopes per author[32m 11[2mms[22m[39m
+ [32m✓[39m tests/unit/test_rate_limit.test.ts[2m > [22mRate Limit Unit Tests[2m > [22mrate limit zero disables[32m 14[2mms[22m[39m
+ [32m✓[39m tests/unit/test_rate_limit.test.ts[2m > [22mRate Limit Unit Tests[2m > [22mrate limit can be disabled via env[32m 10[2mms[22m[39m
+ [32m✓[39m tests/unit/test_rate_limit.test.ts[2m > [22mRate Limit Unit Tests[2m > [22mrate limit normal single message always passes[32m 8[2mms[22m[39m
+ [32m✓[39m tests/unit/test_rate_limit.test.ts[2m > [22mRate Limit Unit Tests[2m > [22mRateLimitExceeded scope author fallback[32m 8[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reactions_priority.test.ts[2m > [22mPriority (UP-16)[2m > [22mpriority column exists in schema[33m 467[2mms[22m[39m
+ [32m✓[39m tests/integration/threadDeletion.test.ts[2m > [22mthread deletion parity[2m > [22mdeletes thread and cleans up messages and reactions[32m 232[2mms[22m[39m
+ [32m✓[39m tests/integration/threadDeletion.test.ts[2m > [22mthread deletion parity[2m > [22mreturns 404 for non-existent thread deletion[32m 53[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_edit.test.ts[2m > [22mMessage Edit Unit Tests[2m > [22mmsg_edit history empty for unedited message[33m 376[2mms[22m[39m
+(node:18716) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ [32m✓[39m tests/unit/test_msg_sync_unit.test.ts[2m > [22mMessage Synchronization Unit Tests[2m > [22mseq tolerance within limit[33m 362[2mms[22m[39m
+(node:54256) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ [32m✓[39m tests/unit/test_structured_metadata.test.ts[2m > [22mfor_agent Filter[2m > [22mmsg_wait for_agent match[33m 398[2mms[22m[39m
+ [32m✓[39m tests/unit/test_export_markdown.test.ts[2m > [22mExport Markdown[2m > [22mexport returns null for non-existent thread[32m 10[2mms[22m[39m
+ [32m✓[39m tests/unit/test_export_markdown.test.ts[2m > [22mExport Markdown[2m > [22mexport with messages produces valid markdown structure[32m 21[2mms[22m[39m
+ [32m✓[39m tests/unit/test_export_markdown.test.ts[2m > [22mExport Markdown[2m > [22mexport empty thread produces header only[32m 8[2mms[22m[39m
+ [32m✓[39m tests/unit/test_export_markdown.test.ts[2m > [22mExport Markdown[2m > [22mexport excludes system prompt messages[32m 19[2mms[22m[39m
+ [32m✓[39m tests/unit/test_export_markdown.test.ts[2m > [22mExport Markdown[2m > [22mexport includes thread status[32m 10[2mms[22m[39m
+ [32m✓[39m tests/unit/test_export_markdown.test.ts[2m > [22mExport Markdown[2m > [22mexport uses author_name when available[32m 41[2mms[22m[39m
+ [32m✓[39m tests/unit/test_export_markdown.test.ts[2m > [22mExport Markdown[2m > [22mexport format includes proper separators[32m 9[2mms[22m[39m
+ [32m✓[39m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mmanages bus_connect flow: register -> join -> post (UP-PARITY)[33m 5297[2mms[22m[39m
+ [32m✓[39m tests/integration/threadUpdatedAtIntegration.test.ts[2m > [22mthread updated_at integration parity[2m > [22msets created_at and (future) updated_at on thread create[32m 221[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reactions_priority.test.ts[2m > [22mReactions (UP-13)[2m > [22mreact add[33m 427[2mms[22m[39m
+ [32m✓[39m tests/integration/adminSettings.test.ts[2m > [22mthread admin endpoints parity[2m > [22mreturns default admin payload with null admin_agent_id[32m 229[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_get.test.ts[2m > [22mMessage Get Tests[2m > [22mmsg_get returns message[32m 18[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_get.test.ts[2m > [22mMessage Get Tests[2m > [22mmsg_get not found[32m 10[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_get.test.ts[2m > [22mMessage Get Tests[2m > [22mmsg_get includes reactions[32m 28[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_get.test.ts[2m > [22mMessage Get Tests[2m > [22mmsg_get with reply_to[32m 10[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_get.test.ts[2m > [22mMessage Get Tests[2m > [22mmsg_get projects human-only message for agent view[32m 10[2mms[22m[39m
+(node:9904) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ [32m✓[39m tests/unit/test_msg_edit.test.ts[2m > [22mMessage Edit Unit Tests[2m > [22mmsg_edit history ordered by version[33m 495[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_registry.test.ts[2m > [22mAgent Registry (Ported from test_agent_registry.py)[2m > [22magent register supports display_name and resume updates activity[32m 25[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_registry.test.ts[2m > [22mAgent Registry (Ported from test_agent_registry.py)[2m > [22magent wait and post activity tracking[32m 10[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_registry.test.ts[2m > [22mAgent Registry (Ported from test_agent_registry.py)[2m > [22magent resume rejects bad token[32m 11[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_registry.test.ts[2m > [22mAgent Registry (Ported from test_agent_registry.py)[2m > [22magent thread create updates activity[32m 26[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_registry.test.ts[2m > [22mAgent Registry (Ported from test_agent_registry.py)[2m > [22magent emoji mapping is deterministic and normalized[32m 4[2mms[22m[39m
+(node:56112) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ [32m✓[39m tests/unit/test_structured_metadata.test.ts[2m > [22mfor_agent Filter[2m > [22mmsg_wait for_agent no match[33m 394[2mms[22m[39m
+(node:36420) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:32788) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ [32m✓[39m tests/unit/test_conv_timeout_unit.test.ts[2m > [22mConversation Timeout Unit Tests (Ported from test_conv_timeout_unit.py)[2m > [22mtimeout sweep disabled returns empty[32m 7[2mms[22m[39m
+ [32m✓[39m tests/unit/test_conv_timeout_unit.test.ts[2m > [22mConversation Timeout Unit Tests (Ported from test_conv_timeout_unit.py)[2m > [22mtimeout sweep closes stale empty thread[32m 13[2mms[22m[39m
+ [32m✓[39m tests/unit/test_conv_timeout_unit.test.ts[2m > [22mConversation Timeout Unit Tests (Ported from test_conv_timeout_unit.py)[2m > [22mtimeout sweep closes stale thread with old messages[32m 9[2mms[22m[39m
+ [32m✓[39m tests/unit/test_conv_timeout_unit.test.ts[2m > [22mConversation Timeout Unit Tests (Ported from test_conv_timeout_unit.py)[2m > [22mtimeout sweep keeps active thread[32m 13[2mms[22m[39m
+ [32m✓[39m tests/unit/test_conv_timeout_unit.test.ts[2m > [22mConversation Timeout Unit Tests (Ported from test_conv_timeout_unit.py)[2m > [22mtimeout sweep skips already closed[32m 6[2mms[22m[39m
+ [32m✓[39m tests/unit/test_conv_timeout_unit.test.ts[2m > [22mConversation Timeout Unit Tests (Ported from test_conv_timeout_unit.py)[2m > [22mtimeout sweep independent of other threads[32m 16[2mms[22m[39m
+ [32m✓[39m tests/unit/test_conv_timeout_unit.test.ts[2m > [22mConversation Timeout Unit Tests (Ported from test_conv_timeout_unit.py)[2m > [22mtimeout sweep returns list of ids[32m 18[2mms[22m[39m
+(node:56552) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ [32m✓[39m tests/unit/test_msg_return_format.test.ts[2m > [22mMessage Return Format Tests[2m > [22mmsg_list default json compatible[32m 20[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_return_format.test.ts[2m > [22mMessage Return Format Tests[2m > [22mmsg_list blocks can return imagecontent[32m 14[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_return_format.test.ts[2m > [22mMessage Return Format Tests[2m > [22mmsg_list blocks strips data url prefix and inferrs mime[32m 20[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_return_format.test.ts[2m > [22mMessage Return Format Tests[2m > [22mmsg_list blocks include_attachments false[32m 9[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_return_format.test.ts[2m > [22mMessage Return Format Tests[2m > [22mmsg_list blocks include_attachments true default[32m 8[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_sync_unit.test.ts[2m > [22mMessage Synchronization Unit Tests[2m > [22mconcurrent posts handled correctly[33m 644[2mms[22m[39m
+ [32m✓[39m tests/unit/test_content_filter_unit.test.ts[2m > [22mcheckContent[2m > [22mallows normal text[32m 4[2mms[22m[39m
+ [32m✓[39m tests/unit/test_content_filter_unit.test.ts[2m > [22mcheckContent[2m > [22mblocks AWS access key[32m 1[2mms[22m[39m
+ [32m✓[39m tests/unit/test_content_filter_unit.test.ts[2m > [22mcheckContent[2m > [22mblocks AWS temp key[32m 1[2mms[22m[39m
+ [32m✓[39m tests/unit/test_content_filter_unit.test.ts[2m > [22mcheckContent[2m > [22mblocks GitHub PAT[32m 1[2mms[22m[39m
+ [32m✓[39m tests/unit/test_content_filter_unit.test.ts[2m > [22mcheckContent[2m > [22mblocks GitHub OAuth token[32m 1[2mms[22m[39m
+ [32m✓[39m tests/unit/test_content_filter_unit.test.ts[2m > [22mcheckContent[2m > [22mblocks private key RSA[32m 1[2mms[22m[39m
+ [32m✓[39m tests/unit/test_content_filter_unit.test.ts[2m > [22mcheckContent[2m > [22mblocks private key generic[32m 0[2mms[22m[39m
+ [32m✓[39m tests/unit/test_content_filter_unit.test.ts[2m > [22mcheckContent[2m > [22mblocks Slack bot token[32m 0[2mms[22m[39m
+ [32m✓[39m tests/unit/test_content_filter_unit.test.ts[2m > [22mcheckContent[2m > [22mallows technical discussion about tokens[32m 1[2mms[22m[39m
+ [32m✓[39m tests/unit/test_content_filter_unit.test.ts[2m > [22mcheckContent[2m > [22mallows code snippet without real secrets[32m 0[2mms[22m[39m
+ [32m✓[39m tests/unit/test_content_filter_unit.test.ts[2m > [22mContentFilterError[2m > [22mhas pattern name[32m 0[2mms[22m[39m
+ [32m✓[39m tests/unit/test_content_filter_unit.test.ts[2m > [22misContentFilterEnabled[2m > [22mis enabled by default[32m 1[2mms[22m[39m
+ [32m✓[39m tests/unit/test_content_filter_unit.test.ts[2m > [22misContentFilterEnabled[2m > [22mcan be disabled with false[32m 0[2mms[22m[39m
+ [32m✓[39m tests/unit/test_content_filter_unit.test.ts[2m > [22misContentFilterEnabled[2m > [22mcan be disabled with FALSE[32m 0[2mms[22m[39m
+ [32m✓[39m tests/unit/test_content_filter_unit.test.ts[2m > [22misContentFilterEnabled[2m > [22mstays enabled with true[32m 0[2mms[22m[39m
+ [32m✓[39m tests/unit/test_content_filter_unit.test.ts[2m > [22mMemoryStore content filter integration[2m > [22mpostMessage blocks AWS key with pattern detail[32m 10[2mms[22m[39m
+ [32m✓[39m tests/unit/test_content_filter_unit.test.ts[2m > [22mMemoryStore content filter integration[2m > [22mpostMessage allows normal content[32m 7[2mms[22m[39m
+ [32m✓[39m tests/unit/test_content_filter_unit.test.ts[2m > [22mMemoryStore content filter integration[2m > [22mpostMessage allows blocked content when filter is disabled[32m 7[2mms[22m[39m
+ [32m✓[39m tests/unit/test_content_filter_unit.test.ts[2m > [22mSECRET_PATTERNS[2m > [22mcontains expected patterns[32m 2[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reactions_priority.test.ts[2m > [22mReactions (UP-13)[2m > [22mreact duplicate idempotent[33m 456[2mms[22m[39m
+ [32m✓[39m tests/unit/test_threads_archived.test.ts[2m > [22mThreads Archived Unit Tests[2m > [22mthread list include archived filtering and archive[32m 17[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_edit.test.ts[2m > [22mMessage Edit Unit Tests[2m > [22mmsg_edit parity: non-author edit should be rejected[33m 384[2mms[22m[39m
+(node:49104) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:62916) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:27356) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ [32m✓[39m tests/unit/test_structured_metadata.test.ts[2m > [22mfor_agent Filter[2m > [22mmsg_wait no filter backward compat[33m 401[2mms[22m[39m
+ [32m✓[39m tests/unit/memoryStore.test.ts[2m > [22mMemoryStore[2m > [22mcreates a thread and returns initial sync context[32m 9[2mms[22m[39m
+ [32m✓[39m tests/unit/test_agent_attention_mechanisms.test.ts[2m > [22mAgent Attention Mechanisms (Ported from Python)[2m > [22mmsg_get preserves attention fields when enabled[32m 14[2mms[22m[39m
+ [2m[90m↓[39m[22m tests/unit/test_agent_attention_mechanisms.test.ts[2m > [22mAgent Attention Mechanisms (Ported from Python)[2m > [22mmsg_get strips attention fields when disabled (TODO: implement flags)
+ [2m[90m↓[39m[22m tests/unit/test_agent_attention_mechanisms.test.ts[2m > [22mAgent Attention Mechanisms (Ported from Python)[2m > [22mmsg_list strips attention fields when disabled (TODO: implement flags)
+ [2m[90m↓[39m[22m tests/unit/test_agent_attention_mechanisms.test.ts[2m > [22mAgent Attention Mechanisms (Ported from Python)[2m > [22mmsg_wait strips attention fields when disabled (TODO: implement flags)
+ [32m✓[39m tests/unit/test_agent_attention_mechanisms.test.ts[2m > [22mAgent Attention Mechanisms (Ported from Python)[2m > [22mmsg_post returns attention fields when enabled[32m 6[2mms[22m[39m
+ [2m[90m↓[39m[22m tests/unit/test_agent_attention_mechanisms.test.ts[2m > [22mAgent Attention Mechanisms (Ported from Python)[2m > [22mmsg_post strips attention fields when disabled (TODO: implement flags)
+ [32m✓[39m tests/unit/test_msg_sync_unit.test.ts[2m > [22mMessage Synchronization Unit Tests[2m > [22mtoken rejects cross thread use[33m 342[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_edit.test.ts[2m > [22mMessage Edit Unit Tests[2m > [22mmsg_edit parity: role=system message should not be editable[33m 378[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reactions_priority.test.ts[2m > [22mReactions (UP-13)[2m > [22mreact multiple agents[33m 552[2mms[22m[39m
+ [32m✓[39m tests/unit/test_structured_metadata.test.ts[2m > [22mValid stop_reason Values[2m > [22maccepts stop_reason 'convergence'[33m 407[2mms[22m[39m
+ [32m✓[39m tests/unit/test_thread_updated_at.test.ts[2m > [22mthread.updated_at parity[2m > [22mcreates threads with updated_at populated[32m 96[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_sync_unit.test.ts[2m > [22mMessage Synchronization Unit Tests[2m > [22mtoken rejects cross agent use[33m 368[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_edit.test.ts[2m > [22mMessage Edit Unit Tests[2m > [22mmsg_edit parity: system can edit any message[33m 404[2mms[22m[39m
+ [32m✓[39m tests/unit/test_structured_metadata.test.ts[2m > [22mValid stop_reason Values[2m > [22maccepts stop_reason 'timeout'[33m 386[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reactions_priority.test.ts[2m > [22mReactions (UP-13)[2m > [22mreact multiple types[33m 493[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_sync_unit.test.ts[2m > [22mMessage Synchronization Unit Tests[2m > [22mchain token issued for registered agent[33m 428[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_edit.test.ts[2m > [22mMessage Edit Unit Tests[2m > [22mmsg_edit preserves old_content in history[33m 430[2mms[22m[39m
+ [32m✓[39m tests/unit/test_structured_metadata.test.ts[2m > [22mValid stop_reason Values[2m > [22maccepts stop_reason 'error'[33m 388[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_sync_unit.test.ts[2m > [22mMessage Synchronization Unit Tests[2m > [22manonymous author message posts successfully[33m 349[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reactions_priority.test.ts[2m > [22mReactions (UP-13)[2m > [22munreact existing[33m 472[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_edit.test.ts[2m > [22mMessage Edit Unit Tests[2m > [22mmsg_edit version 0 for unedited message[33m 325[2mms[22m[39m
+ [32m✓[39m tests/unit/test_structured_metadata.test.ts[2m > [22mValid stop_reason Values[2m > [22maccepts stop_reason 'complete'[33m 360[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reactions_priority.test.ts[2m > [22mReactions (UP-13)[2m > [22munreact nonexistent returns false[33m 344[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_edit.test.ts[2m > [22mMessage Reaction Unit Tests[2m > [22maddReaction adds reaction to database[33m 323[2mms[22m[39m
+ [32m✓[39m tests/unit/test_structured_metadata.test.ts[2m > [22mValid stop_reason Values[2m > [22maccepts stop_reason 'impasse'[32m 287[2mms[22m[39m
+ [32m✓[39m tests/unit/test_structured_metadata.test.ts[2m > [22mValid stop_reason Values[2m > [22mrejects invalid stop_reason[32m 223[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reactions_priority.test.ts[2m > [22mReactions (UP-13)[2m > [22mreactions for message[33m 347[2mms[22m[39m
+ [32m✓[39m tests/unit/test_msg_edit.test.ts[2m > [22mMessage Reaction Unit Tests[2m > [22mgetReactionsBulk returns reactions for multiple messages[33m 352[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reactions_priority.test.ts[2m > [22mReactions (UP-13)[2m > [22mreactions for message empty[32m 240[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reactions_priority.test.ts[2m > [22mReactions (UP-13)[2m > [22mreact invalid message id returns undefined[32m 84[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reactions_priority.test.ts[2m > [22mReactions (UP-13)[2m > [22mreactions bulk for thread[32m 295[2mms[22m[39m
+ [32m✓[39m tests/unit/test_reactions_priority.test.ts[2m > [22mReactions (UP-13)[2m > [22mreact emits event[32m 158[2mms[22m[39m
+ [32m✓[39m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mbus_connect new agent new thread[33m 3467[2mms[22m[39m
+ [32m✓[39m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mbus_connect new agent existing thread[33m 2591[2mms[22m[39m
+ [32m✓[39m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mbus_connect no reuse agent[33m 2334[2mms[22m[39m
+ [31m×[39m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mbus_connect projects human-only message for agent view[33m 2380[2mms[22m[39m
+[31m   → expected 1 to be greater than or equal to 2[39m
+ [32m✓[39m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mmsg_post seq mismatch returns first read messages[33m 2447[2mms[22m[39m
+ [32m✓[39m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mmsg_post error invalidate tokens uses validated author when no connection context[33m 2146[2mms[22m[39m
+ [32m✓[39m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mtwo agents can chat multiple rounds via bus_connect and msg_wait[33m 2304[2mms[22m[39m
+ [32m✓[39m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mbus_connect does not make next msg_wait fast return[33m 2444[2mms[22m[39m
+ [32m✓[39m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mbus_connect with system prompt creates thread with prompt[33m 2160[2mms[22m[39m
+ [32m✓[39m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mbus_connect system prompt ignored when joining existing thread[33m 2277[2mms[22m[39m
+ [32m✓[39m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mbus_connect system prompt reflected in response[33m 2337[2mms[22m[39m
+ [31m×[39m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mmsg_post invalid token does not claim new messages arrived[33m 2112[2mms[22m[39m
+[31m   → expected 'TOKEN_INVALID' to be 'ReplyTokenInvalidError' // Object.is equality[39m
+ [32m✓[39m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mmsg_wait caught up agent waits instead of fast returning[33m 2413[2mms[22m[39m
+ [32m✓[39m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mrepeated msg_wait timeouts reuse single token[33m 2271[2mms[22m[39m
+ [32m✓[39m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mmsg_post success clears wait state for author not connection agent[33m 2379[2mms[22m[39m
+ [32m✓[39m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mmsg_post failure sets refresh_request for author not connection agent[33m 2228[2mms[22m[39m
+ [32m✓[39m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mbus_connect with template applies template prompt[33m 2289[2mms[22m[39m
+ [31m×[39m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mmsg_get projects human-only message for agent view[33m 2270[2mms[22m[39m
+[31m   → expected false to be true // Object.is equality[39m
+ [32m✓[39m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mmsg_edit_history projects human-only contents for agent view[33m 2151[2mms[22m[39m
+ [31m×[39m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mmsg_search projects human-only snippet for agent view[33m 2363[2mms[22m[39m
+[31m   → expected +0 to be 1 // Object.is equality[39m
+ [32m✓[39m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mmsg_edit requires authenticated agent connection[33m 2504[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 4 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mbus_connect projects human-only message for agent view
+[31m[1mAssertionError[22m: expected 1 to be greater than or equal to 2[39m
+[90m [2m❯[22m tests/parity/bus_connect.test.ts:[2m304:42[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mmsg_post invalid token does not claim new messages arrived
+[31m[1mAssertionError[22m: expected 'TOKEN_INVALID' to be 'ReplyTokenInvalidError' // Object.is equality[39m
+
+Expected: [32m"ReplyTokenInvalidError"[39m
+Received: [31m"TOKEN_INVALID"[39m
+
+[90m [2m❯[22m tests/parity/bus_connect.test.ts:[2m734:34[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mmsg_get projects human-only message for agent view
+[31m[1mAssertionError[22m: expected false to be true // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+[90m [2m❯[22m tests/parity/bus_connect.test.ts:[2m1022:33[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m tests/parity/bus_connect.test.ts[2m > [22mBus Connect Parity Tests[2m > [22mmsg_search projects human-only snippet for agent view
+[31m[1mAssertionError[22m: expected +0 to be 1 // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 1[39m
+[31m+ 0[39m
+
+[90m [2m❯[22m tests/parity/bus_connect.test.ts:[2m1092:36[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m40 passed[39m[22m[90m (41)[39m
+[2m      Tests [22m [1m[31m4 failed[39m[22m[2m | [22m[1m[32m322 passed[39m[22m[2m | [22m[33m4 skipped[39m[90m (330)[39m
+[2m   Start at [22m 16:51:58
+[2m   Duration [22m 55.96s[2m (transform 1.69s, setup 0ms, collect 25.96s, tests 106.31s, environment 15ms, prepare 10.02s)[22m
+

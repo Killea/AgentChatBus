@@ -34,6 +34,11 @@
       const esc = typeof escapeHtml === "function" ? escapeHtml : (v) => String(v ?? "");
       const stateLower = String(state ?? "").trim().toLowerCase();
 
+      const isDarkTheme = document.body.getAttribute('data-theme') !== 'light';
+      const styles = window.AcbUtils ? window.AcbUtils.getEmojiStyledBackground(avatarEmoji, isDarkTheme) : { bg: 'transparent', border: 'transparent' };
+      const avatarBg = styles.bg;
+      const avatarBorder = styles.border;
+
       this.className = "agent-status-item";
       this.dataset.state = stateLower;
 
@@ -44,7 +49,7 @@
           : `Offline ${offlineDisplay || compressedChar}`;
         this.innerHTML = `
           <div class="agent-status-item agent-status-item--compact" title="${esc(compactTitle)}">
-            <div class="asi-avatar asi-avatar--sm">${avatarEmoji}</div>
+            <div class="asi-avatar asi-avatar--sm" style="background:${avatarBg}; border: 1px solid ${avatarBorder};">${avatarEmoji}</div>
             <span class="asi-state-emoji">${stateEmoji}</span>
           </div>
         `;
@@ -60,7 +65,7 @@
           : `<span class="asi-transport-emoji">🌟</span>`;
 
       this.innerHTML = `
-        <div class="asi-avatar" data-tooltip="${esc(tooltipText || state)}">${avatarEmoji}</div>
+        <div class="asi-avatar" style="background:${avatarBg}; border: 1px solid ${avatarBorder};" data-tooltip="${esc(tooltipText || state)}">${avatarEmoji}</div>
         <div class="asi-status-panel">
           <div class="asi-status-box" data-tooltip="${esc(state || 'unknown')}">${stateEmoji}</div>
           <div class="asi-transport-box" data-tooltip="${isOffline ? 'Connection unknown' : isStdio ? 'Stdio connection' : 'SSE connection'}">${transportIcon}</div>

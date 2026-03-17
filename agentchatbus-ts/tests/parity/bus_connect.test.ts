@@ -1,11 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { randomUUID } from 'crypto';
-import * as fs from 'fs';
-import * as path from 'path';
-import { exec, ChildProcess } from 'child_process';
+import type { FastifyInstance } from 'fastify';
+import { createHttpServer } from '../../src/transports/http/server.js';
 
-const PORT = 39766; // different port for tests
-const BASE_URL = `http://127.0.0.1:${PORT}`;
+let BASE_URL = '';
 
 // Helper function to call MCP tools
 async function callMcpTool(toolName: string, params: Record<string, any>) {
@@ -40,57 +38,20 @@ async function callMcpTool(toolName: string, params: Record<string, any>) {
 }
 
 describe('Bus Connect Parity Tests', () => {
-    let serverProcess: ChildProcess;
+    let server: FastifyInstance;
 
     beforeEach(async () => {
-        // Use in-memory database like Python tests (:memory:)
-        // This ensures complete isolation - each test starts fresh with seq=0
-        const DB_PATH = ':memory:';
-
-        // Start server in a separate process with fresh in-memory DB
-        serverProcess = exec(`npx tsx src/cli/index.ts serve`, {
-            env: {
-                ...process.env,
-                AGENTCHATBUS_PORT: PORT.toString(),
-                AGENTCHATBUS_DB: DB_PATH
-            }
-        });
-
-        // Wait for server to be ready
-        let ready = false;
-        for (let i = 0; i < 30; i++) {
-            try {
-                const res = await fetch(`${BASE_URL}/api/metrics`);
-                if (res.ok) {
-                    ready = true;
-                    break;
-                }
-            } catch (e) {}
-            await new Promise(r => setTimeout(r, 200));
-        }
-        if (!ready) throw new Error("Server failed to start");
+        process.env.AGENTCHATBUS_TEST_DB = ':memory:';
+        server = createHttpServer();
+        await server.listen({ host: '127.0.0.1', port: 0 });
+        const address = server.addresses()[0] as { address: string; port: number };
+        BASE_URL = `http://${address.address}:${address.port}`;
     }, 10000);
 
     afterEach(async () => {
-        // Kill server process - this clears the in-memory singleton state
-        if (serverProcess) {
-            // On Windows, use taskkill for more reliable process termination
-            const { execSync } = await import('child_process');
-            try {
-                if (serverProcess.pid) {
-                    if (process.platform === 'win32') {
-                        execSync(`taskkill /pid ${serverProcess.pid} /T /F`, { stdio: 'ignore' });
-                    } else {
-                        serverProcess.kill('SIGKILL');
-                    }
-                }
-            } catch (e) {
-                // Ignore if process already exited
-            }
-            // Wait to ensure clean shutdown
-            await new Promise(resolve => setTimeout(resolve, 200));
+        if (server) {
+            await server.close();
         }
-        // No need to clean up DB files - :memory: is automatically cleaned
     });
 
     it('manages bus_connect flow: register -> join -> post (UP-PARITY)', async () => {

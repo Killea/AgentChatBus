@@ -301,6 +301,16 @@ export function createHttpServer() {
       replyToken = sync.reply_token;
     }
 
+    const msgMetadata = (typeof body.metadata === "object" && body.metadata !== null)
+      ? { ...(body.metadata as Record<string, unknown>) }
+      : {};
+    if (Array.isArray(body.mentions)) {
+      msgMetadata.mentions = body.mentions;
+    }
+    if (Array.isArray(body.images)) {
+      msgMetadata.images = body.images;
+    }
+
     try {
       const message = store.postMessage({
         threadId: params.threadId,
@@ -308,13 +318,38 @@ export function createHttpServer() {
         content: String(body.content || ""),
         expectedLastSeq,
         replyToken,
-        role: typeof body.role === "string" ? body.role : undefined,
-        metadata: typeof body.metadata === "object" && body.metadata !== null ? body.metadata as Record<string, unknown> : undefined,
+        role: (typeof body.role === "string" ? body.role : "user") as any,
+        metadata: Object.keys(msgMetadata).length > 0 ? msgMetadata : undefined,
         replyToMsgId: typeof body.reply_to_msg_id === "string" ? body.reply_to_msg_id : undefined,
-        priority: typeof body.priority === "string" ? body.priority : undefined
+        priority: (typeof body.priority === "string" ? body.priority : "normal") as any
       });
+      
+      // Chain token: issue a fresh reply_token so the agent can post again
+      // Match Python dispatch.py L816-825
+      if (message.author_id) {
+        store.invalidateReplyTokensForAgent(params.threadId, message.author_id);
+      }
+      const chainSync = store.issueSyncContext(params.threadId, message.author_id, "msg_post_chain");
+      
       reply.code(201);
-      return message;
+      return {
+        id: message.id,
+        seq: message.seq,
+        author: message.author,
+        author_id: message.author_id,
+        author_name: message.author_name,
+        author_emoji: message.author_emoji || "🤖",
+        role: message.role,
+        content: message.content,
+        created_at: message.created_at,
+        metadata: message.metadata,
+        reply_to_msg_id: message.reply_to_msg_id,
+        priority: message.priority,
+        // Sync context for next post
+        reply_token: chainSync.reply_token,
+        current_seq: chainSync.current_seq,
+        reply_window: chainSync.reply_window
+      };
     } catch (error) {
       // Prefer structured BusError handling
       if (error instanceof SeqMismatchError || (error as any)?.detail?.error === 'SEQ_MISMATCH') {
@@ -339,7 +374,7 @@ export function createHttpServer() {
       }
       if (error instanceof ReplyTokenInvalidError || error instanceof ReplyTokenExpiredError) {
         reply.code(400);
-        return { detail: (error as any).detail || { error: 'TOKEN_INVALID_OR_EXPIRED' } };
+        return { detail: (error as any).detail || { error: 'TOKEN_INVALID' } };
       }
       if ((error as Error).message === "Thread not found") {
         reply.code(404);
@@ -518,7 +553,7 @@ export function createHttpServer() {
   });
   fastify.delete("/api/threads/:threadId", async (request, reply) => {
     const params = request.params as { threadId: string };
-    const ok = memoryStore.deleteThread(params.threadId);
+    const ok = store.deleteThread(params.threadId);
     if (!ok) {
       reply.code(404);
       return { detail: "Thread not found" };
@@ -644,21 +679,38 @@ export function createHttpServer() {
 
   fastify.get("/api/threads/:threadId/export", async (request, reply) => {
     const params = request.params as { threadId: string };
-    const thread = store.getThread(params.threadId);
-    if (!thread) {
+    const md = store.exportThreadMarkdown(params.threadId);
+    if (md === null) {
       reply.code(404);
       return { detail: "Thread not found" };
     }
-    return {
-      thread,
-      messages: store.getMessages(params.threadId, 0)
-    };
+    
+    // Generate filename from topic
+    const thread = store.getThread(params.threadId);
+    const rawTopic = thread?.topic || params.threadId;
+    const slug = rawTopic
+      .toLowerCase()
+      .replace(/[^\w\-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 80) || "thread";
+    const filename = `${slug}.md`;
+    
+    reply.header("Content-Type", "text/markdown; charset=utf-8");
+    reply.header("Content-Disposition", `attachment; filename="${filename}"`);
+    return md;
   });
 
-  fastify.get("/api/search", async (request) => {
-    const query = request.query as { q?: string; query?: string };
-    const q = String(query.q || query.query || "");
-    return { results: store.searchMessages(q) };
+  fastify.get("/api/search", async (request, reply) => {
+    const query = request.query as { q?: string; query?: string; thread_id?: string; limit?: number };
+    const q = String(query.q || query.query || "").trim();
+    if (!q) {
+      reply.code(400);
+      return { detail: "Query parameter 'q' must not be empty" };
+    }
+    const limit = Math.min(Math.max(1, query.limit || 50), 200);
+    const results = store.searchMessages(q, query.thread_id, limit);
+    return { results, total: results.length, query: q };
   });
 
   fastify.get("/api/metrics", async () => store.getMetrics());

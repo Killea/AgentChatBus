@@ -76,7 +76,14 @@
             .map((agent) => {
               const label = esc(String(agent.display_name || agent.id || "Unknown"));
               const emoji = esc(String(agent.emoji || "").trim() || "🤖");
-              return `<span class="ti-waiting-agent" title="${label}" aria-label="${label}">${emoji}</span>`;
+              const isDark = document.body.getAttribute('data-theme') !== 'light';
+              const styles = window.AcbUtils ? window.AcbUtils.getEmojiStyledBackground(emoji, isDark) : null;
+              
+              let style = "";
+              if (styles) {
+                style = `style="background: ${styles.bg}; border: 1px solid ${styles.border};"`;
+              }
+              return `<span class="ti-waiting-agent" ${style} title="${label}" aria-label="${label}" data-emoji="${emoji}">${emoji}</span>`;
             })
             .join("")}
           ${overflowCount > 0 ? `<span class="ti-waiting-agent ti-waiting-agent--count" title="${esc(`${overflowCount} more waiting agents`)}">+${overflowCount}</span>` : ""}

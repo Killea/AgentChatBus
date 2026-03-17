@@ -40,6 +40,15 @@
     const msgs =
       (await api(`/api/threads/${id}/messages?after_seq=0&limit=300&include_system_prompt=1`)) ||
       [];
+    // DEBUG: Log first few messages to check author fields
+    console.log('[DEBUG] Loaded messages:', msgs.slice(0, 3).map(m => ({
+      seq: m.seq,
+      author: m.author,
+      author_name: m.author_name,
+      author_id: m.author_id,
+      role: m.role,
+      content_preview: m.content?.slice(0, 50)
+    })));
     rebuildActiveThreadParticipants(msgs);
     msgs.forEach(appendBubble);
     updateOnlinePresence();
