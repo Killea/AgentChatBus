@@ -9,7 +9,13 @@ import {
   ReplyTokenExpiredError,
   ReplyTokenReplayError
 } from "../../core/types/errors.js";
-import { BUS_VERSION, getConfig } from "../../core/config/env.js";
+import {
+  BUS_VERSION,
+  ENABLE_HANDOFF_TARGET,
+  ENABLE_PRIORITY,
+  ENABLE_STOP_REASON,
+  getConfig
+} from "../../core/config/env.js";
 
 export type ToolDefinition = {
   name: string;
@@ -257,6 +263,22 @@ export function listTools(): ToolDefinition[] {
   return toolDefinitions;
 }
 
+function filterMetadataFields(
+  metadata: Record<string, unknown> | null | undefined
+): Record<string, unknown> | null {
+  if (!metadata) {
+    return null;
+  }
+  const filtered: Record<string, unknown> = { ...metadata };
+  if (!ENABLE_HANDOFF_TARGET && "handoff_target" in filtered) {
+    delete filtered.handoff_target;
+  }
+  if (!ENABLE_STOP_REASON && "stop_reason" in filtered) {
+    delete filtered.stop_reason;
+  }
+  return Object.keys(filtered).length > 0 ? filtered : null;
+}
+
 export async function callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
   switch (name) {
     case "thread_create": {
@@ -264,21 +286,32 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       const agentId = String(args.agent_id || "");
       const token = String(args.token || "");
       if (!agentId || !token) {
-        throw new Error(
-          "thread_create requires explicit agent_id and token in input. " +
-          "Use agent_register or agent_resume to obtain credentials first."
-        );
+        return {
+          error: "thread_create requires explicit agent_id and token in input",
+          explanation:
+            "thread_create does not auto-read creator credentials from connection context. " +
+            "You must pass both agent_id and token in the thread_create input payload.",
+          credential_source: {
+            from_agent_register: "Use the agent_id and token returned by agent_register.",
+            from_agent_resume:
+              "Use the same agent_id/token you passed to agent_resume (or its returned agent_id + your token).",
+          },
+          hint: "Pass agent_id and token explicitly in thread_create input.",
+        };
       }
 
       // Verify agent credentials
       const agent = getStore().getAgent(agentId);
       if (!agent || agent.token !== token) {
-        throw new Error("Invalid agent_id or token");
+        return {
+          error: "Invalid agent_id or token",
+          hint: "Pass agent_id and token explicitly in thread_create input.",
+        };
       }
 
       const topic = String(args.topic || "").trim();
       if (!topic) {
-        throw new Error("topic is required");
+        return { error: "topic is required" };
       }
 
       const templateId = typeof args.template === "string" ? args.template : undefined;
@@ -403,15 +436,24 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
 
         // Chain token: issue a fresh reply_token so the agent can post again
         const chainSync = getStore().issueSyncContext(threadId, message.author_id, "msg_post_chain");
-        const postPayload = {
+        const postPayload: Record<string, unknown> = {
           msg_id: message.id,
           seq: message.seq,
           reply_to_msg_id: message.reply_to_msg_id,
-          priority: message.priority,
           reply_token: chainSync.reply_token,
           current_seq: chainSync.current_seq,
           reply_window: chainSync.reply_window
         };
+        if (ENABLE_PRIORITY) {
+          postPayload.priority = message.priority;
+        }
+        const meta = filterMetadataFields(message.metadata as Record<string, unknown> | null | undefined);
+        if (meta && ENABLE_HANDOFF_TARGET && typeof meta.handoff_target === "string") {
+          postPayload.handoff_target = meta.handoff_target;
+        }
+        if (meta && ENABLE_STOP_REASON && typeof meta.stop_reason === "string") {
+          postPayload.stop_reason = meta.stop_reason;
+        }
         return [{ type: "text", text: JSON.stringify(postPayload) }];
       } catch (error) {
         if (error instanceof SeqMismatchError) {
@@ -550,9 +592,8 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         // Match Python: return blocks directly, not wrapped in { messages: blocks }
         return blocks;
       } else {
-        // Return as JSON with reactions from bulk fetch (match Python dispatch.py L871-884)
-        return {
-          messages: messages.map(m => ({
+        // Return as JSON array with reactions from bulk fetch (match Python dispatch.py L871-884)
+        const payload = messages.map(m => ({
             msg_id: m.id,
             thread_id: m.thread_id,
             seq: m.seq,
@@ -562,12 +603,12 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
             role: m.role,
             content: m.content,
             created_at: m.created_at,
-            metadata: m.metadata,
+            metadata: filterMetadataFields(m.metadata as Record<string, unknown> | null | undefined),
             reply_to_msg_id: m.reply_to_msg_id,
             reactions: reactionsMap.get(m.id) || [],
-            priority: m.priority
-          }))
-        };
+            ...(ENABLE_PRIORITY ? { priority: m.priority } : {}),
+          }));
+        return [{ type: "text", text: JSON.stringify(payload) }];
       }
     }
     case "msg_get": {
@@ -594,12 +635,12 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
           seq: message.seq,
           role: message.role,
           reply_to_msg_id: message.reply_to_msg_id,
-          metadata: message.metadata,
+          metadata: filterMetadataFields(message.metadata as Record<string, unknown> | null | undefined),
           created_at: message.created_at,
           edited_at: message.edited_at,
           edit_version: message.edit_version,
           reactions: reactions,
-          priority: message.priority
+          ...(ENABLE_PRIORITY ? { priority: message.priority } : {})
         }
       };
     }
@@ -614,10 +655,26 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       const includeAttachments = typeof args.include_attachments === "boolean" ? args.include_attachments : true;
 
       // Verify credentials if provided
+      const explicitCredsSupplied = agentId !== undefined || token !== undefined;
+      if (explicitCredsSupplied && (!agentId || !token)) {
+        return [{
+          type: "text",
+          text: JSON.stringify({
+            error: "InvalidCredentials",
+            detail: "msg_wait requires both agent_id and token when explicit credentials are supplied.",
+          })
+        }];
+      }
       if (agentId && token) {
         const ok = getStore().verifyAgentToken(agentId, token);
         if (!ok) {
-          return { error: "InvalidCredentials", detail: "Invalid agent_id/token for msg_wait." };
+          return [{
+            type: "text",
+            text: JSON.stringify({
+              error: "InvalidCredentials",
+              detail: "Invalid agent_id/token for msg_wait."
+            })
+          }];
         }
       }
 
@@ -686,8 +743,36 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
           }
           return blocks;
         } else {
-          // JSON format
-          return [{ type: "text", text: JSON.stringify(result) }];
+          // JSON format - align with Python envelope and field filtering.
+          const messages = result.messages.map((msg) => {
+            const out: Record<string, unknown> = {
+              msg_id: msg.id,
+              author: msg.author,
+              author_id: msg.author_id,
+              author_name: msg.author_name,
+              role: msg.role,
+              content: msg.content,
+              seq: msg.seq,
+              created_at: msg.created_at,
+              metadata: filterMetadataFields(msg.metadata as Record<string, unknown> | null | undefined),
+            };
+            if (msg.reply_to_msg_id) {
+              out.reply_to_msg_id = msg.reply_to_msg_id;
+            }
+            if (ENABLE_PRIORITY) {
+              out.priority = msg.priority;
+            }
+            return out;
+          });
+          return [{
+            type: "text",
+            text: JSON.stringify({
+              messages,
+              current_seq: result.current_seq,
+              reply_token: result.reply_token,
+              reply_window: result.reply_window
+            })
+          }];
         }
       } catch (err) {
         return [{ type: "text", text: JSON.stringify({ error: (err as Error).message }) }];
@@ -796,7 +881,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       const token = String(args.token || "");
       const agent = getStore().resumeAgent(agentId, token);
       if (!agent) {
-        return { error: "Invalid agent_id or token", found: false };
+        return { ok: false, error: "Invalid agent_id or token" };
       }
       return {
         ok: true,
@@ -809,7 +894,15 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         last_heartbeat: agent.last_heartbeat,
         last_activity: agent.last_activity,
         last_activity_time: agent.last_activity_time,
-        thread_create_requirement: "When calling thread_create, you must provide both agent_id and token explicitly in input."
+        thread_create_requirement: "When calling thread_create, you must provide both agent_id and token explicitly in input.",
+        thread_create_example: {
+          tool: "thread_create",
+          input: {
+            topic: "Example topic",
+            agent_id: agent.id,
+            token: token
+          }
+        }
       };
     }
     case "agent_unregister": {
@@ -823,8 +916,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
     }
     case "agent_list": {
       const agents = getStore().listAgents();
-      return {
-        agents: agents.map(a => ({
+      return agents.map(a => ({
           agent_id: a.id,
           name: a.name,
           ide: a.ide,
@@ -838,8 +930,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
           last_heartbeat: a.last_heartbeat,
           last_activity: a.last_activity,
           last_activity_time: a.last_activity_time
-        }))
-      };
+        }));
     }
     case "agent_update": {
       const agentId = String(args.agent_id || "");

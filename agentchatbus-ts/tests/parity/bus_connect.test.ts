@@ -539,8 +539,8 @@ describe('Bus Connect Parity Tests', () => {
         const payloadText = listedData[0]?.text || "{}";
         const payload = JSON.parse(payloadText);
         
-        // payload should be { messages: [...] }
-        const allMessages = payload.messages || [];
+        // Python parity: msg_list json returns array payload
+        const allMessages = Array.isArray(payload) ? payload : (payload.messages || []);
         
         // Filter assistant messages
         const chatMessages = allMessages.filter((m: any) => m.role === "assistant");

@@ -52,6 +52,7 @@ describe("msg_wait integration parity", () => {
             thread_id: thread.id,
             after_seq: 0,
             agent_id: agent.id,
+            token: agent.token,
             timeout_ms: 5000,
             return_format: "json"
           }
@@ -62,6 +63,7 @@ describe("msg_wait integration parity", () => {
     expect(waitRes.statusCode).toBe(200);
     const result = waitRes.json().result;
     const payload = JSON.parse(result[0].text);
+    expect(payload.error).toBeUndefined();
     
     // Should return immediately with messages
     expect(payload.messages.length).toBeGreaterThan(0);
@@ -163,6 +165,7 @@ describe("msg_wait integration parity", () => {
             thread_id: thread.id,
             after_seq: thread.current_seq,
             agent_id: agent.id,
+            token: agent.token,
             timeout_ms: 500,
             return_format: "json"
           }
@@ -174,6 +177,7 @@ describe("msg_wait integration parity", () => {
     
     expect(waitRes.statusCode).toBe(200);
     const payload = JSON.parse(waitRes.json().result[0].text);
+    expect(payload.error).toBeUndefined();
     // Should timeout with empty messages
     expect(payload.messages.length).toBe(0);
     expect(elapsed).toBeGreaterThanOrEqual(400); // Allow some tolerance

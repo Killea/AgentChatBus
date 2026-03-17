@@ -382,6 +382,7 @@ describe("HTTP compatibility shell", () => {
             thread_id: connected.thread.id,
             after_seq: connected.current_seq,  // Use current_seq to check if agent is behind
             agent_id: connected.agent.id,
+            token: connected.agent.token,
             timeout_ms: 1000,
             return_format: "json"  // Match Python: use json format for test assertions
           }
@@ -398,6 +399,91 @@ describe("HTTP compatibility shell", () => {
     expect(waitBody.messages.length).toBeGreaterThan(0);
     expect(waitBody.reply_token).toBeTruthy();
     expect(connected.agent.is_administrator).toBe(true);
+
+    await server.close();
+  });
+
+  it("msg_wait rejects partial explicit credentials", async () => {
+    const server = createHttpServer();
+    const connectResponse = await server.inject({
+      method: "POST",
+      url: "/mcp/messages/",
+      payload: {
+        method: "tools/call",
+        params: {
+          name: "bus_connect",
+          arguments: { thread_name: "wait-creds-thread", ide: "VSCode", model: "GPT-5.4" }
+        }
+      }
+    });
+    const connected = JSON.parse(connectResponse.json().result[0].text);
+
+    const waitResponse = await server.inject({
+      method: "POST",
+      url: "/mcp/messages/",
+      payload: {
+        method: "tools/call",
+        params: {
+          name: "msg_wait",
+          arguments: {
+            thread_id: connected.thread.id,
+            after_seq: connected.current_seq,
+            agent_id: connected.agent.id,
+            timeout_ms: 1000,
+            return_format: "json"
+          }
+        }
+      }
+    });
+
+    expect(waitResponse.statusCode).toBe(200);
+    const waitResult = waitResponse.json().result;
+    expect(Array.isArray(waitResult)).toBe(true);
+    const payload = JSON.parse(waitResult[0].text);
+    expect(payload.error).toBe("InvalidCredentials");
+    expect(String(payload.detail)).toContain("requires both agent_id and token");
+
+    await server.close();
+  });
+
+  it("msg_post omits attention fields by default when feature flags are disabled", async () => {
+    const server = createHttpServer();
+    const connectResponse = await server.inject({
+      method: "POST",
+      url: "/mcp/messages/",
+      payload: {
+        method: "tools/call",
+        params: {
+          name: "bus_connect",
+          arguments: { thread_name: "attention-default-thread", ide: "VSCode", model: "GPT-5.4" }
+        }
+      }
+    });
+    const connected = JSON.parse(connectResponse.json().result[0].text);
+
+    const postResponse = await server.inject({
+      method: "POST",
+      url: "/api/mcp/tool/msg_post",
+      payload: {
+        thread_id: connected.thread.id,
+        author: connected.agent.id,
+        content: "attention test",
+        expected_last_seq: connected.current_seq,
+        reply_token: connected.reply_token,
+        priority: "urgent",
+        metadata: {
+          handoff_target: "agent-xyz",
+          stop_reason: "timeout"
+        }
+      }
+    });
+
+    expect(postResponse.statusCode).toBe(200);
+    const body = postResponse.json();
+    const payload = JSON.parse(body[0].text);
+    expect(payload.priority).toBeUndefined();
+    expect(payload.handoff_target).toBeUndefined();
+    expect(payload.stop_reason).toBeUndefined();
 
     await server.close();
   });
@@ -434,6 +520,7 @@ describe("HTTP compatibility shell", () => {
             thread_id: connected.thread.id,
             after_seq: connected.current_seq,
             agent_id: connected.agent.id,
+            token: connected.agent.token,
             timeout_ms: 2000  // Reasonable timeout
           }
         }
@@ -493,6 +580,7 @@ describe("HTTP compatibility shell", () => {
             thread_id: connected.thread.id,
             after_seq: connected.current_seq,
             agent_id: connected.agent.id,
+            token: connected.agent.token,
             timeout_ms: 1
           }
         }
