@@ -1388,6 +1388,56 @@ export class MemoryStore {
     return message;
   }
 
+  /**
+   * Internal: Create a system message without reply token validation.
+   * Used by internal coordination logic and background tasks.
+   * Ported from Python crud.py _msg_create_system.
+   */
+  postSystemMessage(threadId: string, content: string, metadata?: string | null, clearAutoAdmin = false): MessageRecord | undefined {
+    const thread = this.getThread(threadId);
+    if (!thread) {
+      return undefined;
+    }
+
+    this.sequence += 1;
+    const now = new Date().toISOString();
+    const message: MessageRecord = {
+      id: randomUUID(),
+      thread_id: threadId,
+      seq: this.sequence,
+      priority: "system",
+      author: "system",
+      author_id: "system",
+      author_name: "System",
+      author_emoji: "⚙️",
+      role: "system",
+      content: content,
+      metadata: metadata ? JSON.parse(metadata) : null,
+      reactions: [],
+      edited_at: null,
+      edit_version: 0,
+      reply_to_msg_id: undefined,
+      created_at: now
+    };
+
+    const messages = this.threadMessages.get(threadId) || [];
+    messages.push(message);
+    this.threadMessages.set(threadId, messages);
+
+    // Update thread activity time
+    if (clearAutoAdmin) {
+      this.threadSettingsUpdateActivity(threadId);
+    }
+    this.touchThreadUpdatedAt(threadId);
+
+    this.insertMessage(message);
+    this.persistState();
+    
+    eventBus.emit({ type: "msg.new", payload: message });
+    
+    return message;
+  }
+
   getMessage(messageId: string): MessageRecord | undefined {
     const row = this.persistenceDb.prepare(
       `
@@ -1791,16 +1841,53 @@ export class MemoryStore {
   }
 
   getThreadAgents(threadId: string): AgentRecord[] {
+    // Ported from Python crud.py thread_agents_list
+    // Sources:
+    // - message authors in the thread (messages.author_id)
+    // - thread admin assignments (creator/auto-assigned) from thread_settings
+    const participantIds = new Set<string>();
+
+    // Get message authors
+    const authorRows = this.persistenceDb.prepare(
+      `
+        SELECT DISTINCT author_id
+        FROM messages
+        WHERE thread_id = ?
+          AND author_id IS NOT NULL
+          AND author_id != ''
+      `
+    ).all(threadId) as Array<{ author_id: string }>;
+    for (const row of authorRows) {
+      if (row.author_id) {
+        participantIds.add(row.author_id);
+      }
+    }
+
+    // Get thread admin assignments from thread_settings
+    const settings = this.getThreadSettings(threadId);
+    if (settings) {
+      if (settings.creator_admin_id) {
+        participantIds.add(settings.creator_admin_id);
+      }
+      if (settings.auto_assigned_admin_id) {
+        participantIds.add(settings.auto_assigned_admin_id);
+      }
+    }
+
+    if (participantIds.size === 0) {
+      return [];
+    }
+
+    // Get agent records for all participants
+    const placeholders = Array.from(participantIds).map(() => "?").join(",");
     const rows = this.persistenceDb.prepare(
       `
-        SELECT DISTINCT a.id, a.name, a.display_name, a.ide, a.model, a.description,
-               a.is_online, a.last_heartbeat, a.last_activity, a.last_activity_time,
-               a.capabilities, a.skills, a.token, a.emoji
-        FROM messages m
-        JOIN agents a ON a.id = m.author_id
-        WHERE m.thread_id = ?
+        SELECT id, name, display_name, alias_source, ide, model, description,
+               is_online, last_heartbeat, last_activity, last_activity_time,
+               capabilities, skills, token, emoji
+        FROM agents WHERE id IN (${placeholders})
       `
-    ).all(threadId) as Array<Record<string, unknown>>;
+    ).all(...Array.from(participantIds)) as Array<Record<string, unknown>>;
     return rows.map((row) => this.rowToAgentRecord(row));
   }
 
@@ -2036,6 +2123,31 @@ export class MemoryStore {
     settings.creator_admin_id = creatorId;
     settings.creator_admin_name = creatorName;
     settings.creator_assignment_time = now;
+    this.threadSettings.set(threadId, settings);
+    this.upsertThreadSettings(threadId);
+    this.persistState();
+    return this.getThreadSettings(threadId);
+  }
+
+  /**
+   * Switch thread admin based on explicit human confirmation.
+   * This operation clears creator-admin priority and sets the selected admin as
+   * the active auto-assigned admin.
+   * Ported from Python crud.py thread_settings_switch_admin.
+   */
+  switchAdmin(threadId: string, adminId: string, adminName: string): ReturnType<typeof this.getThreadSettings> | undefined {
+    const settings = this.threadSettings.get(threadId);
+    if (!settings || !settings.auto_administrator_enabled) {
+      return undefined;
+    }
+    const now = new Date().toISOString();
+    // Clear creator-admin priority and set new auto-assigned admin
+    settings.creator_admin_id = undefined;
+    settings.creator_admin_name = undefined;
+    settings.creator_assignment_time = undefined;
+    settings.auto_assigned_admin_id = adminId;
+    settings.auto_assigned_admin_name = adminName;
+    settings.admin_assignment_time = now;
     this.threadSettings.set(threadId, settings);
     this.upsertThreadSettings(threadId);
     this.persistState();

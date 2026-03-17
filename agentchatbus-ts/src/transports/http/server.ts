@@ -687,17 +687,303 @@ export function createHttpServer() {
       reply.code(404);
       return { detail: "Thread not found" };
     }
-    return { thread_id: thread.id, admin_agent_id: null, auto_administrator_enabled: true };
+    const settings = store.getThreadSettings(params.threadId);
+    // Priority: creator_admin > auto_assigned_admin
+    const adminId = settings?.creator_admin_id || settings?.auto_assigned_admin_id || null;
+    const adminName = settings?.creator_admin_name || settings?.auto_assigned_admin_name || null;
+    const adminType = settings?.creator_admin_id ? "creator" : (settings?.auto_assigned_admin_id ? "auto" : null);
+    const assignedAt = settings?.creator_assignment_time || settings?.admin_assignment_time || null;
+    
+    // Get emoji from agent record
+    let adminEmoji: string | null = null;
+    if (adminId) {
+      const agents = store.listAgents();
+      const agent = agents.find(a => a.id === adminId);
+      adminEmoji = agent?.emoji || null;
+    }
+    
+    return {
+      admin_id: adminId,
+      admin_name: adminName,
+      admin_emoji: adminEmoji,
+      admin_type: adminType,
+      assigned_at: assignedAt
+    };
   });
 
   fastify.post("/api/threads/:threadId/admin/decision", async (request, reply) => {
     const params = request.params as { threadId: string };
+    const body = request.body as {
+      action: "switch" | "keep" | "takeover" | "cancel";
+      candidate_admin_id?: string;
+      source_message_id?: string;
+    };
+
     const thread = store.getThread(params.threadId);
     if (!thread) {
       reply.code(404);
       return { detail: "Thread not found" };
     }
-    return { ok: true, thread_id: params.threadId, decision: request.body || null };
+
+    // Helper to get agent emoji
+    const getAgentEmoji = (agentId: string | null | undefined): string => {
+      if (!agentId) return "❔";
+      const agents = store.listAgents();
+      const agent = agents.find(a => a.id === agentId);
+      return agent?.emoji || "🤖";
+    };
+
+    // Helper to get agent name
+    const getAgentName = (agentId: string | null | undefined): string => {
+      if (!agentId) return "Unknown";
+      const agents = store.listAgents();
+      const agent = agents.find(a => a.id === agentId);
+      return agent?.display_name || agent?.name || agentId;
+    };
+
+    const settings = store.getThreadSettings(params.threadId);
+    const currentAdminId = settings?.creator_admin_id || settings?.auto_assigned_admin_id || null;
+    const currentAdminName = settings?.creator_admin_name || settings?.auto_assigned_admin_name || null;
+
+    // Check for source_message_id and already decided
+    if (body.source_message_id) {
+      const sourceMsg = store.getMessage(body.source_message_id);
+      if (!sourceMsg) {
+        reply.code(404);
+        return { detail: "source_message_id not found" };
+      }
+      if (sourceMsg.thread_id !== params.threadId) {
+        reply.code(400);
+        return { detail: "source_message_id does not belong to this thread" };
+      }
+
+      // Parse metadata (already an object in TS version)
+      const sourceMeta: Record<string, unknown> = sourceMsg.metadata || {};
+      const sourceUiType = String(sourceMeta.ui_type || "");
+
+      // Validate ui_type
+      if (!["admin_switch_confirmation_required", "admin_takeover_confirmation_required"].includes(sourceUiType)) {
+        reply.code(400);
+        return { detail: "source_message_id is not an admin confirmation prompt" };
+      }
+
+      // Validate action for ui_type
+      const allowedActions: Record<string, string[]> = {
+        "admin_switch_confirmation_required": ["switch", "keep"],
+        "admin_takeover_confirmation_required": ["takeover", "cancel"]
+      };
+      if (!allowedActions[sourceUiType]?.includes(body.action)) {
+        reply.code(400);
+        return { detail: `Invalid action '${body.action}' for source_message_id ui_type=${sourceUiType}` };
+      }
+
+      // Check if already decided
+      if (sourceMeta.decision_status === "resolved") {
+        return {
+          ok: true,
+          thread_id: params.threadId,
+          action: sourceMeta.decision_action || body.action,
+          already_decided: true,
+          source_message_id: body.source_message_id,
+          decided_at: sourceMeta.decision_at
+        };
+      }
+
+      // Handle switch action
+      if (body.action === "switch") {
+        if (!body.candidate_admin_id) {
+          reply.code(400);
+          return { detail: "candidate_admin_id is required for action='switch'" };
+        }
+
+        const candidate = store.getAgent(body.candidate_admin_id);
+        if (!candidate) {
+          reply.code(404);
+          return { detail: "Candidate admin agent not found" };
+        }
+
+        const candidateName = candidate.display_name || candidate.name || candidate.id;
+        store.switchAdmin(params.threadId, candidate.id, candidateName);
+
+        const oldBadge = `${getAgentEmoji(currentAdminId)} ${currentAdminName || currentAdminId || "Unknown"}`;
+        const newBadge = `${getAgentEmoji(candidate.id)} ${candidateName}`;
+        const confirmation = `Administrator switched by human decision: ${oldBadge} -> ${newBadge}.`;
+        const decidedAt = new Date().toISOString();
+
+        const metadata = {
+          ui_type: "admin_switch_decision_result",
+          visibility: "human_only",
+          decision: "switch",
+          thread_id: params.threadId,
+          source_message_id: body.source_message_id,
+          previous_admin_id: currentAdminId,
+          new_admin_id: candidate.id,
+          new_admin_name: candidateName,
+          new_admin_emoji: getAgentEmoji(candidate.id),
+          decided_at: decidedAt
+        };
+
+        store.postSystemMessage(params.threadId, confirmation, JSON.stringify(metadata));
+
+        // Update source message metadata
+        sourceMeta.decision_status = "resolved";
+        sourceMeta.decision_action = "switch";
+        sourceMeta.decision_at = decidedAt;
+        store.updateMessageMetadata(body.source_message_id, sourceMeta);
+
+        return {
+          ok: true,
+          action: "switch",
+          thread_id: params.threadId,
+          new_admin_id: candidate.id,
+          new_admin_name: candidateName,
+          already_decided: false
+        };
+      }
+
+      // Handle keep action
+      if (body.action === "keep") {
+        const keptBadge = `${getAgentEmoji(currentAdminId)} ${currentAdminName || currentAdminId || "Unknown"}`;
+        const confirmation = `Administrator kept by human decision: ${keptBadge}.`;
+        const decidedAt = new Date().toISOString();
+
+        const metadata = {
+          ui_type: "admin_switch_decision_result",
+          visibility: "human_only",
+          decision: "keep",
+          thread_id: params.threadId,
+          source_message_id: body.source_message_id,
+          kept_admin_id: currentAdminId,
+          kept_admin_name: currentAdminName,
+          kept_admin_emoji: getAgentEmoji(currentAdminId),
+          decided_at: decidedAt
+        };
+
+        store.postSystemMessage(params.threadId, confirmation, JSON.stringify(metadata));
+
+        // Update source message metadata
+        sourceMeta.decision_status = "resolved";
+        sourceMeta.decision_action = "keep";
+        sourceMeta.decision_at = decidedAt;
+        store.updateMessageMetadata(body.source_message_id, sourceMeta);
+
+        return {
+          ok: true,
+          action: "keep",
+          thread_id: params.threadId,
+          kept_admin_id: currentAdminId,
+          kept_admin_name: currentAdminName,
+          already_decided: false
+        };
+      }
+
+      // Handle takeover action
+      if (body.action === "takeover") {
+        const targetAdminId = String(sourceMeta.current_admin_id || currentAdminId || body.candidate_admin_id || "");
+        if (!targetAdminId) {
+          reply.code(400);
+          return { detail: "No actionable administrator found for takeover" };
+        }
+
+        const targetAdmin = store.getAgent(targetAdminId);
+        if (!targetAdmin) {
+          reply.code(404);
+          return { detail: "Takeover administrator agent not found" };
+        }
+
+        const targetName = targetAdmin.display_name || targetAdmin.name || targetAdmin.id;
+        const targetEmoji = getAgentEmoji(targetAdmin.id);
+        const instruction = `Coordinator decision: ${targetEmoji} ${targetName}, all other agents appear offline/unavailable. Please take over now, continue work directly, and do not keep waiting in msg_wait.`;
+        const decidedAt = new Date().toISOString();
+
+        const metadata = {
+          ui_type: "admin_coordination_takeover_instruction",
+          decision: "takeover",
+          thread_id: params.threadId,
+          source_message_id: body.source_message_id,
+          handoff_target: targetAdmin.id,
+          target_admin_id: targetAdmin.id,
+          target_admin_name: targetName,
+          target_admin_emoji: targetEmoji,
+          decided_at: decidedAt
+        };
+
+        store.postSystemMessage(params.threadId, instruction, JSON.stringify(metadata));
+
+        // Update source message metadata
+        sourceMeta.decision_status = "resolved";
+        sourceMeta.decision_action = "takeover";
+        sourceMeta.decision_at = decidedAt;
+        store.updateMessageMetadata(body.source_message_id, sourceMeta);
+
+        return {
+          ok: true,
+          action: "takeover",
+          thread_id: params.threadId,
+          notified_admin_id: targetAdmin.id,
+          notified_admin_name: targetName,
+          already_decided: false
+        };
+      }
+
+      // Handle cancel action
+      if (body.action === "cancel") {
+        const cancelContent = "Administrator takeover request canceled by human decision. System will continue waiting for other agents to come online.";
+        const decidedAt = new Date().toISOString();
+
+        const cancelMeta = {
+          ui_type: "admin_takeover_decision_result",
+          decision: "cancel",
+          visibility: "human_only",
+          thread_id: params.threadId,
+          source_message_id: body.source_message_id,
+          decided_at: decidedAt
+        };
+
+        store.postSystemMessage(params.threadId, cancelContent, JSON.stringify(cancelMeta));
+
+        // Update source message metadata
+        sourceMeta.decision_status = "resolved";
+        sourceMeta.decision_action = "cancel";
+        sourceMeta.decision_at = decidedAt;
+        store.updateMessageMetadata(body.source_message_id, sourceMeta);
+
+        return {
+          ok: true,
+          action: "cancel",
+          thread_id: params.threadId,
+          already_decided: false
+        };
+      }
+    }
+
+    // No source_message_id - simple switch without confirmation prompt
+    if (body.action === "switch") {
+      if (!body.candidate_admin_id) {
+        reply.code(400);
+        return { detail: "candidate_admin_id is required for action='switch'" };
+      }
+
+      const candidate = store.getAgent(body.candidate_admin_id);
+      if (!candidate) {
+        reply.code(404);
+        return { detail: "Candidate admin agent not found" };
+      }
+
+      const candidateName = candidate.display_name || candidate.name || candidate.id;
+      store.switchAdmin(params.threadId, candidate.id, candidateName);
+
+      return {
+        ok: true,
+        action: "switch",
+        thread_id: params.threadId,
+        new_admin_id: candidate.id,
+        new_admin_name: candidateName,
+        already_decided: false
+      };
+    }
+
+    return { ok: true, thread_id: params.threadId, action: body.action };
   });
 
   fastify.get("/api/threads/:threadId/export", async (request, reply) => {

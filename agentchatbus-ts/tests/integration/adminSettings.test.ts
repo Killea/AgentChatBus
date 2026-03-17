@@ -32,9 +32,11 @@ describe("thread admin endpoints parity", () => {
 
     expect(adminRes.statusCode).toBe(200);
     const body = adminRes.json();
-    expect(body.thread_id).toBe(thread.id);
-    expect(body.admin_agent_id).toBeNull();
-    expect(body.auto_administrator_enabled).toBe(true);
+    expect(body.admin_id).toBeNull();
+    expect(body.admin_name).toBeNull();
+    expect(body.admin_emoji).toBeNull();
+    expect(body.admin_type).toBeNull();
+    expect(body.assigned_at).toBeNull();
 
     await server.close();
   });
