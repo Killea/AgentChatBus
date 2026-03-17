@@ -25,15 +25,70 @@ export interface AppConfig {
  * Controls whether handoff_target, stop_reason, and priority fields
  * are returned to agents or stripped from responses.
  */
-export const ENABLE_HANDOFF_TARGET = process.env.AGENTCHATBUS_ENABLE_HANDOFF_TARGET !== "false";
-export const ENABLE_STOP_REASON = process.env.AGENTCHATBUS_ENABLE_STOP_REASON !== "false";
-export const ENABLE_PRIORITY = process.env.AGENTCHATBUS_ENABLE_PRIORITY !== "false";
+export const BUS_VERSION = "0.1.0";
+
+function parseBoolLike(value: unknown, defaultValue: boolean): boolean {
+  if (value === undefined || value === null) {
+    return defaultValue;
+  }
+  const normalized = String(value).trim().toLowerCase();
+  if (["1", "true", "yes"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no"].includes(normalized)) {
+    return false;
+  }
+  return defaultValue;
+}
+
+function pickEnvOrPersisted(
+  envValue: string | undefined,
+  persistedValue: unknown,
+  fallback: string
+): string {
+  if (envValue !== undefined && envValue !== null && envValue !== "") {
+    return envValue;
+  }
+  if (persistedValue !== undefined && persistedValue !== null && String(persistedValue) !== "") {
+    return String(persistedValue);
+  }
+  return fallback;
+}
 
 // Admin token for settings endpoint (optional — if unset, PUT /api/settings is unprotected)
 export const ADMIN_TOKEN: string | null = process.env.AGENTCHATBUS_ADMIN_TOKEN || null;
 
 // Config file path (matches Python: data/config.json)
 const CONFIG_FILE = join(process.cwd(), "data", "config.json");
+
+const persistedConfigForFlags = (() => {
+  try {
+    if (existsSync(CONFIG_FILE)) {
+      const content = readFileSync(CONFIG_FILE, "utf-8");
+      return JSON.parse(content) as Record<string, unknown>;
+    }
+  } catch {}
+  return {} as Record<string, unknown>;
+})();
+
+export const ENABLE_HANDOFF_TARGET = parseBoolLike(
+  process.env.AGENTCHATBUS_ENABLE_HANDOFF_TARGET
+    ?? persistedConfigForFlags.ENABLE_HANDOFF_TARGET
+    ?? "false",
+  false
+);
+export const ENABLE_STOP_REASON = parseBoolLike(
+  process.env.AGENTCHATBUS_ENABLE_STOP_REASON
+    ?? persistedConfigForFlags.ENABLE_STOP_REASON
+    ?? "false",
+  false
+);
+export const ENABLE_PRIORITY = parseBoolLike(
+  process.env.AGENTCHATBUS_ENABLE_PRIORITY
+    ?? persistedConfigForFlags.ENABLE_PRIORITY
+    ?? "false",
+  false
+);
 
 /**
  * Get persisted config from data/config.json (matches Python get_config_dict)
@@ -77,42 +132,95 @@ export function saveConfigDict(newData: Record<string, unknown>): void {
 export function getConfigDict(): Record<string, unknown> {
   const persisted = getPersistedConfig();
   return {
-    HOST: persisted.HOST || process.env.AGENTCHATBUS_HOST || "127.0.0.1",
-    PORT: Number(persisted.PORT || process.env.AGENTCHATBUS_PORT || "39765"),
-    AGENT_HEARTBEAT_TIMEOUT: Number(persisted.AGENT_HEARTBEAT_TIMEOUT || process.env.AGENTCHATBUS_HEARTBEAT_TIMEOUT || "60"),
-    MSG_WAIT_TIMEOUT: Number(persisted.MSG_WAIT_TIMEOUT || process.env.AGENTCHATBUS_WAIT_TIMEOUT || "300"),
-    REPLY_TOKEN_LEASE_SECONDS: Number(persisted.REPLY_TOKEN_LEASE_SECONDS || process.env.AGENTCHATBUS_REPLY_TOKEN_LEASE_SECONDS || "3600"),
-    SEQ_TOLERANCE: Number(persisted.SEQ_TOLERANCE || process.env.AGENTCHATBUS_SEQ_TOLERANCE || "0"),
-    SEQ_MISMATCH_MAX_MESSAGES: Number(persisted.SEQ_MISMATCH_MAX_MESSAGES || process.env.AGENTCHATBUS_SEQ_MISMATCH_MAX_MESSAGES || "100"),
-    RATE_LIMIT_MSG_PER_MINUTE: Number(persisted.RATE_LIMIT_MSG_PER_MINUTE || process.env.AGENTCHATBUS_RATE_LIMIT || "30"),
-    EXPOSE_THREAD_RESOURCES: persisted.EXPOSE_THREAD_RESOURCES ?? (process.env.AGENTCHATBUS_EXPOSE_THREAD_RESOURCES === "true"),
-    ENABLE_HANDOFF_TARGET: persisted.ENABLE_HANDOFF_TARGET ?? ENABLE_HANDOFF_TARGET,
-    ENABLE_STOP_REASON: persisted.ENABLE_STOP_REASON ?? ENABLE_STOP_REASON,
-    ENABLE_PRIORITY: persisted.ENABLE_PRIORITY ?? ENABLE_PRIORITY,
-    SHOW_AD: process.env.AGENTCHATBUS_SHOW_AD === "true",
+    HOST: pickEnvOrPersisted(process.env.AGENTCHATBUS_HOST, persisted.HOST, "127.0.0.1"),
+    PORT: Number(pickEnvOrPersisted(process.env.AGENTCHATBUS_PORT, persisted.PORT, "39765")),
+    AGENT_HEARTBEAT_TIMEOUT: Number(
+      pickEnvOrPersisted(process.env.AGENTCHATBUS_HEARTBEAT_TIMEOUT, persisted.AGENT_HEARTBEAT_TIMEOUT, "60")
+    ),
+    MSG_WAIT_TIMEOUT: Number(
+      pickEnvOrPersisted(process.env.AGENTCHATBUS_WAIT_TIMEOUT, persisted.MSG_WAIT_TIMEOUT, "300")
+    ),
+    REPLY_TOKEN_LEASE_SECONDS: Number(
+      pickEnvOrPersisted(
+        process.env.AGENTCHATBUS_REPLY_TOKEN_LEASE_SECONDS,
+        persisted.REPLY_TOKEN_LEASE_SECONDS,
+        "3600"
+      )
+    ),
+    SEQ_TOLERANCE: Number(
+      pickEnvOrPersisted(process.env.AGENTCHATBUS_SEQ_TOLERANCE, persisted.SEQ_TOLERANCE, "0")
+    ),
+    SEQ_MISMATCH_MAX_MESSAGES: Number(
+      pickEnvOrPersisted(
+        process.env.AGENTCHATBUS_SEQ_MISMATCH_MAX_MESSAGES,
+        persisted.SEQ_MISMATCH_MAX_MESSAGES,
+        "100"
+      )
+    ),
+    RATE_LIMIT_MSG_PER_MINUTE: Number(
+      pickEnvOrPersisted(process.env.AGENTCHATBUS_RATE_LIMIT, persisted.RATE_LIMIT_MSG_PER_MINUTE, "30")
+    ),
+    EXPOSE_THREAD_RESOURCES: parseBoolLike(
+      process.env.AGENTCHATBUS_EXPOSE_THREAD_RESOURCES ?? persisted.EXPOSE_THREAD_RESOURCES ?? "false",
+      false
+    ),
+    ENABLE_HANDOFF_TARGET: parseBoolLike(
+      process.env.AGENTCHATBUS_ENABLE_HANDOFF_TARGET ?? persisted.ENABLE_HANDOFF_TARGET ?? "false",
+      false
+    ),
+    ENABLE_STOP_REASON: parseBoolLike(
+      process.env.AGENTCHATBUS_ENABLE_STOP_REASON ?? persisted.ENABLE_STOP_REASON ?? "false",
+      false
+    ),
+    ENABLE_PRIORITY: parseBoolLike(
+      process.env.AGENTCHATBUS_ENABLE_PRIORITY ?? persisted.ENABLE_PRIORITY ?? "false",
+      false
+    ),
+    SHOW_AD: parseBoolLike(process.env.AGENTCHATBUS_SHOW_AD, false),
   };
 }
 
 export function getConfig(): AppConfig {
   const persisted = getPersistedConfig();
-  const host = typeof persisted.HOST === "string"
-    ? persisted.HOST
-    : (process.env.AGENTCHATBUS_HOST || "127.0.0.1");
+  const host = pickEnvOrPersisted(process.env.AGENTCHATBUS_HOST, persisted.HOST, "127.0.0.1");
   return {
     host,
-    port: Number(persisted.PORT || process.env.AGENTCHATBUS_PORT || "39765"),
+    port: Number(pickEnvOrPersisted(process.env.AGENTCHATBUS_PORT, persisted.PORT, "39765")),
     dbPath: process.env.AGENTCHATBUS_DB || "data/bus-ts.db",
     adminToken: ADMIN_TOKEN,
-    agentHeartbeatTimeout: Number(process.env.AGENTCHATBUS_HEARTBEAT_TIMEOUT || "60"),
-    msgWaitTimeout: Number(process.env.AGENTCHATBUS_WAIT_TIMEOUT || "300"),
-    replyTokenLeaseSeconds: Number(process.env.AGENTCHATBUS_REPLY_TOKEN_LEASE_SECONDS || "3600"),
-    seqTolerance: Number(process.env.AGENTCHATBUS_SEQ_TOLERANCE || "0"),
-    seqMismatchMaxMessages: Number(process.env.AGENTCHATBUS_SEQ_MISMATCH_MAX_MESSAGES || "100"),
-    rateLimitMsgPerMinute: Number(process.env.AGENTCHATBUS_RATE_LIMIT || "30"),
+    agentHeartbeatTimeout: Number(
+      pickEnvOrPersisted(process.env.AGENTCHATBUS_HEARTBEAT_TIMEOUT, persisted.AGENT_HEARTBEAT_TIMEOUT, "60")
+    ),
+    msgWaitTimeout: Number(
+      pickEnvOrPersisted(process.env.AGENTCHATBUS_WAIT_TIMEOUT, persisted.MSG_WAIT_TIMEOUT, "300")
+    ),
+    replyTokenLeaseSeconds: Number(
+      pickEnvOrPersisted(
+        process.env.AGENTCHATBUS_REPLY_TOKEN_LEASE_SECONDS,
+        persisted.REPLY_TOKEN_LEASE_SECONDS,
+        "3600"
+      )
+    ),
+    seqTolerance: Number(
+      pickEnvOrPersisted(process.env.AGENTCHATBUS_SEQ_TOLERANCE, persisted.SEQ_TOLERANCE, "0")
+    ),
+    seqMismatchMaxMessages: Number(
+      pickEnvOrPersisted(
+        process.env.AGENTCHATBUS_SEQ_MISMATCH_MAX_MESSAGES,
+        persisted.SEQ_MISMATCH_MAX_MESSAGES,
+        "100"
+      )
+    ),
+    rateLimitMsgPerMinute: Number(
+      pickEnvOrPersisted(process.env.AGENTCHATBUS_RATE_LIMIT, persisted.RATE_LIMIT_MSG_PER_MINUTE, "30")
+    ),
     threadTimeoutMinutes: Number(process.env.AGENTCHATBUS_THREAD_TIMEOUT || "0"),
     threadTimeoutSweepInterval: Number(process.env.AGENTCHATBUS_TIMEOUT_SWEEP_INTERVAL || "60"),
-    reloadEnabled: process.env.AGENTCHATBUS_RELOAD === "1" || process.env.AGENTCHATBUS_RELOAD === "true",
-    exposeThreadResources: process.env.AGENTCHATBUS_EXPOSE_THREAD_RESOURCES === "true",
-    contentFilterEnabled: (process.env.AGENTCHATBUS_CONTENT_FILTER_ENABLED || "true") !== "false",
+    reloadEnabled: parseBoolLike(process.env.AGENTCHATBUS_RELOAD, false),
+    exposeThreadResources: parseBoolLike(
+      process.env.AGENTCHATBUS_EXPOSE_THREAD_RESOURCES ?? persisted.EXPOSE_THREAD_RESOURCES ?? "false",
+      false
+    ),
+    contentFilterEnabled: parseBoolLike(process.env.AGENTCHATBUS_CONTENT_FILTER_ENABLED ?? "true", true),
   };
 }

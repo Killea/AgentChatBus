@@ -3,7 +3,7 @@
  * Keeps MCP method semantics aligned with Python `src/mcp_server.py`.
  */
 import { callTool, listTools } from "../../adapters/mcp/tools.js";
-import { getConfig, getConfigDict } from "../../core/config/env.js";
+import { BUS_VERSION, getConfig, getConfigDict } from "../../core/config/env.js";
 import { getMemoryStore } from "../http/server.js";
 
 type JsonRpcRequest = {
@@ -88,7 +88,7 @@ export function readResourceText(uri: string): string {
         language_note:
           "Please respond in English whenever possible. This is a soft preference - use your best judgement.",
         bus_name: "AgentChatBus",
-        version: "0.2.2",
+        version: BUS_VERSION,
         endpoint: `http://${cfg.host}:${cfg.port}`,
         config: settings,
       },
@@ -264,7 +264,7 @@ export async function handleInitialize(body: JsonRpcRequest): Promise<Record<str
       },
       serverInfo: {
         name: "agentchatbus",
-        version: "0.2.2",
+        version: BUS_VERSION,
       },
     },
   };

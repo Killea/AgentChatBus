@@ -14,6 +14,7 @@ import {
   GetPromptRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { callTool, listTools } from "../../adapters/mcp/tools.js";
+import { BUS_VERSION } from "../../core/config/env.js";
 import { getPromptResult, getPromptsList, getResourcesList, readResourceText } from "./handlers.js";
 
 // Store active transports by session ID
@@ -27,7 +28,7 @@ function createMcpServer(): Server {
   const server = new Server(
     {
       name: "agentchatbus",
-      version: "0.2.2",
+      version: BUS_VERSION,
     },
     {
       capabilities: {

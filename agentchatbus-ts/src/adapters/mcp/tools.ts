@@ -9,6 +9,7 @@ import {
   ReplyTokenExpiredError,
   ReplyTokenReplayError
 } from "../../core/types/errors.js";
+import { BUS_VERSION, getConfig } from "../../core/config/env.js";
 
 export type ToolDefinition = {
   name: string;
@@ -1023,13 +1024,14 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
     }
     case "bus_get_config": {
       const settings = getStore().getSettings();
+      const cfg = getConfig();
       return {
         preferred_language: (settings as any).preferred_language || "English",
         language_source: "default",
-        language_note: "Please respond in English whenever possible. This is a soft preference — use your best judgement.",
+        language_note: "Please respond in English whenever possible. This is a soft preference - use your best judgement.",
         bus_name: "AgentChatBus",
-        version: "0.2.2",
-        endpoint: `http://localhost:${process.env.AGENTCHATBUS_PORT || "39765"}`,
+        version: BUS_VERSION,
+        endpoint: `http://${cfg.host}:${cfg.port}`,
         auth_requirements: {
           mcp_thread_create: {
             required: true,
