@@ -1005,7 +1005,9 @@ describe('Bus Connect Parity Tests', () => {
         // 编辑消息
         await callMcpTool('msg_edit', {
             message_id: postResult.msg_id,
-            new_content: "hidden updated"
+            new_content: "hidden updated",
+            agent_id: agentId,
+            token: threadResult.agent.token
         });
 
         // 获取编辑历史
@@ -1084,11 +1086,7 @@ describe('Bus Connect Parity Tests', () => {
             new_content: "tampered"
         });
 
-        // 应该失败或返回错误
-        // TS 版本中，msg_edit 可能需要 author 或 agent 认证
-        // 如果成功编辑，检查是否只有原作者可以编辑
-        if (editResult.error) {
-            expect(editResult.error).toContain("AUTHENTICATION");
-        }
+        expect(editResult.error).toBe("AUTHENTICATION_REQUIRED");
+        expect(String(editResult.detail)).toContain("authenticated agent connection");
     }, 10000);
 });

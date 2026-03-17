@@ -402,14 +402,37 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       }
       return { ok: true, deleted: threadId };
     }
-    case "thread_settings_get":
-      return getStore().getThreadSettings(String(args.thread_id || "")) || { found: false };
-    case "thread_settings_update":
-      return getStore().updateThreadSettings(String(args.thread_id || ""), {
-        auto_administrator_enabled: typeof args.auto_administrator_enabled === "boolean" ? args.auto_administrator_enabled : undefined,
-        timeout_seconds: typeof args.timeout_seconds === "number" ? args.timeout_seconds : undefined,
-        switch_timeout_seconds: typeof args.switch_timeout_seconds === "number" ? args.switch_timeout_seconds : undefined
-      }) || { found: false };
+    case "thread_settings_get": {
+      const threadId = String(args.thread_id || "");
+      const thread = getStore().getThread(threadId);
+      if (!thread) {
+        return { error: "Thread not found" };
+      }
+      return getStore().getThreadSettings(threadId);
+    }
+    case "thread_settings_update": {
+      const threadId = String(args.thread_id || "");
+      const thread = getStore().getThread(threadId);
+      if (!thread) {
+        return { error: "Thread not found" };
+      }
+      let updated;
+      try {
+        updated = getStore().updateThreadSettings(threadId, {
+          auto_administrator_enabled: typeof args.auto_administrator_enabled === "boolean" ? args.auto_administrator_enabled : undefined,
+          timeout_seconds: typeof args.timeout_seconds === "number" ? args.timeout_seconds : undefined,
+          switch_timeout_seconds: typeof args.switch_timeout_seconds === "number" ? args.switch_timeout_seconds : undefined
+        });
+      } catch (error) {
+        return { error: (error as Error).message };
+      }
+      return {
+        ok: true,
+        auto_administrator_enabled: updated?.auto_administrator_enabled,
+        timeout_seconds: updated?.timeout_seconds,
+        switch_timeout_seconds: updated?.switch_timeout_seconds,
+      };
+    }
     case "msg_post": {
       const threadId = String(args.thread_id || "");
       const author = String(args.author || "human");
@@ -814,7 +837,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       const defaultMetadata = typeof args.default_metadata === "object" && args.default_metadata !== null ? args.default_metadata as Record<string, unknown> : undefined;
 
       if (!id || !name) {
-        throw new Error("id and name are required");
+        return { error: "id and name are required" };
       }
 
       const ok = getStore().createTemplate({ id, name, description, system_prompt: systemPrompt, default_metadata: defaultMetadata });
@@ -871,10 +894,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       const agentId = String(args.agent_id || "");
       const token = String(args.token || "");
       const ok = getStore().heartbeatAgent(agentId, token);
-      if (!ok) {
-        return { error: "Invalid agent_id or token" };
-      }
-      return { ok: true };
+      return { ok };
     }
     case "agent_resume": {
       const agentId = String(args.agent_id || "");
@@ -909,10 +929,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       const agentId = String(args.agent_id || "");
       const token = String(args.token || "");
       const ok = getStore().unregisterAgent(agentId, token);
-      if (!ok) {
-        return { error: "Invalid agent_id or token" };
-      }
-      return { ok: true };
+      return { ok };
     }
     case "agent_list": {
       const agents = getStore().listAgents();
@@ -948,7 +965,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       });
 
       if (!agent) {
-        return { error: "Invalid agent_id or token", found: false };
+        return { ok: false, error: "Invalid agent_id or token" };
       }
 
       return {
@@ -978,7 +995,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       
       const message = getStore().addReaction(messageId, agentId, reaction);
       if (!message) {
-        return { error: "Message not found" };
+        return { error: "MESSAGE_NOT_FOUND", message_id: messageId };
       }
       
       return {
@@ -997,7 +1014,11 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       
       const result = getStore().removeReaction(messageId, agentId, reaction);
       if (!result) {
-        return { error: "Message not found" };
+        return {
+          removed: false,
+          message_id: messageId,
+          reaction: reaction
+        };
       }
       
       return {
@@ -1198,10 +1219,31 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         return { error: "message_id and new_content are required" };
       }
 
-      // Deduce edited_by from connection context (simplified - would need real context in production)
-      const editedBy = "system";
+      // Python parity: requires authenticated agent context.
+      // In TS tool adapter, explicit credentials are accepted for parity with strict auth.
+      const agentId = typeof args.agent_id === "string" ? args.agent_id : "";
+      const token = typeof args.token === "string" ? args.token : "";
+      if (!agentId || !token) {
+        return {
+          error: "AUTHENTICATION_REQUIRED",
+          detail: "msg_edit requires an authenticated agent connection.",
+        };
+      }
+      const ok = getStore().verifyAgentToken(agentId, token);
+      if (!ok) {
+        return {
+          error: "AUTHENTICATION_REQUIRED",
+          detail: "msg_edit requires an authenticated agent connection.",
+        };
+      }
+      const editedBy = agentId;
       
-      const result = getStore().editMessage(messageId, newContent, editedBy);
+      let result;
+      try {
+        result = getStore().editMessage(messageId, newContent, editedBy);
+      } catch (error) {
+        return { error: (error as Error).message };
+      }
       if (!result) {
         return { error: `Message '${messageId}' not found` };
       }
@@ -1253,6 +1295,6 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       };
     }
     default:
-      throw new Error(`Unknown tool: ${name}`);
+      return { error: `Unknown tool: ${name}` };
   }
 }
