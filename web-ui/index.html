@@ -249,6 +249,38 @@
       }
     }
 
+    function setupExtensionUiDebugSwitcher() {
+      const backendIcon = document.getElementById('backend-icon');
+      if (!backendIcon) return;
+
+      const triggerWindowMs = 1200;
+      const clickTimes = [];
+
+      backendIcon.addEventListener('click', (event) => {
+        if (!event.ctrlKey) {
+          clickTimes.length = 0;
+          return;
+        }
+
+        const now = Date.now();
+        while (clickTimes.length > 0 && (now - clickTimes[0]) > triggerWindowMs) {
+          clickTimes.shift();
+        }
+        clickTimes.push(now);
+
+        if (clickTimes.length < 3) {
+          return;
+        }
+        clickTimes.length = 0;
+
+        const debugUrl = new URL('/static/extension/index.html', window.location.origin);
+        if (activeThreadId) debugUrl.searchParams.set('threadId', activeThreadId);
+        debugUrl.searchParams.set('baseUrl', window.location.origin);
+        debugUrl.searchParams.set('theme', document.body.getAttribute('data-theme') || 'dark');
+        window.location.assign(debugUrl.toString());
+      });
+    }
+
     // ==============================================================================================
     // Mobile Sidebar Toggle
     // ==============================================================================================
@@ -287,6 +319,7 @@
     (async function init() {
       window.AcbTooltip.init();
       applySavedTheme();
+      setupExtensionUiDebugSwitcher();
 
       // UI-08: Scroll-to-top button (scrolls #messages-scroll, not #messages)
       const scrollTopBtn = document.getElementById('btn-scroll-top');

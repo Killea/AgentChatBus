@@ -263,7 +263,8 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
+    "sync:webui-assets": "node ./scripts/sync-webui-assets.mjs",
+    "compile": "npm run sync:webui-assets && tsc -p ./",
     "watch": "tsc -watch -p ./",
     "test": "npm run compile && node --test test/**/*.test.js"
   },

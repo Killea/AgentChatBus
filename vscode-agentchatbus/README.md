@@ -16,6 +16,11 @@ npm install
 npm run compile
 ```
 
+`npm run compile` now includes a sync step that treats `../web-ui/extension` as
+the source of truth for chat webview frontend assets. During compile, extension
+media files are copied into `resources/media/` and browser-debug artifacts are
+copied into `resources/webui-extension/`.
+
 ## Building
 
 ```bash

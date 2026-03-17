@@ -1,0 +1,188 @@
+/* Markdown rendering inside message bubbles */
+.message h1,
+.message h2,
+.message h3,
+.message h4,
+.message h5,
+.message h6 {
+  margin: 12px 0 6px;
+  line-height: 1.3;
+  color: var(--vscode-editor-foreground);
+}
+
+.message h1 { font-size: 1.25em; }
+.message h2 { font-size: 1.15em; }
+.message h3 { font-size: 1.05em; }
+.message h4, .message h5, .message h6 { font-size: 1em; }
+
+.message h1:first-child,
+.message h2:first-child,
+.message h3:first-child {
+  margin-top: 0;
+}
+
+.message p { margin: 6px 0; }
+.message p:first-child { margin-top: 0; }
+.message p:last-child { margin-bottom: 0; }
+
+.message ul,
+.message ol {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+
+.message li { margin: 2px 0; }
+
+.message blockquote {
+  margin: 8px 0;
+  padding: 4px 12px;
+  border-left: 3px solid var(--vscode-button-background);
+  color: var(--vscode-editor-foreground);
+  font-style: italic;
+  background: var(--vscode-editor-inactiveSelectionBackground);
+  border-radius: 0 6px 6px 0;
+  opacity: 0.85;
+}
+
+.message code {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.9em;
+  background: var(--vscode-editor-inactiveSelectionBackground);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.message pre {
+  margin: 8px 0;
+  padding: 10px 12px;
+  background: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.message pre code {
+  background: none;
+  padding: 0;
+  border: none;
+  font-size: 0.9em;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.message table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 0.9em;
+}
+
+.message th,
+.message td {
+  padding: 5px 10px;
+  border: 1px solid var(--vscode-panel-border);
+  text-align: left;
+}
+
+.message th {
+  background: var(--vscode-editor-inactiveSelectionBackground);
+  font-weight: 600;
+}
+
+.message hr {
+  border: none;
+  border-top: 1px solid var(--vscode-panel-border);
+  margin: 10px 0;
+}
+
+.message a {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: none;
+}
+
+.message a:hover {
+  text-decoration: underline;
+}
+
+/* Code Block with Copy Button */
+.code-block {
+  position: relative;
+  margin: 8px 0;
+}
+
+.code-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  cursor: pointer;
+  opacity: 0.6;
+  z-index: 10;
+}
+
+.code-copy:hover {
+  opacity: 1;
+  background: var(--vscode-button-hoverBackground);
+  color: var(--vscode-button-foreground);
+}
+
+/* Mermaid Blocks */
+.mermaid-block {
+  margin: 12px 0;
+  background: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.mermaid-toolbar {
+  display: flex;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-editor-inactiveSelectionBackground);
+}
+
+.mermaid-btn {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  cursor: pointer;
+}
+
+.mermaid-btn:hover {
+  background: var(--vscode-button-hoverBackground);
+  color: var(--vscode-button-foreground);
+}
+
+.mermaid {
+  padding: 16px;
+  display: flex;
+  justify-content: center;
+  background: white; /* Mermaid diagrams often look best on white or specific themes, but we'll adapt */
+}
+
+body[data-theme="dark"] .mermaid {
+  background: #1e1e1e;
+}
+
+.mermaid-source {
+  padding: 10px;
+  background: var(--vscode-editor-background);
+  border-top: 1px solid var(--vscode-panel-border);
+}
+
+.mermaid-error {
+  color: var(--vscode-errorForeground);
+  font-family: monospace;
+  white-space: pre-wrap;
+  padding: 10px;
+}

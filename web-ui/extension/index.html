@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgentChatBus Extension Panel (Browser Debug)</title>
+  <link rel="stylesheet" href="/static/extension/media/messageRenderer.css" />
+  <link rel="stylesheet" href="/static/extension/media/chatPanel.css" />
+</head>
+<body
+  data-theme="dark"
+  data-thread-id=""
+  data-thread-topic=""
+  data-thread-status="discuss"
+  data-base-url=""
+  data-mermaid-script-url="/static/extension/media/mermaid.min.js"
+>
+  <div id="chat-shell">
+    <header id="chat-header">
+      <div id="search-bar">
+        <input id="search-input" type="search" placeholder="Search this thread" spellcheck="false" />
+        <div id="search-counter">0 / 0</div>
+        <div class="chat-header-actions">
+          <button id="search-prev" class="icon-btn icon-only-btn tooltip-anchor" data-tooltip="Previous match" aria-label="Previous match">
+            <svg class="button-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              <path d="M8 3 3.5 7.5l.9.9L7.25 5.6V13h1.5V5.6l2.85 2.8.9-.9Z" fill="currentColor" />
+            </svg>
+          </button>
+          <button id="search-next" class="icon-btn icon-only-btn tooltip-anchor" data-tooltip="Next match" aria-label="Next match">
+            <svg class="button-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              <path d="M8 13l4.5-4.5-.9-.9-2.85 2.8V3h-1.5v7.4L4.4 7.6l-.9.9Z" fill="currentColor" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <section id="chat-body">
+      <div id="messages-scroll">
+        <div id="loading-indicator">
+          <div class="loading-spinner"></div>
+          <div class="loading-label">Loading thread...</div>
+        </div>
+        <div id="message-container"></div>
+      </div>
+      <nav id="nav-sidebar" aria-label="Message navigation"></nav>
+    </section>
+
+    <section id="composer-shell">
+      <div id="reply-preview" class="hidden"></div>
+      <div id="image-preview" class="hidden"></div>
+      <div id="composer-layout">
+        <div id="composer-side-panel">
+          <div id="author-wrap" class="tooltip-anchor" data-tooltip="Edit the human display name used for new messages">
+            <input id="author-input" type="text" maxlength="60" aria-label="Human display name" />
+          </div>
+          <div class="toolbar-actions composer-side-actions">
+            <button id="mention-button" class="icon-btn tooltip-anchor" data-tooltip="Mention an agent in this thread" aria-label="Mention an agent in this thread">@</button>
+            <button id="upload-button" class="icon-btn tooltip-anchor" data-tooltip="Upload an image from file" aria-label="Upload an image from file">Image</button>
+          </div>
+        </div>
+        <div id="composer-main-panel">
+          <div id="composer-box">
+            <div id="compose-input" contenteditable="true" data-placeholder="Send a message. Type @ to mention an agent."></div>
+            <button id="send-button">Send</button>
+          </div>
+        </div>
+      </div>
+      <input id="image-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden />
+      <div id="mention-menu" class="floating-menu hidden"></div>
+      <div id="reaction-menu" class="floating-menu hidden">
+        <button data-reaction="👍">👍</button>
+        <button data-reaction="❤️">❤️</button>
+        <button data-reaction="🎯">🎯</button>
+        <button data-reaction="🔥">🔥</button>
+        <button data-reaction="👀">👀</button>
+        <button data-reaction="✅">✅</button>
+      </div>
+      <div id="ui-tooltip" class="ui-tooltip hidden" role="tooltip"></div>
+    </section>
+  </div>
+
+  <div id="modal-backdrop" class="hidden">
+    <div id="modal-card">
+      <div id="modal-header">
+        <div id="modal-title">Details</div>
+        <button id="modal-close" class="icon-btn">Close</button>
+      </div>
+      <div id="modal-content"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="hidden"></div>
+
+  <script>
+    (function configureDebugPanel() {
+      const params = new URLSearchParams(window.location.search);
+      const root = document.body;
+      const baseUrl =
+        (params.get("baseUrl") || "").trim().replace(/\/+$/, "") ||
+        `${window.location.protocol}//${window.location.host}`;
+      const threadId = (params.get("threadId") || "").trim();
+      const threadTopic = (params.get("threadTopic") || "").trim();
+      const threadStatus = (params.get("threadStatus") || "discuss").trim();
+      const theme =
+        (params.get("theme") || localStorage.getItem("acb-theme") || "dark").trim().toLowerCase() === "light"
+          ? "light"
+          : "dark";
+
+      root.dataset.baseUrl = baseUrl;
+      root.dataset.threadId = threadId;
+      root.dataset.threadTopic = threadTopic;
+      root.dataset.threadStatus = threadStatus;
+      root.dataset.theme = theme;
+      root.dataset.mermaidScriptUrl = "/static/extension/media/mermaid.min.js";
+    })();
+  </script>
+  <script src="/static/extension/media/vscodeBridgeBrowser.js"></script>
+  <script src="/static/extension/media/messageRenderer.js"></script>
+  <script src="/static/extension/media/chatPanel.js"></script>
+</body>
+</html>
