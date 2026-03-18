@@ -440,6 +440,8 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
     case "msg_post": {
       const threadId = String(args.thread_id || "");
       const author = String(args.author || "human");
+      const authorAgent = getStore().getAgent(author);
+      const authorAgentId = authorAgent?.id;
       const content = String(args.content || "");
       const expectedLastSeq = typeof args.expected_last_seq === "number" ? args.expected_last_seq : undefined;
       const replyToken = typeof args.reply_token === "string" ? args.reply_token : undefined;
@@ -462,12 +464,15 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         });
 
         // Fix #6: Exit wait state for the posting agent
-        if (message.author_id) {
-          getStore().exitWaitState(threadId, message.author_id);
+        if (authorAgentId) {
+          getStore().exitWaitState(threadId, authorAgentId);
         }
 
         // Chain token: issue a fresh reply_token so the agent can post again
-        const chainSync = getStore().issueSyncContext(threadId, message.author_id, "msg_post_chain");
+        if (authorAgentId) {
+          getStore().invalidateReplyTokensForAgent(threadId, authorAgentId);
+        }
+        const chainSync = getStore().issueSyncContext(threadId, authorAgentId, "msg_post_chain");
         const postPayload: Record<string, unknown> = {
           msg_id: message.id,
           seq: message.seq,
@@ -488,6 +493,19 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         }
         return [{ type: "text", text: JSON.stringify(postPayload) }];
       } catch (error) {
+        if (
+          authorAgentId &&
+          (
+            error instanceof MissingSyncFieldsError ||
+            error instanceof SeqMismatchError ||
+            error instanceof ReplyTokenInvalidError ||
+            error instanceof ReplyTokenExpiredError ||
+            error instanceof ReplyTokenReplayError
+          )
+        ) {
+          getStore().invalidateReplyTokensForAgent(threadId, authorAgentId);
+        }
+
         if (error instanceof SeqMismatchError) {
           const detail = {
             error: "SeqMismatchError",
@@ -564,15 +582,15 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         }
         if (error instanceof RateLimitExceeded) {
           return [{ type: "text", text: JSON.stringify({
-            error: "RateLimitExceeded",
-            detail: error.message,
+            error: "Rate limit exceeded",
+            limit: error.limit,
+            window: error.window,
             retry_after: error.retryAfter
           }) }];
         }
         if (error instanceof ContentFilterError) {
           return [{ type: "text", text: JSON.stringify({
-            error: "ContentFilterError",
-            detail: error.message,
+            error: "Content blocked by filter",
             pattern: error.patternName
           }) }];
         }
@@ -1060,22 +1078,24 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
 
       // Phase 1: Agent Identity (Register or Resume)
       let agent;
-      let wasNewAgent = false;
       const agentIdArg = typeof args.agent_id === "string" ? args.agent_id : undefined;
       const tokenArg = typeof args.token === "string" ? args.token : undefined;
 
       if (agentIdArg && tokenArg) {
         // Resume existing agent
-        agent = getStore().resumeAgent(agentIdArg, tokenArg);
-        if (!agent) {
-          return { error: `Failed to resume agent: Invalid agent_id or token` };
+        try {
+          agent = getStore().resumeAgent(agentIdArg, tokenArg);
+        } catch (error) {
+          return [{ type: "text", text: JSON.stringify({
+            error: `Failed to resume agent: ${(error as Error).message}`,
+          }) }];
         }
       }
 
       if (!agent) {
         // Register new agent
-        const ide = typeof args.ide === "string" ? args.ide : "CLI";
-        const model = typeof args.model === "string" ? args.model : "unknown";
+        const ide = typeof args.ide === "string" ? args.ide : "Unknown IDE";
+        const model = typeof args.model === "string" ? args.model : "Unknown Model";
         const description = typeof args.description === "string" ? args.description : undefined;
         const displayName = typeof args.display_name === "string" ? args.display_name : undefined;
         const capabilities = Array.isArray(args.capabilities) ? args.capabilities.map(String) : undefined;
@@ -1089,7 +1109,6 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
           capabilities,
           skills
         });
-        wasNewAgent = true;
       }
 
       // Phase 2: Find or Create Thread
@@ -1118,12 +1137,13 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       const adminId = (settings as any)?.auto_assigned_admin_id || (settings as any)?.creator_admin_id;
       const adminName = (settings as any)?.auto_assigned_admin_name || (settings as any)?.creator_admin_name;
 
-      const isAdmin = threadCreated ? true : (adminId === agent.id);
-      const roleAssignment = isAdmin
-        ? `You are the ADMINISTRATOR for this thread. You are responsible for coordination and task assignment.`
-        : adminId
-          ? `You are a PARTICIPANT in this thread. Please wait for the administrator (@${adminId}) to coordinate or assign you tasks.`
-          : `You are the administrator for thread ${thread.topic}. Coordinate work and keep progress moving.`;
+      const isAdmin = adminId === agent.id;
+      let roleAssignment = "You are a PARTICIPANT in this thread. Please wait for the administrator to coordinate or assign you tasks.";
+      if (adminId) {
+        roleAssignment = isAdmin
+          ? "You are the ADMINISTRATOR for this thread. You are responsible for coordination and task assignment."
+          : `You are a PARTICIPANT in this thread. Please wait for the administrator (@${adminId}) to coordinate or assign you tasks.`;
+      }
 
       const payload = {
         agent: {
@@ -1131,7 +1151,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
           // Keep id for backward compatibility (tests use connected.agent.id)
           id: agent.id,
           name: agent.name,
-          registered: wasNewAgent,
+          registered: true,
           token: agent.token,
           is_administrator: isAdmin,
           role_assignment: roleAssignment

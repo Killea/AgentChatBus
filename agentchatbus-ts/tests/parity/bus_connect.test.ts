@@ -138,7 +138,7 @@ describe('Bus Connect Parity Tests', () => {
         const connectData2 = await connectRes2.json();
         const payload2 = JSON.parse(connectData2[0].text);
         
-        expect(payload2.agent.registered).toBe(false); // Already existed
+        expect(payload2.agent.registered).toBe(true); // Python bus_connect always reports registered=true
         expect(payload2.thread.created).toBe(false);
         expect(payload2.current_seq).toBe(1); // Exactly 1 (the message we posted)
         expect(payload2.messages.length).toBeGreaterThanOrEqual(1); // At least the first message
@@ -339,7 +339,7 @@ describe('Bus Connect Parity Tests', () => {
         // 对应 Python: L247-331
         // 1. Initial bus_connect
         const connectOut = await callMcpTool('bus_connect', {
-            thread_name: "Author Fallback Invalidates",
+            thread_name: "Author Fallback Invalidates " + randomUUID().slice(0, 8),
             ide: "VS Code",
             model: "GPT-5.3-Codex"
         });

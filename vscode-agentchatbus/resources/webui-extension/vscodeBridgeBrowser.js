@@ -107,7 +107,7 @@
   async function loadInitialMessages() {
     const threadId = await resolveThread();
     const envelope = await requestJson(
-      `${bridgeState.baseUrl}/api/threads/${encodeURIComponent(threadId)}/messages?after_seq=0&limit=300&include_system_prompt=1`
+      `${bridgeState.baseUrl}/api/threads/${encodeURIComponent(threadId)}/messages`
     );
     const messages = parseMessagesEnvelope(envelope);
     hostToWebview({ command: "loadMessages", messages });

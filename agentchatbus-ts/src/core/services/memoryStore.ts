@@ -1243,7 +1243,7 @@ export class MemoryStore {
     }
 
     this.pruneExpiredWaitStates(input.threadId);
-    if (!fastReturn && input.agentId) {
+    if (input.agentId) {
       this.enterWaitState(input.threadId, input.agentId, input.timeoutMs || 300_000);
       // Update agent activity to msg_wait
       const agent = this.getAgent(input.agentId);
@@ -1293,8 +1293,11 @@ export class MemoryStore {
               this.upsertAgent(agent);
             }
           }
-          
-          const sync = this.issueSyncContext(input.threadId, input.agentId, "msg_wait_result");
+
+          if (input.agentId) {
+            this.invalidateReplyTokensForAgent(input.threadId, input.agentId);
+          }
+          const sync = this.issueSyncContext(input.threadId, input.agentId, "msg_wait");
           return {
             messages: this.projectMessagesForAgent(messages),
             current_seq: sync.current_seq,
@@ -1310,8 +1313,9 @@ export class MemoryStore {
         if (fastReturn) {
           if (input.agentId) {
             this.exitWaitState(input.threadId, input.agentId);
+            this.invalidateReplyTokensForAgent(input.threadId, input.agentId);
           }
-          const sync = this.issueSyncContext(input.threadId, input.agentId, "sync_only");
+          const sync = this.issueSyncContext(input.threadId, input.agentId, "msg_wait");
           return {
             messages: [],
             current_seq: sync.current_seq,
@@ -1329,7 +1333,8 @@ export class MemoryStore {
           if (refreshNow) {
             this.exitWaitState(input.threadId, input.agentId);
             this.clearRefreshRequest(input.threadId, input.agentId);
-            const sync = this.issueSyncContext(input.threadId, input.agentId, "sync_only");
+            this.invalidateReplyTokensForAgent(input.threadId, input.agentId);
+            const sync = this.issueSyncContext(input.threadId, input.agentId, "msg_wait");
             return {
               messages: [],
               current_seq: sync.current_seq,
@@ -1615,49 +1620,50 @@ export class MemoryStore {
     }
 
     // Strict Sync Logic (UP-14/15/16)
-    if (input.expectedLastSeq !== undefined || input.replyToken !== undefined) {
-      if (input.expectedLastSeq === undefined || input.replyToken === undefined) {
-        // Match Python: set refresh_request for all sync errors
-        if (agent) this.setRefreshRequest(thread.id, agent.id, "MISSING_SYNC_FIELDS");
-        throw new MissingSyncFieldsError(input.expectedLastSeq === undefined ? ["expected_last_seq"] : ["reply_token"]);
-      }
-
-      const token = this.syncTokens.get(input.replyToken);
-      if (!token || token.threadId !== input.threadId) {
-        if (agent) this.setRefreshRequest(thread.id, agent.id, "TOKEN_INVALID");
-        throw new ReplyTokenInvalidError();
-      }
-
-      // Enforce agent binding only when author resolves to a registered agent.
-      // Python parity (crud.py): if token_agent_id and author_id and token_agent_id != author_id -> invalid.
-      if (token.agentId && agent?.id && token.agentId !== agent.id) {
-        if (agent) this.setRefreshRequest(thread.id, agent.id, "TOKEN_INVALID");
-        throw new ReplyTokenInvalidError();
-      }
-
-      if (token.status === "consumed") {
-        if (agent) this.setRefreshRequest(thread.id, agent.id, "TOKEN_REPLAY");
-        throw new ReplyTokenReplayError(token.consumedAt ? new Date(token.consumedAt).toISOString() : undefined);
-      }
-
-      if (token.expiresAt < Date.now()) {
-        if (agent) this.setRefreshRequest(thread.id, agent.id, "TOKEN_EXPIRED");
-        throw new ReplyTokenExpiredError(new Date(token.expiresAt).toISOString());
-      }
-
-      // Check seq tolerance (Python logic: new_messages_count > SEQ_TOLERANCE)
-      const newMessagesCount = latestSeq - input.expectedLastSeq;
-      if (input.expectedLastSeq !== undefined && newMessagesCount > MemoryStore.SEQ_TOLERANCE) {
-        if (agent) {
-          this.invalidateReplyTokensForAgent(thread.id, agent.id);
-          this.setRefreshRequest(thread.id, agent.id, "SEQ_MISMATCH");
-        }
-        const newMsgs = this.getMessages(thread.id, input.expectedLastSeq);
-        throw new SeqMismatchError(input.expectedLastSeq, latestSeq, this.projectMessagesForAgent(newMsgs));
-      }
-
-      this.consumeReplyToken(token.token);
+    const missingFields: string[] = [];
+    if (input.expectedLastSeq === undefined) {
+      missingFields.push("expected_last_seq");
     }
+    if (!input.replyToken) {
+      missingFields.push("reply_token");
+    }
+    if (missingFields.length > 0) {
+      if (agent) this.setRefreshRequest(thread.id, agent.id, "MISSING_SYNC_FIELDS");
+      throw new MissingSyncFieldsError(missingFields);
+    }
+
+    const token = this.syncTokens.get(input.replyToken);
+    if (!token || token.threadId !== input.threadId) {
+      if (agent) this.setRefreshRequest(thread.id, agent.id, "TOKEN_INVALID");
+      throw new ReplyTokenInvalidError();
+    }
+
+    // Enforce agent binding only when author resolves to a registered agent.
+    // Python parity (crud.py): if token_agent_id and author_id and token_agent_id != author_id -> invalid.
+    if (token.agentId && agent?.id && token.agentId !== agent.id) {
+      if (agent) this.setRefreshRequest(thread.id, agent.id, "TOKEN_INVALID");
+      throw new ReplyTokenInvalidError();
+    }
+
+    if (token.status === "consumed") {
+      if (agent) this.setRefreshRequest(thread.id, agent.id, "TOKEN_REPLAY");
+      throw new ReplyTokenReplayError(token.consumedAt ? new Date(token.consumedAt).toISOString() : undefined);
+    }
+
+    // Token expiration is intentionally not enforced to match Python behavior.
+
+    // Check seq tolerance (Python logic: new_messages_count > SEQ_TOLERANCE)
+    const newMessagesCount = latestSeq - input.expectedLastSeq;
+    if (newMessagesCount > MemoryStore.SEQ_TOLERANCE) {
+      if (agent) {
+        this.invalidateReplyTokensForAgent(thread.id, agent.id);
+        this.setRefreshRequest(thread.id, agent.id, "SEQ_MISMATCH");
+      }
+      const newMsgs = this.getMessages(thread.id, input.expectedLastSeq);
+      throw new SeqMismatchError(input.expectedLastSeq, latestSeq, this.projectMessagesForAgent(newMsgs));
+    }
+
+    this.consumeReplyToken(token.token);
 
     // Reply-to validation (UP-14)
     if (input.replyToMsgId) {
