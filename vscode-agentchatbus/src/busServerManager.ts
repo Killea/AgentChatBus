@@ -927,6 +927,7 @@ export class BusServerManager {
         const serverUrl = this.getServerUrl();
         const config = vscode.workspace.getConfiguration('agentchatbus');
         const msgWaitMinTimeoutMs = Math.max(0, Math.floor(config.get<number>('msgWaitMinTimeoutMs', 60000)));
+        const enforceMsgWaitMinTimeout = Boolean(config.get<boolean>('enforceMsgWaitMinTimeout', false));
         const parsedUrl = new URL(serverUrl);
         const port = Number(parsedUrl.port || (parsedUrl.protocol === 'https:' ? '443' : '80'));
         const dbPath = path.join(this.globalStoragePath, 'bus-ts.db');
@@ -953,6 +954,7 @@ export class BusServerManager {
                 AGENTCHATBUS_CONFIG_FILE: configFile,
                 AGENTCHATBUS_WEB_UI_DIR: webUiDir,
                 AGENTCHATBUS_WAIT_MIN_TIMEOUT_MS: String(msgWaitMinTimeoutMs),
+                AGENTCHATBUS_ENFORCE_MSG_WAIT_MIN_TIMEOUT: enforceMsgWaitMinTimeout ? '1' : '0',
             },
             launchMode: 'bundled-ts-service',
             resolvedBy: 'Bundled agentchatbus-ts runtime packaged with the VS Code extension.',

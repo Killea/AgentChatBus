@@ -11,6 +11,10 @@ export interface AppConfig {
   // TS-only improvement: minimum wait timeout clamp (ms) for msg_wait blocking path.
   // This intentionally diverges from Python parity to reduce short polling churn.
   msgWaitMinTimeoutMs: number;
+  // TS-only improvement: when enabled, reject non-quick-return msg_wait calls
+  // whose timeout_ms is lower than msgWaitMinTimeoutMs (instead of clamping).
+  // Python backend intentionally does not implement this strict gate yet.
+  enforceMsgWaitMinTimeout: boolean;
   replyTokenLeaseSeconds: number;
   seqTolerance: number;
   seqMismatchMaxMessages: number;
@@ -28,7 +32,7 @@ export interface AppConfig {
  * Controls whether handoff_target, stop_reason, and priority fields
  * are returned to agents or stripped from responses.
  */
-export const BUS_VERSION = "0.1.98";
+export const BUS_VERSION = "0.1.106";
 const DEFAULT_MSG_WAIT_MIN_TIMEOUT_MS = process.env.NODE_ENV === "test" ? "0" : "60000";
 
 function parseBoolLike(value: unknown, defaultValue: boolean): boolean {
@@ -81,26 +85,26 @@ const persistedConfigForFlags = (() => {
       const content = readFileSync(CONFIG_FILE, "utf-8");
       return JSON.parse(content) as Record<string, unknown>;
     }
-  } catch {}
+  } catch { }
   return {} as Record<string, unknown>;
 })();
 
 export const ENABLE_HANDOFF_TARGET = parseBoolLike(
   process.env.AGENTCHATBUS_ENABLE_HANDOFF_TARGET
-    ?? persistedConfigForFlags.ENABLE_HANDOFF_TARGET
-    ?? "false",
+  ?? persistedConfigForFlags.ENABLE_HANDOFF_TARGET
+  ?? "false",
   false
 );
 export const ENABLE_STOP_REASON = parseBoolLike(
   process.env.AGENTCHATBUS_ENABLE_STOP_REASON
-    ?? persistedConfigForFlags.ENABLE_STOP_REASON
-    ?? "false",
+  ?? persistedConfigForFlags.ENABLE_STOP_REASON
+  ?? "false",
   false
 );
 export const ENABLE_PRIORITY = parseBoolLike(
   process.env.AGENTCHATBUS_ENABLE_PRIORITY
-    ?? persistedConfigForFlags.ENABLE_PRIORITY
-    ?? "false",
+  ?? persistedConfigForFlags.ENABLE_PRIORITY
+  ?? "false",
   false
 );
 
@@ -126,12 +130,12 @@ function getPersistedConfig(): Record<string, unknown> {
 export function saveConfigDict(newData: Record<string, unknown>): void {
   const current = getPersistedConfig();
   const merged = { ...current, ...newData };
-  
+
   // Prevent saving transient/show-only flags by default
   if ("SHOW_AD" in merged) {
     delete merged.SHOW_AD;
   }
-  
+
   try {
     mkdirSync(dirname(CONFIG_FILE), { recursive: true });
     writeFileSync(CONFIG_FILE, JSON.stringify(merged, null, 2), "utf-8");
@@ -162,6 +166,15 @@ export function getConfigDict(): Record<string, unknown> {
         persisted.MSG_WAIT_MIN_TIMEOUT_MS,
         DEFAULT_MSG_WAIT_MIN_TIMEOUT_MS
       )
+    ),
+    // TS-only strict mode:
+    // When true, non-quick-return waits below MSG_WAIT_MIN_TIMEOUT_MS are rejected.
+    // Python parity is intentionally not required for this enhancement.
+    ENFORCE_MSG_WAIT_MIN_TIMEOUT: parseBoolLike(
+      process.env.AGENTCHATBUS_ENFORCE_MSG_WAIT_MIN_TIMEOUT
+      ?? persisted.ENFORCE_MSG_WAIT_MIN_TIMEOUT
+      ?? "false",
+      false
     ),
     REPLY_TOKEN_LEASE_SECONDS: Number(
       pickEnvOrPersisted(
@@ -226,6 +239,16 @@ export function getConfig(): AppConfig {
         persisted.MSG_WAIT_MIN_TIMEOUT_MS,
         DEFAULT_MSG_WAIT_MIN_TIMEOUT_MS
       )
+    ),
+    // TS-only strict mode (non-Python parity by design).
+    // This remains operator-controlled. Do not hardcode it on, otherwise
+    // non-quick-return msg_wait calls will be rejected unexpectedly and tests,
+    // bundled runtime behavior, and UI toggles will drift apart.
+    enforceMsgWaitMinTimeout: parseBoolLike(
+      process.env.AGENTCHATBUS_ENFORCE_MSG_WAIT_MIN_TIMEOUT
+        ?? persisted.ENFORCE_MSG_WAIT_MIN_TIMEOUT
+        ?? "false",
+      false
     ),
     replyTokenLeaseSeconds: Number(
       pickEnvOrPersisted(

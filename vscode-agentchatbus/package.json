@@ -7,7 +7,7 @@
   "name": "agentchatbus",
   "displayName": "AgentChatBus",
   "description": "AgentChatBus client for VS Code",
-  "version": "0.1.98",
+  "version": "0.1.106",
   "icon": "resources/bus_128.png",
   "engines": {
     "vscode": "^1.105.0"
@@ -88,6 +88,11 @@
           "default": 60000,
           "minimum": 0,
           "description": "Minimum blocking wait timeout (milliseconds) applied by bundled server msg_wait. Quick-return recovery paths are unaffected. Restart server to apply. Search keyword: AgentChatBus."
+        },
+        "agentchatbus.enforceMsgWaitMinTimeout": {
+          "type": "boolean",
+          "default": false,
+          "description": "Require clients to respect the server minimum timeout for non-quick-return msg_wait. When enabled, too-short waits are rejected (not clamped) and clients must retry msg_wait. Restart bundled server to apply. Search keyword: AgentChatBus."
         }
       }
     },

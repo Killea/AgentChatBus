@@ -96,6 +96,14 @@ export function createHttpServer() {
 
   fastify.get("/health", async () => {
     const ideStatus = store.getIdeStatus();
+    const cfg = getConfig();
+    const startupMode = process.env.AGENTCHATBUS_OWNER_BOOT_TOKEN
+      ? "bundled-ts-service"
+      : (ideStatus.ownership_assignable === true
+        ? "external-service-extension-managed"
+        : (ideStatus.ownership_assignable === false
+          ? "external-service-manual"
+          : "external-service-unknown"));
     return {
       status: "ok",
       service: "AgentChatBus",
@@ -103,6 +111,17 @@ export function createHttpServer() {
       version: BUS_VERSION,
       runtime: `node ${process.version}`,
       transport: "http+sse",
+      startup_mode: startupMode,
+      // TS-only diagnostics enhancement:
+      // Python backend may omit this shape. Web clients should treat it as optional.
+      // This reports the currently effective msg_wait minimum-wait policy.
+      wait_policy: {
+        msg_wait_min_timeout_ms: Math.max(0, Number(cfg.msgWaitMinTimeoutMs || 0)),
+        enforce_min_timeout: Boolean(cfg.enforceMsgWaitMinTimeout),
+        behavior: cfg.enforceMsgWaitMinTimeout
+          ? "reject_below_min_non_quick_return"
+          : "clamp_below_min_non_quick_return",
+      },
       management: {
         ownership_assignable: Boolean(ideStatus.ownership_assignable),
         owner_instance_id: ideStatus.owner_instance_id ?? null,
@@ -887,6 +906,7 @@ export function createHttpServer() {
       "AGENT_HEARTBEAT_TIMEOUT", 
       "MSG_WAIT_TIMEOUT", 
       "MSG_WAIT_MIN_TIMEOUT_MS",
+      "ENFORCE_MSG_WAIT_MIN_TIMEOUT",
       "ENABLE_HANDOFF_TARGET",
       "ENABLE_STOP_REASON", 
       "ENABLE_PRIORITY",

@@ -4,6 +4,7 @@ type AgentChatBusSettings = {
     serverUrl: string;
     autoStartBusServer: boolean;
     msgWaitMinTimeoutMs: number;
+    enforceMsgWaitMinTimeout: boolean;
     scopeLabel: string;
 };
 
@@ -14,6 +15,7 @@ type WebviewMessage =
             serverUrl?: string;
             autoStartBusServer?: boolean;
             msgWaitMinTimeoutMs?: number | string;
+            enforceMsgWaitMinTimeout?: boolean;
         };
     }
     | { command: 'openVscodeSettings' };
@@ -81,30 +83,40 @@ export class SettingsPanel {
         }
 
         const config = vscode.workspace.getConfiguration('agentchatbus');
-        await config.update('serverUrl', serverUrl, this.resolveConfigurationTarget('serverUrl'));
-        await config.update(
-            'autoStartBusServer',
-            Boolean(payload.autoStartBusServer),
-            this.resolveConfigurationTarget('autoStartBusServer')
-        );
+        const target = this.resolvePreferredConfigurationTarget();
         const rawMinTimeout = payload.msgWaitMinTimeoutMs;
-        const parsedMinTimeout = Number(rawMinTimeout);
+        const parsedMinTimeout = Number(String(rawMinTimeout ?? '').trim());
         if (!Number.isFinite(parsedMinTimeout) || parsedMinTimeout < 0) {
             void vscode.window.showErrorMessage('msg_wait minimum timeout must be a non-negative number.');
             return;
         }
+
+        await config.update('serverUrl', serverUrl, target);
+        await config.update(
+            'autoStartBusServer',
+            Boolean(payload.autoStartBusServer),
+            target
+        );
         await config.update(
             'msgWaitMinTimeoutMs',
             Math.floor(parsedMinTimeout),
-            this.resolveConfigurationTarget('msgWaitMinTimeoutMs')
+            target
+        );
+        const enforceMin = Boolean(payload.enforceMsgWaitMinTimeout);
+        await config.update(
+            'enforceMsgWaitMinTimeout',
+            enforceMin,
+            target
         );
 
-        void vscode.window.showInformationMessage('AgentChatBus settings saved to VS Code configuration.');
+        void vscode.window.showInformationMessage(
+            `AgentChatBus settings saved. Strict minimum wait enforcement: ${enforceMin ? 'ON' : 'OFF'}.`
+        );
         await this.render();
     }
 
     private resolveConfigurationTarget(
-        section: 'serverUrl' | 'autoStartBusServer' | 'msgWaitMinTimeoutMs'
+        section: 'serverUrl' | 'autoStartBusServer' | 'msgWaitMinTimeoutMs' | 'enforceMsgWaitMinTimeout'
     ): vscode.ConfigurationTarget {
         const config = vscode.workspace.getConfiguration('agentchatbus');
         const inspected = config.inspect(section);
@@ -117,19 +129,33 @@ export class SettingsPanel {
         return vscode.ConfigurationTarget.Global;
     }
 
+    private resolvePreferredConfigurationTarget(): vscode.ConfigurationTarget {
+        const settings = this.getSettings();
+        if (settings.scopeLabel === 'Workspace Folder') {
+            return vscode.ConfigurationTarget.WorkspaceFolder;
+        }
+        if (settings.scopeLabel === 'Workspace') {
+            return vscode.ConfigurationTarget.Workspace;
+        }
+        return vscode.ConfigurationTarget.Global;
+    }
+
     private getSettings(): AgentChatBusSettings {
         const config = vscode.workspace.getConfiguration('agentchatbus');
         const serverUrlInspect = config.inspect<string>('serverUrl');
         const autoStartInspect = config.inspect<boolean>('autoStartBusServer');
         const msgWaitMinInspect = config.inspect<number>('msgWaitMinTimeoutMs');
+        const enforceMinInspect = config.inspect<boolean>('enforceMsgWaitMinTimeout');
 
         const scopeLabel = serverUrlInspect?.workspaceFolderValue !== undefined
             || autoStartInspect?.workspaceFolderValue !== undefined
             || msgWaitMinInspect?.workspaceFolderValue !== undefined
+            || enforceMinInspect?.workspaceFolderValue !== undefined
             ? 'Workspace Folder'
             : serverUrlInspect?.workspaceValue !== undefined
                 || autoStartInspect?.workspaceValue !== undefined
                 || msgWaitMinInspect?.workspaceValue !== undefined
+                || enforceMinInspect?.workspaceValue !== undefined
                 ? 'Workspace'
                 : 'User';
 
@@ -137,6 +163,7 @@ export class SettingsPanel {
             serverUrl: config.get<string>('serverUrl', 'http://127.0.0.1:39765'),
             autoStartBusServer: config.get<boolean>('autoStartBusServer', true),
             msgWaitMinTimeoutMs: Math.max(0, Math.floor(config.get<number>('msgWaitMinTimeoutMs', 60000))),
+            enforceMsgWaitMinTimeout: config.get<boolean>('enforceMsgWaitMinTimeout', false),
             scopeLabel,
         };
     }
@@ -150,6 +177,7 @@ export class SettingsPanel {
         const escapedServerUrl = this.escapeHtml(settings.serverUrl);
         const checked = settings.autoStartBusServer ? 'checked' : '';
         const msgWaitMinTimeoutMs = this.escapeHtml(String(settings.msgWaitMinTimeoutMs));
+        const enforceMinChecked = settings.enforceMsgWaitMinTimeout ? 'checked' : '';
 
         return `<!DOCTYPE html>
 <html lang="en">
@@ -259,6 +287,11 @@ export class SettingsPanel {
         <label for="msgWaitMinTimeoutMs">msg_wait Minimum Blocking Timeout (ms)</label>
         <input id="msgWaitMinTimeoutMs" type="text" value="${msgWaitMinTimeoutMs}" spellcheck="false" />
         <div class="hint">Server may enforce this minimum for blocking waits. Quick-return recovery paths remain immediate. Bundled server restart required after change.</div>
+        <div class="checkbox-row">
+            <input id="enforceMsgWaitMinTimeout" type="checkbox" ${enforceMinChecked} />
+            <label for="enforceMsgWaitMinTimeout">Must enforce server minimum wait time</label>
+        </div>
+        <div class="hint">TS enhancement: when enabled, non-quick-return msg_wait calls below the minimum are rejected with a retry instruction (instead of being clamped).</div>
         <div class="actions">
             <button class="primary" id="saveButton">Save to VS Code Settings</button>
             <button class="secondary" id="openButton">Open VS Code Settings</button>
@@ -273,7 +306,8 @@ export class SettingsPanel {
                 payload: {
                     serverUrl: document.getElementById('serverUrl').value,
                     autoStartBusServer: document.getElementById('autoStartBusServer').checked,
-                    msgWaitMinTimeoutMs: document.getElementById('msgWaitMinTimeoutMs').value
+                    msgWaitMinTimeoutMs: document.getElementById('msgWaitMinTimeoutMs').value,
+                    enforceMsgWaitMinTimeout: document.getElementById('enforceMsgWaitMinTimeout').checked
                 }
             });
         });

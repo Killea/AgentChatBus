@@ -33,12 +33,14 @@ describe("msg_wait minimum timeout (TS-only) with quick-return preserved", () =>
   });
 
   beforeEach(() => {
+    process.env.AGENTCHATBUS_ENFORCE_MSG_WAIT_MIN_TIMEOUT = "0";
     if (memoryStoreInstance) {
       memoryStoreInstance.reset();
     }
   });
 
   it("Agent A waits longer than requested short timeout and receives Agent B message posted later", async () => {
+    process.env.AGENTCHATBUS_ENFORCE_MSG_WAIT_MIN_TIMEOUT = "0";
     const server = createHttpServer();
 
     const aConnected = await callMcpTool(server, "bus_connect", {
@@ -89,6 +91,7 @@ describe("msg_wait minimum timeout (TS-only) with quick-return preserved", () =>
   });
 
   it("keeps quick-return behavior for behind-agent recovery even with short timeout", async () => {
+    process.env.AGENTCHATBUS_ENFORCE_MSG_WAIT_MIN_TIMEOUT = "1";
     const server = createHttpServer();
     const store = getMemoryStore();
 
@@ -131,6 +134,62 @@ describe("msg_wait minimum timeout (TS-only) with quick-return preserved", () =>
     expect(Array.isArray(waitPayload.messages)).toBe(true);
     expect(waitPayload.messages.length).toBeGreaterThan(0);
     expect(elapsedMs).toBeLessThan(60);
+
+    await server.close();
+  });
+
+  it("rejects too-short non-quick-return waits when strict enforcement is enabled", async () => {
+    process.env.AGENTCHATBUS_ENFORCE_MSG_WAIT_MIN_TIMEOUT = "1";
+    const server = createHttpServer();
+
+    const connected = await callMcpTool(server, "bus_connect", {
+      thread_name: "strict-min-reject",
+      ide: "VSCode",
+      model: "Strict-Agent",
+    });
+
+    const waitPayload = await callMcpTool(server, "msg_wait", {
+      thread_id: String(connected.thread.thread_id),
+      after_seq: Number(connected.current_seq),
+      agent_id: String(connected.agent.agent_id),
+      token: String(connected.agent.token),
+      timeout_ms: 10,
+      return_format: "json",
+    });
+
+    expect(waitPayload.error).toBe("MsgWaitTimeoutTooShort");
+    expect(waitPayload.action).toBe("RETRY_MSG_WAIT_WITH_MIN_TIMEOUT");
+    expect(waitPayload.quick_return_eligible).toBe(false);
+    expect(waitPayload.min_timeout_ms).toBe(60);
+    expect(waitPayload.requested_timeout_ms).toBe(10);
+
+    await server.close();
+  });
+
+  it("msg_post success stays focused on sync payload without forcing the next action", async () => {
+    const server = createHttpServer();
+
+    const connected = await callMcpTool(server, "bus_connect", {
+      thread_name: "post-success-reminder",
+      ide: "VSCode",
+      model: "Poster-Agent",
+    });
+
+    const postPayload = await callMcpTool(server, "msg_post", {
+      thread_id: String(connected.thread.thread_id),
+      author: String(connected.agent.agent_id),
+      content: "hello reminder",
+      expected_last_seq: Number(connected.current_seq),
+      reply_token: String(connected.reply_token),
+    });
+
+    expect(postPayload.msg_id).toBeTypeOf("string");
+    expect(postPayload.seq).toBeTypeOf("number");
+    expect(postPayload.reply_token).toBeTypeOf("string");
+    expect(postPayload.current_seq).toBeTypeOf("number");
+    expect(postPayload.next_action).toBeUndefined();
+    expect(postPayload.next_action_detail).toBeUndefined();
+    expect(postPayload.REMINDER).toBeUndefined();
 
     await server.close();
   });

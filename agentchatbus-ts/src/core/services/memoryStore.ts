@@ -17,7 +17,7 @@ import { eventBus } from "../../shared/eventBus.js";
 import { generateAgentEmoji } from "../../main.js";
 import { registerStore } from "./storeSingleton.js";
 import { checkContentOrThrow, ContentFilterError } from "./contentFilter.js";
-import { ENABLE_HANDOFF_TARGET, ENABLE_STOP_REASON, ENABLE_PRIORITY, getConfig } from "../config/env.js";
+import { BUS_VERSION, ENABLE_HANDOFF_TARGET, ENABLE_STOP_REASON, ENABLE_PRIORITY, getConfig } from "../config/env.js";
 
 /** Constant-time string comparison to prevent timing attacks on tokens */
 function safeCompare(a: string, b: string): boolean {
@@ -370,8 +370,36 @@ export class MemoryStore {
       agentsOnline = row.count;
     } catch {}
 
+    const ideStatus = this.getIdeStatus();
+    const cfg = getConfig();
+    const startupMode = process.env.AGENTCHATBUS_OWNER_BOOT_TOKEN
+      ? "bundled-ts-service"
+      : (ideStatus.ownership_assignable === true
+        ? "external-service-extension-managed"
+        : (ideStatus.ownership_assignable === false
+          ? "external-service-manual"
+          : "external-service-unknown"));
+
     return {
       engine: "node",
+      version: BUS_VERSION,
+      runtime: `node ${process.version}`,
+      transport: "http+sse",
+      startup_mode: startupMode,
+      // TS-only diagnostics enhancement.
+      // Python backend may not include this object; UI must handle absence.
+      wait_policy: {
+        msg_wait_min_timeout_ms: Math.max(0, Number(cfg.msgWaitMinTimeoutMs || 0)),
+        enforce_min_timeout: Boolean(cfg.enforceMsgWaitMinTimeout),
+        behavior: cfg.enforceMsgWaitMinTimeout
+          ? "reject_below_min_non_quick_return"
+          : "clamp_below_min_non_quick_return",
+      },
+      management: {
+        ownership_assignable: Boolean(ideStatus.ownership_assignable),
+        owner_instance_id: ideStatus.owner_instance_id ?? null,
+        registered_sessions_count: ideStatus.registered_sessions_count ?? 0,
+      },
       uptime_seconds: (Date.now() - this.startTime) / 1000,
       started_at: new Date(this.startTime).toISOString(),
       schema_version: "1.0",

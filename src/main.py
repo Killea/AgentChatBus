@@ -213,6 +213,24 @@ def _trigger_process_force_shutdown() -> None:
 
 # Server start time — set in lifespan(), used by /api/metrics (UP-22)
 _start_time: datetime | None = None
+
+
+def _derive_startup_mode(ide_status: dict[str, object] | None) -> str:
+    """Infer startup mode shape aligned with TS diagnostics labels.
+
+    This classification is used for observability payloads (/health, /api/metrics)
+    so WebUI and extensions can present consistent mode badges.
+    """
+    if os.getenv("AGENTCHATBUS_OWNER_BOOT_TOKEN"):
+        return "bundled-ts-service"
+    if not isinstance(ide_status, dict):
+        return "external-service-unknown"
+    ownership_assignable = ide_status.get("ownership_assignable")
+    if ownership_assignable is True:
+        return "external-service-extension-managed"
+    if ownership_assignable is False:
+        return "external-service-manual"
+    return "external-service-unknown"
 _ide_ownership = IdeOwnershipManager(os.getenv("AGENTCHATBUS_OWNER_BOOT_TOKEN"))
 
 
@@ -2916,9 +2934,21 @@ async def get_metrics():
         uptime_seconds = round(delta.total_seconds(), 1)
         started_at = _start_time.isoformat()
 
+    ide_status = _ide_ownership.snapshot(instance_id=None, session_token=None)
+    startup_mode = _derive_startup_mode(ide_status)
+
     return {
         "status": "ok",
         "engine": "python",
+        "version": BUS_VERSION,
+        "runtime": f"python {sys.version.split()[0]}",
+        "transport": "http+sse",
+        "startup_mode": startup_mode,
+        "management": {
+            "ownership_assignable": bool(ide_status.get("ownership_assignable")),
+            "owner_instance_id": ide_status.get("owner_instance_id"),
+            "registered_sessions_count": int(ide_status.get("registered_sessions_count") or 0),
+        },
         "uptime_seconds": uptime_seconds,
         "started_at": started_at,
         **metrics,
@@ -2965,6 +2995,7 @@ async def api_search(
 @app.get("/health")
 async def health():
     ide_status = _ide_ownership.snapshot(instance_id=None, session_token=None)
+    startup_mode = _derive_startup_mode(ide_status)
     return {
         "status": "ok",
         "service": "AgentChatBus",
@@ -2972,6 +3003,7 @@ async def health():
         "version": BUS_VERSION,
         "runtime": f"python {sys.version.split()[0]}",
         "transport": "http+sse",
+        "startup_mode": startup_mode,
         "management": {
             "ownership_assignable": bool(ide_status.get("ownership_assignable")),
             "owner_instance_id": ide_status.get("owner_instance_id"),

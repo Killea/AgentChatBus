@@ -417,6 +417,69 @@
       let _cacheTs = 0;
       const CACHE_TTL = 30000; // 30s
 
+      function _modeMeta(mode) {
+        switch ((mode || '').toLowerCase()) {
+          case 'bundled-ts-service':
+            return { emoji: '✅', label: 'bundled-ts-service', desc: 'Started by this extension' };
+          case 'external-service-extension-managed':
+            return { emoji: '🧩', label: 'external-service-extension-managed', desc: 'External service owned by extension session' };
+          case 'external-service-manual':
+            return { emoji: '👤', label: 'external-service-manual', desc: 'External service started manually' };
+          case 'external-service-unknown':
+            return { emoji: '📡', label: 'external-service-unknown', desc: 'External service, ownership unknown' };
+          case 'external-service':
+            return { emoji: '🔗', label: 'external-service', desc: 'Legacy external-service mode' };
+          default:
+            return { emoji: '🔎', label: mode || 'unknown', desc: 'Unclassified startup mode' };
+        }
+      }
+
+      function _engineBanner(engine) {
+        const e = (engine || '').toLowerCase();
+        if (e === 'python') return 'Powered by Python';
+        if (e === 'node') return 'Built with Node.js';
+        return 'Runtime Engine';
+      }
+
+      function _resolveStartupMode(d) {
+        if (d?.startup_mode) return d.startup_mode;
+        const assignable = d?.management?.ownership_assignable;
+        if (assignable === true) return 'external-service-extension-managed';
+        if (assignable === false) return 'external-service-manual';
+        return 'external-service-unknown';
+      }
+
+      function _mergeDiagnostics(metrics, health) {
+        const merged = { ...(metrics || {}), ...(health || {}) };
+        merged.management = { ...(metrics?.management || {}), ...(health?.management || {}) };
+        merged.startup_mode = _resolveStartupMode(merged);
+        return merged;
+      }
+
+      function _managedByText(d) {
+        const mode = _resolveStartupMode(d);
+        const owner = d?.management?.owner_instance_id;
+        const sessions = d?.management?.registered_sessions_count;
+        if (mode === 'bundled-ts-service') return 'This extension (bundled owner)';
+        if (mode === 'external-service-extension-managed') {
+          if (owner) return `Extension-managed owner: ${owner}`;
+          return 'Extension-managed external service';
+        }
+        if (mode === 'external-service-manual') return 'Manual operator / CLI';
+        const sessionsText = Number.isFinite(Number(sessions)) ? `, sessions=${sessions}` : '';
+        return owner ? `External owner: ${owner}${sessionsText}` : 'External service (owner not reported)';
+      }
+
+      async function _fetchDiagnostics() {
+        const [metrics, health] = await Promise.allSettled([
+          window.AcbApi.api('/api/metrics'),
+          window.AcbApi.api('/health'),
+        ]);
+        const metricsData = metrics.status === 'fulfilled' ? metrics.value : null;
+        const healthData = health.status === 'fulfilled' ? health.value : null;
+        return _mergeDiagnostics(metricsData, healthData);
+      }
+
       function _updateBackendIcon(engine) {
         const el = document.getElementById('backend-icon');
         if (!el) return;
@@ -431,8 +494,8 @@
         el.style.display = 'flex';
       }
 
-      // Initial fetch to show engine icon
-      window.AcbApi.api('/api/metrics').then(m => {
+      // Initial fetch to show engine icon and diagnostics context
+      _fetchDiagnostics().then(m => {
         if (m?.engine) _updateBackendIcon(m.engine);
         _metricsCache = m;
         _cacheTs = Date.now();
@@ -466,6 +529,27 @@
           .join('');
 
         const rate = m.messages?.rate || {};
+        const mode = _modeMeta(_resolveStartupMode(m));
+        const engine = m?.engine || 'unknown';
+        const runtime = m?.runtime || '—';
+        const version = m?.version || '—';
+        const transport = m?.transport || '—';
+        const managedBy = _managedByText(m);
+        const ownershipAssignable = m?.management?.ownership_assignable;
+        const ownerId = m?.management?.owner_instance_id || '—';
+        const sessions = m?.management?.registered_sessions_count ?? '—';
+        const waitPolicy = m?.wait_policy || {};
+        const msgWaitMinMs = Number.isFinite(Number(waitPolicy.msg_wait_min_timeout_ms))
+          ? Number(waitPolicy.msg_wait_min_timeout_ms)
+          : '—';
+        const enforceMinTimeout = waitPolicy.enforce_min_timeout === true;
+        const policyBehavior = typeof waitPolicy.behavior === 'string'
+          ? waitPolicy.behavior
+          : (enforceMinTimeout ? 'reject_below_min_non_quick_return' : 'clamp_below_min_non_quick_return');
+        const policyLabel = enforceMinTimeout ? 'Strict Reject' : 'Soft Clamp';
+        const ownershipText = ownershipAssignable === true
+          ? 'Yes'
+          : (ownershipAssignable === false ? 'No' : 'Unknown');
 
         return `
           <div class="srv-tip-card">
@@ -473,6 +557,51 @@
               ${dot}
               <span class="srv-tip-title">AgentChatBus</span>
               <span class="srv-tip-state">${stateLabel}</span>
+            </div>
+            <div class="srv-tip-divider"></div>
+            <div class="srv-tip-row">
+              <span class="srv-tip-key">Engine</span>
+              <span class="srv-tip-val">${_engineBanner(engine)}</span>
+            </div>
+            <div class="srv-tip-row srv-tip-row--sub">
+              <span class="srv-tip-key">Runtime</span>
+              <span class="srv-tip-val">${runtime}</span>
+            </div>
+            <div class="srv-tip-row">
+              <span class="srv-tip-key">Version</span>
+              <span class="srv-tip-val">${version}</span>
+            </div>
+            <div class="srv-tip-row srv-tip-row--sub">
+              <span class="srv-tip-key">Transport</span>
+              <span class="srv-tip-val">${transport}</span>
+            </div>
+            <div class="srv-tip-row">
+              <span class="srv-tip-key">Startup Mode</span>
+              <span class="srv-tip-val">${mode.emoji} ${mode.label}</span>
+            </div>
+            <div class="srv-tip-row srv-tip-row--sub">
+              <span class="srv-tip-key">Managed by</span>
+              <span class="srv-tip-val">${managedBy}</span>
+            </div>
+            <div class="srv-tip-row srv-tip-row--sub">
+              <span class="srv-tip-key">Ownership</span>
+              <span class="srv-tip-val">assignable=${ownershipText}, sessions=${sessions}</span>
+            </div>
+            <div class="srv-tip-row srv-tip-row--sub">
+              <span class="srv-tip-key">Owner ID</span>
+              <span class="srv-tip-val">${ownerId}</span>
+            </div>
+            <div class="srv-tip-row srv-tip-row--sub">
+              <span class="srv-tip-key">Modes</span>
+              <span class="srv-tip-val">✅ bundled | 🧩 ext-managed | 👤 manual | 📡 external-unknown</span>
+            </div>
+            <div class="srv-tip-row">
+              <span class="srv-tip-key">msg_wait Min</span>
+              <span class="srv-tip-val">${msgWaitMinMs} ms</span>
+            </div>
+            <div class="srv-tip-row srv-tip-row--sub">
+              <span class="srv-tip-key">msg_wait Policy</span>
+              <span class="srv-tip-val">${policyLabel} (${policyBehavior})</span>
             </div>
             <div class="srv-tip-divider"></div>
             <div class="srv-tip-row">
@@ -516,7 +645,7 @@
         const now = Date.now();
         if (!_metricsCache || now - _cacheTs > CACHE_TTL) {
           try {
-            _metricsCache = await window.AcbApi.api('/api/metrics');
+            _metricsCache = await _fetchDiagnostics();
             _cacheTs = Date.now();
             if (_metricsCache?.engine) _updateBackendIcon(_metricsCache.engine);
           } catch {
@@ -528,7 +657,7 @@
         const html = _metricsCache
           ? _buildHtml(_metricsCache, connected)
           : `<div class="srv-tip-card"><div class="srv-tip-header"><span class="srv-tip-title">AgentChatBus</span></div><div class="srv-tip-row"><span class="srv-tip-key">Status</span><span class="srv-tip-val">${connected ? 'Connected' : 'Reconnecting…'}</span></div></div>`;
-        window.AcbTooltip.showRich(anchorEl, html, { className: 'acb-tooltip-srv', maxWidth: '260px' });
+        window.AcbTooltip.showRich(anchorEl, html, { className: 'acb-tooltip-srv', maxWidth: '420px' });
       }
 
       function _hide() {

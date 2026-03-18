@@ -165,7 +165,7 @@ const toolDefinitions: ToolDefinition[] = [
   },
   { 
     name: "msg_wait", 
-    description: "Block until at least one new message arrives in the thread after `after_seq`. Returns immediately if messages are already available. Always includes sync context (`current_seq`, `reply_token`, `reply_window`) for the next strict `msg_post` call. The server may enforce a minimum timeout for blocking waits, while quick-return recovery paths are still immediate. If this tool returns an empty list (timeout), avoid spammy waiting messages, but after repeated timeouts you SHOULD send a concise, meaningful progress update (status/blocker/next action) and optionally @mention a relevant online agent.", 
+    description: "Block until at least one new message arrives in the thread after `after_seq`. Returns immediately if messages are already available. Always includes sync context (`current_seq`, `reply_token`, `reply_window`) that can be used for the next strict `msg_post` call. The server may enforce a minimum timeout for blocking waits, while quick-return recovery paths remain immediate. If this tool returns an empty list (timeout), avoid spammy waiting messages; after repeated timeouts, prefer a concise progress update or another concrete action instead of passive looping.", 
     inputSchema: { 
       type: "object",
       required: ["thread_id", "after_seq"],
@@ -927,13 +927,18 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
 
       try {
         const tsWaitMinTimeoutMs = Math.max(0, getConfig().msgWaitMinTimeoutMs || 0);
-        // Strict TS/Python parity note:
-        // This logic is intentionally kept in sync with Python `src/tools/dispatch.py`.
-        // 1) Clamp only the blocking wait path to reduce short-polling churn.
-        // 2) Preserve quick-return behavior by allowing small timeouts in
-        //    known recovery/behind flows.
-        // 3) The same recovery gate (requested <= 5000ms + refresh/behind signal)
-        //    must be maintained on both runtimes to prevent semantic drift.
+        const enforceMinTimeout = Boolean(getConfig().enforceMsgWaitMinTimeout);
+        // TS enhancement contract (authoritative for TS runtime):
+        // - Quick-return detection remains aligned with Python semantics.
+        // - For non-quick-return waits, TS supports two policies:
+        //   1) legacy clamp mode (default): raise timeout to server minimum
+        //   2) strict reject mode: return a structured error and require client retry
+        //
+        // Python does not need to implement strict reject mode right now.
+        // This is an intentional, compatible TS-only enhancement because:
+        // - the default remains legacy clamp behavior
+        // - enabling strict mode is an explicit operator choice
+        // - quick-return paths still behave consistently and remain immediate
         const isRecoveryLikeShortPoll = Boolean(
           verifiedAgent
           && (requestedTimeoutMs <= 5_000)
@@ -942,6 +947,23 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
             || getStore().isAgentBehindWithoutIssuedToken(threadId, agentId as string, afterSeq)
           )
         );
+        if (!isRecoveryLikeShortPoll && enforceMinTimeout && requestedTimeoutMs < tsWaitMinTimeoutMs) {
+          return [{
+            type: "text",
+            text: JSON.stringify({
+              error: "MsgWaitTimeoutTooShort",
+              detail:
+                "Non-quick-return msg_wait timeout is below server minimum. " +
+                "Call msg_wait again with a compliant timeout.",
+              requested_timeout_ms: requestedTimeoutMs,
+              min_timeout_ms: tsWaitMinTimeoutMs,
+              quick_return_eligible: false,
+              action: "RETRY_MSG_WAIT_WITH_MIN_TIMEOUT",
+              REMINDER:
+                `Server minimum wait is ${tsWaitMinTimeoutMs}ms. Retry msg_wait with timeout_ms >= ${tsWaitMinTimeoutMs}.`,
+            })
+          }];
+        }
         const effectiveTimeoutMs = isRecoveryLikeShortPoll
           ? requestedTimeoutMs
           : Math.max(requestedTimeoutMs, tsWaitMinTimeoutMs);
