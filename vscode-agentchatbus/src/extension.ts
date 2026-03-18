@@ -168,7 +168,8 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration(event => {
             if (!event.affectsConfiguration('agentchatbus.serverUrl') &&
-                !event.affectsConfiguration('agentchatbus.autoStartBusServer')) {
+                !event.affectsConfiguration('agentchatbus.autoStartBusServer') &&
+                !event.affectsConfiguration('agentchatbus.msgWaitMinTimeoutMs')) {
                 return;
             }
 

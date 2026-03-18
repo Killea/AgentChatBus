@@ -1679,6 +1679,7 @@ class SettingsUpdate(BaseModel):
     PORT: int | None = None
     AGENT_HEARTBEAT_TIMEOUT: int | None = None
     MSG_WAIT_TIMEOUT: int | None = None
+    MSG_WAIT_MIN_TIMEOUT_MS: int | None = None
     ENABLE_HANDOFF_TARGET: bool | None = None
     ENABLE_STOP_REASON: bool | None = None
     ENABLE_PRIORITY: bool | None = None

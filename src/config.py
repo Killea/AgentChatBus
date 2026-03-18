@@ -38,6 +38,13 @@ AGENT_HEARTBEAT_TIMEOUT = int(os.getenv("AGENTCHATBUS_HEARTBEAT_TIMEOUT", config
 
 # SSE long-poll timeout for msg.wait (seconds)
 MSG_WAIT_TIMEOUT = int(os.getenv("AGENTCHATBUS_WAIT_TIMEOUT", config_data.get("MSG_WAIT_TIMEOUT", "300")))
+# MCP msg_wait minimum timeout clamp (milliseconds) for blocking waits.
+# This behavior is ported from the TypeScript backend implementation:
+# - blocking waits are clamped to reduce short-poll churn
+# - fast-return recovery paths are intentionally exempted in dispatch logic
+MSG_WAIT_MIN_TIMEOUT_MS = int(
+    os.getenv("AGENTCHATBUS_WAIT_MIN_TIMEOUT_MS", config_data.get("MSG_WAIT_MIN_TIMEOUT_MS", "60000"))
+)
 BUS_VERSION = "0.1.0"
 
 # Strict message sync mode (mandatory)
@@ -92,6 +99,7 @@ def get_config_dict():
         "PORT": PORT,
         "AGENT_HEARTBEAT_TIMEOUT": AGENT_HEARTBEAT_TIMEOUT,
         "MSG_WAIT_TIMEOUT": MSG_WAIT_TIMEOUT,
+        "MSG_WAIT_MIN_TIMEOUT_MS": MSG_WAIT_MIN_TIMEOUT_MS,
         "REPLY_TOKEN_LEASE_SECONDS": REPLY_TOKEN_LEASE_SECONDS,
         "SEQ_TOLERANCE": SEQ_TOLERANCE,
         "SEQ_MISMATCH_MAX_MESSAGES": SEQ_MISMATCH_MAX_MESSAGES,

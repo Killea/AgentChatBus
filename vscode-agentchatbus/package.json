@@ -7,7 +7,7 @@
   "name": "agentchatbus",
   "displayName": "AgentChatBus",
   "description": "AgentChatBus client for VS Code",
-  "version": "0.1.97",
+  "version": "0.1.98",
   "icon": "resources/bus_128.png",
   "engines": {
     "vscode": "^1.105.0"
@@ -82,6 +82,12 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically start the AgentChatBus server if it is not running. Search keyword: AgentChatBus."
+        },
+        "agentchatbus.msgWaitMinTimeoutMs": {
+          "type": "number",
+          "default": 60000,
+          "minimum": 0,
+          "description": "Minimum blocking wait timeout (milliseconds) applied by bundled server msg_wait. Quick-return recovery paths are unaffected. Restart server to apply. Search keyword: AgentChatBus."
         }
       }
     },

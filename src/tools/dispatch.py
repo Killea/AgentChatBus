@@ -37,7 +37,16 @@ from src.db.crud import (
 )
 from src.db.models import Message
 import src.mcp_server
-from src.config import BUS_VERSION, HOST, PORT, MSG_WAIT_TIMEOUT, ENABLE_HANDOFF_TARGET, ENABLE_STOP_REASON, ENABLE_PRIORITY
+from src.config import (
+    BUS_VERSION,
+    HOST,
+    PORT,
+    MSG_WAIT_TIMEOUT,
+    MSG_WAIT_MIN_TIMEOUT_MS,
+    ENABLE_HANDOFF_TARGET,
+    ENABLE_STOP_REASON,
+    ENABLE_PRIORITY,
+)
 from src.content_filter import ContentFilterError
 from src.thread_creation_service import (
     create_thread_with_verified_creator,
@@ -235,6 +244,16 @@ def _url_to_local_upload_path(url: str) -> Path | None:
         return None
 
     return candidate
+
+def _normalize_timeout_ms(raw: Any, fallback: int) -> int:
+    """Normalize timeout_ms to a non-negative integer."""
+    try:
+        value = int(raw)
+    except Exception:
+        value = fallback
+    if value < 0:
+        return 0
+    return value
 
 
 async def _message_to_blocks(m: Message, include_attachments: bool = True) -> list[types.Content]:
@@ -1061,8 +1080,9 @@ def _is_human_only_message(msg: Any) -> bool:
 async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.Content]:
     thread_id = arguments["thread_id"]
     after_seq = arguments["after_seq"]
-    timeout_s = arguments.get("timeout_ms", MSG_WAIT_TIMEOUT * 1000) / 1000.0
-    timeout_ms = arguments.get("timeout_ms", MSG_WAIT_TIMEOUT * 1000)
+    requested_timeout_ms = _normalize_timeout_ms(arguments.get("timeout_ms", MSG_WAIT_TIMEOUT * 1000), MSG_WAIT_TIMEOUT * 1000)
+    timeout_ms = requested_timeout_ms
+    timeout_s = timeout_ms / 1000.0
     for_agent = arguments.get("for_agent")
 
     explicit_agent_id = arguments.get("agent_id")
@@ -1138,6 +1158,32 @@ async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.Content]:
             # a token when they eventually wake up.
             if not wants_sync_only and issued_token_count == 0 and after_seq < current_latest_seq:
                 wants_sync_only = True
+
+    # Strict TS/Python parity note (DO NOT DIVERGE):
+    # This branch is a direct logic port from
+    # `agentchatbus-ts/src/adapters/mcp/tools.ts` (msg_wait adapter path).
+    #
+    # Contract that must stay identical across TS and Python:
+    # 1) Clamp only the blocking wait path to reduce aggressive short-poll churn.
+    # 2) Keep recovery-like quick-return flow exempt from clamp.
+    # 3) Recovery gate is: verified agent + requested_timeout_ms <= 5000
+    #    + (refresh_request or wants_sync_only/behind signal).
+    #
+    # If this drifted in one runtime only, clients would observe different
+    # timeout behavior depending on backend language, causing hard-to-debug
+    # regressions in multi-runtime deployments.
+    ts_wait_min_timeout_ms = max(0, int(MSG_WAIT_MIN_TIMEOUT_MS or 0))
+    is_recovery_like_short_poll = bool(
+        verified_agent
+        and requested_timeout_ms <= 5000
+        and (refresh_request or wants_sync_only)
+    )
+    timeout_ms = (
+        requested_timeout_ms
+        if is_recovery_like_short_poll
+        else max(requested_timeout_ms, ts_wait_min_timeout_ms)
+    )
+    timeout_s = timeout_ms / 1000.0
     
     fast_return_allowed = bool(wants_sync_only)
     
@@ -1251,11 +1297,15 @@ async def handle_msg_wait(db, arguments: dict[str, Any]) -> list[types.Content]:
             # Falls back to a 1s timeout so correctness is preserved even if the
             # event fires before we start waiting (spurious-wakeup-safe: the outer
             # while-True loop re-checks crud.msg_list after every wake-up).
-            event.clear()
             try:
                 await asyncio.wait_for(event.wait(), timeout=1.0)
             except asyncio.TimeoutError:
                 pass
+            finally:
+                # Clear after waiting so we do not lose a wake-up that happened
+                # just before entering wait(). This matches the intent of
+                # event-driven wake-ups while avoiding pre-wait clear races.
+                event.clear()
 
     try:
         msgs = await asyncio.wait_for(_poll(), timeout=timeout_s)

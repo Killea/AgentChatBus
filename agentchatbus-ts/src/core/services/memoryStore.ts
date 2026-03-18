@@ -3790,6 +3790,17 @@ export class MemoryStore {
     };
   }
 
+  isAgentBehindWithoutIssuedToken(threadId: string, agentId: string, afterSeq: number): boolean {
+    const latestSeq = this.getLatestSeq(threadId);
+    if (afterSeq >= latestSeq) {
+      return false;
+    }
+    const issuedTokenCount = [...this.syncTokens.values()].filter(
+      (t) => t.threadId === threadId && t.agentId === agentId && t.status === "issued"
+    ).length;
+    return issuedTokenCount === 0;
+  }
+
   clearRefreshRequest(threadId: string, agentId: string): void {
     this.persistenceDb.prepare(
       "DELETE FROM msg_wait_refresh_requests WHERE thread_id = ? AND agent_id = ?"

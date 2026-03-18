@@ -8,6 +8,9 @@ export interface AppConfig {
   adminToken: string | null;
   agentHeartbeatTimeout: number;
   msgWaitTimeout: number;
+  // TS-only improvement: minimum wait timeout clamp (ms) for msg_wait blocking path.
+  // This intentionally diverges from Python parity to reduce short polling churn.
+  msgWaitMinTimeoutMs: number;
   replyTokenLeaseSeconds: number;
   seqTolerance: number;
   seqMismatchMaxMessages: number;
@@ -25,7 +28,8 @@ export interface AppConfig {
  * Controls whether handoff_target, stop_reason, and priority fields
  * are returned to agents or stripped from responses.
  */
-export const BUS_VERSION = "0.1.97";
+export const BUS_VERSION = "0.1.98";
+const DEFAULT_MSG_WAIT_MIN_TIMEOUT_MS = process.env.NODE_ENV === "test" ? "0" : "60000";
 
 function parseBoolLike(value: unknown, defaultValue: boolean): boolean {
   if (value === undefined || value === null) {
@@ -150,6 +154,15 @@ export function getConfigDict(): Record<string, unknown> {
     MSG_WAIT_TIMEOUT: Number(
       pickEnvOrPersisted(process.env.AGENTCHATBUS_WAIT_TIMEOUT, persisted.MSG_WAIT_TIMEOUT, "300")
     ),
+    // TS-only: minimum timeout clamp for msg_wait blocking branch.
+    // Not present in Python backend config.
+    MSG_WAIT_MIN_TIMEOUT_MS: Number(
+      pickEnvOrPersisted(
+        process.env.AGENTCHATBUS_WAIT_MIN_TIMEOUT_MS,
+        persisted.MSG_WAIT_MIN_TIMEOUT_MS,
+        DEFAULT_MSG_WAIT_MIN_TIMEOUT_MS
+      )
+    ),
     REPLY_TOKEN_LEASE_SECONDS: Number(
       pickEnvOrPersisted(
         process.env.AGENTCHATBUS_REPLY_TOKEN_LEASE_SECONDS,
@@ -204,6 +217,15 @@ export function getConfig(): AppConfig {
     ),
     msgWaitTimeout: Number(
       pickEnvOrPersisted(process.env.AGENTCHATBUS_WAIT_TIMEOUT, persisted.MSG_WAIT_TIMEOUT, "300")
+    ),
+    // TS-only enhancement (non-Python parity):
+    // clamp short msg_wait timeout_ms values for blocking waits.
+    msgWaitMinTimeoutMs: Number(
+      pickEnvOrPersisted(
+        process.env.AGENTCHATBUS_WAIT_MIN_TIMEOUT_MS,
+        persisted.MSG_WAIT_MIN_TIMEOUT_MS,
+        DEFAULT_MSG_WAIT_MIN_TIMEOUT_MS
+      )
     ),
     replyTokenLeaseSeconds: Number(
       pickEnvOrPersisted(

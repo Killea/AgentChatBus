@@ -165,14 +165,19 @@ const toolDefinitions: ToolDefinition[] = [
   },
   { 
     name: "msg_wait", 
-    description: "Block until at least one new message arrives in the thread after `after_seq`. Returns immediately if messages are already available. Always includes sync context (`current_seq`, `reply_token`, `reply_window`) for the next strict `msg_post` call. If this tool returns an empty list (timeout), avoid spammy waiting messages, but after repeated timeouts you SHOULD send a concise, meaningful progress update (status/blocker/next action) and optionally @mention a relevant online agent.", 
+    description: "Block until at least one new message arrives in the thread after `after_seq`. Returns immediately if messages are already available. Always includes sync context (`current_seq`, `reply_token`, `reply_window`) for the next strict `msg_post` call. The server may enforce a minimum timeout for blocking waits, while quick-return recovery paths are still immediate. If this tool returns an empty list (timeout), avoid spammy waiting messages, but after repeated timeouts you SHOULD send a concise, meaningful progress update (status/blocker/next action) and optionally @mention a relevant online agent.", 
     inputSchema: { 
       type: "object",
       required: ["thread_id", "after_seq"],
       properties: {
         thread_id: { type: "string" },
         after_seq: { type: "integer" },
-        timeout_ms: { type: "integer", default: 300000, description: "Max wait in milliseconds." },
+        timeout_ms: {
+          type: "integer",
+          default: 300000,
+          description:
+            "Max wait in milliseconds. Server may enforce a minimum timeout for blocking waits; quick-return recovery paths are unaffected."
+        },
         return_format: { type: "string", enum: ["json", "blocks"], default: "blocks", description: "Return format for tool result content. 'blocks' returns native MCP content blocks (TextContent/ImageContent...). 'json' returns a single JSON-encoded text payload (legacy)." },
         agent_id: { type: "string", description: "Optional: your agent ID for activity tracking." },
         token: { type: "string", description: "Optional: your agent token for verification." },
@@ -298,6 +303,14 @@ function getMsgWaitUploadsRoots(): string[] {
     roots.push(resolved);
   }
   return roots;
+}
+
+function normalizeTimeoutMs(raw: unknown, fallback: number): number {
+  const value = typeof raw === "number" ? raw : fallback;
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(0, Math.floor(value));
 }
 
 function filterMetadataFields(
@@ -873,7 +886,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       const afterSeq = Number(args.after_seq || 0);
       const explicitAgentId = typeof args.agent_id === "string" ? args.agent_id : undefined;
       const explicitToken = typeof args.token === "string" ? args.token : undefined;
-      const timeoutMs = typeof args.timeout_ms === "number" ? args.timeout_ms : 300_000;
+      const requestedTimeoutMs = normalizeTimeoutMs(args.timeout_ms, 300_000);
       const forAgent = typeof args.for_agent === "string" ? args.for_agent : undefined;
       const returnFormat = typeof args.return_format === "string" ? args.return_format : "blocks";
       const includeAttachments = typeof args.include_attachments === "boolean" ? args.include_attachments : true;
@@ -913,13 +926,33 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       }
 
       try {
+        const tsWaitMinTimeoutMs = Math.max(0, getConfig().msgWaitMinTimeoutMs || 0);
+        // Strict TS/Python parity note:
+        // This logic is intentionally kept in sync with Python `src/tools/dispatch.py`.
+        // 1) Clamp only the blocking wait path to reduce short-polling churn.
+        // 2) Preserve quick-return behavior by allowing small timeouts in
+        //    known recovery/behind flows.
+        // 3) The same recovery gate (requested <= 5000ms + refresh/behind signal)
+        //    must be maintained on both runtimes to prevent semantic drift.
+        const isRecoveryLikeShortPoll = Boolean(
+          verifiedAgent
+          && (requestedTimeoutMs <= 5_000)
+          && (
+            getStore().getRefreshRequest(threadId, agentId as string)
+            || getStore().isAgentBehindWithoutIssuedToken(threadId, agentId as string, afterSeq)
+          )
+        );
+        const effectiveTimeoutMs = isRecoveryLikeShortPoll
+          ? requestedTimeoutMs
+          : Math.max(requestedTimeoutMs, tsWaitMinTimeoutMs);
+
         // Delegate to MemoryStore.waitForMessages which records wait states
         const result = await getStore().waitForMessages({ 
           threadId, 
           afterSeq, 
           agentId, 
           agentToken: verifiedAgent ? token : undefined,
-          timeoutMs,
+          timeoutMs: effectiveTimeoutMs,
           forAgent
         });
         

@@ -31,6 +31,9 @@ if TEST_PORT == 39765:
 os.environ["AGENTCHATBUS_PORT"] = str(TEST_PORT)
 os.environ.setdefault("AGENTCHATBUS_TEST_BASE_URL", BASE_URL)
 os.environ.setdefault("AGENTCHATBUS_DB", TEST_DB_PATH)
+# Keep legacy test timings stable by default.
+# Dedicated tests that validate the min-timeout clamp should override this value explicitly.
+os.environ.setdefault("AGENTCHATBUS_WAIT_MIN_TIMEOUT_MS", "0")
 
 
 def _enforce_no_popen_pipe_in_conftest() -> None:

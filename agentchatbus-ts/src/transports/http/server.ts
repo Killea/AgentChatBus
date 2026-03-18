@@ -886,6 +886,7 @@ export function createHttpServer() {
       "HOST", "PORT", 
       "AGENT_HEARTBEAT_TIMEOUT", 
       "MSG_WAIT_TIMEOUT", 
+      "MSG_WAIT_MIN_TIMEOUT_MS",
       "ENABLE_HANDOFF_TARGET",
       "ENABLE_STOP_REASON", 
       "ENABLE_PRIORITY",

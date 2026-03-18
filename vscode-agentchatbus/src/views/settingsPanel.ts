@@ -3,11 +3,19 @@ import * as vscode from 'vscode';
 type AgentChatBusSettings = {
     serverUrl: string;
     autoStartBusServer: boolean;
+    msgWaitMinTimeoutMs: number;
     scopeLabel: string;
 };
 
 type WebviewMessage =
-    | { command: 'saveSettings'; payload?: { serverUrl?: string; autoStartBusServer?: boolean } }
+    | {
+        command: 'saveSettings';
+        payload?: {
+            serverUrl?: string;
+            autoStartBusServer?: boolean;
+            msgWaitMinTimeoutMs?: number | string;
+        };
+    }
     | { command: 'openVscodeSettings' };
 
 export class SettingsPanel {
@@ -79,13 +87,24 @@ export class SettingsPanel {
             Boolean(payload.autoStartBusServer),
             this.resolveConfigurationTarget('autoStartBusServer')
         );
+        const rawMinTimeout = payload.msgWaitMinTimeoutMs;
+        const parsedMinTimeout = Number(rawMinTimeout);
+        if (!Number.isFinite(parsedMinTimeout) || parsedMinTimeout < 0) {
+            void vscode.window.showErrorMessage('msg_wait minimum timeout must be a non-negative number.');
+            return;
+        }
+        await config.update(
+            'msgWaitMinTimeoutMs',
+            Math.floor(parsedMinTimeout),
+            this.resolveConfigurationTarget('msgWaitMinTimeoutMs')
+        );
 
         void vscode.window.showInformationMessage('AgentChatBus settings saved to VS Code configuration.');
         await this.render();
     }
 
     private resolveConfigurationTarget(
-        section: 'serverUrl' | 'autoStartBusServer'
+        section: 'serverUrl' | 'autoStartBusServer' | 'msgWaitMinTimeoutMs'
     ): vscode.ConfigurationTarget {
         const config = vscode.workspace.getConfiguration('agentchatbus');
         const inspected = config.inspect(section);
@@ -102,17 +121,22 @@ export class SettingsPanel {
         const config = vscode.workspace.getConfiguration('agentchatbus');
         const serverUrlInspect = config.inspect<string>('serverUrl');
         const autoStartInspect = config.inspect<boolean>('autoStartBusServer');
+        const msgWaitMinInspect = config.inspect<number>('msgWaitMinTimeoutMs');
 
         const scopeLabel = serverUrlInspect?.workspaceFolderValue !== undefined
             || autoStartInspect?.workspaceFolderValue !== undefined
+            || msgWaitMinInspect?.workspaceFolderValue !== undefined
             ? 'Workspace Folder'
-            : serverUrlInspect?.workspaceValue !== undefined || autoStartInspect?.workspaceValue !== undefined
+            : serverUrlInspect?.workspaceValue !== undefined
+                || autoStartInspect?.workspaceValue !== undefined
+                || msgWaitMinInspect?.workspaceValue !== undefined
                 ? 'Workspace'
                 : 'User';
 
         return {
             serverUrl: config.get<string>('serverUrl', 'http://127.0.0.1:39765'),
             autoStartBusServer: config.get<boolean>('autoStartBusServer', true),
+            msgWaitMinTimeoutMs: Math.max(0, Math.floor(config.get<number>('msgWaitMinTimeoutMs', 60000))),
             scopeLabel,
         };
     }
@@ -125,6 +149,7 @@ export class SettingsPanel {
     private getHtml(settings: AgentChatBusSettings): string {
         const escapedServerUrl = this.escapeHtml(settings.serverUrl);
         const checked = settings.autoStartBusServer ? 'checked' : '';
+        const msgWaitMinTimeoutMs = this.escapeHtml(String(settings.msgWaitMinTimeoutMs));
 
         return `<!DOCTYPE html>
 <html lang="en">
@@ -231,6 +256,9 @@ export class SettingsPanel {
             <input id="autoStartBusServer" type="checkbox" ${checked} />
             <label for="autoStartBusServer">Automatically start the AgentChatBus server when needed</label>
         </div>
+        <label for="msgWaitMinTimeoutMs">msg_wait Minimum Blocking Timeout (ms)</label>
+        <input id="msgWaitMinTimeoutMs" type="text" value="${msgWaitMinTimeoutMs}" spellcheck="false" />
+        <div class="hint">Server may enforce this minimum for blocking waits. Quick-return recovery paths remain immediate. Bundled server restart required after change.</div>
         <div class="actions">
             <button class="primary" id="saveButton">Save to VS Code Settings</button>
             <button class="secondary" id="openButton">Open VS Code Settings</button>
@@ -244,7 +272,8 @@ export class SettingsPanel {
                 command: 'saveSettings',
                 payload: {
                     serverUrl: document.getElementById('serverUrl').value,
-                    autoStartBusServer: document.getElementById('autoStartBusServer').checked
+                    autoStartBusServer: document.getElementById('autoStartBusServer').checked,
+                    msgWaitMinTimeoutMs: document.getElementById('msgWaitMinTimeoutMs').value
                 }
             });
         });

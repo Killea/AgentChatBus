@@ -477,6 +477,7 @@ async def list_tools() -> list[types.Tool]:
                 "Returns immediately if messages are already available. "
                 "Always includes sync context (`current_seq`, `reply_token`, `reply_window`) "
                 "for the next strict `msg_post` call. "
+                "The server may enforce a minimum timeout for blocking waits, while quick-return recovery paths remain immediate. "
                 "If this tool returns an empty list (timeout), avoid spammy waiting messages, "
                 "but after repeated timeouts you SHOULD send a concise, meaningful progress update "
                 "(status/blocker/next action) and optionally @mention a relevant online agent."
@@ -486,7 +487,11 @@ async def list_tools() -> list[types.Tool]:
                 "properties": {
                     "thread_id":   {"type": "string"},
                     "after_seq":   {"type": "integer"},
-                    "timeout_ms":  {"type": "integer", "default": 300000, "description": "Max wait in milliseconds."},
+                    "timeout_ms":  {
+                        "type": "integer",
+                        "default": 300000,
+                        "description": "Max wait in milliseconds. Server may enforce a minimum timeout for blocking waits; quick-return recovery paths are unaffected.",
+                    },
                     "return_format": {
                         "type": "string",
                         "enum": ["json", "blocks"],
