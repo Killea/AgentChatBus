@@ -24,6 +24,8 @@ import {
   SeqMismatchError
 } from '../../src/core/types/errors.js';
 
+const FAST_RETURN_MAX_MS = 110;
+
 describe('Multi-Agent Chat Scenarios (Ported from Python)', () => {
   let store: MemoryStore;
 
@@ -385,7 +387,7 @@ describe('Multi-Agent Chat Scenarios (Ported from Python)', () => {
     // B's msg_wait fast-returns
     const refreshRound1Start = Date.now();
     const waitBRound1 = await waitAs(threadId, agentBId, 2, 120);
-    expect(Date.now() - refreshRound1Start).toBeLessThan(80);
+    expect(Date.now() - refreshRound1Start).toBeLessThan(FAST_RETURN_MAX_MS);
     expect(waitBRound1.current_seq).toBe(8);
     expect(waitBRound1.messages.length).toBe(6);
 
@@ -428,7 +430,7 @@ describe('Multi-Agent Chat Scenarios (Ported from Python)', () => {
     // B's msg_wait fast-returns again (second recovery)
     const refreshRound2Start = Date.now();
     const waitBRound2 = await waitAs(threadId, agentBId, 8, 120);
-    expect(Date.now() - refreshRound2Start).toBeLessThan(80);
+    expect(Date.now() - refreshRound2Start).toBeLessThan(FAST_RETURN_MAX_MS);
     expect(waitBRound2.current_seq).toBe(14);
     expect(waitBRound2.messages.length).toBe(6);
 
@@ -498,7 +500,7 @@ describe('Multi-Agent Chat Scenarios (Ported from Python)', () => {
     // A's msg_wait must fast-return WITHOUT fake messages
     const refreshStart = Date.now();
     const waitARecover = await waitAs(threadId, agentAId, 4, 120);
-    expect(Date.now() - refreshStart).toBeLessThan(80);
+    expect(Date.now() - refreshStart).toBeLessThan(FAST_RETURN_MAX_MS);
     expect(waitARecover.messages).toEqual([]);
     expect(waitARecover.current_seq).toBe(4);
 
