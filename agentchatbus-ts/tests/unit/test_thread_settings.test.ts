@@ -68,7 +68,7 @@ describe("thread settings admin parity", () => {
     // Fix #35: getThreadSettings now auto-creates defaults (Python parity)
     expect(settings).toBeDefined();
     expect(settings!.auto_administrator_enabled).toBe(true);
-    expect(settings!.timeout_seconds).toBe(120);
+    expect(settings!.timeout_seconds).toBe(60);
     expect(settings!.switch_timeout_seconds).toBe(60);
   });
 });

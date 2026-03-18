@@ -14,6 +14,24 @@ import { MemoryStore } from '../../src/core/services/memoryStore.js';
 describe('Admin Coordinator Unit Tests (Ported from Python)', () => {
   let store: MemoryStore;
 
+  function seedWaitState(
+    memoryStore: MemoryStore,
+    threadId: string,
+    agentId: string,
+    enteredAt: string,
+    timeoutMs = 120_000
+  ): void {
+    const internalStore = memoryStore as any;
+    const waits = internalStore.threadWaitStates.get(threadId) || new Map();
+    waits.set(agentId, {
+      agentId,
+      enteredAt,
+      timeoutMs,
+    });
+    internalStore.threadWaitStates.set(threadId, waits);
+    internalStore.replaceThreadWaitStates(threadId);
+  }
+
   beforeEach(() => {
     process.env.AGENTCHATBUS_DB = ':memory:';
     store = new MemoryStore();
@@ -280,6 +298,113 @@ describe('Admin Coordinator Unit Tests (Ported from Python)', () => {
       
       // last_activity_time should be updated
       expect(updatedSettings?.last_activity_time).toBeDefined();
+    });
+  });
+
+  describe('admin coordinator sweep parity', () => {
+    it('single agent emits no system message without confirmation path', () => {
+      const { thread } = store.createThread('single-agent-intervention');
+      const agent = store.registerAgent({ ide: 'VS Code', model: 'GPT-5.3-Codex' });
+
+      store.updateThreadSettings(thread.id, { timeout_seconds: 30 });
+      seedWaitState(store, thread.id, agent.id, new Date(Date.now() - 120_000).toISOString());
+
+      const created = store.adminCoordinatorSweep();
+      const settings = store.getThreadSettings(thread.id);
+      const messages = store.getMessages(thread.id, 0, false);
+
+      expect(created).toHaveLength(0);
+      expect(settings?.auto_assigned_admin_id).toBeUndefined();
+      expect(
+        messages.filter((message) => message.metadata?.ui_type === 'admin_switch_confirmation_required')
+      ).toHaveLength(0);
+      expect(messages).toHaveLength(0);
+    });
+
+    it('multi agent emits timeout notice and takeover instruction for current admin', () => {
+      const { thread } = store.createThread('multi-agent-intervention');
+      const admin = store.registerAgent({ ide: 'VS Code', model: 'GPT-5.3-Codex' });
+      const peer = store.registerAgent({ ide: 'Cursor', model: 'GPT-5.3-Codex' });
+
+      const adminSync = store.issueSyncContext(thread.id, admin.id, 'seed-admin');
+      store.postMessage({
+        threadId: thread.id,
+        author: admin.id,
+        content: 'seed-admin',
+        expectedLastSeq: adminSync.current_seq,
+        replyToken: adminSync.reply_token,
+        role: 'assistant',
+      });
+
+      const peerSync = store.issueSyncContext(thread.id, peer.id, 'seed-peer');
+      store.postMessage({
+        threadId: thread.id,
+        author: peer.id,
+        content: 'seed-peer',
+        expectedLastSeq: peerSync.current_seq,
+        replyToken: peerSync.reply_token,
+        role: 'assistant',
+      });
+
+      store.switchAdmin(thread.id, admin.id, admin.display_name || admin.name || admin.id);
+      store.updateThreadSettings(thread.id, { timeout_seconds: 30 });
+
+      const oldEntered = new Date(Date.now() - 120_000).toISOString();
+      seedWaitState(store, thread.id, admin.id, oldEntered);
+      seedWaitState(store, thread.id, peer.id, oldEntered);
+
+      const created = store.adminCoordinatorSweep();
+      const settings = store.getThreadSettings(thread.id);
+      const messages = store.getMessages(thread.id, 0, false);
+      const noticeMessages = messages.filter(
+        (message) => message.metadata?.ui_type === 'admin_coordination_timeout_notice'
+      );
+      const instructionMessages = messages.filter(
+        (message) => message.metadata?.ui_type === 'admin_coordination_takeover_instruction'
+      );
+      const waitStates = store.getThreadWaitStatesGrouped();
+
+      expect(created).toHaveLength(2);
+      expect(settings?.auto_assigned_admin_id).toBe(admin.id);
+      expect(
+        messages.filter((message) => message.metadata?.ui_type === 'admin_switch_confirmation_required')
+      ).toHaveLength(0);
+      expect(noticeMessages).toHaveLength(1);
+      expect(noticeMessages[0].metadata?.visibility).toBe('human_only');
+      expect(instructionMessages).toHaveLength(1);
+      expect(instructionMessages[0].metadata?.handoff_target).toBe(admin.id);
+      expect(instructionMessages[0].metadata?.visibility).toBeUndefined();
+      expect(waitStates[thread.id]).toBeDefined();
+      expect(waitStates[thread.id][admin.id]).toBeDefined();
+      expect(waitStates[thread.id][peer.id]).toBeDefined();
+      expect(messages.some((message) => message.metadata?.visibility === 'human_only')).toBe(true);
+    });
+
+    it('single online current admin creates takeover confirmation instead of switch prompt', () => {
+      const { thread } = store.createThread('single-agent-current-admin');
+      const admin = store.registerAgent({ ide: 'VS Code', model: 'GPT-5.3-Codex' });
+
+      store.switchAdmin(thread.id, admin.id, admin.display_name || admin.name || admin.id);
+      store.updateThreadSettings(thread.id, { timeout_seconds: 30 });
+      seedWaitState(store, thread.id, admin.id, new Date(Date.now() - 120_000).toISOString());
+
+      const created = store.adminCoordinatorSweep();
+      const messages = store.getMessages(thread.id, 0, false);
+      const switchMessages = messages.filter(
+        (message) => message.metadata?.ui_type === 'admin_switch_confirmation_required'
+      );
+      const takeoverMessages = messages.filter(
+        (message) => message.metadata?.ui_type === 'admin_takeover_confirmation_required'
+      );
+      const waitStates = store.getThreadWaitStatesGrouped();
+
+      expect(created).toHaveLength(1);
+      expect(switchMessages).toHaveLength(0);
+      expect(takeoverMessages).toHaveLength(1);
+      expect(takeoverMessages[0].metadata?.visibility).toBe('human_only');
+      expect(takeoverMessages[0].metadata?.current_admin_id).toBe(admin.id);
+      expect(waitStates[thread.id]).toBeDefined();
+      expect(waitStates[thread.id][admin.id]).toBeDefined();
     });
   });
 });

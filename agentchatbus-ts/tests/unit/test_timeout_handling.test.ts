@@ -230,7 +230,7 @@ describe('Timeout Handling Tests (Ported from Python)', () => {
       // Fix #35: getThreadSettings now auto-creates defaults (Python parity)
       expect(settings).toBeDefined();
       expect(settings!.auto_administrator_enabled).toBe(true);
-      expect(settings!.timeout_seconds).toBe(120);
+      expect(settings!.timeout_seconds).toBe(60);
     });
   });
 });

@@ -1361,10 +1361,14 @@ export function createHttpServer() {
   const timeoutInterval = setInterval(() => {
     try { store.threadTimeoutSweep(30); } catch (_) { /* ignore */ }
   }, 30_000);
+  const adminCoordinatorInterval = setInterval(() => {
+    try { store.adminCoordinatorSweep(); } catch (_) { /* ignore */ }
+  }, 10_000);
   // Cleanup intervals on server close
   fastify.addHook("onClose", () => {
     clearInterval(cleanupInterval);
     clearInterval(timeoutInterval);
+    clearInterval(adminCoordinatorInterval);
   });
 
   return fastify;

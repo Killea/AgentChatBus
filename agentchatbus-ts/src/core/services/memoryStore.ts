@@ -582,6 +582,355 @@ export class MemoryStore {
     return closedIds;
   }
 
+  adminCoordinatorSweep(now = new Date()): MessageRecord[] {
+    const createdMessages: MessageRecord[] = [];
+    const allAgents = this.listAgents();
+    const allAgentsById = new Map(allAgents.map((agent) => [agent.id, agent]));
+    const onlineAgents = allAgents.filter((agent) => agent.is_online);
+    const onlineAgentIds = new Set(onlineAgents.map((agent) => agent.id));
+
+    if (onlineAgentIds.size === 0) {
+      return createdMessages;
+    }
+
+    const agentLabel = (agent?: AgentRecord, fallbackId?: string): string => {
+      return String(agent?.display_name || agent?.name || agent?.id || fallbackId || "Unknown");
+    };
+
+    const threadWaitStates = this.getThreadWaitStatesGrouped();
+
+    for (const [threadId, waitStates] of Object.entries(threadWaitStates)) {
+      const waitAgentIds = Object.keys(waitStates);
+      if (waitAgentIds.length === 0) {
+        continue;
+      }
+
+      const settings = this.getThreadSettings(threadId);
+      if (!settings?.auto_administrator_enabled) {
+        continue;
+      }
+
+      const onlineWaitStates = Object.fromEntries(
+        Object.entries(waitStates).filter(([agentId]) => onlineAgentIds.has(agentId))
+      );
+      const onlineWaitAgentIds = Object.keys(onlineWaitStates);
+      if (onlineWaitAgentIds.length === 0) {
+        continue;
+      }
+
+      const participantRows = this.persistenceDb.prepare(
+        `
+          SELECT DISTINCT author_id
+          FROM messages
+          WHERE thread_id = ?
+            AND author_id IS NOT NULL
+            AND author_id != ''
+        `
+      ).all(threadId) as Array<{ author_id: string }>;
+
+      let threadParticipantIds = new Set(
+        participantRows
+          .map((row) => row.author_id)
+          .filter((authorId) => Boolean(authorId) && onlineAgentIds.has(authorId))
+      );
+      if (threadParticipantIds.size === 0) {
+        threadParticipantIds = new Set(onlineWaitAgentIds);
+      }
+
+      if (threadParticipantIds.size === 0) {
+        continue;
+      }
+
+      if (Array.from(threadParticipantIds).some((agentId) => !(agentId in onlineWaitStates))) {
+        continue;
+      }
+
+      const enteredTimestamps = Array.from(threadParticipantIds)
+        .map((agentId) => Date.parse(onlineWaitStates[agentId].entered_at))
+        .filter((ts) => Number.isFinite(ts));
+      if (enteredTimestamps.length === 0) {
+        continue;
+      }
+
+      const latestEnter = Math.max(...enteredTimestamps);
+      const elapsed = (now.getTime() - latestEnter) / 1000;
+      const minTimeout = Math.min(
+        settings.timeout_seconds,
+        settings.switch_timeout_seconds ?? settings.timeout_seconds
+      );
+      if (elapsed < minTimeout) {
+        continue;
+      }
+
+      const participatingOnlineAgents = onlineAgents.filter((agent) => threadParticipantIds.has(agent.id));
+      if (participatingOnlineAgents.length === 0) {
+        continue;
+      }
+
+      const currentAdminId = settings.creator_admin_id || settings.auto_assigned_admin_id;
+      const currentAdmin = currentAdminId ? allAgentsById.get(currentAdminId) : undefined;
+      const participantCount = participatingOnlineAgents.length;
+
+      const sortedCandidates = [...participatingOnlineAgents].sort((left, right) => {
+        const leftKey = String(left.display_name || left.name || left.id).toLowerCase();
+        const rightKey = String(right.display_name || right.name || right.id).toLowerCase();
+        if (leftKey !== rightKey) {
+          return leftKey.localeCompare(rightKey);
+        }
+        return left.id.localeCompare(right.id);
+      });
+      const candidatePool = currentAdminId
+        ? sortedCandidates.filter((agent) => agent.id !== currentAdminId)
+        : sortedCandidates;
+      const candidateAgent = candidatePool[0] || sortedCandidates[0];
+      if (!candidateAgent) {
+        continue;
+      }
+
+      const currentAdminLabel = agentLabel(currentAdmin, currentAdminId);
+      const currentAdminEmoji = generateAgentEmoji(currentAdminId || null);
+      const candidateLabel = agentLabel(candidateAgent, candidateAgent.id);
+      const candidateEmoji = generateAgentEmoji(candidateAgent.id);
+
+      const recentRows = this.persistenceDb.prepare(
+        `
+          SELECT metadata, created_at
+          FROM messages
+          WHERE thread_id = ? AND author = 'system' AND role = 'system'
+          ORDER BY seq DESC
+          LIMIT 80
+        `
+      ).all(threadId) as Array<Record<string, unknown>>;
+
+      const recentUiEvents = recentRows.flatMap((row) => {
+        const rawMetadata = row.metadata;
+        if (typeof rawMetadata !== "string" || rawMetadata.trim() === "") {
+          return [];
+        }
+        try {
+          const metadata = JSON.parse(rawMetadata) as Record<string, unknown>;
+          const uiType = String(metadata.ui_type || "").trim();
+          if (!uiType) {
+            return [];
+          }
+          const createdAt = typeof row.created_at === "string" ? row.created_at : undefined;
+          return [{ uiType, metadata, createdAt }];
+        } catch {
+          return [];
+        }
+      });
+
+      const dedupeWindowSeconds = Math.max(15, Math.trunc(settings.timeout_seconds));
+      const nowMs = now.getTime();
+      const hasPendingPrompt = (uiType: string): boolean => {
+        return recentUiEvents.some(
+          (event) =>
+            event.uiType === uiType
+            && String(event.metadata.decision_status || "") !== "resolved"
+        );
+      };
+      const hasRecentUiEvent = (uiType: string): boolean => {
+        return recentUiEvents.some((event) => {
+          if (event.uiType !== uiType) {
+            return false;
+          }
+          if (!event.createdAt) {
+            return true;
+          }
+          const createdAtMs = Date.parse(event.createdAt);
+          if (!Number.isFinite(createdAtMs)) {
+            return true;
+          }
+          const ageSeconds = (nowMs - createdAtMs) / 1000;
+          return ageSeconds <= dedupeWindowSeconds;
+        });
+      };
+
+      const needsSwitchConfirmation = Boolean(
+        currentAdminId && candidateAgent.id !== currentAdminId
+      );
+      const currentAdminOnlineWaiting = Boolean(
+        currentAdminId
+        && threadParticipantIds.has(currentAdminId)
+        && currentAdminId in onlineWaitStates
+      );
+      const singleOnlineCurrentAdmin = Boolean(
+        participantCount === 1
+        && currentAdminId
+        && candidateAgent.id === currentAdminId
+      );
+      const timeoutSeconds = Math.trunc(elapsed);
+      const triggeredAt = now.toISOString();
+
+      if (singleOnlineCurrentAdmin) {
+        if (elapsed < settings.timeout_seconds) {
+          continue;
+        }
+        if (hasPendingPrompt("admin_takeover_confirmation_required")) {
+          continue;
+        }
+
+        const message = this.postSystemMessage(
+          threadId,
+          `Auto Administrator Timeout reached after ${timeoutSeconds} seconds. Only administrator ${currentAdminEmoji} ${currentAdminLabel} is online and waiting. Do you want to ask the administrator to take over and continue work now?`,
+          JSON.stringify({
+            ui_type: "admin_takeover_confirmation_required",
+            visibility: "human_only",
+            thread_id: threadId,
+            reason: "single_online_current_admin_waiting",
+            mode: "single_agent_current_admin",
+            current_admin_id: currentAdminId,
+            current_admin_name: currentAdminLabel,
+            current_admin_emoji: currentAdminEmoji,
+            timeout_seconds: timeoutSeconds,
+            online_agents_count: participantCount,
+            triggered_at: triggeredAt,
+            ui_buttons: [
+              {
+                action: "takeover",
+                label: "Require administrator to take over now",
+              },
+              {
+                action: "cancel",
+                label: "Cancel",
+                tooltip: "Continue waiting for other offline agents; they may still be coding.",
+              },
+            ],
+          }),
+          false
+        );
+        if (message) {
+          createdMessages.push(message);
+        }
+        continue;
+      }
+
+      if (participantCount > 1) {
+        if (elapsed < settings.timeout_seconds) {
+          continue;
+        }
+
+        if (!hasRecentUiEvent("admin_coordination_timeout_notice")) {
+          const notice = this.postSystemMessage(
+            threadId,
+            `Auto Administrator Timeout triggered after ${timeoutSeconds} seconds. All online participants are currently waiting in msg_wait. System has notified administrator coordination.`,
+            JSON.stringify({
+              ui_type: "admin_coordination_timeout_notice",
+              visibility: "human_only",
+              thread_id: threadId,
+              reason: "all_agents_waiting",
+              mode: "multi_agent",
+              current_admin_id: currentAdminId,
+              current_admin_name: currentAdminLabel,
+              current_admin_emoji: currentAdminEmoji,
+              timeout_seconds: timeoutSeconds,
+              online_agents_count: participantCount,
+              triggered_at: triggeredAt,
+            }),
+            false
+          );
+          if (notice) {
+            createdMessages.push(notice);
+          }
+        }
+
+        if (currentAdminOnlineWaiting) {
+          if (!hasRecentUiEvent("admin_coordination_takeover_instruction")) {
+            const instruction = this.postSystemMessage(
+              threadId,
+              `Coordinator alert: all online agents are waiting in msg_wait (timeout ${timeoutSeconds}s). Administrator ${currentAdminEmoji} ${currentAdminLabel} must coordinate now: continue working directly or communicate with human without waiting.`,
+              JSON.stringify({
+                ui_type: "admin_coordination_takeover_instruction",
+                thread_id: threadId,
+                reason: "all_agents_waiting",
+                handoff_target: currentAdminId,
+                target_admin_id: currentAdminId,
+                target_admin_name: currentAdminLabel,
+                target_admin_emoji: currentAdminEmoji,
+                timeout_seconds: timeoutSeconds,
+                online_agents_count: participantCount,
+                triggered_at: triggeredAt,
+              }),
+              false
+            );
+            if (instruction) {
+              createdMessages.push(instruction);
+            }
+          }
+        } else if (!hasRecentUiEvent("agent_offline_risk_notice")) {
+          const riskNotice = this.postSystemMessage(
+            threadId,
+            "Thread coordination warning: the current administrator is not online/waiting. Agents in this thread may all be offline. Please check agent working status.",
+            JSON.stringify({
+              ui_type: "agent_offline_risk_notice",
+              visibility: "human_only",
+              thread_id: threadId,
+              reason: "no_actionable_admin",
+              current_admin_id: currentAdminId,
+              current_admin_name: currentAdminLabel,
+              timeout_seconds: timeoutSeconds,
+              online_agents_count: participantCount,
+              triggered_at: triggeredAt,
+            }),
+            false
+          );
+          if (riskNotice) {
+            createdMessages.push(riskNotice);
+          }
+        }
+        continue;
+      }
+
+      if (!needsSwitchConfirmation) {
+        continue;
+      }
+
+      if (elapsed < (settings.switch_timeout_seconds ?? settings.timeout_seconds)) {
+        continue;
+      }
+      if (hasPendingPrompt("admin_switch_confirmation_required")) {
+        continue;
+      }
+
+      const confirmation = this.postSystemMessage(
+        threadId,
+        `Auto Administrator Timeout reached after ${timeoutSeconds} seconds while all online participants were in msg_wait. Current admin: ${currentAdminEmoji} ${currentAdminLabel}. Candidate admin: ${candidateEmoji} ${candidateLabel}. Human confirmation is required before changing administrator.`,
+        JSON.stringify({
+          ui_type: "admin_switch_confirmation_required",
+          visibility: "human_only",
+          thread_id: threadId,
+          reason: "all_agents_waiting",
+          mode: "single_agent_fallback",
+          current_admin_id: currentAdminId,
+          current_admin_name: currentAdminLabel,
+          current_admin_emoji: currentAdminEmoji,
+          candidate_admin_id: candidateAgent.id,
+          candidate_admin_name: candidateLabel,
+          candidate_admin_emoji: candidateEmoji,
+          timeout_seconds: timeoutSeconds,
+          online_agents_count: participantCount,
+          triggered_at: triggeredAt,
+          ui_buttons: [
+            {
+              action: "switch",
+              label: `Switch admin to ${candidateEmoji} ${candidateLabel}`,
+            },
+            {
+              action: "keep",
+              label: `Keep ${currentAdminEmoji} ${currentAdminLabel} as admin`,
+            },
+          ],
+        }),
+        false
+      );
+      if (confirmation) {
+        createdMessages.push(confirmation);
+      }
+    }
+
+    return createdMessages;
+  }
+
   listThreads(options?: {
     status?: string;
     includeArchived?: boolean;
@@ -1941,6 +2290,21 @@ export class MemoryStore {
       }));
   }
 
+  getThreadWaitStatesGrouped(): Record<string, Record<string, { entered_at: string; timeout_ms: number }>> {
+    const grouped: Record<string, Record<string, { entered_at: string; timeout_ms: number }>> = {};
+    for (const [threadId, waits] of this.threadWaitStates.entries()) {
+      const threadGroup: Record<string, { entered_at: string; timeout_ms: number }> = {};
+      for (const [agentId, wait] of waits.entries()) {
+        threadGroup[agentId] = {
+          entered_at: wait.enteredAt,
+          timeout_ms: wait.timeoutMs,
+        };
+      }
+      grouped[threadId] = threadGroup;
+    }
+    return grouped;
+  }
+
   getSettings() {
     return {
       preferred_language: "English",
@@ -2032,11 +2396,11 @@ export class MemoryStore {
       const now = new Date().toISOString();
       this.persistenceDb.prepare(
         `INSERT OR IGNORE INTO thread_settings (thread_id, auto_administrator_enabled, timeout_seconds, switch_timeout_seconds, last_activity_time)
-         VALUES (?, 1, 120, 60, ?)`
+         VALUES (?, 1, 60, 60, ?)`
       ).run(threadId, now);
       return {
         auto_administrator_enabled: true,
-        timeout_seconds: 120,
+        timeout_seconds: 60,
         switch_timeout_seconds: 60,
         last_activity_time: now,
         auto_assigned_admin_id: undefined,

@@ -139,9 +139,9 @@ describe('Thread Settings V2 Basic Tests', () => {
         expect(settings?.timeout_seconds).toBe(200);
     });
 
-    it('get settings for non-existent thread returns undefined', () => {
+    it('get settings for non-existent thread auto-creates defaults', () => {
         // 对应 Python: L385-408 (Modified behavior)
-        /** Test settings for missing thread returns undefined. */
+        /** Test settings for missing thread auto-create defaults. */
         const fakeId = "00000000-0000-0000-0000-000000000000";
         
         const settings = store.getThreadSettings(fakeId);
@@ -149,7 +149,7 @@ describe('Thread Settings V2 Basic Tests', () => {
         // Fix #35: getThreadSettings now auto-creates defaults (Python parity)
         expect(settings).toBeDefined();
         expect(settings!.auto_administrator_enabled).toBe(true);
-        expect(settings!.timeout_seconds).toBe(120);
+        expect(settings!.timeout_seconds).toBe(60);
         expect(settings!.switch_timeout_seconds).toBe(60);
     });
 
