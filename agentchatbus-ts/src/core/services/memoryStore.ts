@@ -3166,7 +3166,7 @@ export class MemoryStore {
       alias_source: row.alias_source ? String(row.alias_source) : undefined,
       ide: row.ide ? String(row.ide) : undefined,
       model: row.model ? String(row.model) : undefined,
-      description: row.description ? String(row.description) : undefined,
+      description: row.description !== undefined && row.description !== null ? String(row.description) : "",
       // Python parity: online status should be derived from recent heartbeat/activity.
       is_online: this.computeAgentOnline(row),
       last_heartbeat: String(row.last_heartbeat),

@@ -314,7 +314,21 @@ function setConnectionAgent(agentId: string, token: string): void {
 }
 
 function toPythonUtcIsoString(value: string): string {
-  return value.endsWith("Z") ? `${value.slice(0, -1)}+00:00` : value;
+  const zuluMatch = value.match(/^(.+?)(?:\.(\d+))?Z$/);
+  if (zuluMatch) {
+    const [, base, fractional = ""] = zuluMatch;
+    const padded = fractional.length > 0 ? `.${fractional.padEnd(6, "0").slice(0, 6)}` : "";
+    return `${base}${padded}+00:00`;
+  }
+
+  const utcMatch = value.match(/^(.+?)(?:\.(\d+))?\+00:00$/);
+  if (utcMatch) {
+    const [, base, fractional = ""] = utcMatch;
+    const padded = fractional.length > 0 ? `.${fractional.padEnd(6, "0").slice(0, 6)}` : "";
+    return `${base}${padded}+00:00`;
+  }
+
+  return value;
 }
 
 export async function withToolCallContext<T>(
@@ -1174,7 +1188,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         // Register new agent
         const ide = typeof args.ide === "string" ? args.ide : "Unknown IDE";
         const model = typeof args.model === "string" ? args.model : "Unknown Model";
-        const description = typeof args.description === "string" ? args.description : undefined;
+        const description = typeof args.description === "string" ? args.description : "";
         const displayName = typeof args.display_name === "string" ? args.display_name : undefined;
         if (args.capabilities !== undefined && !Array.isArray(args.capabilities)) {
           return [{ type: "text", text: JSON.stringify({ error: "capabilities must be an array of strings" }) }];
@@ -1194,9 +1208,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
           skills
         });
       }
-      if (agent.token) {
-        setConnectionAgent(agent.id, agent.token);
-      }
+      setConnectionAgent(agent.id, agent.token as string);
 
       if (!threadName) {
         return [{ type: "text", text: JSON.stringify({ error: "thread_name is required" }) }];

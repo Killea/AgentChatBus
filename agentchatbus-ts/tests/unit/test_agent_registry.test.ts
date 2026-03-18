@@ -70,6 +70,15 @@ describe('Agent Registry (Ported from test_agent_registry.py)', () => {
     expect(second.name).toBe('VSCode (GPT) 2');
   });
 
+  it('agent register preserves empty description as empty string', () => {
+    const agent = store.registerAgent({ ide: 'VSCode', model: 'GPT' });
+    const resumed = store.resumeAgent(agent.id, agent.token);
+
+    expect(agent.description).toBe('');
+    expect(resumed?.description).toBe('');
+    expect(store.listAgents()[0].description).toBe('');
+  });
+
   it('agent thread create updates activity', async () => {
     const agent = store.registerAgent({ ide: 'VSCode', model: 'GPT' });
     const initialHeartbeat = agent.last_heartbeat;
