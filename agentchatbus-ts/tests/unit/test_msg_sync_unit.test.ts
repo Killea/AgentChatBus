@@ -361,6 +361,51 @@ describe('Message Synchronization Unit Tests', () => {
         }).toThrow();
     });
 
+    it('cross agent token misuse does not leak sync context and does not burn owner token', () => {
+        const thread = store.createThread("cross-agent-no-leak").thread;
+        const agentA = store.registerAgent({ ide: "VSCode", model: "GPT-A" });
+        const agentB = store.registerAgent({ ide: "VSCode", model: "GPT-B" });
+        const sync = store.issueSyncContext(thread.id, agentA.id, "test");
+
+        try {
+            store.postMessage({
+                threadId: thread.id,
+                author: agentB.id,
+                content: "cross-agent misuse",
+                expectedLastSeq: sync.current_seq,
+                replyToken: sync.reply_token,
+                role: "assistant"
+            });
+            throw new Error("Should have thrown ReplyTokenInvalidError but succeeded");
+        } catch (err: any) {
+            if (err.message.includes("Should have thrown")) throw err;
+
+            expect(err.name).toBe("ReplyTokenInvalidError");
+            expect(err.message).toBe("TOKEN_INVALID");
+            expect(err.detail).toMatchObject({
+                error: "TOKEN_INVALID",
+                action: "CALL_MSG_WAIT"
+            });
+            expect(err.detail.current_seq).toBeUndefined();
+            expect(err.detail.new_messages).toBeUndefined();
+            expect(err.detail.expected_last_seq).toBeUndefined();
+        }
+
+        expect(store.getRefreshRequest(thread.id, agentB.id)).toBeUndefined();
+
+        const ownerPost = store.postMessage({
+            threadId: thread.id,
+            author: agentA.id,
+            content: "owner still has a valid token",
+            expectedLastSeq: sync.current_seq,
+            replyToken: sync.reply_token,
+            role: "assistant"
+        });
+
+        expect(ownerPost.seq).toBe(1);
+        expect(ownerPost.author_id).toBe(agentA.id);
+    });
+
     it('chain token issued for registered agent', () => {
         // UP-32: msg_post with a registered agent should issue a chain reply_token
         // Note: Chain token is issued at dispatch layer (handle_msg_post), not CRUD layer

@@ -449,6 +449,187 @@ describe('Multi-Agent Chat Scenarios (Ported from Python)', () => {
     expect(postB2).toHaveProperty('seq', 15);
   });
 
+  it('two_agents_competing_from_same_sync_context_force_recovery_before_retry', async () => {
+    /**
+     * Protect the tighter race where two agents both hold sync-context at the same seq.
+     *
+     * Business requirement:
+     * - Two agents can both be fully caught up and each hold a valid reply token
+     *   for the same thread seq.
+     * - Once one of them posts, the other must fail with SeqMismatchError instead
+     *   of succeeding with stale context.
+     * - The failed agent's next msg_wait should return quickly with the winning
+     *   message and a fresh token so it can retry immediately.
+     */
+    const threadName = 'Scenario Same Context Competition';
+
+    const connectA = await busConnect(threadName, 'VS Code', 'GPT-5.3-Codex');
+    const threadId = connectA.threadId;
+    const agentAId = connectA.agentId;
+
+    const postA1 = await postAs(
+      threadId,
+      agentAId,
+      'A1: baseline context for competing replies',
+      connectA.currentSeq,
+      connectA.replyToken
+    );
+    expect(postA1).toHaveProperty('seq', 1);
+
+    const connectB = await busConnect(threadName, 'VS Code', 'GPT-5.3-Codex');
+    const agentBId = connectB.agentId;
+    const connectC = await busConnect(threadName, 'VS Code', 'GPT-5.3-Codex');
+    const agentCId = connectC.agentId;
+
+    const syncB = await waitAs(threadId, agentBId, 1, 1);
+    const syncC = await waitAs(threadId, agentCId, 1, 1);
+    expect(syncB.messages).toEqual([]);
+    expect(syncC.messages).toEqual([]);
+    expect(syncB.current_seq).toBe(1);
+    expect(syncC.current_seq).toBe(1);
+
+    const postB1 = await postAs(
+      threadId,
+      agentBId,
+      'B1: I won the race from seq=1',
+      syncB.current_seq,
+      syncB.reply_token
+    );
+    expect(postB1).toHaveProperty('seq', 2);
+
+    const stalePostC = await postAs(
+      threadId,
+      agentCId,
+      'C-stale: I incorrectly tried to use the same seq=1 context',
+      syncC.current_seq,
+      syncC.reply_token
+    );
+    expect(stalePostC).toHaveProperty('error', 'SeqMismatchError');
+    expect((stalePostC as any).new_messages_1st_read?.map((m: any) => m.content)).toEqual([
+      'B1: I won the race from seq=1',
+    ]);
+    expect(store.getRefreshRequest(threadId, agentCId)?.reason).toBe('SeqMismatchError');
+
+    const refreshStart = Date.now();
+    const waitCRefresh = await waitAs(threadId, agentCId, 1, 120);
+    expect(Date.now() - refreshStart).toBeLessThan(FAST_RETURN_MAX_MS);
+    expect(waitCRefresh.current_seq).toBe(2);
+    expect(waitCRefresh.messages.map(m => m.content)).toEqual([
+      'B1: I won the race from seq=1',
+    ]);
+    expect(waitCRefresh.fast_return).toBe(false);
+    expect(store.getRefreshRequest(threadId, agentCId)).toBeUndefined();
+
+    const postC1 = await postAs(
+      threadId,
+      agentCId,
+      'C1: recovered after the race and replied with fresh context',
+      waitCRefresh.current_seq,
+      waitCRefresh.reply_token
+    );
+    expect(postC1).toHaveProperty('seq', 3);
+
+    const transcript = store.getMessages(threadId, 0);
+    expect(transcript.filter(m => m.role === 'assistant').map(m => m.content)).toEqual([
+      'A1: baseline context for competing replies',
+      'B1: I won the race from seq=1',
+      'C1: recovered after the race and replied with fresh context',
+    ]);
+  });
+
+  it('human_only_messages_stay_redacted_across_seq_mismatch_and_recovery', async () => {
+    /**
+     * Protect visibility filtering when an agent falls behind across hidden system notices.
+     *
+     * Business requirement:
+     * - SeqMismatch first-read guidance must not leak private human-only content.
+     * - The follow-up recovery msg_wait should return the same redacted projection.
+     * - After recovering, the agent must still be able to continue chatting normally.
+     */
+    const threadName = 'Scenario Human Only Recovery';
+
+    const connectA = await busConnect(threadName, 'VS Code', 'GPT-5.3-Codex');
+    const threadId = connectA.threadId;
+    const agentAId = connectA.agentId;
+
+    const postA1 = await postAs(
+      threadId,
+      agentAId,
+      'A1: visible kickoff message',
+      connectA.currentSeq,
+      connectA.replyToken
+    );
+    expect(postA1).toHaveProperty('seq', 1);
+
+    const connectB = await busConnect(threadName, 'VS Code', 'GPT-5.3-Codex');
+    const agentBId = connectB.agentId;
+    const bStaleSync = await waitAs(threadId, agentBId, 1, 1);
+    expect(bStaleSync.current_seq).toBe(1);
+    expect(bStaleSync.messages).toEqual([]);
+
+    store.postSystemMessage(
+      threadId,
+      'human-only moderation note',
+      JSON.stringify({
+        visibility: 'human_only',
+        ui_type: 'admin_switch_confirmation_required',
+        private_body: 'do not leak this hidden body'
+      })
+    );
+
+    const waitA1 = await waitAs(threadId, agentAId, 1, 50);
+    expect(waitA1.messages.map(m => m.content)).toEqual(['[human-only content hidden]']);
+    expect(waitA1.messages[0].metadata).not.toHaveProperty('private_body');
+
+    const postA2 = await postAs(
+      threadId,
+      agentAId,
+      'A2: visible follow-up after the hidden notice',
+      waitA1.current_seq,
+      waitA1.reply_token
+    );
+    expect(postA2).toHaveProperty('seq', 3);
+
+    const stalePostB = await postAs(
+      threadId,
+      agentBId,
+      'B-stale: this should require redacted recovery',
+      bStaleSync.current_seq,
+      bStaleSync.reply_token
+    );
+    expect(stalePostB).toHaveProperty('error', 'SeqMismatchError');
+    expect((stalePostB as any).new_messages_1st_read?.map((m: any) => m.content)).toEqual([
+      '[human-only content hidden]',
+      'A2: visible follow-up after the hidden notice',
+    ]);
+    expect((stalePostB as any).new_messages_1st_read?.[0].metadata).toMatchObject({
+      visibility: 'human_only',
+      content_hidden: true,
+      content_hidden_reason: 'human_only',
+      ui_type: 'admin_switch_confirmation_required',
+    });
+    expect((stalePostB as any).new_messages_1st_read?.[0].metadata).not.toHaveProperty('private_body');
+    expect(JSON.stringify((stalePostB as any).new_messages_1st_read?.[0].metadata)).not.toContain('private_body');
+
+    const waitBRefresh = await waitAs(threadId, agentBId, 1, 120);
+    expect(waitBRefresh.current_seq).toBe(3);
+    expect(waitBRefresh.messages.map(m => m.content)).toEqual([
+      '[human-only content hidden]',
+      'A2: visible follow-up after the hidden notice',
+    ]);
+    expect(waitBRefresh.messages[0].metadata).not.toHaveProperty('private_body');
+    expect(JSON.stringify(waitBRefresh.messages[0].metadata)).not.toContain('private_body');
+
+    const postB1 = await postAs(
+      threadId,
+      agentBId,
+      'B1: recovered without seeing the hidden body',
+      waitBRefresh.current_seq,
+      waitBRefresh.reply_token
+    );
+    expect(postB1).toHaveProperty('seq', 4);
+  });
+
   it('replayed_msg_post_token_failure_triggers_one_shot_fast_refresh_without_fake_new_messages', async () => {
     /**
      * Protect the replay-token recovery path inside an active chat.
