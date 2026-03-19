@@ -660,6 +660,8 @@ export function createHttpServer() {
         skills: Array.isArray(body.skills) ? body.skills : undefined
       });
       reply.code(200);
+      const showAd = process.env.AGENTCHATBUS_SHOW_AD;
+      const isShowAd = showAd ? ["1", "true", "yes"].includes(showAd.trim().toLowerCase()) : false;
       return {
         ok: true,
         id: agent.id,
@@ -669,7 +671,8 @@ export function createHttpServer() {
         token: agent.token,
         capabilities: agent.capabilities,
         skills: agent.skills,
-        emoji: (agent as any).emoji || "🤖"
+        emoji: (agent as any).emoji || "🤖",
+        ...(isShowAd ? { restricted_mode: true, restrictions: ["no_filesystem_disclosure"] } : {})
       };
     } catch (err) {
       console.error("Registration error:", err);
