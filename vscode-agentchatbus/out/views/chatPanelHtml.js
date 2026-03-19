@@ -1,4 +1,4 @@
-"use strict";var d=Object.defineProperty;var r=Object.getOwnPropertyDescriptor;var s=Object.getOwnPropertyNames;var l=Object.prototype.hasOwnProperty;var c=(t,e)=>{for(var n in e)d(t,n,{get:e[n],enumerable:!0})},p=(t,e,n,o)=>{if(e&&typeof e=="object"||typeof e=="function")for(let a of s(e))!l.call(t,a)&&a!==n&&d(t,a,{get:()=>e[a],enumerable:!(o=r(e,a))||o.enumerable});return t};var h=t=>p(d({},"__esModule",{value:!0}),t);var g={};c(g,{buildChatPanelHtml:()=>m,buildRecoveredChatPanelHtml:()=>u,getChatPanelWebviewOptions:()=>v,getRecoveredChatPanelWebviewOptions:()=>b});module.exports=h(g);function i(t){return String(t).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}function v(t){return{enableScripts:!0,retainContextWhenHidden:!0,localResourceRoots:[t]}}function b(t){return{enableScripts:!1,localResourceRoots:[t]}}function u(){return`<!DOCTYPE html>
+"use strict";var d=Object.defineProperty;var r=Object.getOwnPropertyDescriptor;var s=Object.getOwnPropertyNames;var l=Object.prototype.hasOwnProperty;var c=(t,e)=>{for(var n in e)d(t,n,{get:e[n],enumerable:!0})},p=(t,e,n,o)=>{if(e&&typeof e=="object"||typeof e=="function")for(let a of s(e))!l.call(t,a)&&a!==n&&d(t,a,{get:()=>e[a],enumerable:!(o=r(e,a))||o.enumerable});return t};var h=t=>p(d({},"__esModule",{value:!0}),t);var g={};c(g,{buildChatPanelHtml:()=>m,buildRecoveredChatPanelHtml:()=>b,getChatPanelWebviewOptions:()=>v,getRecoveredChatPanelWebviewOptions:()=>u});module.exports=h(g);function i(t){return String(t).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}function v(t){return{enableScripts:!0,retainContextWhenHidden:!0,localResourceRoots:[t]}}function u(t){return{enableScripts:!1,localResourceRoots:[t]}}function b(){return`<!DOCTYPE html>
         <html lang="en">
         <head>
             <meta charset="UTF-8">
@@ -46,10 +46,23 @@
                             </div>
                         </div>
                         <div id="topbar-actions">
+                            <button
+                                id="search-toggle-btn"
+                                class="icon-btn icon-only-btn tooltip-anchor"
+                                data-tooltip="Search this thread (Ctrl+F)"
+                                aria-label="Search this thread"
+                                aria-pressed="false"
+                                type="button"
+                            >
+                                <svg class="button-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                                    <circle cx="11" cy="11" r="8"/>
+                                    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                                </svg>
+                            </button>
                             <button id="new-thread-btn" class="icon-btn topbar-cta tooltip-anchor" data-tooltip="Create and switch to a new thread" aria-label="Create and switch to a new thread">+ New Thread</button>
                         </div>
                     </div>
-                    <div id="search-bar">
+                    <div id="search-bar" class="hidden" aria-hidden="true">
                         <input id="search-input" type="search" placeholder="Search this thread" spellcheck="false" />
                         <div id="search-counter">0 / 0</div>
                         <div class="chat-header-actions">

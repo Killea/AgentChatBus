@@ -167,12 +167,22 @@ textarea {
   background: var(--vscode-toolbar-hoverBackground);
 }
 
+#search-toggle-btn.active {
+  background: color-mix(in srgb, var(--vscode-button-background) 16%, var(--vscode-editor-background));
+  border-color: color-mix(in srgb, var(--vscode-button-background) 65%, var(--vscode-panel-border));
+  color: var(--vscode-button-background);
+}
+
 #search-bar {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
   width: 100%;
+}
+
+#search-bar.hidden {
+  display: none;
 }
 
 #search-input {

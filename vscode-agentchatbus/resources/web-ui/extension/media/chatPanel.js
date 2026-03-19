@@ -29,6 +29,7 @@
     uploadedImages: [],
     replyTarget: null,
     editingMessageId: null,
+    searchOpen: false,
     searchQuery: '',
     searchMatchIds: [],
     searchIndex: -1,
@@ -61,6 +62,8 @@
     refs.messageContainer = document.getElementById('message-container');
     refs.loadingIndicator = document.getElementById('loading-indicator');
     refs.navSidebar = document.getElementById('nav-sidebar');
+    refs.searchBar = document.getElementById('search-bar');
+    refs.searchToggle = document.getElementById('search-toggle-btn');
     refs.searchInput = document.getElementById('search-input');
     refs.searchCounter = document.getElementById('search-counter');
     refs.searchPrev = document.getElementById('search-prev');
@@ -108,6 +111,9 @@
       state.searchQuery = refs.searchInput.value.trim();
       runSearch(true);
     });
+    if (refs.searchToggle) {
+      refs.searchToggle.addEventListener('click', () => toggleSearch());
+    }
     refs.searchPrev.addEventListener('click', () => moveSearch(-1));
     refs.searchNext.addEventListener('click', () => moveSearch(1));
     if (refs.newThreadBtn) {
@@ -186,6 +192,25 @@
       if (!anchor) return;
       if (anchor.contains(event.relatedTarget)) return;
       hideCustomTooltip();
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        if (state.searchOpen) {
+          focusSearchInput();
+        } else {
+          openSearch();
+        }
+        return;
+      }
+
+      if (event.key === 'Escape' && state.searchOpen) {
+        if (document.activeElement === refs.searchInput || state.searchQuery) {
+          event.preventDefault();
+          closeSearch();
+        }
+      }
     });
 
     window.addEventListener('scroll', hideCustomTooltip, true);
@@ -356,6 +381,60 @@
   async function requestNewThread() {
     const topic = `New Thread ${new Date().toLocaleString()}`;
     vscode.postMessage({ command: 'createThread', topic });
+  }
+
+  function toggleSearch() {
+    if (state.searchOpen) {
+      closeSearch();
+      return;
+    }
+    openSearch();
+  }
+
+  function openSearch() {
+    if (!refs.searchBar) {
+      return;
+    }
+    state.searchOpen = true;
+    refs.searchBar.classList.remove('hidden');
+    refs.searchBar.setAttribute('aria-hidden', 'false');
+    if (refs.searchToggle) {
+      refs.searchToggle.classList.add('active');
+      refs.searchToggle.setAttribute('aria-pressed', 'true');
+    }
+    focusSearchInput();
+  }
+
+  function closeSearch() {
+    if (!refs.searchBar) {
+      return;
+    }
+    state.searchOpen = false;
+    refs.searchBar.classList.add('hidden');
+    refs.searchBar.setAttribute('aria-hidden', 'true');
+    if (refs.searchToggle) {
+      refs.searchToggle.classList.remove('active');
+      refs.searchToggle.setAttribute('aria-pressed', 'false');
+    }
+    clearSearchState();
+    hideCustomTooltip();
+  }
+
+  function focusSearchInput() {
+    window.requestAnimationFrame(() => {
+      refs.searchInput?.focus();
+      refs.searchInput?.select();
+    });
+  }
+
+  function clearSearchState() {
+    state.searchQuery = '';
+    state.searchMatchIds = [];
+    state.searchIndex = -1;
+    if (refs.searchInput) {
+      refs.searchInput.value = '';
+    }
+    runSearch(false);
   }
 
   function normalizeMessages(items) {

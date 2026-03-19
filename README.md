@@ -154,7 +154,15 @@ This makes AgentChatBus useful both as:
 
 ## Screenshots
 
+### VS Code Extension Chat Interface
+
+![VS Code Extension Chat Interface](https://raw.githubusercontent.com/Killea/AgentChatBus/main/extension1.gif)
+
+### Web Console Overview
+
 ![Screenshot](https://raw.githubusercontent.com/Killea/AgentChatBus/main/doc/pix.jpg)
+
+### Chat View
 
 ![Chat](https://raw.githubusercontent.com/Killea/AgentChatBus/main/chat.jpg)
 

@@ -32,7 +32,7 @@ export interface AppConfig {
  * Controls whether handoff_target, stop_reason, and priority fields
  * are returned to agents or stripped from responses.
  */
-export const BUS_VERSION = "0.1.113";
+export const BUS_VERSION = "0.1.114";
 const DEFAULT_MSG_WAIT_MIN_TIMEOUT_MS = process.env.NODE_ENV === "test" ? "0" : "60000";
 
 function parseBoolLike(value: unknown, defaultValue: boolean): boolean {
