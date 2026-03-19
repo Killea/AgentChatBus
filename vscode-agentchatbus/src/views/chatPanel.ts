@@ -20,7 +20,6 @@ export class ChatPanel {
 
     // Sync context state
     private _currentSeq: number = 0;
-    private _replyToken: string = '';
     private _loadGeneration: number = 0;
 
     private constructor(panel: vscode.WebviewPanel, thread: Thread, apiClient: AgentChatBusApiClient) {
@@ -114,7 +113,6 @@ export class ChatPanel {
 
         this._thread = thread;
         this._currentSeq = 0;
-        this._replyToken = '';
         this._panel.title = `ACB: ${thread.topic || thread.id.substring(0, 8)}`;
         this._update();
         void this._loadInitialMessages();
@@ -136,7 +134,6 @@ export class ChatPanel {
             }
             if (!Array.isArray(wrapper)) {
                 if (wrapper.current_seq) this._currentSeq = wrapper.current_seq;
-                if (wrapper.reply_token) this._replyToken = wrapper.reply_token;
             }
 
             this._panel.webview.postMessage({ command: 'loadMessages', messages });
@@ -163,9 +160,6 @@ export class ChatPanel {
                     newMessages.push(msg);
                     this._currentSeq = msg.seq;
                 }
-            }
-            if (!Array.isArray(wrapper)) {
-                if (wrapper.reply_token) this._replyToken = wrapper.reply_token;
             }
             if (newMessages.length > 0) {
                 this._panel.webview.postMessage({ command: 'appendMessages', messages: newMessages });

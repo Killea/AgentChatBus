@@ -84,7 +84,8 @@ export class AgentChatBusApiClient {
             try {
                 const errJson = JSON.parse(errDetails);
                 // AgentChatBus specific fast-retry logic for SeqMismatch/TokenInvalid
-                if (response.status === 400 && errJson?.detail?.action === 'CALL_SYNC_CONTEXT_THEN_RETRY') {
+                // TS server responds with 409 + action='READ_MESSAGES_THEN_CALL_MSG_WAIT' at root level
+                if (response.status === 409 && errJson?.action === 'READ_MESSAGES_THEN_CALL_MSG_WAIT') {
                     console.log("[AgentChatBus] Recovering from sync mismatch. Fetching new context...");
                     const sync = await this.getSyncContext(threadId);
                     body.reply_token = sync.reply_token;

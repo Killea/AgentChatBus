@@ -250,6 +250,7 @@ textarea {
 }
 
 #nav-sidebar {
+  /* Keep the no-scrollbar state visually tight (no phantom right gap). */
   width: 66px;
   padding: 10px 2px 10px 3px;
   border-left: 1px solid var(--vscode-panel-border);
@@ -264,6 +265,7 @@ textarea {
 }
 
 #nav-sidebar.has-scrollbar {
+  /* Wider by 6px to match scrollbar width and keep time text readable. */
   width: 72px;
   flex: 0 0 72px;
   padding-right: 3px;
@@ -283,6 +285,7 @@ textarea {
 }
 
 .nav-entry {
+  /* Extra horizontal padding keeps the active ring away from timestamp text. */
   border: 1px solid transparent;
   background: transparent;
   color: inherit;

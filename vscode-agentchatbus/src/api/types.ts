@@ -19,7 +19,7 @@ export interface Message {
     id: string;
     thread_id: string;
     seq: number;
-    priority: number;
+    priority: 'normal' | 'urgent' | 'system';
     author?: string;
     author_id?: string;
     author_name?: string;

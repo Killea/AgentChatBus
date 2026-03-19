@@ -1558,6 +1558,8 @@
       return;
     }
     window.requestAnimationFrame(() => {
+      // CSS ties layout to this flag: #nav-sidebar vs #nav-sidebar.has-scrollbar.
+      // Keep width delta aligned with scrollbar width to avoid clipping timestamps.
       const hasScrollbar = refs.navSidebar.scrollHeight > refs.navSidebar.clientHeight + 1;
       refs.navSidebar.classList.toggle('has-scrollbar', hasScrollbar);
     });
