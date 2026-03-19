@@ -17,6 +17,7 @@ import { eventBus } from "../../shared/eventBus.js";
 import { generateAgentEmoji } from "../../main.js";
 import { registerStore } from "./storeSingleton.js";
 import { checkContentOrThrow, ContentFilterError } from "./contentFilter.js";
+import { checkFilesystemDisclosureOrThrow, FilesystemDisclosureError } from "./filesystemDisclosureFilter.js";
 import { BUS_VERSION, ENABLE_HANDOFF_TARGET, ENABLE_STOP_REASON, ENABLE_PRIORITY, getConfig } from "../config/env.js";
 
 /** Constant-time string comparison to prevent timing attacks on tokens */
@@ -1600,6 +1601,8 @@ export class MemoryStore {
 
     // Content filter check (UP-07)
     checkContentOrThrow(input.content);
+    // Filesystem disclosure filter (SEC-06) — active only when SHOW_AD=true
+    checkFilesystemDisclosureOrThrow(input.content);
 
     const latestSeq = this.getLatestSeq(input.threadId);
     const agent = this.getAgentById(input.author);
@@ -1862,6 +1865,8 @@ export class MemoryStore {
     }
     // Fix #7: Content filter on edited content
     checkContentOrThrow(newContent);
+    // Filesystem disclosure filter (SEC-06) — active only when SHOW_AD=true
+    checkFilesystemDisclosureOrThrow(newContent);
     const newVersion = (message.edit_version || 0) + 1;
     const edits = this.messageEditHistory.get(messageId) || [];
     edits.push({
