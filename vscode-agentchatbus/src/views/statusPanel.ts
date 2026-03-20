@@ -46,6 +46,7 @@ export class StatusPanel {
         const m = this.metadata;
         const ide = m.ide || {};
         const mcp = m.mcp || {};
+        const lmProbe = m.lmProbe || {};
         const attempts = Array.isArray(m.resolutionAttempts) ? m.resolutionAttempts : [];
         const isExternalMode = String(m.startupMode || '').startsWith('external-service');
         const serverReachable = Boolean(m.serverReachable);
@@ -63,6 +64,22 @@ export class StatusPanel {
         const startedAtDisplay = m.startTime || m.backendStartedAt || 'N/A';
         const mcpApiStatus = mcp.apiAvailable ? 'AVAILABLE' : 'UNAVAILABLE';
         const mcpProviderStatus = mcp.providerRegistered ? 'REGISTERED' : 'PENDING';
+
+        const lmApiAvailable = Boolean(lmProbe.apiAvailable);
+        const lmSelectAvailable = Boolean(lmProbe.selectChatModelsAvailable);
+        const lmProactiveSupported = Boolean(lmProbe.supportedForProactiveInvocation);
+        const lmCopilotSupported = Boolean(lmProbe.supportedForCopilotVendor);
+        const lmProbeAt = typeof lmProbe.probeAt === 'string' ? lmProbe.probeAt : 'N/A';
+        const lmError = typeof lmProbe.error === 'string' ? lmProbe.error : '';
+        const lmNotes = Array.isArray(lmProbe.notes) ? lmProbe.notes : [];
+        const lmModels = Array.isArray(lmProbe.models) ? lmProbe.models : [];
+        const lmCopilotModels = Array.isArray(lmProbe.copilotModels) ? lmProbe.copilotModels : [];
+        const lmApiStatus = lmApiAvailable ? 'AVAILABLE' : 'UNAVAILABLE';
+        const lmSelectStatus = lmSelectAvailable ? 'AVAILABLE' : 'UNAVAILABLE';
+        const lmProactiveStatus = lmProactiveSupported ? 'SUPPORTED' : 'UNSUPPORTED';
+        const lmCopilotStatus = lmCopilotSupported ? 'SUPPORTED' : (lmModels.length > 0 ? 'MISSING' : 'UNSUPPORTED');
+        const lmProactiveBadgeClass = lmProactiveSupported ? 'ok' : 'error';
+        const lmCopilotBadgeClass = lmCopilotSupported ? 'ok' : (lmModels.length > 0 ? 'warn' : 'error');
         const startupMode = this._getStartupModeSummary(m.startupMode);
         const backend = this._getBackendSummary(m.backendEngine, m.startupMode);
         const backendSource = m.backendEngineSource || 'unknown';
@@ -99,6 +116,10 @@ export class StatusPanel {
         .label { font-weight: bold; color: var(--vscode-descriptionForeground); font-size: 0.9em; min-width: 120px; display: inline-block; }
         .value { font-family: 'Courier New', Courier, monospace; color: var(--vscode-textPreformat-foreground); word-break: break-all; }
         .status-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; font-weight: bold; background: #28a745; color: white; }
+        .status-badge.ok { background: #28a745; }
+        .status-badge.warn { background: #d29922; }
+        .status-badge.error { background: #d73a49; }
+        .status-badge.neutral { background: #6a737d; }
         .hint { margin-top: 10px; font-size: 0.85em; color: var(--vscode-descriptionForeground); }
         .warn { margin: 12px 0 18px; border: 1px solid #d29922; background: rgba(210, 153, 34, 0.12); color: var(--vscode-editor-foreground); padding: 10px 12px; border-radius: 6px; font-size: 0.9em; }
         .mode-help { margin-top: 10px; border-top: 1px solid var(--vscode-widget-border); padding-top: 8px; }
@@ -180,6 +201,27 @@ export class StatusPanel {
             <div><span class="label">Server URL:</span> <span class="value">${mcp.serverUrl || 'N/A'}</span></div>
             <div><span class="label">MCP Endpoint:</span> <span class="value">${mcp.sseEndpoint || 'N/A'}</span></div>
             <div><span class="label">Required VS Code:</span> <span class="value">${mcp.requiredVscodeVersion || 'N/A'}</span></div>
+        </div>
+
+        <div class="card">
+            <h2>🤖 IDE Agent Invocation (vscode.lm)</h2>
+            <div><span class="label">LM API:</span> <span class="status-badge ${lmApiAvailable ? 'ok' : 'error'}">${lmApiStatus}</span></div>
+            <div><span class="label">selectChatModels:</span> <span class="status-badge ${lmSelectAvailable ? 'ok' : 'error'}">${lmSelectStatus}</span></div>
+            <div><span class="label">Models:</span> <span class="value">${lmModels.length}</span></div>
+            <div><span class="label">Copilot models:</span> <span class="value">${lmCopilotModels.length}</span></div>
+            <div><span class="label">Proactive invoke:</span> <span class="status-badge ${lmProactiveBadgeClass}">${lmProactiveStatus}</span></div>
+            <div><span class="label">Copilot vendor:</span> <span class="status-badge ${lmCopilotBadgeClass}">${lmCopilotStatus}</span></div>
+            <div><span class="label">Probe At:</span> <span class="value">${lmProbeAt}</span></div>
+            ${lmError ? `<div class="warn">⚠️ Language model probe error: <span class="value">${this._escapeHtml(lmError)}</span></div>` : ''}
+            ${this._renderLmNotes(lmNotes)}
+            ${lmCopilotModels.length > 0
+                ? `<div class="hint">Copilot models (vendor=copilot):</div><div class="env-list">${this._renderLmModels(lmCopilotModels)}</div>`
+                : `<div class="hint">No Copilot models found. Showing all models visible to extensions:</div><div class="env-list">${this._renderLmModels(lmModels)}</div>`
+            }
+            ${lmProactiveSupported
+                ? `<div class="hint">If this is SUPPORTED, AgentChatBus can proactively call an IDE chat model (runNewCopilotSession). If canSendRequest=unknown, the first invocation will trigger a VS Code consent prompt.</div>`
+                : `<div class="warn">This environment does not support proactive IDE agent invocation from this extension. If you still want agents to use AgentChatBus, use MCP integration from your chat UI (the chat tool calls the bus, rather than the bus calling the chat tool).</div>`
+            }
         </div>
     </div>
 
@@ -267,6 +309,53 @@ export class StatusPanel {
         const mode = String(startupMode || '').trim().toLowerCase();
         if (mode === 'bundled-ts-service') return 'Node.js';
         return 'Unknown';
+    }
+
+    private _escapeHtml(raw: unknown): string {
+        return String(raw ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    private _renderLmNotes(notes: string[]) {
+        if (!Array.isArray(notes) || notes.length === 0) {
+            return '';
+        }
+
+        const lines = notes
+            .map((line) => `<div class="mode-help-item">• ${this._escapeHtml(line)}</div>`)
+            .join('');
+
+        return `<div class="hint">${lines}</div>`;
+    }
+
+    private _renderLmModels(models: any[]) {
+        if (!Array.isArray(models) || models.length === 0) {
+            return '<div class="value">No models detected.</div>';
+        }
+
+        return models
+            .map((model) => {
+                const name = this._escapeHtml(model?.name || 'model');
+                const id = this._escapeHtml(model?.id || '');
+                const vendor = this._escapeHtml(model?.vendor || '');
+                const family = this._escapeHtml(model?.family || '');
+                const version = this._escapeHtml(model?.version || '');
+                const maxInputTokens = this._escapeHtml(model?.maxInputTokens ?? '');
+                const canSendRequest = this._escapeHtml(model?.canSendRequest || 'unknown');
+                const right = `${vendor}/${family}/${version} • maxInputTokens=${maxInputTokens} • canSendRequest=${canSendRequest}`;
+
+                return `
+                    <div class="env-item">
+                        <span class="env-key" title="${id}">${name}</span>
+                        <span class="env-val" title="${id}">${right}</span>
+                    </div>
+                `;
+            })
+            .join('');
     }
 
     private _renderEnv(env: any) {

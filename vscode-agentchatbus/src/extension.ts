@@ -87,6 +87,136 @@ function isLocalServerUrl(rawUrl: string): boolean {
     }
 }
 
+function getLanguageModelNamespace(): typeof vscode.lm | undefined {
+    return (vscode as unknown as { lm?: typeof vscode.lm }).lm;
+}
+
+type LmProbeModelInfo = {
+    name: string;
+    id: string;
+    vendor: string;
+    family: string;
+    version: string;
+    maxInputTokens: number;
+    canSendRequest: 'yes' | 'no' | 'unknown';
+};
+
+type LmProbeResult = {
+    apiAvailable: boolean;
+    selectChatModelsAvailable: boolean;
+    supportedForProactiveInvocation: boolean;
+    supportedForCopilotVendor: boolean;
+    probeAt: string;
+    models: LmProbeModelInfo[];
+    copilotModels: LmProbeModelInfo[];
+    notes: string[];
+    error?: string;
+};
+
+function formatLmError(err: unknown): string {
+    if (!err) return 'Unknown error';
+
+    if (typeof err === 'object') {
+        const maybe = err as { message?: unknown; code?: unknown; name?: unknown };
+        const message = typeof maybe.message === 'string' ? maybe.message : '';
+        const code = typeof maybe.code === 'string' ? maybe.code : '';
+        const name = typeof maybe.name === 'string' ? maybe.name : '';
+        if (code && message) return `${code}: ${message}`;
+        if (code) return code;
+        if (name && message) return `${name}: ${message}`;
+        if (message) return message;
+    }
+
+    if (err instanceof Error) return err.message;
+    return String(err);
+}
+
+async function probeLanguageModelsForStatus(context: vscode.ExtensionContext): Promise<LmProbeResult> {
+    const probeAt = new Date().toISOString();
+    const notes: string[] = [];
+
+    const lm = getLanguageModelNamespace();
+    const selectChatModelsAvailable = typeof lm?.selectChatModels === 'function';
+
+    const base: LmProbeResult = {
+        apiAvailable: Boolean(lm),
+        selectChatModelsAvailable,
+        supportedForProactiveInvocation: false,
+        supportedForCopilotVendor: false,
+        probeAt,
+        models: [],
+        copilotModels: [],
+        notes,
+    };
+
+    if (!lm) {
+        notes.push('vscode.lm is not available in this IDE build.');
+        notes.push('This extension cannot proactively invoke an IDE coding agent via runNewCopilotSession.');
+        return base;
+    }
+
+    if (!selectChatModelsAvailable) {
+        notes.push('vscode.lm.selectChatModels is not available.');
+        notes.push('This extension cannot probe or invoke IDE chat models in the current environment.');
+        return base;
+    }
+
+    try {
+        const models = await lm.selectChatModels();
+        const accessInfo = (context as unknown as { languageModelAccessInformation?: vscode.LanguageModelAccessInformation })
+            .languageModelAccessInformation;
+
+        base.models = models.map((model) => {
+            let canSend: boolean | undefined = undefined;
+            try {
+                canSend = accessInfo?.canSendRequest(model);
+            } catch {
+                canSend = undefined;
+            }
+
+            return {
+                name: model.name,
+                id: model.id,
+                vendor: model.vendor,
+                family: model.family,
+                version: model.version,
+                maxInputTokens: model.maxInputTokens,
+                canSendRequest: canSend === true ? 'yes' : canSend === false ? 'no' : 'unknown',
+            };
+        });
+
+        base.copilotModels = base.models.filter((m) => m.vendor === 'copilot');
+        base.supportedForProactiveInvocation = base.models.length > 0;
+        base.supportedForCopilotVendor = base.copilotModels.length > 0;
+
+        if (base.models.length === 0) {
+            notes.push('No chat models were exposed to extensions via vscode.lm.');
+            notes.push('This extension cannot proactively invoke an IDE coding agent (runNewCopilotSession) here.');
+        } else {
+            notes.push('Models were discovered via vscode.lm.selectChatModels().');
+            notes.push('canSendRequest=unknown usually means consent has not been asked yet; invoking will prompt the user.');
+            if (base.copilotModels.length === 0) {
+                notes.push('No vendor=copilot models were found. If you expected Copilot, check that it is installed and signed in.');
+            }
+        }
+
+        return base;
+    } catch (err) {
+        const error = formatLmError(err);
+        return {
+            ...base,
+            supportedForProactiveInvocation: false,
+            supportedForCopilotVendor: false,
+            notes: [
+                ...notes,
+                'Language model probing threw an exception.',
+                'This extension cannot treat IDE agent invocation as available in the current environment.'
+            ],
+            error,
+        };
+    }
+}
+
 export function activate(context: vscode.ExtensionContext) {
     console.log('[AgentChatBus] Activating extension...');
 
@@ -290,18 +420,19 @@ function initializeMainViews(context: vscode.ExtensionContext, serverManager: Bu
                 console.error('[AgentChatBus] openThread: missing thread or apiClient', { thread, apiClient: !!apiClient });
             }
         }),
-        vscode.commands.registerCommand('agentchatbus.showMcpStatus', async () => {
-            const metadata = serverManager.getStatusMetadata();
-            let backendEngine = String(metadata.backendEngine || 'unknown').trim().toLowerCase() || 'unknown';
-            let backendEngineSource = metadata.backendEngine ? 'startup-probe' : 'startup-heuristic';
-            let backendVersion = String(metadata.backendVersion || '').trim() || undefined;
-            let backendRuntime = String(metadata.backendRuntime || '').trim() || undefined;
-            let backendStartedAt = undefined as string | undefined;
-            let backendUptimeSeconds = undefined as number | undefined;
-            let serverReachable = false;
-            const serverUrl = String(metadata?.mcp?.serverUrl || apiClient?.getBaseUrl() || '').trim();
-            const localServer = isLocalServerUrl(serverUrl);
-            const serverScope = localServer ? 'local' : 'remote';
+         vscode.commands.registerCommand('agentchatbus.showMcpStatus', async () => {
+             const metadata = serverManager.getStatusMetadata();
+             let backendEngine = String(metadata.backendEngine || 'unknown').trim().toLowerCase() || 'unknown';
+             let backendEngineSource = metadata.backendEngine ? 'startup-probe' : 'startup-heuristic';
+             let backendVersion = String(metadata.backendVersion || '').trim() || undefined;
+             let backendRuntime = String(metadata.backendRuntime || '').trim() || undefined;
+             let backendStartedAt = undefined as string | undefined;
+             let backendUptimeSeconds = undefined as number | undefined;
+             let serverReachable = false;
+             const serverUrl = String(metadata?.mcp?.serverUrl || apiClient?.getBaseUrl() || '').trim();
+             const localServer = isLocalServerUrl(serverUrl);
+             const serverScope = localServer ? 'local' : 'remote';
+             const lmProbe = await probeLanguageModelsForStatus(context);
 
             try {
                 if (apiClient) {
@@ -367,21 +498,22 @@ function initializeMainViews(context: vscode.ExtensionContext, serverManager: Bu
                 }
             }
 
-            StatusPanel.createOrShow({
-                ...metadata,
-                backendEngine,
-                backendEngineSource,
-                backendVersion,
-                backendRuntime,
-                backendStartedAt,
-                backendUptimeSeconds,
-                serverReachable,
-                serverScope,
-                privacyWarning: localServer
-                    ? ''
-                    : 'Remote server detected. Sensitive host/process fields are hidden for safety.',
-            });
-        }),
+             StatusPanel.createOrShow({
+                 ...metadata,
+                 backendEngine,
+                 backendEngineSource,
+                 backendVersion,
+                 backendRuntime,
+                 backendStartedAt,
+                 backendUptimeSeconds,
+                 serverReachable,
+                 serverScope,
+                 lmProbe,
+                 privacyWarning: localServer
+                     ? ''
+                     : 'Remote server detected. Sensitive host/process fields are hidden for safety.',
+             });
+         }),
         vscode.commands.registerCommand('agentchatbus.configureCursorMcp', async () => {
             const config = vscode.workspace.getConfiguration('agentchatbus');
             const serverUrl = config.get<string>('serverUrl', 'http://127.0.0.1:39765');

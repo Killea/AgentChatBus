@@ -194,7 +194,7 @@
           Run a self-test to verify Database, MCP Tools, and Agent connectivity.
         </div>
         <button class="btn-primary diag-run-btn" id="btn-run-diagnostics" onclick="window.runDiagnostics(this)" style="width: 100%; margin-bottom: 12px;">Run Diagnostics <span id="diag-btn-emoji"></span></button>
-        <div id="diagnostics-results" class="diag-terminal" style="display: none; background: #0c0c0c; color: #00ff00; font-family: monospace; padding: 12px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; line-height: 1.5;"></div>
+        <div id="diagnostics-results" class="diag-terminal" style="display: none; background: #0c0c0c; color: #00ff00; font-family: monospace; padding: 12px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; line-height: 1.5; max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; word-break: break-word; overflow-x: hidden;"></div>
         <button class="btn-secondary diag-copy-btn" id="btn-copy-diagnostics" onclick="window.copyDiagnosticsReport(this)" style="width: 100%; display: none; margin-top: 12px;">Copy Diagnostic Report</button>
       </div>
     `;

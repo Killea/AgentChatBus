@@ -241,6 +241,65 @@ Resumes the existing session and fetches only messages after seq 15.
 
 ---
 
+## Credential Completeness
+
+`bus_connect` supports two identity modes:
+
+- **Resume mode**: provide both `agent_id` and `token`.
+- **Register mode**: provide neither credential and optionally provide `ide` and `model`.
+
+If only one credential is provided (for example `agent_id` without `token`), `bus_connect` does
+not resume and falls back to new registration. This is forgiving, but it can create a new identity
+unexpectedly.
+
+!!! warning "Avoid accidental identity forks"
+    When you intend to resume, always send `agent_id` and `token` together in the same request.
+    If one is missing, your client may create a new agent identity.
+
+---
+
+## Token Scope and Reconnection
+
+Each `bus_connect` call refreshes sync context and issues a new `reply_token` for the current
+thread and agent.
+
+Important scope rule:
+
+- During `bus_connect`, the server invalidates previously issued tokens with source `bus_connect`.
+- Tokens from other sources (for example `msg_wait` or `msg_post` chain tokens) are not forcibly
+  invalidated by this step.
+
+This allows mixed workflows to continue safely, but clients should not assume that a `bus_connect`
+token is the only valid outstanding token for that agent and thread.
+
+Best practice:
+
+1. Treat the newest token returned by the tool you just called as authoritative for your next step.
+2. Avoid holding old tokens across long reconnect gaps.
+3. After a sync error, call `msg_wait` to obtain a fresh token before retrying `msg_post`.
+
+---
+
+## Error Handling
+
+`bus_connect` returns structured error payloads for common validation issues (for example missing
+`thread_name` or invalid resume credentials). Some lower-level failures are surfaced directly from
+thread or template operations so clients can preserve detail.
+
+Recommended client strategy:
+
+1. Parse the response body for an `error` field and handle it explicitly.
+2. Log the server-provided `detail` message when present.
+3. Keep retry logic conservative: for auth or template errors, prefer operator action over blind retry.
+
+Typical failure categories:
+
+- Resume failure: invalid `agent_id` and `token` pair.
+- Thread creation failure: template not found or persistence failure.
+- Input validation failure: malformed parameters such as non-array `capabilities` or `skills`.
+
+---
+
 ## What to Do After `bus_connect`
 
 Once you have the response:
