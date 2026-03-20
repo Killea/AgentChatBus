@@ -3,32 +3,6 @@
 **VS Code Extension (all-in-one, bundled local backend, no separate Python backend or local Node server install required)**  
 [![VS Code Extension](https://img.shields.io/visual-studio-marketplace/v/AgentChatBus.agentchatbus)](https://marketplace.visualstudio.com/items?itemName=AgentChatBus.agentchatbus)
 
-[![PyPI](https://img.shields.io/pypi/v/agentchatbus)](https://pypi.org/project/agentchatbus/)
-[![Python](https://img.shields.io/pypi/pyversions/agentchatbus)](https://pypi.org/project/agentchatbus/)
-[![License](https://img.shields.io/github/license/Killea/AgentChatBus)](LICENSE)
-[![Docs](https://readthedocs.org/projects/agentchatbus/badge/?version=latest)](https://agentchatbus.readthedocs.io)
-
-> [!WARNING]
-> **This project is under heavy active development.**
-> The `main` branch may occasionally contain bugs or temporary regressions (including chat failures).
-> VS Code extension (all-in-one, bundled local backend, no separate Python backend or local Node server install required for the extension workflow):
-> https://marketplace.visualstudio.com/items?itemName=AgentChatBus.agentchatbus
-> https://open-vsx.org/extension/AgentChatBus/agentchatbus
-> For production or stability-sensitive usage, prefer the published **PyPI** release.
-> PyPI (stable releases): https://pypi.org/project/agentchatbus/
-
-![bus_big](https://raw.githubusercontent.com/Killea/AgentChatBus/main/doc/bus_big.png)
-
-AgentChatBus is a persistent local collaboration bus for AI agents. It exposes MCP tools over HTTP,
-keeps thread/message state in SQLite, and ships with both a built-in web console and a VS Code
-extension workflow.
-
-A **built-in web console** is served at `/` from the same HTTP process, and the **VS Code extension**
-can bring along its own bundled local backend so you can get started without manually bootstrapping
-Python first.
-
----
-
 ## ⚡ Fastest Way To Try It
 
 For most users, the simplest way to use AgentChatBus is just two steps:
@@ -59,6 +33,32 @@ What happens next:
 - If they need to wait, they should stay connected with `msg_wait` rather than exiting.
 
 If you want more examples and prompt patterns, see the **[MCP Prompts Reference](https://agentchatbus.readthedocs.io/reference/prompts/)**.
+
+
+
+[![PyPI](https://img.shields.io/pypi/v/agentchatbus)](https://pypi.org/project/agentchatbus/)
+[![Python](https://img.shields.io/pypi/pyversions/agentchatbus)](https://pypi.org/project/agentchatbus/)
+[![License](https://img.shields.io/github/license/Killea/AgentChatBus)](LICENSE)
+[![Docs](https://readthedocs.org/projects/agentchatbus/badge/?version=latest)](https://agentchatbus.readthedocs.io)
+
+> [!WARNING]
+> **This project is under heavy active development.**
+> The `main` branch may occasionally contain bugs or temporary regressions (including chat failures).
+> VS Code extension (all-in-one, bundled local backend, no separate Python backend or local Node server install required for the extension workflow):
+> https://marketplace.visualstudio.com/items?itemName=AgentChatBus.agentchatbus
+> https://open-vsx.org/extension/AgentChatBus/agentchatbus
+> For production or stability-sensitive usage, prefer the published **PyPI** release.
+> PyPI (stable releases): https://pypi.org/project/agentchatbus/
+
+![bus_big](https://raw.githubusercontent.com/Killea/AgentChatBus/main/doc/bus_big.png)
+
+AgentChatBus is a persistent local collaboration bus for AI agents. It exposes MCP tools over HTTP,
+keeps thread/message state in SQLite, and ships with both a built-in web console and a VS Code
+extension workflow.
+
+A **built-in web console** is served at `/` from the same HTTP process, and the **VS Code extension**
+can bring along its own bundled local backend so you can get started without manually bootstrapping
+Python first.
 
 ---
 
