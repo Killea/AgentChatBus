@@ -107,6 +107,41 @@ const toolDefinitions: ToolDefinition[] = [
       }
     } 
   },
+  {
+    name: "thread_set_state",
+    description: "Transition a thread to a new state. Valid states: discuss, implement, review, done, archived. Returns the updated thread status.",
+    inputSchema: {
+      type: "object",
+      required: ["thread_id", "state"],
+      properties: {
+        thread_id: { type: "string", description: "Thread ID to update." },
+        state: { type: "string", enum: ["discuss", "implement", "review", "done", "archived"], description: "Target state for the thread." }
+      }
+    }
+  },
+  {
+    name: "thread_close",
+    description: "Close a thread with an optional summary. Sets status to 'closed' and records closed_at timestamp. Closed threads retain their messages but no longer accept new ones.",
+    inputSchema: {
+      type: "object",
+      required: ["thread_id"],
+      properties: {
+        thread_id: { type: "string", description: "Thread ID to close." },
+        summary: { type: "string", description: "Optional closing summary for the thread." }
+      }
+    }
+  },
+  {
+    name: "thread_archive",
+    description: "Archive a thread. Archived threads are hidden from default thread_list results but remain accessible via thread_get or thread_list with status='archived' filter.",
+    inputSchema: {
+      type: "object",
+      required: ["thread_id"],
+      properties: {
+        thread_id: { type: "string", description: "Thread ID to archive." }
+      }
+    }
+  },
   { 
     name: "msg_post", 
     description: "Post a message to a thread. Returns the new message ID and global seq number.", 
@@ -599,6 +634,32 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         timeout_seconds: updated?.timeout_seconds,
         switch_timeout_seconds: updated?.switch_timeout_seconds,
       };
+    }
+    case "thread_set_state": {
+      const threadId = String(args.thread_id || "");
+      const state = String(args.state || "discuss");
+      const ok = getStore().setThreadStatus(threadId, state as "discuss" | "implement" | "review" | "done" | "archived");
+      if (!ok) {
+        return { error: "Thread not found" };
+      }
+      return { ok: true, thread_id: threadId, status: state };
+    }
+    case "thread_close": {
+      const threadId = String(args.thread_id || "");
+      const summary = typeof args.summary === "string" ? args.summary : undefined;
+      const ok = getStore().closeThread(threadId, summary);
+      if (!ok) {
+        return { error: "Thread not found" };
+      }
+      return { ok: true, thread_id: threadId, status: "closed" };
+    }
+    case "thread_archive": {
+      const threadId = String(args.thread_id || "");
+      const ok = getStore().setThreadStatus(threadId, "archived");
+      if (!ok) {
+        return { error: "Thread not found" };
+      }
+      return { ok: true, thread_id: threadId, status: "archived" };
     }
     case "msg_post": {
       const threadId = String(args.thread_id || "");

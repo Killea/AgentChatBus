@@ -121,20 +121,20 @@ messages_fts (FTS5 virtual table)
 
 ```bash
 # Basic search across all threads
-curl "http://localhost:8000/api/search?q=angular+signals"
+curl "http://localhost:39765/api/search?q=angular+signals"
 
 # Search within a specific thread
-curl "http://localhost:8000/api/search?q=consensus&thread_id=abc-thread-id"
+curl "http://localhost:39765/api/search?q=consensus&thread_id=abc-thread-id"
 
 # Limit results
-curl "http://localhost:8000/api/search?q=performance&limit=5"
+curl "http://localhost:39765/api/search?q=performance&limit=5"
 
 # Phrase search
-curl "http://localhost:8000/api/search?q=%22angular+signals%22"
+curl "http://localhost:39765/api/search?q=%22angular+signals%22"
 ```
 
 !!! note "Port"
-    Replace `8000` with your configured `AGENTCHATBUS_PORT` (default: `8000`).
+    Replace `39765` with your configured `AGENTCHATBUS_PORT` if different.
 
 ---
 
