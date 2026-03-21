@@ -29,7 +29,7 @@ export {
 import { getConfig } from "./registry.js";
 import type { AppConfig } from "./registry.js";
 
-export const BUS_VERSION = "0.1.127";
+export const BUS_VERSION = "0.2.5";
 export const ADMIN_TOKEN: string | null = getConfig().adminToken;
 export const ENABLE_HANDOFF_TARGET = getConfig().enableHandoffTarget;
 export const ENABLE_STOP_REASON = getConfig().enableStopReason;

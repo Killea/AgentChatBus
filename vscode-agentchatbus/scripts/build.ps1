@@ -34,8 +34,8 @@ if ($bump -ne "none") {
     }
 }
 
-# 1.5 Sync extension version -> bundled TS backend version metadata
-Write-Host "Syncing extension version into agentchatbus-ts..." -ForegroundColor Yellow
+# 1.5 Sync extension version -> repo version metadata
+Write-Host "Syncing extension version into agentchatbus-ts and pyproject.toml..." -ForegroundColor Yellow
 node .\scripts\sync-versions.mjs
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Version sync failed."

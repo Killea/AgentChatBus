@@ -15,6 +15,9 @@ if [ "$BUMP" != "none" ]; then
     npm version $BUMP --no-git-tag-version || exit 1
 fi
 
+echo "Syncing extension version into agentchatbus-ts and pyproject.toml..."
+node ./scripts/sync-versions.mjs || exit 1
+
 echo "Compiling TypeScript..."
 npm run compile || exit 1
 
