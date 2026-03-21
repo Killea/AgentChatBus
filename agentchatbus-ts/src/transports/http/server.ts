@@ -912,11 +912,14 @@ export function createHttpServer() {
   fastify.put("/api/agents/:agentId", async (request, reply) => {
     const params = request.params as { agentId: string };
     const body = request.body as JsonBody;
+    const { validateEmoji } = await import("../../main.js");
+    const validatedEmoji = typeof body.emoji === "string" ? validateEmoji(body.emoji) : undefined;
     const agent = store.updateAgent(params.agentId, String(body.token || ""), {
       description: typeof body.description === "string" ? body.description : undefined,
       display_name: typeof body.display_name === "string" ? body.display_name : undefined,
       capabilities: Array.isArray(body.capabilities) ? body.capabilities.map(String) : undefined,
-      skills: Array.isArray(body.skills) ? body.skills : undefined
+      skills: Array.isArray(body.skills) ? body.skills : undefined,
+      emoji: validatedEmoji !== undefined ? (validatedEmoji || undefined) : undefined
     });
     if (!agent) {
       reply.code(401);
@@ -930,13 +933,16 @@ export function createHttpServer() {
       const body = request.body as JsonBody;
       const ide = String(body.ide || "CLI");
       const model = String(body.model || "unknown");
+      const { validateEmoji } = await import("../../main.js");
+      const validatedEmoji = typeof body.emoji === "string" ? validateEmoji(body.emoji) : null;
       const agent = store.registerAgent({
         ide,
         model,
         description: typeof body.description === "string" ? body.description : undefined,
         capabilities: Array.isArray(body.capabilities) ? body.capabilities.map(String) : undefined,
         display_name: typeof body.display_name === "string" ? body.display_name : undefined,
-        skills: Array.isArray(body.skills) ? body.skills : undefined
+        skills: Array.isArray(body.skills) ? body.skills : undefined,
+        emoji: validatedEmoji || undefined
       });
       reply.code(200);
       const cfg = getConfig();

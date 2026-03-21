@@ -1,9 +1,23 @@
 // UI-14: Auto-register a browser-session agent so the UI can create threads.
-// Token is stored in sessionStorage (cleared on tab close).
+// Session credentials are in sessionStorage; user-chosen identity lives in localStorage.
 (function () {
   const SESSION_KEY = "acb-ui-agent";
+  const IDENTITY_KEY = "acb-ui-identity";
+
+  function _loadIdentity() {
+    try {
+      const raw = localStorage.getItem(IDENTITY_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (_) { /* ignore */ }
+    return { display_name: "Browser User", emoji: "" };
+  }
+
+  function _saveIdentity(identity) {
+    localStorage.setItem(IDENTITY_KEY, JSON.stringify(identity));
+  }
 
   async function ensureUiAgent() {
+    const identity = _loadIdentity();
     const cached = sessionStorage.getItem(SESSION_KEY);
     if (cached) {
       try {
@@ -15,15 +29,18 @@
     }
 
     try {
+      const body = {
+        name: "ui-human",
+        display_name: identity.display_name || "Browser User",
+        ide: "browser",
+        model: "human",
+      };
+      if (identity.emoji) body.emoji = identity.emoji;
+
       const res = await fetch("/api/agents/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "ui-human",
-          display_name: "Browser User",
-          ide: "browser",
-          model: "human",
-        }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) return null;
       const data = await res.json();
@@ -35,5 +52,40 @@
     }
   }
 
-  window.AcbUiAgent = { ensureUiAgent };
+  async function updateUiAgentIdentity(displayName, emoji) {
+    const prev = _loadIdentity();
+    const next = {
+      display_name: (displayName || "").trim() || "Browser User",
+      emoji: (emoji || "").trim(),
+    };
+    _saveIdentity(next);
+
+    const cached = sessionStorage.getItem(SESSION_KEY);
+    if (!cached) return { ok: false, reason: "no_session" };
+
+    let parsed;
+    try { parsed = JSON.parse(cached); } catch (_) { return { ok: false, reason: "corrupted_session" }; }
+    if (!parsed.agent_id || !parsed.token) return { ok: false, reason: "missing_credentials" };
+
+    try {
+      const body = { token: parsed.token, display_name: next.display_name };
+      if (next.emoji) body.emoji = next.emoji;
+
+      const res = await fetch(`/api/agents/${parsed.agent_id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) return { ok: false, reason: "api_error", status: res.status };
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, reason: "network_error", message: err.message };
+    }
+  }
+
+  function getUiIdentity() {
+    return _loadIdentity();
+  }
+
+  window.AcbUiAgent = { ensureUiAgent, updateUiAgentIdentity, getUiIdentity };
 })();

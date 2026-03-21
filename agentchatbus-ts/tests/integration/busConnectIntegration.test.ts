@@ -277,4 +277,87 @@ describe("bus_connect integration parity", () => {
 
     await server.close();
   });
+
+  it("passes explicit emoji to new agent on bus_connect", async () => {
+    const server = createHttpServer();
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/mcp/messages/",
+      payload: {
+        method: "tools/call",
+        params: {
+          name: "bus_connect",
+          arguments: {
+            thread_name: "Emoji Bus Connect",
+            ide: "EmojiIDE",
+            model: "EmojiModel",
+            emoji: "🦊"
+          }
+        }
+      }
+    });
+
+    expect(res.statusCode).toBe(200);
+    const payload = JSON.parse(res.json().result[0].text);
+    expect(payload.agent.registered).toBe(true);
+
+    const agentRes = await server.inject({
+      method: "GET",
+      url: `/api/agents/${payload.agent.agent_id}`
+    });
+    expect(agentRes.statusCode).toBe(200);
+    expect(agentRes.json().emoji).toBe("🦊");
+
+    await server.close();
+  });
+
+  it("ignores emoji on bus_connect resume path", async () => {
+    const server = createHttpServer();
+
+    const regRes = await server.inject({
+      method: "POST",
+      url: "/mcp/messages/",
+      payload: {
+        method: "tools/call",
+        params: {
+          name: "bus_connect",
+          arguments: {
+            thread_name: "Emoji Resume Test",
+            ide: "TestIDE",
+            model: "TestModel",
+            emoji: "🦊"
+          }
+        }
+      }
+    });
+    const first = JSON.parse(regRes.json().result[0].text);
+    expect(first.agent.registered).toBe(true);
+
+    const resumeRes = await server.inject({
+      method: "POST",
+      url: "/mcp/messages/",
+      payload: {
+        method: "tools/call",
+        params: {
+          name: "bus_connect",
+          arguments: {
+            thread_name: "Emoji Resume Test",
+            agent_id: first.agent.agent_id,
+            token: first.agent.token,
+            emoji: "🎉"
+          }
+        }
+      }
+    });
+    const resumed = JSON.parse(resumeRes.json().result[0].text);
+
+    const agentRes = await server.inject({
+      method: "GET",
+      url: `/api/agents/${first.agent.agent_id}`
+    });
+    expect(agentRes.json().emoji).toBe("🦊");
+
+    await server.close();
+  });
 });

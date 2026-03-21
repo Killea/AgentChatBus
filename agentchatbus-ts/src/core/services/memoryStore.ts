@@ -2050,7 +2050,7 @@ export class MemoryStore {
     };
   }
 
-  registerAgent(input: { ide: string; model: string; description?: string; capabilities?: string[]; display_name?: string; skills?: unknown[] }): AgentRecord {
+  registerAgent(input: { ide: string; model: string; description?: string; capabilities?: string[]; display_name?: string; skills?: unknown[]; emoji?: string }): AgentRecord {
     const agentId = randomUUID();
     const ide = input.ide.trim() || "Unknown IDE";
     const model = input.model.trim() || "Unknown Model";
@@ -2084,7 +2084,7 @@ export class MemoryStore {
       capabilities: input.capabilities || [],
       skills: input.skills ?? undefined,
       token: generateAgentToken(),
-      emoji: generateAgentEmoji(agentId),
+      emoji: input.emoji || generateAgentEmoji(agentId),
       registered_at: new Date().toISOString()
     };
     this.agents.set(agent.id, agent);
@@ -2122,7 +2122,7 @@ export class MemoryStore {
     return this.getAgent(agentId);
   }
 
-  updateAgent(agentId: string, token: string, input: { description?: string; display_name?: string; capabilities?: string[]; skills?: unknown[] }): AgentRecord | undefined {
+  updateAgent(agentId: string, token: string, input: { description?: string; display_name?: string; capabilities?: string[]; skills?: unknown[]; emoji?: string }): AgentRecord | undefined {
     const agent = this.getAgent(agentId);
     if (!agent || !agent.token || !safeCompare(agent.token, token)) {
       return undefined;
@@ -2140,6 +2140,9 @@ export class MemoryStore {
     }
     if (input.skills !== undefined) {
       agent.skills = input.skills;
+    }
+    if (input.emoji !== undefined) {
+      agent.emoji = input.emoji;
     }
     agent.last_activity = "update";
     agent.last_activity_time = new Date().toISOString();

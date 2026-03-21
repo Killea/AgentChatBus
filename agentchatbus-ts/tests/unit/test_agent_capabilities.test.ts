@@ -293,4 +293,86 @@ describe('Agent Capabilities HTTP integration (Ported from test_agent_capabiliti
 
     await server.close();
   });
+
+  it('api register with explicit emoji', async () => {
+    const server = createHttpServer();
+    const r = await server.inject({
+      method: 'POST',
+      url: '/api/agents/register',
+      payload: {
+        ide: 'TestIDE',
+        model: 'test-model',
+        emoji: '🦊'
+      }
+    });
+    expect(r.statusCode).toBe(200);
+    const data = r.json();
+    expect(data.emoji).toBe('🦊');
+
+    await server.close();
+  });
+
+  it('api register with invalid emoji falls back to generated', async () => {
+    const server = createHttpServer();
+    const r = await server.inject({
+      method: 'POST',
+      url: '/api/agents/register',
+      payload: {
+        ide: 'TestIDE',
+        model: 'test-model',
+        emoji: 'not-an-emoji'
+      }
+    });
+    expect(r.statusCode).toBe(200);
+    const data = r.json();
+    expect(typeof data.emoji).toBe('string');
+    expect(data.emoji).not.toBe('not-an-emoji');
+
+    await server.close();
+  });
+
+  it('api agent update emoji', async () => {
+    const server = createHttpServer();
+    const registered = await registerAgent(server);
+
+    const r = await server.inject({
+      method: 'PUT',
+      url: `/api/agents/${registered.agent_id}`,
+      payload: {
+        token: registered.token,
+        emoji: '🎉'
+      }
+    });
+
+    expect(r.statusCode).toBe(200);
+    const data = r.json();
+    expect(data.ok).toBe(true);
+    expect(data.emoji).toBe('🎉');
+
+    const getR = await server.inject({ method: 'GET', url: `/api/agents/${registered.agent_id}` });
+    expect(getR.json().emoji).toBe('🎉');
+
+    await server.close();
+  });
+
+  it('api agents list includes emoji', async () => {
+    const server = createHttpServer();
+    const r = await server.inject({
+      method: 'POST',
+      url: '/api/agents/register',
+      payload: {
+        ide: 'TestIDE',
+        model: 'test-model',
+        emoji: '🔥'
+      }
+    });
+    const registered = r.json();
+
+    const listR = await server.inject({ method: 'GET', url: '/api/agents' });
+    const agents = listR.json() as any[];
+    const matched = agents.find(a => a.id === registered.agent_id);
+    expect(matched?.emoji).toBe('🔥');
+
+    await server.close();
+  });
 });
