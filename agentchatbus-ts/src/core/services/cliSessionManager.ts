@@ -3,10 +3,12 @@ import { execFileSync, spawn } from "node:child_process";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname } from "node:path";
-import * as nodePty from "node-pty";
-import type { IPty } from "node-pty";
+import xtermHeadless from "@xterm/headless";
 import { eventBus } from "../../shared/eventBus.js";
 import { logError, logInfo } from "../../shared/logger.js";
+
+type HeadlessTerminalInstance = import("@xterm/headless").Terminal;
+const { Terminal: HeadlessTerminal } = xtermHeadless;
 
 export type CliSessionAdapterId = "cursor" | "codex";
 export type CliSessionMode = "headless" | "interactive";
@@ -47,6 +49,14 @@ export interface CliSessionSnapshot {
   cols?: number;
   rows?: number;
   shell?: string;
+  screen_excerpt?: string;
+  screen_cursor_x?: number;
+  screen_cursor_y?: number;
+  screen_buffer?: "normal" | "alternate";
+  automation_state?: string;
+  reply_capture_state?: string;
+  reply_capture_excerpt?: string;
+  reply_capture_error?: string;
 }
 
 export interface CliSessionOutputEntry {
@@ -80,6 +90,53 @@ type CliSessionRuntime = {
   abortController: AbortController | null;
   runPromise: Promise<void> | null;
   controls: CliSessionControls | null;
+  screenState: CliSessionScreenRuntime | null;
+  automationState: CliSessionAutomationRuntime | null;
+  replyCapture: CliSessionReplyCaptureRuntime | null;
+};
+
+type CliSessionScreenSnapshot = {
+  text: string;
+  normalizedText: string;
+  cursorX: number;
+  cursorY: number;
+  bufferType: "normal" | "alternate";
+};
+
+type CliSessionScreenRuntime = {
+  terminal: HeadlessTerminalInstance;
+  writeQueue: Promise<void>;
+  latest: CliSessionScreenSnapshot;
+};
+
+type CliSessionAutomationRuntime = {
+  profile: "codex-startup";
+  continueSent: boolean;
+  initialPromptTextSent: boolean;
+  initialPromptEnterSent: boolean;
+  initialPromptEnterRetried: boolean;
+  manualOverride: boolean;
+  sawReadyScreen: boolean;
+  sawWorkingScreen: boolean;
+  submitTimer: NodeJS.Timeout | null;
+};
+
+type CliSessionReplyCaptureState =
+  | "waiting_for_reply"
+  | "working"
+  | "streaming"
+  | "completed"
+  | "timeout"
+  | "error";
+
+type CliSessionReplyCaptureRuntime = {
+  mode: "initial_prompt";
+  prompt: string;
+  rawOutput: string;
+  state: CliSessionReplyCaptureState;
+  excerpt?: string;
+  error?: string;
+  timeoutTimer: NodeJS.Timeout | null;
 };
 
 type CliAdapterRunInput = {
@@ -105,6 +162,9 @@ type CliAdapterRunResult = {
   externalSessionId?: string;
   externalRequestId?: string;
 };
+
+type NodePtyModule = typeof import("node-pty");
+type PtyInstance = import("node-pty").IPty;
 
 interface CliSessionAdapter {
   readonly adapterId: CliSessionAdapterId;
@@ -142,11 +202,20 @@ interface CursorCommandExecutor {
 
 const DEFAULT_TERMINAL_COLS = 120;
 const DEFAULT_TERMINAL_ROWS = 32;
+const INITIAL_CODEX_REPLY_TIMEOUT_MS = 20000;
 const WINDOWS_POWERSHELL =
   `${process.env.SystemRoot || "C:\\Windows"}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
-const ANSI_CSI_SEQUENCE = /\u001b\[[0-9;?]*[ -/]*[@-~]/g;
+const DEFAULT_HEADLESS_SCREEN_SNAPSHOT: CliSessionScreenSnapshot = {
+  text: "",
+  normalizedText: "",
+  cursorX: 0,
+  cursorY: 0,
+  bufferType: "normal",
+};
+const ANSI_CSI_SEQUENCE = /\u001b\[[0-?]*[ -/]*[@-~]/g;
 const ANSI_OSC_SEQUENCE = /\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g;
 const ANSI_SINGLE_CHAR_SEQUENCE = /\u001b[@-_]/g;
+let nodePtyModulePromise: Promise<NodePtyModule> | null = null;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -178,6 +247,241 @@ function summarizeInteractiveTranscript(input: string): string | undefined {
     return undefined;
   }
   return clipText(normalized, 1200);
+}
+
+function normalizeScreenMatchText(input: string): string {
+  return String(input || "")
+    .toLowerCase()
+    .replace(/\u00a0/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function trimBlankScreenLines(lines: string[]): string[] {
+  let start = 0;
+  let end = lines.length;
+  while (start < end && !lines[start]?.trim()) {
+    start += 1;
+  }
+  while (end > start && !lines[end - 1]?.trim()) {
+    end -= 1;
+  }
+  return lines.slice(start, end);
+}
+
+function collectHeadlessScreenLines(terminal: HeadlessTerminalInstance, startLine: number): string[] {
+  const lines: string[] = [];
+  const activeBuffer = terminal.buffer.active;
+  const start = Math.max(0, startLine);
+  const end = Math.min(activeBuffer.length, start + terminal.rows);
+  for (let index = start; index < end; index += 1) {
+    lines.push(activeBuffer.getLine(index)?.translateToString(true) || "");
+  }
+  return lines;
+}
+
+function snapshotHeadlessScreen(terminal: HeadlessTerminalInstance): CliSessionScreenSnapshot {
+  const activeBuffer = terminal.buffer.active;
+  const viewportLines = trimBlankScreenLines(collectHeadlessScreenLines(terminal, activeBuffer.viewportY));
+  const fallbackStart = Math.max(0, activeBuffer.length - terminal.rows);
+  const fallbackLines = trimBlankScreenLines(collectHeadlessScreenLines(terminal, fallbackStart));
+  const visibleLines = viewportLines.length > 0 ? viewportLines : fallbackLines;
+  const text = clipText(visibleLines.join("\n"), 2400);
+  return {
+    text,
+    normalizedText: normalizeScreenMatchText(text),
+    cursorX: activeBuffer.cursorX,
+    cursorY: activeBuffer.cursorY,
+    bufferType: activeBuffer.type,
+  };
+}
+
+function buildHeadlessScreenSummary(screen: CliSessionScreenSnapshot): string | undefined {
+  const lines = String(screen.text || "")
+    .split("\n")
+    .map((line) => line.trimEnd());
+  const trimmed = trimBlankScreenLines(lines).join("\n").trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  return clipText(trimmed, 1200);
+}
+
+function looksLikeCodexContinuePrompt(normalizedText: string): boolean {
+  if (!normalizedText) {
+    return false;
+  }
+  return (
+    normalizedText.includes("press enter to continue")
+    || normalizedText.includes("press enter or return to continue")
+    || normalizedText.includes("press return to continue")
+    || (
+      normalizedText.includes("continue")
+      && (normalizedText.includes("press enter") || normalizedText.includes("press return"))
+    )
+    || (normalizedText.includes("trust") && normalizedText.includes("continue"))
+  );
+}
+
+function looksLikeCodexPromptLine(screenText: string): boolean {
+  return String(screenText || "")
+    .split("\n")
+    .some((line) => /^\s*[>›]\s/.test(line));
+}
+
+function getCodexPromptLineText(screenText: string): string | undefined {
+  const line = String(screenText || "")
+    .split("\n")
+    .find((value) => /^\s*[>›]\s/.test(value));
+  if (!line) {
+    return undefined;
+  }
+  return line.replace(/^\s*[>›]\s*/, "").trim();
+}
+
+function normalizePromptMatchText(input: string): string {
+  return String(input || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeTranscriptText(input: string): string {
+  return String(input || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(ANSI_OSC_SEQUENCE, "")
+    .replace(ANSI_CSI_SEQUENCE, "")
+    .replace(ANSI_SINGLE_CHAR_SEQUENCE, "");
+}
+
+function looksLikeCodexReadyScreen(screen: CliSessionScreenSnapshot): boolean {
+  const normalizedText = screen.normalizedText;
+  if (!normalizedText) {
+    return false;
+  }
+  return (
+    normalizedText.includes("plan search build anything")
+    || normalizedText.includes("plan search build anythnig")
+    || (
+      normalizedText.includes("openai codex")
+      && normalizedText.includes("use skills to list available skills")
+    )
+    || (
+      normalizedText.includes("openai codex")
+      && normalizedText.includes("model to change")
+      && normalizedText.includes("directory")
+    )
+    || (
+      normalizedText.includes("openai codex")
+      && normalizedText.includes("100 left")
+      && looksLikeCodexPromptLine(screen.text)
+    )
+    || (
+      normalizedText.includes("build anything")
+      && normalizedText.includes("plan")
+      && normalizedText.includes("search")
+    )
+  );
+}
+
+function looksLikeCodexWorkingScreen(screen: CliSessionScreenSnapshot): boolean {
+  const normalizedText = screen.normalizedText;
+  if (!normalizedText) {
+    return false;
+  }
+  return normalizedText.includes("working") && normalizedText.includes("esc to interrupt");
+}
+
+function isCodexFooterLine(line: string): boolean {
+  const normalized = normalizePromptMatchText(line);
+  return (
+    normalized.includes("100 left")
+    && (
+      normalized.includes("gpt 5")
+      || normalized.includes("gpt-5")
+      || normalized.includes("documents")
+      || normalized.includes("agentchatbus")
+    )
+  );
+}
+
+function shouldTreatInputAsManualOverride(text: string): boolean {
+  if (!text) {
+    return false;
+  }
+  const printable = stripTerminalControlSequences(text)
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .trim();
+  return Boolean(printable);
+}
+
+function looksLikeCodexIdlePrompt(screen: CliSessionScreenSnapshot): boolean {
+  return looksLikeCodexReadyScreen(screen) && looksLikeCodexPromptLine(screen.text);
+}
+
+function isCodexPromptShowingText(screen: CliSessionScreenSnapshot, prompt: string): boolean {
+  const promptLine = getCodexPromptLineText(screen.text);
+  if (!promptLine) {
+    return false;
+  }
+  const normalizedPromptLine = normalizePromptMatchText(promptLine);
+  const normalizedPrompt = normalizePromptMatchText(prompt);
+  return Boolean(normalizedPrompt) && normalizedPromptLine.includes(normalizedPrompt);
+}
+
+function extractCodexReplyFromTranscript(rawOutput: string, prompt: string): string | undefined {
+  const normalizedPrompt = normalizePromptMatchText(prompt);
+  if (!normalizedPrompt) {
+    return undefined;
+  }
+
+  const lines = normalizeTranscriptText(rawOutput)
+    .split("\n")
+    .map((line) => line.trimEnd());
+  let promptIndex = -1;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const candidate = normalizePromptMatchText(line.replace(/^\s*[>›]\s*/, ""));
+    if (candidate.includes(normalizedPrompt)) {
+      promptIndex = index;
+    }
+  }
+  if (promptIndex < 0) {
+    return undefined;
+  }
+
+  const replyLines: string[] = [];
+  for (let index = promptIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (replyLines.length > 0) {
+        replyLines.push("");
+      }
+      continue;
+    }
+    if (looksLikeCodexContinuePrompt(normalizePromptMatchText(trimmed))) {
+      continue;
+    }
+    if (normalizePromptMatchText(trimmed).includes("working") && normalizePromptMatchText(trimmed).includes("esc to interrupt")) {
+      continue;
+    }
+    if (/^\s*[>›]\s/.test(line)) {
+      break;
+    }
+    if (isCodexFooterLine(trimmed)) {
+      break;
+    }
+    replyLines.push(trimmed);
+  }
+
+  const reply = replyLines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  if (!reply) {
+    return undefined;
+  }
+  return clipText(reply, 2400);
 }
 
 function normalizeWorkspacePath(explicitPath?: string): string {
@@ -265,6 +569,21 @@ function isConptyOrWinptyStartupError(error: unknown): boolean {
     message.includes("winpty") ||
     message.includes("conpty")
   );
+}
+
+async function loadNodePty(): Promise<NodePtyModule> {
+  if (!nodePtyModulePromise) {
+    nodePtyModulePromise = import("node-pty").catch((error: unknown) => {
+      nodePtyModulePromise = null;
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Interactive PTY sessions require the optional 'node-pty' runtime. ` +
+        `Rebuild the bundled server resources so 'resources/bundled-server/node_modules' is present. ` +
+        `Original error: ${detail}`
+      );
+    });
+  }
+  return await nodePtyModulePromise;
 }
 
 export function parseCursorHeadlessResult(stdout: string): CursorResultEnvelope {
@@ -488,6 +807,7 @@ class CodexInteractiveAdapter implements CliSessionAdapter {
     hooks: CliAdapterRunHooks,
     useConpty: boolean,
   ): Promise<CliAdapterRunResult> {
+    const nodePty = await loadNodePty();
     return await new Promise<CliAdapterRunResult>((resolve, reject) => {
       const commandParts = [
         `& ${toPowerShellSingleQuoted(this.codexCommand)}`,
@@ -495,12 +815,8 @@ class CodexInteractiveAdapter implements CliSessionAdapter {
         "-C",
         toPowerShellSingleQuoted(input.workspace),
       ];
-      const prompt = String(input.prompt || "");
-      if (prompt) {
-        commandParts.push(toPowerShellSingleQuoted(prompt));
-      }
 
-      let terminal: IPty | null = null;
+      let terminal: PtyInstance | null = null;
       let stdout = "";
       let settled = false;
       let startupGuardTimer: NodeJS.Timeout | null = null;
@@ -687,6 +1003,9 @@ export class CliSessionManager {
       abortController: null,
       runPromise: null,
       controls: null,
+      screenState: null,
+      automationState: null,
+      replyCapture: null,
     };
 
     this.runtimes.set(snapshot.id, runtime);
@@ -754,7 +1073,16 @@ export class CliSessionManager {
     runtime.snapshot.stderr_excerpt = undefined;
     runtime.snapshot.external_session_id = undefined;
     runtime.snapshot.external_request_id = undefined;
+    runtime.snapshot.screen_excerpt = undefined;
+    runtime.snapshot.screen_cursor_x = undefined;
+    runtime.snapshot.screen_cursor_y = undefined;
+    runtime.snapshot.screen_buffer = undefined;
+    runtime.snapshot.automation_state = undefined;
+    runtime.snapshot.reply_capture_state = undefined;
+    runtime.snapshot.reply_capture_excerpt = undefined;
+    runtime.snapshot.reply_capture_error = undefined;
     runtime.snapshot.updated_at = nowIso();
+    this.disposeInteractiveRuntimeState(runtime);
     this.emitSessionEvent("cli.session.restarting", runtime);
     runtime.runPromise = this.runRuntime(runtime);
     return this.cloneSnapshot(runtime.snapshot);
@@ -798,6 +1126,10 @@ export class CliSessionManager {
         error: `Session adapter '${runtime.snapshot.adapter}' in mode '${runtime.snapshot.mode}' does not support interactive input yet.`,
       };
     }
+    if (runtime.automationState && shouldTreatInputAsManualOverride(text)) {
+      runtime.automationState.manualOverride = true;
+      this.updateAutomationState(runtime, "manual_input_override");
+    }
     runtime.controls.write(text);
     runtime.snapshot.updated_at = nowIso();
     return { ok: true };
@@ -823,6 +1155,10 @@ export class CliSessionManager {
     runtime.controls.resize(normalizedCols, normalizedRows);
     runtime.snapshot.cols = normalizedCols;
     runtime.snapshot.rows = normalizedRows;
+    runtime.screenState?.terminal.resize(normalizedCols, normalizedRows);
+    if (runtime.screenState) {
+      this.refreshScreenSnapshot(runtime, snapshotHeadlessScreen(runtime.screenState.terminal));
+    }
     runtime.snapshot.updated_at = nowIso();
     this.emitSessionEvent("cli.session.state", runtime);
     return {
@@ -851,6 +1187,7 @@ export class CliSessionManager {
     runtime.stopRequested = false;
     runtime.abortController = new AbortController();
     runtime.controls = null;
+    this.prepareInteractiveRuntimeState(runtime);
     runtime.snapshot.run_count += 1;
     runtime.snapshot.state = "starting";
     runtime.snapshot.updated_at = nowIso();
@@ -881,6 +1218,11 @@ export class CliSessionManager {
           },
         }
       );
+      if (runtime.screenState) {
+        await runtime.screenState.writeQueue.catch(() => {
+          // Preserve the session result even if the headless parser failed.
+        });
+      }
 
       runtime.snapshot.pid = undefined;
       runtime.snapshot.exit_code = result.exitCode;
@@ -925,6 +1267,7 @@ export class CliSessionManager {
       runtime.abortController = null;
       runtime.controls = null;
       runtime.runPromise = null;
+      this.disposeInteractiveRuntimeState(runtime);
     }
   }
 
@@ -946,8 +1289,15 @@ export class CliSessionManager {
     }
     if (stream === "stdout") {
       runtime.snapshot.stdout_excerpt = clipText(`${runtime.snapshot.stdout_excerpt || ""}${normalized}`);
+      if (runtime.replyCapture) {
+        runtime.replyCapture.rawOutput = clipText(`${runtime.replyCapture.rawOutput}${normalized}`, 24000);
+        this.updateReplyCaptureFromOutput(runtime);
+      }
     } else {
       runtime.snapshot.stderr_excerpt = clipText(`${runtime.snapshot.stderr_excerpt || ""}${normalized}`);
+    }
+    if (stream === "stdout" && runtime.screenState) {
+      this.queueScreenWrite(runtime, normalized);
     }
     runtime.snapshot.updated_at = nowIso();
     eventBus.emit({
@@ -958,6 +1308,344 @@ export class CliSessionManager {
         entry: { ...entry },
       },
     });
+  }
+
+  private prepareInteractiveRuntimeState(runtime: CliSessionRuntime): void {
+    this.disposeInteractiveRuntimeState(runtime);
+    runtime.snapshot.screen_excerpt = undefined;
+    runtime.snapshot.screen_cursor_x = undefined;
+    runtime.snapshot.screen_cursor_y = undefined;
+    runtime.snapshot.screen_buffer = undefined;
+    runtime.snapshot.automation_state = undefined;
+    runtime.snapshot.reply_capture_state = undefined;
+    runtime.snapshot.reply_capture_excerpt = undefined;
+    runtime.snapshot.reply_capture_error = undefined;
+    if (!runtime.snapshot.supports_input) {
+      return;
+    }
+
+    const terminal = new HeadlessTerminal({
+      allowProposedApi: true,
+      cols: normalizeTerminalCols(runtime.snapshot.cols),
+      rows: normalizeTerminalRows(runtime.snapshot.rows),
+      scrollback: 2000,
+    });
+    const initialScreen = snapshotHeadlessScreen(terminal);
+    runtime.screenState = {
+      terminal,
+      writeQueue: Promise.resolve(),
+      latest: initialScreen,
+    };
+    this.refreshScreenSnapshot(runtime, initialScreen);
+
+    if (runtime.snapshot.adapter === "codex" && runtime.snapshot.mode === "interactive") {
+      runtime.automationState = {
+        profile: "codex-startup",
+        continueSent: false,
+        initialPromptTextSent: false,
+        initialPromptEnterSent: false,
+        initialPromptEnterRetried: false,
+        manualOverride: false,
+        sawReadyScreen: false,
+        sawWorkingScreen: false,
+        submitTimer: null,
+      };
+      runtime.snapshot.automation_state = runtime.snapshot.prompt.trim()
+        ? "waiting_for_codex_prompt"
+        : "waiting_for_codex_startup";
+    }
+  }
+
+  private disposeInteractiveRuntimeState(runtime: CliSessionRuntime): void {
+    if (runtime.automationState?.submitTimer) {
+      clearTimeout(runtime.automationState.submitTimer);
+      runtime.automationState.submitTimer = null;
+    }
+    if (runtime.replyCapture?.timeoutTimer) {
+      clearTimeout(runtime.replyCapture.timeoutTimer);
+      runtime.replyCapture.timeoutTimer = null;
+    }
+    try {
+      runtime.screenState?.terminal.dispose();
+    } catch {
+      // Best effort cleanup.
+    }
+    runtime.screenState = null;
+    runtime.automationState = null;
+    runtime.replyCapture = null;
+  }
+
+  private queueScreenWrite(runtime: CliSessionRuntime, text: string): void {
+    const screenState = runtime.screenState;
+    if (!screenState) {
+      return;
+    }
+    screenState.writeQueue = screenState.writeQueue
+      .then(
+        () =>
+          new Promise<void>((resolve) => {
+            if (runtime.screenState !== screenState) {
+              resolve();
+              return;
+            }
+            screenState.terminal.write(text, () => {
+              if (runtime.screenState !== screenState) {
+                resolve();
+                return;
+              }
+              const screen = snapshotHeadlessScreen(screenState.terminal);
+              screenState.latest = screen;
+              this.refreshScreenSnapshot(runtime, screen);
+              this.runAutomation(runtime, screen);
+              resolve();
+            });
+          })
+      )
+      .catch((error: unknown) => {
+        logError(
+          `[cli-session] ${runtime.snapshot.id} failed to update headless terminal state: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      });
+  }
+
+  private refreshScreenSnapshot(runtime: CliSessionRuntime, screen: CliSessionScreenSnapshot): void {
+    runtime.snapshot.screen_excerpt = buildHeadlessScreenSummary(screen);
+    runtime.snapshot.screen_cursor_x = screen.cursorX;
+    runtime.snapshot.screen_cursor_y = screen.cursorY;
+    runtime.snapshot.screen_buffer = screen.bufferType;
+  }
+
+  private startReplyCapture(runtime: CliSessionRuntime, prompt: string): void {
+    if (runtime.replyCapture?.timeoutTimer) {
+      clearTimeout(runtime.replyCapture.timeoutTimer);
+    }
+    const capture: CliSessionReplyCaptureRuntime = {
+      mode: "initial_prompt",
+      prompt,
+      rawOutput: "",
+      state: "waiting_for_reply",
+      timeoutTimer: null,
+    };
+    runtime.replyCapture = capture;
+    this.refreshReplyCaptureSnapshot(runtime);
+    capture.timeoutTimer = setTimeout(() => {
+      if (runtime.replyCapture !== capture || capture.state === "completed") {
+        return;
+      }
+      if (capture.excerpt) {
+        return;
+      }
+      capture.state = "timeout";
+      capture.error = `Timed out waiting for Codex reply to '${prompt}'.`;
+      this.refreshReplyCaptureSnapshot(runtime);
+      this.updateAutomationState(runtime, "reply_timeout");
+      logError(`[cli-session] ${runtime.snapshot.id} ${capture.error}`);
+    }, INITIAL_CODEX_REPLY_TIMEOUT_MS);
+  }
+
+  private refreshReplyCaptureSnapshot(runtime: CliSessionRuntime): void {
+    runtime.snapshot.reply_capture_state = runtime.replyCapture?.state;
+    runtime.snapshot.reply_capture_excerpt = runtime.replyCapture?.excerpt;
+    runtime.snapshot.reply_capture_error = runtime.replyCapture?.error;
+  }
+
+  private updateReplyCaptureState(
+    runtime: CliSessionRuntime,
+    nextState: CliSessionReplyCaptureState,
+    options?: { excerpt?: string; error?: string; clearTimer?: boolean },
+  ): void {
+    const capture = runtime.replyCapture;
+    if (!capture) {
+      return;
+    }
+    const nextExcerpt = options?.excerpt ?? capture.excerpt;
+    const nextError = options?.error ?? capture.error;
+    const changed =
+      capture.state !== nextState
+      || capture.excerpt !== nextExcerpt
+      || capture.error !== nextError;
+    capture.state = nextState;
+    capture.excerpt = nextExcerpt;
+    capture.error = nextError;
+    if (options?.clearTimer && capture.timeoutTimer) {
+      clearTimeout(capture.timeoutTimer);
+      capture.timeoutTimer = null;
+    }
+    if (!changed) {
+      return;
+    }
+    runtime.snapshot.updated_at = nowIso();
+    this.refreshReplyCaptureSnapshot(runtime);
+    this.emitSessionEvent("cli.session.state", runtime);
+  }
+
+  private updateReplyCaptureFromOutput(runtime: CliSessionRuntime): void {
+    const capture = runtime.replyCapture;
+    if (!capture) {
+      return;
+    }
+    const excerpt = extractCodexReplyFromTranscript(capture.rawOutput, capture.prompt);
+    if (!excerpt) {
+      return;
+    }
+    const nextState = capture.state === "completed" ? "completed" : "streaming";
+    this.updateReplyCaptureState(runtime, nextState, { excerpt });
+  }
+
+  private finalizeReplyCaptureIfIdle(runtime: CliSessionRuntime, screen: CliSessionScreenSnapshot): void {
+    const capture = runtime.replyCapture;
+    if (!capture || !capture.excerpt) {
+      return;
+    }
+    if (looksLikeCodexWorkingScreen(screen)) {
+      return;
+    }
+    if (looksLikeCodexIdlePrompt(screen)) {
+      this.updateReplyCaptureState(runtime, "completed", {
+        excerpt: capture.excerpt,
+        clearTimer: true,
+      });
+    }
+  }
+
+  private scheduleCodexPromptSubmit(runtime: CliSessionRuntime, delayMs: number): void {
+    const automation = runtime.automationState;
+    if (!automation || automation.profile !== "codex-startup") {
+      return;
+    }
+    if (automation.submitTimer) {
+      clearTimeout(automation.submitTimer);
+    }
+    automation.submitTimer = setTimeout(() => {
+      automation.submitTimer = null;
+      const latestScreen = runtime.screenState?.latest;
+      const initialPrompt = String(runtime.snapshot.prompt || "").trim();
+      if (!initialPrompt || automation.manualOverride || !runtime.controls?.write) {
+        return;
+      }
+      if (!automation.initialPromptEnterSent) {
+        automation.initialPromptEnterSent = true;
+        runtime.controls.write("\r");
+        this.updateAutomationState(runtime, "sent_initial_prompt_enter");
+        this.scheduleCodexPromptSubmit(runtime, 900);
+        logInfo(`[cli-session] ${runtime.snapshot.id} auto-submitted initial Codex prompt.`);
+        return;
+      }
+      if (!latestScreen) {
+        return;
+      }
+      if (
+        !automation.initialPromptEnterRetried
+        && looksLikeCodexIdlePrompt(latestScreen)
+        && (
+          isCodexPromptShowingText(latestScreen, initialPrompt)
+          || looksLikeCodexPromptLine(latestScreen.text)
+        )
+      ) {
+        automation.initialPromptEnterRetried = true;
+        runtime.controls.write("\r");
+        this.updateAutomationState(runtime, "resent_initial_prompt_enter");
+        logInfo(`[cli-session] ${runtime.snapshot.id} retried Enter for Codex prompt submission.`);
+      }
+    }, delayMs);
+  }
+
+  private runAutomation(runtime: CliSessionRuntime, screen: CliSessionScreenSnapshot): void {
+    const automation = runtime.automationState;
+    if (!automation || !runtime.controls?.write) {
+      return;
+    }
+    if (automation.profile !== "codex-startup") {
+      return;
+    }
+
+    if (looksLikeCodexWorkingScreen(screen)) {
+      automation.sawWorkingScreen = true;
+      if (automation.submitTimer) {
+        clearTimeout(automation.submitTimer);
+        automation.submitTimer = null;
+      }
+      if (runtime.replyCapture && runtime.replyCapture.state !== "completed") {
+        this.updateReplyCaptureState(runtime, "working", {
+          excerpt: runtime.replyCapture.excerpt,
+        });
+      }
+      this.updateAutomationState(runtime, "codex_working");
+      return;
+    }
+
+    const normalizedScreen = screen.normalizedText;
+    if (looksLikeCodexContinuePrompt(normalizedScreen) && !automation.continueSent) {
+      automation.continueSent = true;
+      runtime.controls.write("\r");
+      this.updateAutomationState(runtime, "sent_continue_enter");
+      logInfo(`[cli-session] ${runtime.snapshot.id} auto-sent Enter for Codex startup prompt.`);
+      return;
+    }
+
+    if (automation.manualOverride) {
+      return;
+    }
+
+    const initialPrompt = String(runtime.snapshot.prompt || "").trim();
+    if (!initialPrompt) {
+      return;
+    }
+
+    if (looksLikeCodexReadyScreen(screen)) {
+      automation.sawReadyScreen = true;
+    }
+
+    const canSendPrompt =
+      automation.sawReadyScreen
+      || (automation.continueSent && Boolean(normalizedScreen) && !looksLikeCodexContinuePrompt(normalizedScreen));
+    if (!canSendPrompt) {
+      return;
+    }
+
+    if (!automation.initialPromptTextSent) {
+      automation.initialPromptTextSent = true;
+      this.startReplyCapture(runtime, initialPrompt);
+      runtime.controls.write(initialPrompt);
+      this.updateAutomationState(runtime, "sent_initial_prompt_text");
+      this.scheduleCodexPromptSubmit(runtime, 140);
+      logInfo(`[cli-session] ${runtime.snapshot.id} auto-typed initial Codex prompt.`);
+      return;
+    }
+
+    if (!automation.initialPromptEnterSent && isCodexPromptShowingText(screen, initialPrompt)) {
+      automation.initialPromptEnterSent = true;
+      runtime.controls.write("\r");
+      this.updateAutomationState(runtime, "sent_initial_prompt_enter");
+      this.scheduleCodexPromptSubmit(runtime, 900);
+      logInfo(`[cli-session] ${runtime.snapshot.id} auto-submitted initial Codex prompt.`);
+      return;
+    }
+
+    if (
+      automation.initialPromptEnterSent
+      && !automation.initialPromptEnterRetried
+      && looksLikeCodexIdlePrompt(screen)
+      && isCodexPromptShowingText(screen, initialPrompt)
+    ) {
+      automation.initialPromptEnterRetried = true;
+      runtime.controls.write("\r");
+      this.updateAutomationState(runtime, "resent_initial_prompt_enter");
+      logInfo(`[cli-session] ${runtime.snapshot.id} retried Enter for Codex prompt submission.`);
+    }
+
+    this.finalizeReplyCaptureIfIdle(runtime, screen);
+  }
+
+  private updateAutomationState(runtime: CliSessionRuntime, nextState: string): void {
+    if (runtime.snapshot.automation_state === nextState) {
+      return;
+    }
+    runtime.snapshot.automation_state = nextState;
+    runtime.snapshot.updated_at = nowIso();
+    this.emitSessionEvent("cli.session.state", runtime);
   }
 
   private emitSessionEvent(type: string, runtime: CliSessionRuntime): void {

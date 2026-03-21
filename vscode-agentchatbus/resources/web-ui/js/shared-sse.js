@@ -18,6 +18,7 @@
       onMsgNew,
       onThreadEvent,
       onAgentPresence,
+      onCliSessionEvent,
       onTyping,
       setConnected,
     } = deps;
@@ -68,6 +69,10 @@
         if (onAgentPresence) {
           await onAgentPresence();
         }
+      }
+
+      if (String(ev.type || "").startsWith("cli.session.") && onCliSessionEvent) {
+        await onCliSessionEvent(ev);
       }
 
       if (ev.type === "agent.typing" && p.thread_id === activeThreadId && onTyping) {

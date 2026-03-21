@@ -7,6 +7,8 @@
     outputCursor: 0,
     resizeObserver: null,
     resizeTimer: null,
+    lastResizeCols: null,
+    lastResizeRows: null,
     inputQueue: Promise.resolve(),
   };
 
@@ -33,6 +35,22 @@
 
   function getComposerEl() {
     return document.getElementById("cli-session-compose");
+  }
+
+  function getSessionBadgeEl() {
+    return document.getElementById("cli-session-state-badge");
+  }
+
+  function getSessionTitleEl() {
+    return document.getElementById("cli-session-title-label");
+  }
+
+  function getSessionMetaEl() {
+    return document.getElementById("cli-session-meta");
+  }
+
+  function getSessionSummaryEl() {
+    return document.getElementById("cli-session-summary");
   }
 
   function sessionLabel(session) {
@@ -74,6 +92,8 @@
     terminalState.outputCursor = 0;
     terminalState.resizeObserver = null;
     terminalState.resizeTimer = null;
+    terminalState.lastResizeCols = null;
+    terminalState.lastResizeRows = null;
     terminalState.inputQueue = Promise.resolve();
   }
 
@@ -130,7 +150,18 @@
       return;
     }
 
+    const nextCols = Math.max(1, Math.floor(dims.cols));
+    const nextRows = Math.max(1, Math.floor(dims.rows));
+    if (
+      terminalState.lastResizeCols === nextCols
+      && terminalState.lastResizeRows === nextRows
+    ) {
+      return;
+    }
+
     terminalState.fitAddon.fit();
+    terminalState.lastResizeCols = nextCols;
+    terminalState.lastResizeRows = nextRows;
 
     const uiAgent = await getUiAgent();
     if (!uiAgent) {
@@ -144,8 +175,8 @@
       },
       body: JSON.stringify({
         requested_by_agent_id: uiAgent.agent_id,
-        cols: dims.cols,
-        rows: dims.rows,
+        cols: nextCols,
+        rows: nextRows,
       }),
     });
 
@@ -187,6 +218,10 @@
       return;
     }
 
+    if (terminalState.sessionId === session.id && terminalState.terminal) {
+      return;
+    }
+
     teardownTerminal();
 
     if (!window.Terminal || !window.FitAddon || !window.FitAddon.FitAddon) {
@@ -220,6 +255,8 @@
     terminalState.terminal = terminal;
     terminalState.fitAddon = fitAddon;
     terminalState.outputCursor = 0;
+    terminalState.lastResizeCols = null;
+    terminalState.lastResizeRows = null;
 
     if (typeof ResizeObserver === "function") {
       terminalState.resizeObserver = new ResizeObserver(() => {
@@ -244,12 +281,6 @@
   }
 
   function renderInteractiveBody(session) {
-    const summary = session.last_error
-      ? `<div class="cli-session-strip__body cli-session-strip__body--error">${escapeHtml(session.last_error)}</div>`
-      : session.last_result
-        ? `<div class="cli-session-strip__body">${escapeHtml(session.last_result)}</div>`
-        : "";
-
     return `
       <div class="cli-session-terminal__note">Click the terminal to focus it. Keystrokes are sent to the PTY in real time.</div>
       <div class="cli-session-terminal__shell">
@@ -259,18 +290,82 @@
         <textarea id="cli-session-compose" class="cli-session-compose" rows="2" placeholder="Optional: send a full prompt line to Codex" onkeydown="return window.AcbCliSessions && window.AcbCliSessions.handleComposerKeydown(event)"></textarea>
         <button class="toolbar-btn cli-session-compose__send" type="button" onclick="window.AcbCliSessions && window.AcbCliSessions.sendComposerInput()">Send</button>
       </div>
-      ${summary}
+      <div id="cli-session-summary">${renderSessionSummary(session)}</div>
     `;
   }
 
-  function renderPassiveBody(session) {
-    if (session.last_result) {
+  function renderSessionSummary(session) {
+    if (session?.last_result) {
       return `<div class="cli-session-strip__body">${escapeHtml(session.last_result)}</div>`;
     }
-    if (session.last_error) {
+    if (session?.last_error) {
       return `<div class="cli-session-strip__body cli-session-strip__body--error">${escapeHtml(session.last_error)}</div>`;
     }
     return "";
+  }
+
+  function renderPassiveBody(session) {
+    return `<div id="cli-session-summary">${renderSessionSummary(session)}</div>`;
+  }
+
+  function buildMetaBits(session) {
+    const metaBits = [
+      sessionLabel(session),
+      `${escapeHtml(session.adapter)} / ${escapeHtml(session.mode)}`,
+      `run #${escapeHtml(session.run_count)}`,
+    ];
+    if (session.shell) {
+      metaBits.push(`shell ${escapeHtml(session.shell)}`);
+    }
+    if (session.automation_state) {
+      metaBits.push(`auto ${escapeHtml(session.automation_state)}`);
+    }
+    if (session.external_session_id) {
+      metaBits.push(`external ${escapeHtml(session.external_session_id)}`);
+    }
+    if (session.cols && session.rows) {
+      metaBits.push(`${escapeHtml(session.cols)}x${escapeHtml(session.rows)}`);
+    }
+    return metaBits;
+  }
+
+  function updateSessionChrome(panelEl, session) {
+    panelEl.dataset.sessionId = String(session.id || "");
+    panelEl.dataset.sessionInteractive = session.supports_input ? "1" : "0";
+
+    const badgeEl = getSessionBadgeEl();
+    if (badgeEl) {
+      badgeEl.className = `cli-session-strip__badge cli-session-strip__badge--${stateTone(session.state)}`;
+      badgeEl.textContent = escapeHtml(session.state);
+    }
+
+    const titleEl = getSessionTitleEl();
+    if (titleEl) {
+      titleEl.textContent = sessionLabel(session);
+    }
+
+    const metaEl = getSessionMetaEl();
+    if (metaEl) {
+      metaEl.innerHTML = buildMetaBits(session)
+        .map((bit) => `<span>${bit}</span>`)
+        .join("");
+    }
+
+    const summaryEl = getSessionSummaryEl();
+    if (summaryEl) {
+      summaryEl.innerHTML = renderSessionSummary(session);
+    }
+  }
+
+  function canReuseInteractiveRender(panelEl, session) {
+    return Boolean(
+      session?.supports_input
+      && terminalState.sessionId === session.id
+      && terminalState.terminal
+      && panelEl?.dataset?.sessionId === session.id
+      && panelEl?.dataset?.sessionInteractive === "1"
+      && getTerminalEl()
+    );
   }
 
   function renderThread(threadId = getActiveThreadId()) {
@@ -292,27 +387,17 @@
       return;
     }
 
-    const metaBits = [
-      sessionLabel(session),
-      `${escapeHtml(session.adapter)} / ${escapeHtml(session.mode)}`,
-      `run #${escapeHtml(session.run_count)}`,
-    ];
-    if (session.shell) {
-      metaBits.push(`shell ${escapeHtml(session.shell)}`);
-    }
-    if (session.external_session_id) {
-      metaBits.push(`external ${escapeHtml(session.external_session_id)}`);
-    }
-    if (session.cols && session.rows) {
-      metaBits.push(`${escapeHtml(session.cols)}x${escapeHtml(session.rows)}`);
+    panelEl.hidden = false;
+    if (canReuseInteractiveRender(panelEl, session)) {
+      updateSessionChrome(panelEl, session);
+      return;
     }
 
-    panelEl.hidden = false;
     panelEl.innerHTML = `
       <div class="cli-session-strip__header">
         <div class="cli-session-strip__title">
-          <span class="cli-session-strip__badge cli-session-strip__badge--${stateTone(session.state)}">${escapeHtml(session.state)}</span>
-          <span>${escapeHtml(sessionLabel(session))}</span>
+          <span id="cli-session-state-badge" class="cli-session-strip__badge cli-session-strip__badge--${stateTone(session.state)}">${escapeHtml(session.state)}</span>
+          <span id="cli-session-title-label">${escapeHtml(sessionLabel(session))}</span>
         </div>
         <div class="cli-session-strip__actions">
           <button class="toolbar-btn" type="button" title="Restart CLI session" aria-label="Restart CLI session" onclick="window.AcbCliSessions && window.AcbCliSessions.restartLatest()">
@@ -330,11 +415,12 @@
           </button>
         </div>
       </div>
-      <div class="cli-session-strip__meta">
-        ${metaBits.map((bit) => `<span>${escapeHtml(bit)}</span>`).join("")}
+      <div id="cli-session-meta" class="cli-session-strip__meta">
+        ${buildMetaBits(session).map((bit) => `<span>${bit}</span>`).join("")}
       </div>
       ${session.supports_input ? renderInteractiveBody(session) : renderPassiveBody(session)}
     `;
+    updateSessionChrome(panelEl, session);
 
     if (session.supports_input) {
       void mountTerminalForSession(session);

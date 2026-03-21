@@ -107,6 +107,7 @@ export function buildBundledLaunchSpec(input: {
     globalStoragePath: string;
     hostNodeExecutable: string;
     serverUrl: string;
+    cliWorkspacePath?: string;
     msgWaitMinTimeoutMs: number;
     enforceMsgWaitMinTimeout: boolean;
     processEnv?: NodeJS.ProcessEnv;
@@ -128,6 +129,9 @@ export function buildBundledLaunchSpec(input: {
             AGENTCHATBUS_APP_DIR: input.globalStoragePath,
             AGENTCHATBUS_CONFIG_FILE: configFile,
             AGENTCHATBUS_WEB_UI_DIR: input.webUiDir,
+            ...(input.cliWorkspacePath
+                ? { AGENTCHATBUS_CLI_WORKSPACE: input.cliWorkspacePath }
+                : {}),
             AGENTCHATBUS_WAIT_MIN_TIMEOUT_MS: String(input.msgWaitMinTimeoutMs),
             AGENTCHATBUS_ENFORCE_MSG_WAIT_MIN_TIMEOUT: input.enforceMsgWaitMinTimeout ? '1' : '0',
         },

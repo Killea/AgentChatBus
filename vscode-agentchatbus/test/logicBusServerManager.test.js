@@ -57,6 +57,7 @@ test('buildBundledLaunchSpec wires bundled runtime paths and server env', () => 
     globalStoragePath: 'C:\\Users\\me\\AppData\\Roaming\\Code\\AgentChatBus',
     hostNodeExecutable: 'C:\\Program Files\\Microsoft VS Code\\Code.exe-node',
     serverUrl: 'https://127.0.0.1',
+    cliWorkspacePath: 'C:\\Users\\me\\src\\project-a',
     msgWaitMinTimeoutMs: 45000,
     enforceMsgWaitMinTimeout: true,
     processEnv: { PATH: 'C:\\Windows\\System32' },
@@ -80,6 +81,7 @@ test('buildBundledLaunchSpec wires bundled runtime paths and server env', () => 
   );
   assert.equal(spec.env.AGENTCHATBUS_APP_DIR, 'C:\\Users\\me\\AppData\\Roaming\\Code\\AgentChatBus');
   assert.equal(spec.env.AGENTCHATBUS_WEB_UI_DIR, 'C:\\bundle\\web-ui');
+  assert.equal(spec.env.AGENTCHATBUS_CLI_WORKSPACE, 'C:\\Users\\me\\src\\project-a');
   assert.equal(spec.env.AGENTCHATBUS_WAIT_MIN_TIMEOUT_MS, '45000');
   assert.equal(spec.env.AGENTCHATBUS_ENFORCE_MSG_WAIT_MIN_TIMEOUT, '1');
 });

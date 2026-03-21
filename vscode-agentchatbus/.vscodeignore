@@ -20,4 +20,6 @@ build.sh
 
 # Runtime code is bundled into out/ and resources/bundled-server/dist
 node_modules/**
+!resources/bundled-server/node_modules
+!resources/bundled-server/node_modules/**
 **/*.map

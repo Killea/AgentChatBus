@@ -59,6 +59,7 @@ function resolveStaticPath(): string {
 function resolvePackageRoot(packageName: string): string | null {
   const segments = packageName.split("/");
   const candidates = [
+    join(process.cwd(), "resources", "bundled-server", "node_modules", ...segments),
     join(process.cwd(), "node_modules", ...segments),
     join(process.cwd(), "..", "node_modules", ...segments),
     join(process.cwd(), "..", "..", "node_modules", ...segments),

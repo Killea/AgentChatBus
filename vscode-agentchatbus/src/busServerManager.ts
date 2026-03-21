@@ -838,6 +838,20 @@ export class BusServerManager {
         return (vscode as unknown as { lm?: typeof vscode.lm }).lm;
     }
 
+    private resolvePreferredCliWorkspace(): string | undefined {
+        const activeEditorUri = vscode.window.activeTextEditor?.document?.uri;
+        if (activeEditorUri?.scheme === 'file') {
+            const activeFolder = vscode.workspace.getWorkspaceFolder(activeEditorUri);
+            if (activeFolder?.uri.scheme === 'file') {
+                return activeFolder.uri.fsPath;
+            }
+        }
+
+        const workspaceFolders = vscode.workspace.workspaceFolders || [];
+        const firstFileWorkspace = workspaceFolders.find((folder) => folder.uri.scheme === 'file');
+        return firstFileWorkspace?.uri.fsPath;
+    }
+
     private async startServer(): Promise<boolean> {
         this.resetResolutionAttempts();
         this.log('Preparing bundled AgentChatBus TS runtime...', 'search');
@@ -874,6 +888,7 @@ export class BusServerManager {
 
         const serverUrl = this.getServerUrl();
         const config = vscode.workspace.getConfiguration('agentchatbus');
+        const cliWorkspacePath = this.resolvePreferredCliWorkspace();
         const msgWaitMinTimeoutMs = Math.max(0, Math.floor(config.get<number>('msgWaitMinTimeoutMs', 60000)));
         const enforceMsgWaitMinTimeout = Boolean(config.get<boolean>('enforceMsgWaitMinTimeout', false));
         const parsedUrl = new URL(serverUrl);
@@ -886,6 +901,11 @@ export class BusServerManager {
         this.recordResolutionAttempt(
             `Using IDE host Node runtime ${process.version} from ${this.hostNodeExecutable} to launch bundled MCP.`
         );
+        if (cliWorkspacePath) {
+            this.recordResolutionAttempt(`Using VS Code workspace as CLI working root: ${cliWorkspacePath}`);
+        } else {
+            this.recordResolutionAttempt('No file-based VS Code workspace detected for CLI working root; backend fallback will be used.');
+        }
 
         return buildBundledLaunchSpec({
             serverEntry,
@@ -894,6 +914,7 @@ export class BusServerManager {
             globalStoragePath: this.globalStoragePath,
             hostNodeExecutable: this.hostNodeExecutable,
             serverUrl,
+            cliWorkspacePath,
             msgWaitMinTimeoutMs,
             enforceMsgWaitMinTimeout,
             processEnv: process.env,

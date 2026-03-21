@@ -10,7 +10,8 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet" />
-  <link rel="stylesheet" href="/static/css/main.css?v=12" />
+  <link rel="stylesheet" href="/static/css/main.css?v=13" />
+  <link rel="stylesheet" href="/static/vendor/xterm/css/xterm.css" />
 </head>
 
 <body>
@@ -86,6 +87,7 @@
     <!-- Main -->
     <div id="main">
       <acb-thread-header></acb-thread-header>
+      <div id="cli-session-strip" hidden></div>
 
       <!-- UI-02: Search bar -->
       <div id="search-bar" role="search" aria-label="Search messages">
@@ -168,6 +170,9 @@
   <script src="/static/js/shared-utils.js?v=3"></script>
   <script src="/static/js/shared-message-renderer.js?v=5"></script>
   <script src="/static/js/shared-sse.js?v=2"></script>
+  <script src="/static/vendor/xterm/lib/xterm.js"></script>
+  <script src="/static/vendor/xterm-addon-fit/lib/addon-fit.js"></script>
+  <script src="/static/js/shared-cli-sessions.js?v=4"></script>
   <script src="/static/js/shared-modals.js?v=8"></script>
   <script src="/static/js/components/acb-modal-shell.js?v=6"></script>
   <script src="/static/js/components/acb-empty-state.js?v=2"></script>
@@ -176,7 +181,7 @@
   <script src="/static/js/components/acb-filter-row.js?v=2"></script>
   <script src="/static/js/components/acb-thread-filter-shell.js?v=2"></script>
   <script src="/static/js/components/acb-thread-context-menu.js?v=2"></script>
-  <script src="/static/js/components/acb-thread-header.js?v=2"></script>
+  <script src="/static/js/components/acb-thread-header.js?v=3"></script>
   <script src="/static/js/components/acb-thread-item.js?v=3"></script>
   <script src="/static/js/components/acb-message-tail-meta.js?v=1"></script>
   <script src="/static/js/components/acb-admin-switch-card.js?v=3"></script>
@@ -893,6 +898,11 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         onMsgNew: async () => loadNewMessages(),
         onThreadEvent: async () => refreshThreads(),
         onAgentPresence: async () => refreshThreadSidebarData(),
+        onCliSessionEvent: async (event) => {
+          if (window.AcbCliSessions) {
+            window.AcbCliSessions.handleSseEvent(event);
+          }
+        },
         onTyping: (agentId, isTyping) => {
           if (isTyping) showTyping(agentId);
           else hideTyping(agentId);
@@ -1018,6 +1028,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         if (window.AcbSearch) window.AcbSearch.rebuild();
         // UI-07: rebuild nav sidebar after thread messages loaded
         if (window.AcbNavSidebar) window.AcbNavSidebar.rebuild();
+        if (window.AcbCliSessions) window.AcbCliSessions.refreshThread(id, api);
       });
     }
     // Expose globally for AcbSearch navigation
@@ -1160,6 +1171,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       activeThreadStatus = 'discuss';
       lastSeq = 0;
       activeThreadLastSeenMs.clear();
+      window.currentThreadId = null;
 
       document.querySelectorAll('.thread-item').forEach(el => el.classList.remove('active'));
       document.getElementById('thread-header').style.display = 'none';
@@ -1167,6 +1179,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       document.getElementById('messages').innerHTML = EMPTY_STATE_TEMPLATE;
       const sysArea = document.getElementById('sys-prompt-area');
       if (sysArea) sysArea.innerHTML = '';
+      if (window.AcbCliSessions) window.AcbCliSessions.renderThread(null);
       updateOnlinePresence();
     }
 

@@ -13,6 +13,7 @@ const repoRoot = path.resolve(extensionRoot, '..');
 const tsServerRoot = path.join(repoRoot, 'agentchatbus-ts');
 const bundledServerRoot = path.join(extensionRoot, 'resources', 'bundled-server');
 const bundledWebUiRoot = path.join(extensionRoot, 'resources', 'web-ui');
+const bundledServerNodeModulesRoot = path.join(bundledServerRoot, 'node_modules');
 
 const legacyMediaArtifacts = [
   path.join(extensionRoot, 'resources', 'media', 'chatPanel.js'),
@@ -20,6 +21,29 @@ const legacyMediaArtifacts = [
   path.join(extensionRoot, 'resources', 'media', 'messageRenderer.js'),
   path.join(extensionRoot, 'resources', 'media', 'messageRenderer.css'),
   path.join(extensionRoot, 'resources', 'media', 'mermaid.min.js'),
+];
+
+const bundledServerRuntimeDependencies = [
+  {
+    from: path.join(tsServerRoot, 'node_modules', 'node-pty'),
+    to: path.join(bundledServerNodeModulesRoot, 'node-pty'),
+    label: 'bundled TS server runtime dependency node-pty',
+  },
+  {
+    from: path.join(tsServerRoot, 'node_modules', 'node-addon-api'),
+    to: path.join(bundledServerNodeModulesRoot, 'node-addon-api'),
+    label: 'bundled TS server runtime dependency node-addon-api',
+  },
+  {
+    from: path.join(tsServerRoot, 'node_modules', '@xterm', 'xterm'),
+    to: path.join(bundledServerNodeModulesRoot, '@xterm', 'xterm'),
+    label: 'bundled TS server runtime dependency @xterm/xterm',
+  },
+  {
+    from: path.join(tsServerRoot, 'node_modules', '@xterm', 'addon-fit'),
+    to: path.join(bundledServerNodeModulesRoot, '@xterm', 'addon-fit'),
+    label: 'bundled TS server runtime dependency @xterm/addon-fit',
+  },
 ];
 
 async function runTsServerBuild() {
@@ -84,6 +108,10 @@ async function main() {
 
   const syncedDirectories = [];
   syncedDirectories.push(await syncDirectory(path.join(tsServerRoot, 'dist'), path.join(bundledServerRoot, 'dist'), 'bundled TS server dist'));
+  await removeDirectory(bundledServerNodeModulesRoot);
+  for (const dependency of bundledServerRuntimeDependencies) {
+    syncedDirectories.push(await syncDirectory(dependency.from, dependency.to, dependency.label));
+  }
   syncedDirectories.push(await syncDirectory(path.join(repoRoot, 'web-ui'), bundledWebUiRoot, 'bundled web-ui runtime'));
   const bundledServerPackageJson = await writeBundledServerPackageJson();
 
