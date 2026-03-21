@@ -16,6 +16,7 @@ import {
   isIpAllowed,
   saveConfigDict,
 } from "../../core/config/env.js";
+import { CliSessionManager } from "../../core/services/cliSessionManager.js";
 import { MemoryStore, memoryStore } from "../../core/services/memoryStore.js";
 import { registerStore } from "../../core/services/storeSingleton.js";
 import { eventBus } from "../../shared/eventBus.js";
@@ -55,6 +56,21 @@ function resolveStaticPath(): string {
   return candidates[0] ?? join(process.cwd(), "web-ui");
 }
 
+function resolvePackageRoot(packageName: string): string | null {
+  const segments = packageName.split("/");
+  const candidates = [
+    join(process.cwd(), "node_modules", ...segments),
+    join(process.cwd(), "..", "node_modules", ...segments),
+    join(process.cwd(), "..", "..", "node_modules", ...segments),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
 function isLoopbackRequest(request: FastifyRequest): boolean {
   const ip = request.ip || request.socket.remoteAddress || "";
   return ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1" || ip === "localhost";
@@ -84,12 +100,41 @@ export function createHttpServer() {
   } else {
     store = getMemoryStore();
   }
+  const cliSessionManager = new CliSessionManager();
 
   const adminDecisionBySource = new Map<string, {
     action: string;
     new_admin_id?: string;
     notified_admin_id?: string;
   }>();
+
+  function requireAuthorizedAgent(
+    request: FastifyRequest,
+    reply: FastifyReply,
+    body: JsonBody,
+    fieldName: string,
+  ): string | null {
+    const rawAgentId = typeof body[fieldName] === "string" ? body[fieldName] : "";
+    const agentId = rawAgentId.trim();
+    if (!agentId) {
+      reply.code(400);
+      void reply.send({ detail: `${fieldName} is required` });
+      return null;
+    }
+
+    const token = String(request.headers["x-agent-token"] || "");
+    if (!token) {
+      reply.code(401);
+      void reply.send({ detail: "X-Agent-Token header required" });
+      return null;
+    }
+    if (!store.verifyAgentToken(agentId, token)) {
+      reply.code(401);
+      void reply.send({ detail: "Invalid agent_id/token" });
+      return null;
+    }
+    return agentId;
+  }
 
   void fastify.register(multipart);
 
@@ -98,6 +143,22 @@ export function createHttpServer() {
     root: staticPath,
     prefix: "/static/",
   });
+  const xtermRoot = resolvePackageRoot("@xterm/xterm");
+  if (xtermRoot) {
+    void fastify.register(fastifyStatic, {
+      root: xtermRoot,
+      prefix: "/static/vendor/xterm/",
+      decorateReply: false,
+    });
+  }
+  const xtermFitRoot = resolvePackageRoot("@xterm/addon-fit");
+  if (xtermFitRoot) {
+    void fastify.register(fastifyStatic, {
+      root: xtermFitRoot,
+      prefix: "/static/vendor/xterm-addon-fit/",
+      decorateReply: false,
+    });
+  }
 
   // ── SEC-05: Security middleware ──────────────────────────────────────────────
   // Config is read per-request (not captured at server creation time) to avoid
@@ -518,6 +579,18 @@ export function createHttpServer() {
     return store.getMessages(params.threadId, afterSeq, includeSystemPrompt, priority).slice(0, limit);
   });
 
+  fastify.get("/api/threads/:threadId/cli-sessions", async (request, reply) => {
+    const params = request.params as { threadId: string };
+    const thread = store.getThread(params.threadId);
+    if (!thread) {
+      reply.code(404);
+      return { detail: "Thread not found" };
+    }
+    return {
+      sessions: cliSessionManager.listSessionsForThread(params.threadId),
+    };
+  });
+
   fastify.post("/api/threads/:threadId/sync-context", async (request, reply) => {
     const params = request.params as { threadId: string };
     const thread = store.getThread(params.threadId);
@@ -526,6 +599,39 @@ export function createHttpServer() {
       return { detail: "Thread not found" };
     }
     return store.issueSyncContext(params.threadId);
+  });
+
+  fastify.post("/api/threads/:threadId/cli-sessions", async (request, reply) => {
+    const params = request.params as { threadId: string };
+    const body = request.body as JsonBody;
+    const thread = store.getThread(params.threadId);
+    if (!thread) {
+      reply.code(404);
+      return { detail: "Thread not found" };
+    }
+
+    const requestedByAgentId = requireAuthorizedAgent(request, reply, body, "requested_by_agent_id");
+    if (!requestedByAgentId) {
+      return reply;
+    }
+
+    try {
+      const session = cliSessionManager.createSession({
+        threadId: params.threadId,
+        adapter: String(body.adapter || "cursor").trim() as "cursor" | "codex",
+        mode: String(body.mode || "headless").trim() as "headless" | "interactive",
+        prompt: String(body.prompt || ""),
+        workspace: typeof body.workspace === "string" ? body.workspace : undefined,
+        requestedByAgentId,
+        cols: body.cols === undefined ? undefined : Number(body.cols),
+        rows: body.rows === undefined ? undefined : Number(body.rows),
+      });
+      reply.code(201);
+      return { session };
+    } catch (error) {
+      reply.code(400);
+      return { detail: error instanceof Error ? error.message : String(error) };
+    }
   });
 
   fastify.post("/api/threads", async (request, reply) => {
@@ -683,6 +789,109 @@ export function createHttpServer() {
   });
 
   fastify.get("/api/agents", async () => store.listAgents());
+
+  fastify.get("/api/cli-sessions/:sessionId", async (request, reply) => {
+    const params = request.params as { sessionId: string };
+    const session = cliSessionManager.getSession(params.sessionId);
+    if (!session) {
+      reply.code(404);
+      return { detail: "CLI session not found" };
+    }
+    return { session };
+  });
+
+  fastify.get("/api/cli-sessions/:sessionId/output", async (request, reply) => {
+    const params = request.params as { sessionId: string };
+    const query = request.query as { after?: number | string; limit?: number | string };
+    const output = cliSessionManager.getSessionOutput(
+      params.sessionId,
+      Number(query.after || 0),
+      Number(query.limit || 200),
+    );
+    if (!output) {
+      reply.code(404);
+      return { detail: "CLI session not found" };
+    }
+    return output;
+  });
+
+  fastify.post("/api/cli-sessions/:sessionId/restart", async (request, reply) => {
+    const params = request.params as { sessionId: string };
+    const body = request.body as JsonBody;
+    const agentId = requireAuthorizedAgent(request, reply, body, "requested_by_agent_id");
+    if (!agentId) {
+      return reply;
+    }
+    try {
+      const session = await cliSessionManager.restartSession(params.sessionId);
+      if (!session) {
+        reply.code(404);
+        return { detail: "CLI session not found" };
+      }
+      return { session, requested_by_agent_id: agentId };
+    } catch (error) {
+      reply.code(400);
+      return { detail: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  fastify.post("/api/cli-sessions/:sessionId/stop", async (request, reply) => {
+    const params = request.params as { sessionId: string };
+    const body = request.body as JsonBody;
+    const agentId = requireAuthorizedAgent(request, reply, body, "requested_by_agent_id");
+    if (!agentId) {
+      return reply;
+    }
+    const session = await cliSessionManager.stopSession(params.sessionId);
+    if (!session) {
+      reply.code(404);
+      return { detail: "CLI session not found" };
+    }
+    return { session, requested_by_agent_id: agentId };
+  });
+
+  fastify.post("/api/cli-sessions/:sessionId/input", async (request, reply) => {
+    const params = request.params as { sessionId: string };
+    const body = request.body as JsonBody;
+    const agentId = requireAuthorizedAgent(request, reply, body, "requested_by_agent_id");
+    if (!agentId) {
+      return reply;
+    }
+    const text = typeof body.text === "string" ? body.text : "";
+    if (!text.length) {
+      reply.code(400);
+      return { detail: "text is required" };
+    }
+    const result = await cliSessionManager.sendInput(params.sessionId, text);
+    if (!result) {
+      reply.code(404);
+      return { detail: "CLI session not found" };
+    }
+    reply.code(result.ok ? 200 : 400);
+    return { ...result, requested_by_agent_id: agentId };
+  });
+
+  fastify.post("/api/cli-sessions/:sessionId/resize", async (request, reply) => {
+    const params = request.params as { sessionId: string };
+    const body = request.body as JsonBody;
+    const agentId = requireAuthorizedAgent(request, reply, body, "requested_by_agent_id");
+    if (!agentId) {
+      return reply;
+    }
+    const cols = Number(body.cols);
+    const rows = Number(body.rows);
+    if (!Number.isFinite(cols) || !Number.isFinite(rows)) {
+      reply.code(400);
+      return { detail: "cols and rows are required" };
+    }
+    const result = await cliSessionManager.resizeSession(params.sessionId, cols, rows);
+    if (!result) {
+      reply.code(404);
+      return { detail: "CLI session not found" };
+    }
+    reply.code(result.ok ? 200 : 400);
+    return { ...result, requested_by_agent_id: agentId };
+  });
 
   fastify.get("/api/threads/:threadId/agents", async (request) => {
     const params = request.params as { threadId: string };
@@ -1487,6 +1696,11 @@ export function createHttpServer() {
 
   // Ensure underlying persistence DB is closed when the server shuts down.
   fastify.addHook('onClose', async () => {
+    try {
+      await cliSessionManager.close();
+    } catch {
+      // ignore
+    }
     try {
       if (ownsStore && store && typeof (store as any).close === 'function') {
         try { (store as any).close(); } catch (e) { }

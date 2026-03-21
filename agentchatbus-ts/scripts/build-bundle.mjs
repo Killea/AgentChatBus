@@ -26,6 +26,7 @@ async function main() {
     entryPoints: ['src/cli/index.ts'],
     outfile: 'dist/cli/index.js',
     bundle: true,
+    external: ['node-pty'],
     format: 'cjs',
     platform: 'node',
     target: 'node20',
