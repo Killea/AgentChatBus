@@ -5,28 +5,16 @@ import * as fs from 'fs';
 import { randomUUID } from 'crypto';
 import { SetupProvider } from './providers/setupProvider';
 import { McpLogProvider } from './providers/mcpLogProvider';
-
-type LaunchMode =
-    | 'bundled-ts-service'
-    | 'external-service'
-    | 'external-service-extension-managed'
-    | 'external-service-manual'
-    | 'external-service-unknown';
-
-const MIN_HOST_NODE_VERSION = {
-    major: 20,
-    minor: 0,
-    patch: 0,
-};
-
-type LaunchSpec = {
-    command: string;
-    args: string[];
-    cwd?: string;
-    env?: NodeJS.ProcessEnv;
-    launchMode: LaunchMode;
-    resolvedBy: string;
-};
+import {
+    buildBundledLaunchSpec,
+    classifyExternalStartupMode,
+    ensureSupportedHostNodeVersion,
+    extractOwnershipAssignable,
+    normalizeHealthString,
+    type BundledLaunchSpec as LaunchSpec,
+    type HealthPayload,
+    type LaunchMode,
+} from './logic/busServerManager';
 
 type ServerMetadata = {
     command?: string;
@@ -40,20 +28,6 @@ type ServerMetadata = {
     backendRuntime?: string;
     externalOwnershipAssignable?: boolean | null;
     resolutionAttempts?: string[];
-};
-
-type HealthPayload = {
-    status?: string;
-    service?: string;
-    engine?: string;
-    version?: string;
-    runtime?: string;
-    transport?: string;
-    management?: {
-        ownership_assignable?: boolean;
-        owner_instance_id?: string | null;
-        registered_sessions_count?: number;
-    };
 };
 
 type IdeSessionApiState = {
@@ -172,14 +146,14 @@ export class BusServerManager {
         try {
             const probe = await this.probeServer(serverUrl);
             if (probe.ok) {
-                const startupMode = this.classifyExternalStartupMode(probe.health);
+                const startupMode = classifyExternalStartupMode(probe.health);
                 this.serverMetadata.startupMode = startupMode;
                 this.serverMetadata.resolvedBy = 'Existing service detected via /health';
-                this.serverMetadata.backendEngine = this.normalizeHealthString(probe.health?.engine);
-                this.serverMetadata.backendVersion = this.normalizeHealthString(probe.health?.version);
-                this.serverMetadata.backendRuntime = this.normalizeHealthString(probe.health?.runtime);
+                this.serverMetadata.backendEngine = normalizeHealthString(probe.health?.engine);
+                this.serverMetadata.backendVersion = normalizeHealthString(probe.health?.version);
+                this.serverMetadata.backendRuntime = normalizeHealthString(probe.health?.runtime);
                 this.serverMetadata.externalOwnershipAssignable =
-                    this.extractOwnershipAssignable(probe.health);
+                    extractOwnershipAssignable(probe.health);
                 this.ownerBootToken = null;
                 this.recordResolutionAttempt(
                     `Detected an already-running AgentChatBus service via /health probe (mode=${startupMode}).`
@@ -823,32 +797,6 @@ export class BusServerManager {
         return Boolean(mode && mode.startsWith('external-service'));
     }
 
-    private normalizeHealthString(value: unknown): string | undefined {
-        if (typeof value !== 'string') {
-            return undefined;
-        }
-        const normalized = value.trim();
-        return normalized.length > 0 ? normalized : undefined;
-    }
-
-    private extractOwnershipAssignable(health?: HealthPayload): boolean | null {
-        if (!health?.management || typeof health.management.ownership_assignable !== 'boolean') {
-            return null;
-        }
-        return health.management.ownership_assignable;
-    }
-
-    private classifyExternalStartupMode(health?: HealthPayload): LaunchMode {
-        const ownershipAssignable = this.extractOwnershipAssignable(health);
-        if (ownershipAssignable === true) {
-            return 'external-service-extension-managed';
-        }
-        if (ownershipAssignable === false) {
-            return 'external-service-manual';
-        }
-        return 'external-service-unknown';
-    }
-
     getStatusMetadata() {
         const serverUrl = this.getServerUrl();
         const lm = this.getLanguageModelNamespace();
@@ -904,7 +852,7 @@ export class BusServerManager {
     private async resolveBundledLaunchSpec(): Promise<LaunchSpec | null> {
         const serverEntry = path.join(this.extensionRoot, 'resources', 'bundled-server', 'dist', 'cli', 'index.js');
         const webUiDir = path.join(this.extensionRoot, 'resources', 'web-ui');
-        const hostNodeVersionCheck = this.ensureSupportedHostNodeVersion();
+        const hostNodeVersionCheck = ensureSupportedHostNodeVersion(process.version);
 
         if (!fs.existsSync(serverEntry)) {
             this.recordResolutionAttempt(`Bundled TS entrypoint is missing: ${serverEntry}`);
@@ -939,59 +887,17 @@ export class BusServerManager {
             `Using IDE host Node runtime ${process.version} from ${this.hostNodeExecutable} to launch bundled MCP.`
         );
 
-        return {
-            // Intentionally reuse the IDE extension-host Node runtime.
-            // We do not depend on a separately installed system Node.
-            command: this.hostNodeExecutable,
-            args: [serverEntry, 'serve'],
-            cwd: this.extensionRoot,
-            env: {
-                ...process.env,
-                AGENTCHATBUS_HOST: parsedUrl.hostname,
-                AGENTCHATBUS_PORT: String(port),
-                AGENTCHATBUS_DB: dbPath,
-                AGENTCHATBUS_APP_DIR: this.globalStoragePath,
-                AGENTCHATBUS_CONFIG_FILE: configFile,
-                AGENTCHATBUS_WEB_UI_DIR: webUiDir,
-                AGENTCHATBUS_WAIT_MIN_TIMEOUT_MS: String(msgWaitMinTimeoutMs),
-                AGENTCHATBUS_ENFORCE_MSG_WAIT_MIN_TIMEOUT: enforceMsgWaitMinTimeout ? '1' : '0',
-            },
-            launchMode: 'bundled-ts-service',
-            resolvedBy: 'Bundled agentchatbus-ts runtime packaged with the VS Code extension.',
-        };
-    }
-
-    private ensureSupportedHostNodeVersion(): { ok: boolean; message: string } {
-        const parsed = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(process.version.trim());
-        if (!parsed) {
-            return {
-                ok: false,
-                message: `Unable to parse IDE host Node version '${process.version}'. Bundled MCP requires Node ${MIN_HOST_NODE_VERSION.major}.${MIN_HOST_NODE_VERSION.minor}.${MIN_HOST_NODE_VERSION.patch}+ from the IDE host runtime.`,
-            };
-        }
-
-        const [, majorRaw, minorRaw, patchRaw] = parsed;
-        const major = Number(majorRaw);
-        const minor = Number(minorRaw);
-        const patch = Number(patchRaw);
-        const minimum = MIN_HOST_NODE_VERSION;
-        const supported = (
-            major > minimum.major
-            || (major === minimum.major && minor > minimum.minor)
-            || (major === minimum.major && minor === minimum.minor && patch >= minimum.patch)
-        );
-
-        if (supported) {
-            return {
-                ok: true,
-                message: `IDE host Node version ${process.version} satisfies bundled MCP requirement ${minimum.major}.${minimum.minor}.${minimum.patch}+ .`,
-            };
-        }
-
-        return {
-            ok: false,
-            message: `IDE host Node version ${process.version} is too old for bundled MCP. AgentChatBus requires the IDE host runtime to provide Node ${minimum.major}.${minimum.minor}.${minimum.patch}+ .`,
-        };
+        return buildBundledLaunchSpec({
+            serverEntry,
+            webUiDir,
+            extensionRoot: this.extensionRoot,
+            globalStoragePath: this.globalStoragePath,
+            hostNodeExecutable: this.hostNodeExecutable,
+            serverUrl,
+            msgWaitMinTimeoutMs,
+            enforceMsgWaitMinTimeout,
+            processEnv: process.env,
+        });
     }
 
     private async spawnServer(spec: LaunchSpec): Promise<boolean> {

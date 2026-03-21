@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import * as os from 'os';
-import * as net from 'net';
 import { AgentChatBusApiClient } from './api/client';
 import { ThreadsTreeProvider, ThreadItem } from './providers/threadsProvider';
 import { AgentsTreeProvider } from './providers/agentsProvider';
@@ -13,6 +12,7 @@ import { McpLogProvider } from './providers/mcpLogProvider';
 import { SettingsProvider } from './providers/settingsProvider';
 import { StatusPanel } from './views/statusPanel';
 import { SettingsPanel } from './views/settingsPanel';
+import { formatLmError, getBrowserOpenUrl, isLocalServerUrlWithContext } from './logic/serverUrl';
 
 let apiClient: AgentChatBusApiClient | undefined;
 let mcpLogProvider: McpLogProvider | undefined;
@@ -21,70 +21,21 @@ let cursorConfigManager: CursorMcpConfigManager | undefined;
 let serverManagerInstance: BusServerManager | undefined;
 let mainViewsInitialized = false;
 
-function getBrowserOpenUrl(rawUrl: string): string {
-    try {
-        const normalized = new URL(rawUrl);
-        if (normalized.hostname === '0.0.0.0' || normalized.hostname === '::' || normalized.hostname === '[::]') {
-            normalized.hostname = '127.0.0.1';
-        }
-        return normalized.toString();
-    } catch {
-        return rawUrl;
-    }
-}
-
 function isLocalServerUrl(rawUrl: string): boolean {
-    try {
-        const normalized = new URL(rawUrl);
-        const host = normalized.hostname.trim().toLowerCase();
-        const normalizedHost = host.split('%')[0];
-        const localHostName = os.hostname().trim().toLowerCase();
-        if (!host) {
-            return false;
-        }
-        if (
-            normalizedHost === 'localhost'
-            || normalizedHost === '127.0.0.1'
-            || normalizedHost === '::1'
-            || normalizedHost === '0.0.0.0'
-            || normalizedHost === '::'
-            || normalizedHost === '::ffff:127.0.0.1'
-            || normalizedHost.startsWith('127.')
-        ) {
-            return true;
-        }
-        if (normalizedHost === localHostName) {
-            return true;
-        }
-
-        if (net.isIP(normalizedHost)) {
-            const interfaces = os.networkInterfaces();
-            const localIps = new Set<string>();
-            for (const infos of Object.values(interfaces)) {
-                for (const info of infos || []) {
-                    const address = String(info.address || '').trim().toLowerCase();
-                    if (!address) {
-                        continue;
-                    }
-                    localIps.add(address);
-                    localIps.add(address.split('%')[0]);
-                    if (address.startsWith('::ffff:')) {
-                        localIps.add(address.slice('::ffff:'.length));
-                    }
-                }
-            }
-            if (localIps.has(normalizedHost)) {
-                return true;
-            }
-            if (normalizedHost.startsWith('::ffff:') && localIps.has(normalizedHost.slice('::ffff:'.length))) {
-                return true;
+    const localIps: string[] = [];
+    const interfaces = os.networkInterfaces();
+    for (const infos of Object.values(interfaces)) {
+        for (const info of infos || []) {
+            const address = String(info.address || '').trim().toLowerCase();
+            if (address) {
+                localIps.push(address);
             }
         }
-
-        return false;
-    } catch {
-        return false;
     }
+    return isLocalServerUrlWithContext(rawUrl, {
+        localHostName: os.hostname(),
+        localIps,
+    });
 }
 
 function getLanguageModelNamespace(): typeof vscode.lm | undefined {
@@ -112,24 +63,6 @@ type LmProbeResult = {
     notes: string[];
     error?: string;
 };
-
-function formatLmError(err: unknown): string {
-    if (!err) return 'Unknown error';
-
-    if (typeof err === 'object') {
-        const maybe = err as { message?: unknown; code?: unknown; name?: unknown };
-        const message = typeof maybe.message === 'string' ? maybe.message : '';
-        const code = typeof maybe.code === 'string' ? maybe.code : '';
-        const name = typeof maybe.name === 'string' ? maybe.name : '';
-        if (code && message) return `${code}: ${message}`;
-        if (code) return code;
-        if (name && message) return `${name}: ${message}`;
-        if (message) return message;
-    }
-
-    if (err instanceof Error) return err.message;
-    return String(err);
-}
 
 async function probeLanguageModelsForStatus(context: vscode.ExtensionContext): Promise<LmProbeResult> {
     const probeAt = new Date().toISOString();

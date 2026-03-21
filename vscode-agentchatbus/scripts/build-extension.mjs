@@ -36,6 +36,11 @@ const entryBuilds = [
     entryPoints: ['src/views/chatPanelHtml.ts'],
     outfile: 'out/views/chatPanelHtml.js',
   },
+  {
+    ...buildOptions,
+    entryPoints: ['src/logic/testExports.ts'],
+    outfile: 'out/logic/testExports.js',
+  },
 ];
 
 async function prepareOutDir() {

@@ -2,6 +2,12 @@ import * as vscode from 'vscode';
 import type { AgentChatBusApiClient } from '../api/client';
 import type { Thread } from '../api/types';
 import { getTreeIcon } from '../ui/treeIcons';
+import {
+    buildThreadItemViewModel,
+    filterAndSortThreads,
+    shouldIncludeArchivedThreadStatus,
+    shouldRefreshThreadsForEventType,
+} from '../logic/threads';
 
 export class ThreadsTreeProvider implements vscode.TreeDataProvider<ThreadItem> {
     private _onDidChangeTreeData: vscode.EventEmitter<ThreadItem | undefined | void> = new vscode.EventEmitter<ThreadItem | undefined | void>();
@@ -10,7 +16,7 @@ export class ThreadsTreeProvider implements vscode.TreeDataProvider<ThreadItem> 
 
     constructor(private apiClient: AgentChatBusApiClient) {
         apiClient.onSseEvent.event((e) => {
-            if (e.type && (e.type.startsWith('thread.') || e.type === 'msg.new')) {
+            if (shouldRefreshThreadsForEventType(e.type)) {
                 this.refresh();
             }
         });
@@ -39,15 +45,8 @@ export class ThreadsTreeProvider implements vscode.TreeDataProvider<ThreadItem> 
         }
 
         try {
-            const includeArchived = this._statusFilter.has('archived');
-            let threads = await this.apiClient.getThreads(includeArchived);
-            
-            // Filter by status
-            threads = threads.filter(t => this._statusFilter.has(t.status));
-            
-            // Sort by created_at desc as a proxy for activity
-            threads.sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
+            const includeArchived = shouldIncludeArchivedThreadStatus(this._statusFilter);
+            const threads = filterAndSortThreads(await this.apiClient.getThreads(includeArchived), this._statusFilter);
             return threads.map(t => new ThreadItem(t));
         } catch (error: any) {
             vscode.window.showErrorMessage(`Failed to fetch AgentChatBus threads: ${error.message}`);
@@ -60,34 +59,17 @@ export class ThreadItem extends vscode.TreeItem {
     constructor(
         public readonly thread: Thread
     ) {
-        super(thread.topic || 'Untitled Thread', vscode.TreeItemCollapsibleState.None);
+        const item = buildThreadItemViewModel(thread);
+        super(item.label, vscode.TreeItemCollapsibleState.None);
 
-        this.tooltip = `ID: ${thread.id}\nStatus: ${thread.status}`;
-        this.description = thread.status;
-        this.iconPath = getThreadStatusIcon(thread.status);
-        this.contextValue = `thread:${thread.status}`;
+        this.tooltip = item.tooltip;
+        this.description = item.description;
+        this.iconPath = getTreeIcon(item.iconFile);
+        this.contextValue = item.contextValue;
         this.command = {
-            command: 'agentchatbus.openThread',
+            command: item.commandId,
             title: 'Open Thread',
-            arguments: [thread]
+            arguments: item.commandArguments
         };
-    }
-}
-
-function getThreadStatusIcon(status: string | undefined): { light: vscode.Uri; dark: vscode.Uri } {
-    switch (status) {
-        case 'implement':
-            return getTreeIcon('thread-implement.svg');
-        case 'review':
-            return getTreeIcon('thread-review.svg');
-        case 'done':
-            return getTreeIcon('thread-done.svg');
-        case 'closed':
-            return getTreeIcon('thread-closed.svg');
-        case 'archived':
-            return getTreeIcon('thread-archived.svg');
-        case 'discuss':
-        default:
-            return getTreeIcon('thread-discuss.svg');
     }
 }

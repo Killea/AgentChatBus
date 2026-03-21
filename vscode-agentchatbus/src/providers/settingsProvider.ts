@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { getTreeIcon } from '../ui/treeIcons';
+import { getSettingsDefinitions } from '../logic/settings';
 
 export class SettingsProvider implements vscode.TreeDataProvider<SettingItem> {
     private _onDidChangeTreeData: vscode.EventEmitter<SettingItem | undefined | void> = new vscode.EventEmitter<SettingItem | undefined | void>();
@@ -12,38 +13,9 @@ export class SettingsProvider implements vscode.TreeDataProvider<SettingItem> {
     getChildren(element?: SettingItem): vscode.ProviderResult<SettingItem[]> {
         if (element) return [];
 
-        return [
-            new SettingItem(
-                "MCP Integration Status",
-                "Inspect MCP provider registration, transport, and target endpoint",
-                "mgmt-mcp-status.svg",
-                "agentchatbus.showMcpStatus"
-            ),
-            new SettingItem(
-                "Configure Cursor MCP",
-                "Update Cursor's global mcp.json with an AgentChatBus SSE entry",
-                "mgmt-cursor-configure.svg",
-                "agentchatbus.configureCursorMcp"
-            ),
-            new SettingItem(
-                "Open Cursor MCP Config",
-                "Open Cursor's global mcp.json for inspection",
-                "mgmt-cursor-open.svg",
-                "agentchatbus.openCursorMcpConfig"
-            ),
-            new SettingItem(
-                "Open Web Console", 
-                "Open the AgentChatBus dashboard in your browser", 
-                "mgmt-web-console.svg", 
-                "agentchatbus.openWebConsole"
-            ),
-            new SettingItem(
-                "Server Settings", 
-                "Configure AgentChatBus server parameters", 
-                "mgmt-server-settings.svg", 
-                "agentchatbus.serverSettings"
-            )
-        ];
+        return getSettingsDefinitions().map(
+            item => new SettingItem(item.label, item.tooltip, item.iconFile, item.commandId)
+        );
     }
 }
 

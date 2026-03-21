@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { appendLogLines, getMcpLogPresentation, getMcpLogRows } from '../logic/mcpLogs';
 
 export class McpLogProvider implements vscode.TreeDataProvider<LogLineItem> {
     private _onDidChangeTreeData: vscode.EventEmitter<LogLineItem | undefined | void> = new vscode.EventEmitter<LogLineItem | undefined | void>();
@@ -31,13 +32,7 @@ export class McpLogProvider implements vscode.TreeDataProvider<LogLineItem> {
     }
 
     addLog(data: string): void {
-        const lines = data.split(/\r?\n/).filter(line => line.trim().length > 0);
-        for (const line of lines) {
-            this.logs.push(line);
-            if (this.logs.length > this.maxLogs) {
-                this.logs.shift();
-            }
-        }
+        this.logs = appendLogLines(this.logs, data, this.maxLogs);
         this.refresh();
     }
 
@@ -56,44 +51,32 @@ export class McpLogProvider implements vscode.TreeDataProvider<LogLineItem> {
 
     getChildren(element?: LogLineItem): vscode.ProviderResult<LogLineItem[]> {
         if (element) return [];
-        
-        if (!this.isManaged && this.logs.length === 0) {
-            return [new LogLineItem(this.statusMessage || "Ready (Managed Externally)", -1)];
-        }
-        
-        if (this.logs.length === 0) {
-            return [new LogLineItem("Waiting for logs...", -2)];
-        }
-        
-        return this.logs.map((log, index) => new LogLineItem(log, index));
+
+        return getMcpLogRows(this.logs, this.isManaged, this.statusMessage).map(
+            row => new LogLineItem(row.message, row.index, row.description, row.iconId, row.colorId)
+        );
     }
 }
 
 class LogLineItem extends vscode.TreeItem {
     constructor(
         public readonly message: string,
-        public readonly index: number
+        public readonly index: number,
+        description?: string,
+        iconId?: string,
+        colorId?: string
     ) {
         super(message, vscode.TreeItemCollapsibleState.None);
         this.tooltip = message;
-        
-        if (index === -1) {
-            this.description = "Extension is reading logs from the shared AgentChatBus log API.";
-            this.iconPath = new vscode.ThemeIcon('info', new vscode.ThemeColor('descriptionForeground'));
-            return;
-        }
 
-        if (index === -2) {
-            this.iconPath = new vscode.ThemeIcon('sync~spin');
-            return;
-        }
-
-        if (message.includes('ERROR') || message.includes('Exception') || message.includes('failed')) {
-            this.iconPath = new vscode.ThemeIcon('error', new vscode.ThemeColor('errorForeground'));
-        } else if (message.includes('WARNING')) {
-            this.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
-        } else if (message.includes('Exec:') || message.includes('Starting')) {
-            this.iconPath = new vscode.ThemeIcon('terminal');
+        const presentation = getMcpLogPresentation(message, index);
+        this.description = description ?? presentation.description;
+        const effectiveIconId = iconId ?? presentation.iconId;
+        const effectiveColorId = colorId ?? presentation.colorId;
+        if (effectiveIconId) {
+            this.iconPath = effectiveColorId
+                ? new vscode.ThemeIcon(effectiveIconId, new vscode.ThemeColor(effectiveColorId))
+                : new vscode.ThemeIcon(effectiveIconId);
         }
     }
 }

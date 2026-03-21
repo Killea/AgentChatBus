@@ -2,16 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
-
-type CursorMcpServerDefinition = {
-    url: string;
-    type: 'streamable-http' | 'sse';
-};
-
-type CursorMcpConfig = {
-    mcpServers?: Record<string, CursorMcpServerDefinition | unknown>;
-    [key: string]: unknown;
-};
+import { buildCursorMcpConfig, type CursorMcpConfig } from './logic/cursorConfig';
 
 export type CursorConfigResult = {
     path: string;
@@ -29,22 +20,9 @@ export class CursorMcpConfigManager {
 
     async configureGlobalAgentChatBus(serverUrl: string): Promise<CursorConfigResult> {
         const configPath = this.getGlobalConfigPath();
-        const normalizedServerUrl = serverUrl.replace(/\/+$/, '');
-        const mcpUrl = `${normalizedServerUrl}/mcp/sse`;
         const currentConfig = await this.readConfig(configPath);
-
-        const nextConfig: CursorMcpConfig = {
-            ...currentConfig,
-            mcpServers: {
-                ...(currentConfig.mcpServers || {}),
-                [CursorMcpConfigManager.SERVER_NAME]: {
-                    url: mcpUrl,
-                    type: 'sse'
-                }
-            }
-        };
-
-        const changed = JSON.stringify(currentConfig) !== JSON.stringify(nextConfig);
+        const buildResult = buildCursorMcpConfig(currentConfig, serverUrl, CursorMcpConfigManager.SERVER_NAME);
+        const { nextConfig, changed } = buildResult;
         if (changed) {
             await fs.mkdir(path.dirname(configPath), { recursive: true });
             await fs.writeFile(configPath, `${JSON.stringify(nextConfig, null, 2)}\n`, 'utf8');
@@ -53,8 +31,8 @@ export class CursorMcpConfigManager {
         return {
             path: configPath,
             changed,
-            serverName: CursorMcpConfigManager.SERVER_NAME,
-            serverUrl: mcpUrl
+            serverName: buildResult.serverName,
+            serverUrl: buildResult.serverUrl
         };
     }
 

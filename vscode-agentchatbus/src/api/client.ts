@@ -1,6 +1,13 @@
 import * as vscode from 'vscode';
 import type { Thread, ThreadListResponse, Message, Agent, SyncContext, SendMessagePayload, UploadedImage } from './types';
 import EventSource from 'eventsource';
+import { buildSendMessageRequestBody, shouldRetrySendMessage } from '../logic/apiClient';
+import {
+    applyServerUrlChange,
+    buildEventsUrl,
+    parseSseEventData,
+    parseUiAgentRegistrationPayload,
+} from '../logic/apiClientRuntime';
 
 export class AgentChatBusApiClient {
     private baseUrl: string;
@@ -15,8 +22,16 @@ export class AgentChatBusApiClient {
         vscode.workspace.onDidChangeConfiguration(e => {
             if (e.affectsConfiguration('agentchatbus.serverUrl')) {
                 const config = vscode.workspace.getConfiguration('agentchatbus');
-                this.baseUrl = config.get<string>('serverUrl', 'http://127.0.0.1:39765');
-                this.reconnectSSE();
+                const nextState = applyServerUrlChange(
+                    this.baseUrl,
+                    config.get<string>('serverUrl', 'http://127.0.0.1:39765'),
+                    this.uiAgentAuth
+                );
+                this.baseUrl = nextState.baseUrl;
+                this.uiAgentAuth = nextState.uiAgentAuth;
+                if (nextState.shouldReconnectSse) {
+                    this.reconnectSSE();
+                }
             }
         });
     }
@@ -50,20 +65,7 @@ export class AgentChatBusApiClient {
     }
 
     async sendMessage(threadId: string, payload: string | SendMessagePayload, syncContext: SyncContext): Promise<Message> {
-        const normalizedPayload: SendMessagePayload = typeof payload === 'string'
-            ? { content: payload }
-            : payload;
-
-        let body = {
-            author: normalizedPayload.author || 'human',
-            content: normalizedPayload.content,
-            mentions: normalizedPayload.mentions,
-            metadata: normalizedPayload.metadata,
-            images: normalizedPayload.images,
-            reply_to_msg_id: normalizedPayload.reply_to_msg_id,
-            expected_last_seq: syncContext.current_seq,
-            reply_token: syncContext.reply_token
-        };
+        let body = buildSendMessageRequestBody(payload, syncContext);
 
         // If client knows it lacks a valid token, eagerly fetch one
         if (!body.reply_token || typeof body.expected_last_seq !== 'number') {
@@ -85,7 +87,7 @@ export class AgentChatBusApiClient {
                 const errJson = JSON.parse(errDetails);
                 // AgentChatBus specific fast-retry logic for SeqMismatch/TokenInvalid
                 // TS server responds with 409 + action='READ_MESSAGES_THEN_CALL_MSG_WAIT' at root level
-                if (response.status === 409 && errJson?.action === 'READ_MESSAGES_THEN_CALL_MSG_WAIT') {
+                if (shouldRetrySendMessage(response.status, errJson)) {
                     console.log("[AgentChatBus] Recovering from sync mismatch. Fetching new context...");
                     const sync = await this.getSyncContext(threadId);
                     body.reply_token = sync.reply_token;
@@ -159,13 +161,7 @@ export class AgentChatBusApiClient {
         }
 
         const payload = await response.json() as any;
-        if (!payload?.agent_id || !payload?.token) {
-            throw new Error('Invalid UI agent registration payload');
-        }
-        this.uiAgentAuth = {
-            agent_id: String(payload.agent_id),
-            token: String(payload.token),
-        };
+        this.uiAgentAuth = parseUiAgentRegistrationPayload(payload);
         return this.uiAgentAuth;
     }
 
@@ -245,16 +241,16 @@ export class AgentChatBusApiClient {
 
     connectSSE(): void {
         this.disconnectSSE();
-        const url = `${this.baseUrl}/events`;
+        const url = buildEventsUrl(this.baseUrl);
         console.log(`[AgentChatBus] Connecting SSE to ${url}...`);
         this.eventSource = new EventSource(url);
         
         this.eventSource.onmessage = (e) => {
-            try {
-                const data = JSON.parse(e.data);
-                this.onSseEvent.fire(data);
-            } catch (err) {
-                console.error("Failed to parse SSE event", err);
+            const parsed = parseSseEventData(e.data);
+            if (parsed.ok) {
+                this.onSseEvent.fire(parsed.data);
+            } else {
+                console.error("Failed to parse SSE event", parsed.error);
             }
         };
 
