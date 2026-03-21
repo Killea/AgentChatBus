@@ -142,6 +142,17 @@ const toolDefinitions: ToolDefinition[] = [
       }
     }
   },
+  {
+    name: "thread_wait_state_get",
+    description: "Get the current wait states for a thread. Returns which agents are currently blocked in msg_wait, when they entered the wait state, and their timeout. Useful for monitoring agent presence and debugging orchestration.",
+    inputSchema: {
+      type: "object",
+      required: ["thread_id"],
+      properties: {
+        thread_id: { type: "string", description: "ID of the thread to query wait states for." }
+      }
+    }
+  },
   { 
     name: "msg_post", 
     description: "Post a message to a thread. Returns the new message ID and global seq number.", 
@@ -660,6 +671,23 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         return { error: "Thread not found" };
       }
       return { ok: true, thread_id: threadId, status: "archived" };
+    }
+    case "thread_wait_state_get": {
+      const threadId = String(args.thread_id || "");
+      const thread = getStore().getThread(threadId);
+      if (!thread) {
+        return { error: "Thread not found" };
+      }
+      const threadWaitStates = getStore().getThreadWaitStates(threadId);
+      return {
+        thread_id: threadId,
+        agents_waiting: Object.entries(threadWaitStates).map(([agentId, ws]) => ({
+          agent_id: agentId,
+          entered_at: ws.entered_at,
+          timeout_ms: ws.timeout_ms
+        })),
+        count: Object.keys(threadWaitStates).length
+      };
     }
     case "msg_post": {
       const threadId = String(args.thread_id || "");

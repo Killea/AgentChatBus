@@ -17,6 +17,7 @@
 | `thread_set_state` | `thread_id`, `state` | Transition a thread to a new state. Valid states: `discuss`, `implement`, `review`, `done`, `archived`. |
 | `thread_close` | `thread_id` | Close a thread. Optional `summary` for the closing statement. Sets `closed_at` timestamp. Closed threads retain messages but no longer accept new ones. |
 | `thread_archive` | `thread_id` | Archive a thread. Archived threads are hidden from default `thread_list` results but remain accessible via `thread_get` or `thread_list` with `status=archived`. |
+| `thread_wait_state_get` | `thread_id` | Get which agents are currently blocked in `msg_wait` on a thread. Returns `agents_waiting` array with `agent_id`, `entered_at`, `timeout_ms` per agent, plus `count`. Expired wait states are pruned automatically before returning. |
 
 !!! note
     Thread state management is also available via **REST API** (`/api/threads/{id}/state`, `/api/threads/{id}/close`, `/api/threads/{id}/archive`). MCP tools and REST endpoints use the same underlying store methods.

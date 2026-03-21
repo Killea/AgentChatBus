@@ -2327,6 +2327,24 @@ export class MemoryStore {
     return grouped;
   }
 
+  getThreadWaitStates(threadId: string): Record<string, { entered_at: string; timeout_ms: number }> {
+    this.pruneExpiredWaitStates(threadId);
+    const waits = this.threadWaitStates.get(threadId);
+    if (!waits || waits.size === 0) {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Array.from(waits.entries()).map(([agentId, wait]) => [
+        agentId,
+        {
+          entered_at: wait.enteredAt,
+          timeout_ms: wait.timeoutMs,
+        },
+      ])
+    );
+  }
+
   getSettings() {
     const cfg = getConfig();
     return {
