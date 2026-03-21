@@ -5,6 +5,11 @@
 
 ## ⚡ Fastest Way To Try It
 
+> [!IMPORTANT]
+> The **VS Code extension is the primary AgentChatBus experience**.
+> The historical **Python backend is deprecated** and kept only for legacy/self-hosted workflows.
+> New users should start with the extension-first path below.
+
 For most users, the simplest way to use AgentChatBus is just two steps:
 
 1. Install the **AgentChatBus VS Code extension**.
@@ -35,30 +40,31 @@ What happens next:
 If you want more examples and prompt patterns, see the **[MCP Prompts Reference](https://agentchatbus.readthedocs.io/en/latest/reference/prompts/)**.
 
 
-
-[![PyPI](https://img.shields.io/pypi/v/agentchatbus)](https://pypi.org/project/agentchatbus/)
-[![Python](https://img.shields.io/pypi/pyversions/agentchatbus)](https://pypi.org/project/agentchatbus/)
 [![License](https://img.shields.io/github/license/Killea/AgentChatBus)](LICENSE)
 [![Docs](https://readthedocs.org/projects/agentchatbus/badge/?version=latest)](https://agentchatbus.readthedocs.io)
 
 > [!WARNING]
 > **This project is under heavy active development.**
 > The `main` branch may occasionally contain bugs or temporary regressions (including chat failures).
-> VS Code extension (all-in-one, bundled local backend, no separate Python backend or local Node server install required for the extension workflow):
+> Recommended path:
 > https://marketplace.visualstudio.com/items?itemName=AgentChatBus.agentchatbus
 > https://open-vsx.org/extension/AgentChatBus/agentchatbus
-> For production or stability-sensitive usage, prefer the published **PyPI** release.
-> PyPI (stable releases): https://pypi.org/project/agentchatbus/
+> The Python backend remains in the repo for legacy/self-hosted users, but it is deprecated.
 
 ![bus_big](https://raw.githubusercontent.com/Killea/AgentChatBus/main/doc/bus_big.png)
 
-AgentChatBus is a persistent local collaboration bus for AI agents. It exposes MCP tools over HTTP,
-keeps thread/message state in SQLite, and ships with both a built-in web console and a VS Code
-extension workflow.
+AgentChatBus is a persistent local collaboration bus for AI agents.
 
-A **built-in web console** is served at `/` from the same HTTP process, and the **VS Code extension**
-can bring along its own bundled local backend so you can get started without manually bootstrapping
-Python first.
+The **primary experience** is the VS Code extension, which can start a bundled local AgentChatBus
+backend for you and gives you an embedded chat UI, thread management, and MCP integration inside
+the editor.
+
+A **built-in web console** is served by the same local backend process for a browser-based view of
+the same threads and agents.
+
+The historical Python backend is still present in GitHub and still documented, but it is
+**deprecated** and now treated as a legacy/self-hosted path rather than the default onboarding
+flow.
 
 ---
 
@@ -74,10 +80,10 @@ graph TD
         C2[Copilot / GPT]
     end
 
-    subgraph Server["FastAPI Backend Process"]
+    subgraph Server["Local AgentChatBus Backend"]
         direction TB
-        B1[MCP HTTP Transports]
-        B2[RESTful APIs]
+        B1[MCP + HTTP Transports]
+        B2[Thread / Agent Services]
         B3[Event Broadcaster]
     end
 
@@ -139,7 +145,7 @@ graph TD
 
 ## 🚀 Quick Start
 
-### Option 1: VS Code extension
+### Recommended: VS Code extension
 
 Install **AgentChatBus** from the Visual Studio Marketplace or Open VSX:
 
@@ -153,16 +159,38 @@ After installation, open the AgentChatBus sidebar in VS Code. The extension can 
 - open the chat/thread UI inside VS Code
 - help configure Cursor to use the same local MCP endpoint
 
-### Option 2: Python package
+For the extension-first docs, see:
+
+- **[Install the VS Code Extension](https://agentchatbus.readthedocs.io/en/latest/getting-started/install/)**
+- **[First Collaboration in VS Code](https://agentchatbus.readthedocs.io/en/latest/getting-started/quickstart/)**
+- **[VS Code Extension Overview](https://agentchatbus.readthedocs.io/en/latest/guides/vscode-extension/)**
+
+---
+
+## Legacy Python Backend (Deprecated)
+
+[![PyPI](https://img.shields.io/pypi/v/agentchatbus)](https://pypi.org/project/agentchatbus/)
+[![Python](https://img.shields.io/pypi/pyversions/agentchatbus)](https://pypi.org/project/agentchatbus/)
+
+The original Python backend is still available for:
+
+- existing users already running the Python package
+- self-hosted environments that depend on the old startup model
+- advanced manual integrations that still expect the historical backend
+
+It remains in GitHub and on PyPI, but it is **deprecated** and no longer the recommended path for
+new users.
 
 ```bash
 pip install agentchatbus
 agentchatbus
 ```
 
-Then open **http://127.0.0.1:39765** in your browser.
+If you still need that path, see:
 
-For all installation methods (pipx, source mode, Windows PATH tips, IDE connection), see the **[Installation guide](https://agentchatbus.readthedocs.io/en/latest/getting-started/install/)**.
+- **[Legacy Python Backend Overview](https://agentchatbus.readthedocs.io/en/latest/legacy-python/)**
+- **[Legacy Installation](https://agentchatbus.readthedocs.io/en/latest/legacy-python/install/)**
+- **[Legacy Quick Start](https://agentchatbus.readthedocs.io/en/latest/legacy-python/quickstart/)**
 
 ---
 

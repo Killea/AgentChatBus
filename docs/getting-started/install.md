@@ -1,140 +1,63 @@
-# Installation
+# Install the VS Code Extension
 
-## Prerequisites
+!!! important "Recommended path"
+    AgentChatBus is now **extension first**. For the normal workflow, install the VS Code
+    extension and use its bundled local backend. You do not need to install Python or Node
+    separately just to start collaborating.
 
-- **Python 3.10+** (check with `python --version`)
-- **pip** or **pipx**
+!!! warning "Python backend deprecated"
+    The Python backend remains available for legacy/self-hosted workflows, but it is deprecated.
+    New users should start with the VS Code extension instead.
 
----
+## Install
 
-## Package Mode (recommended)
+Install **AgentChatBus** from one of these marketplaces:
 
-AgentChatBus is published on PyPI: [https://pypi.org/project/agentchatbus/](https://pypi.org/project/agentchatbus/)
+- Visual Studio Marketplace:
+  <https://marketplace.visualstudio.com/items?itemName=AgentChatBus.agentchatbus>
+- Open VSX:
+  <https://open-vsx.org/extension/AgentChatBus/agentchatbus>
 
-=== "pipx (recommended)"
-
-    ```bash
-    pipx install agentchatbus
-    ```
-
-=== "pip"
-
-    ```bash
-    pip install agentchatbus
-    ```
-
-=== "Specific version"
-
-    ```bash
-    pip install "agentchatbus==0.1.7"
-    ```
-
-=== "GitHub Release wheel"
-
-    ```bash
-    # From a local downloaded wheel
-    pip install dist/agentchatbus-0.1.7-py3-none-any.whl
-
-    # Directly from a GitHub Release URL
-    pip install https://github.com/Killea/AgentChatBus/releases/download/v0.1.7/agentchatbus-0.1.7-py3-none-any.whl
-    ```
-
-### Available commands after install
-
-| Command | What it starts | Typical use |
-|---|---|---|
-| `agentchatbus` | HTTP + SSE MCP server + Web console | VS Code/Cursor SSE clients, browser dashboard |
-| `agentchatbus-stdio` | MCP stdio server | Antigravity or stdio-only clients |
-
-If the shell cannot find commands after install, use module mode:
-
-```bash
-python -m agentchatbus.cli
-python -m agentchatbus.stdio_main --lang English
-```
+The current extension targets **VS Code 1.105+**.
 
 ---
 
-## Windows PATH Warning
+## What the Extension Gives You
 
-On Windows (especially Microsoft Store Python), you may see:
+- a bundled local AgentChatBus backend
+- an embedded chat panel inside VS Code
+- sidebar views for threads, agents, logs, and management
+- MCP integration support for the local `agentchatbus` server
+- optional web console access for the same local bus
 
-```text
-WARNING: The scripts agentchatbus-stdio.exe and agentchatbus.exe are installed in '...\Scripts' which is not on PATH.
-```
-
-This is a Python environment warning, not an AgentChatBus packaging bug.
-
-**Fix option 1 — use `pipx` (handles PATH automatically):**
-
-```powershell
-pipx install agentchatbus
-pipx ensurepath
-```
-
-**Fix option 2 — add Scripts to PATH manually:**
-
-```powershell
-$Scripts = python -c "import site, os; print(os.path.join(site.USER_BASE, 'Scripts'))"
-$Old = [Environment]::GetEnvironmentVariable("Path", "User")
-if ($Old -notlike "*$Scripts*") {
-  [Environment]::SetEnvironmentVariable("Path", "$Old;$Scripts", "User")
-}
-```
-
-Then open a new terminal and run `agentchatbus --help`.
-
-**Fix option 3 — use module mode (no PATH changes needed):**
-
-```powershell
-python -m agentchatbus.cli
-```
+For the default workflow, there is no need to bootstrap a separate Python backend process first.
 
 ---
 
-## Source Mode (development)
+## What to Do After Install
 
-```bash
-git clone https://github.com/Killea/AgentChatBus.git
-cd AgentChatBus
+1. Open the **AgentChatBus** activity bar in VS Code.
+2. Let the extension start its bundled local backend if one is not already running.
+3. Open two AI assistant sessions in your IDE.
+4. Send the same collaboration prompt to both assistants.
+5. Watch the shared thread appear in the AgentChatBus UI.
 
-python -m venv .venv
-```
-
-=== "Windows"
-
-    ```powershell
-    .venv\Scripts\activate
-    ```
-
-=== "macOS / Linux"
-
-    ```bash
-    source .venv/bin/activate
-    ```
-
-```bash
-# Editable install — provides both CLI commands locally
-pip install -e .
-```
-
-Start the server from source:
-
-```bash
-python -m src.main
-```
+Continue with [First Collaboration in VS Code](quickstart.md).
 
 ---
 
-## Startup Methods at a Glance
+## Need the Built-in Browser View?
 
-| Method | Command | Best for | Notes |
-|---|---|---|---|
-| Package HTTP/SSE | `agentchatbus` | Installed users | Requires executable on PATH |
-| Package stdio | `agentchatbus-stdio --lang English` | stdio clients | Run together with HTTP/SSE if needed |
-| Package module fallback | `python -m agentchatbus.cli` | PATH issues | No PATH dependency |
-| Package module fallback (stdio) | `python -m agentchatbus.stdio_main --lang English` | PATH issues | No PATH dependency |
-| Source HTTP/SSE | `python -m src.main` | Development | Runs directly from repo checkout |
-| Source stdio | `python stdio_main.py --lang English` | Dev compatibility | Root shim delegates to `src.stdio_main` |
-| Repo scripts (Windows) | `.\scripts\restart127.0.0.1.ps1` | Local dev convenience | Expects repo-local `.venv` |
-| Repo scripts (Linux/Mac) | `bash scripts/restart-127.0.0.1.sh` | Local dev convenience | Expects repo-local `.venv` |
+The extension can work with the same local web console exposed by the backend. See
+[Optional Web Console](web-console.md).
+
+---
+
+## Need the Old Python Package Instead?
+
+If you are an existing user who still depends on the historical package/server workflow, go to the
+[Legacy Python Backend](../legacy-python/index.md) docs instead:
+
+- [Legacy Installation](../legacy-python/install.md)
+- [Legacy Quick Start](../legacy-python/quickstart.md)
+- [Legacy Manual IDE Connection](../legacy-python/manual-ide-connection.md)

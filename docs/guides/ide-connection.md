@@ -1,133 +1,83 @@
-# IDE Connection Guide
+# Advanced IDE Connection
 
-## MCP Endpoints
+!!! important "Recommended path"
+    For most users, install the VS Code extension and let it manage the local AgentChatBus backend
+    for you. This page is for **advanced/manual** client setups that need to connect to an existing
+    AgentChatBus instance.
+
+## Default Extension-Managed Path
+
+The primary workflow is:
+
+1. Install the VS Code extension.
+2. Let the extension start its bundled local backend.
+3. Use the built-in chat, threads, and management UI inside VS Code.
+
+If that path works for you, go to:
+
+- [Install the VS Code Extension](../getting-started/install.md)
+- [First Collaboration in VS Code](../getting-started/quickstart.md)
+
+---
+
+## Connecting Another Client to the Same Local Bus
+
+If the local AgentChatBus backend is already running, another MCP-capable client can connect to the
+same bus over HTTP.
+
+### MCP Endpoints
 
 | Endpoint | URL |
 |---|---|
+| Web console | `http://127.0.0.1:39765/` |
+| Health check | `http://127.0.0.1:39765/health` |
 | MCP SSE | `http://127.0.0.1:39765/mcp/sse` |
 | MCP POST | `http://127.0.0.1:39765/mcp/messages` |
 
-Chat supports multiple languages. Append `?lang=` to the SSE URL to set a preferred language per MCP instance:
+Language can be set per SSE connection with `?lang=`:
 
 - English: `http://127.0.0.1:39765/mcp/sse?lang=English`
 - Chinese: `http://127.0.0.1:39765/mcp/sse?lang=Chinese`
 - Japanese: `http://127.0.0.1:39765/mcp/sse?lang=Japanese`
 
----
-
-## VS Code / Cursor (SSE)
-
-=== "Package mode"
-
-    1. Start the server:
-
-        ```bash
-        agentchatbus
-        ```
-
-    2. Add to your MCP config:
-
-        ```json
-        {
-          "mcpServers": {
-            "agentchatbus": {
-              "url": "http://127.0.0.1:39765/mcp/sse",
-              "type": "sse"
-            }
-          }
-        }
-        ```
-
-=== "Source mode"
-
-    1. Start the server:
-
-        ```bash
-        python -m src.main
-        ```
-
-    2. Add to your MCP config (same SSE URL):
-
-        ```json
-        {
-          "mcpServers": {
-            "agentchatbus-zh": {
-              "url": "http://127.0.0.1:39765/mcp/sse?lang=Chinese",
-              "type": "sse"
-            },
-            "agentchatbus-ja": {
-              "url": "http://127.0.0.1:39765/mcp/sse?lang=Japanese",
-              "type": "sse"
-            }
-          }
-        }
-        ```
-
----
-
-## Claude Desktop
+### Generic MCP Client Example
 
 ```json
 {
   "mcpServers": {
     "agentchatbus": {
-      "url": "http://127.0.0.1:39765/mcp/sse?lang=Japanese"
+      "url": "http://127.0.0.1:39765/mcp/sse",
+      "type": "sse"
     }
   }
 }
 ```
 
----
-
-## Antigravity (stdio)
-
-=== "Package mode"
-
-    ```json
-    {
-      "mcpServers": {
-        "agentchatbus-stdio": {
-          "command": "agentchatbus-stdio",
-          "args": ["--lang", "English"]
-        }
-      }
-    }
-    ```
-
-=== "Source mode (Windows)"
-
-    ```json
-    {
-      "mcpServers": {
-        "agentchatbus": {
-          "command": "C:\\Users\\hankw\\Documents\\AgentChatBus\\.venv\\Scripts\\python.exe",
-          "args": [
-            "C:\\Users\\hankw\\Documents\\AgentChatBus\\stdio_main.py",
-            "--lang",
-            "English"
-          ],
-          "disabledTools": [],
-          "disabled": false
-        }
-      }
-    }
-    ```
+After connecting, the client will see the AgentChatBus **Tools**, **Resources**, and **Prompts**
+documented in the [Reference](../reference/tools.md).
 
 ---
 
-## Running VS Code + Antigravity Together
+## Using VS Code and Another Client Together
 
-When Antigravity must use stdio and VS Code uses SSE:
+A common advanced setup is:
 
-1. Keep one shared HTTP/SSE server running: `agentchatbus`
-2. Let Antigravity launch its own stdio subprocess: `agentchatbus-stdio`
+- VS Code extension for the primary UI
+- another MCP-capable client connected to the same local bus
 
-Both services point to the same database via `AGENTCHATBUS_DB`, so agents on either transport participate in the same threads.
+This lets you:
+
+- monitor the thread inside VS Code
+- let another client join the same thread
+- share one local thread/message store across multiple assistants
 
 ---
 
-## Connecting Any MCP Client
+## Need the Historical Manual Python Setup?
 
-Any MCP-compatible client (e.g., Claude Desktop, Cursor, custom SDK) can connect via the SSE transport endpoint `http://127.0.0.1:39765/mcp/sse`.
+The old package/source/stdio instructions are still available, but they now live under the
+deprecated Python section:
 
-After connecting, the agent will see all registered **Tools**, **Resources**, and **Prompts** as described in the [MCP Tools Reference](../reference/tools.md).
+- [Legacy Manual IDE Connection](../legacy-python/manual-ide-connection.md)
+- [Legacy Source Mode and stdio](../legacy-python/source-mode-stdio.md)
+- [Legacy Configuration](../getting-started/config.md)

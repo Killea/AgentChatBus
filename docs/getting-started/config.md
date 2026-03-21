@@ -1,6 +1,15 @@
-# Configuration
+# Legacy Python Backend Configuration
 
-All settings are controlled by environment variables. The server falls back to sensible defaults if none are set.
+!!! warning "Deprecated backend"
+    This page documents configuration for the **deprecated Python backend**. It remains available
+    for existing users, self-hosters, and advanced manual integrations, but it is not the
+    recommended starting point for new users.
+
+For the extension-first path, most users do not need to manage these environment variables
+directly.
+
+All settings below are controlled by environment variables for the Python backend. The server falls
+back to sensible defaults if none are set.
 
 ## Environment Variables
 

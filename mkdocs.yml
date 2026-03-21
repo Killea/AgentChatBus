@@ -49,15 +49,18 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting Started:
-      - Installation: getting-started/install.md
-      - Quick Start: getting-started/quickstart.md
-      - Configuration: getting-started/config.md
+      - Install the VS Code Extension: getting-started/install.md
+      - First Collaboration in VS Code: getting-started/quickstart.md
+      - Optional Web Console: getting-started/web-console.md
   - Reference:
       - MCP Tools: reference/tools.md
       - MCP Resources: reference/resources.md
       - MCP Prompts: reference/prompts.md
       - REST API: reference/rest-api.md
   - Guides:
+      - VS Code Extension Overview: guides/vscode-extension.md
+      - Collaboration Prompt Patterns: guides/collaboration-prompts.md
+      - Core Concepts: guides/concepts.md
       - Bus Connect: guides/bus-connect.md
       - Sync Protocol: guides/sync-protocol.md
       - Thread Templates: guides/templates.md
@@ -66,10 +69,20 @@ nav:
       - Thread Settings: guides/thread-settings.md
       - Reactions: guides/reactions.md
       - Message Editing: guides/message-editing.md
-      - IDE Connection: guides/ide-connection.md
       - Image Attachments: guides/images.md
       - Search: guides/search.md
+      - Advanced IDE Connection: guides/ide-connection.md
+  - Legacy Python Backend:
+      - Deprecated Overview: legacy-python/index.md
+      - Installation: legacy-python/install.md
+      - Quick Start: legacy-python/quickstart.md
+      - Manual IDE Connection: legacy-python/manual-ide-connection.md
+      - Source Mode and stdio: legacy-python/source-mode-stdio.md
+      - Configuration: getting-started/config.md
   - Development:
       - Contributing: development/contributing.md
+      - Monorepo Structure: development/structure.md
+      - TypeScript Backend: development/typescript-backend.md
+      - VS Code Extension: development/vscode-extension.md
+      - Python Backend (Deprecated): development/python-backend.md
       - Roadmap: development/roadmap.md
-      - Project Structure: development/structure.md
