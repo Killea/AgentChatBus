@@ -1191,8 +1191,12 @@ export class CliSessionManager {
       timeoutMs: getCodexReplyTimeoutMs(options?.deliveryMode),
     });
     runtime.controls.write(normalizedPrompt);
-    runtime.controls.write("\r");
     this.updateAutomationState(runtime, "meeting_delivery_prompt_sent");
+    if (runtime.snapshot.adapter === "codex" && runtime.snapshot.mode === "interactive") {
+      this.scheduleCodexDeliveryEnter(runtime, 300);
+    } else {
+      runtime.controls.write("\r");
+    }
     runtime.snapshot.updated_at = nowIso();
     this.emitSessionEvent("cli.session.state", runtime);
     return {
@@ -1764,6 +1768,32 @@ export class CliSessionManager {
         this.updateAutomationState(runtime, "resent_initial_prompt_enter");
         logInfo(`[cli-session] ${runtime.snapshot.id} retried Enter for Codex prompt submission.`);
       }
+    }, delayMs);
+  }
+
+  private scheduleCodexDeliveryEnter(runtime: CliSessionRuntime, delayMs: number): void {
+    const automation = runtime.automationState;
+    if (!automation || automation.profile !== "codex-startup") {
+      return;
+    }
+    if (runtime.snapshot.adapter !== "codex" || runtime.snapshot.mode !== "interactive") {
+      return;
+    }
+    if (automation.submitTimer) {
+      clearTimeout(automation.submitTimer);
+    }
+    automation.submitTimer = setTimeout(() => {
+      automation.submitTimer = null;
+      if (runtime.snapshot.adapter !== "codex" || runtime.snapshot.mode !== "interactive") {
+        return;
+      }
+      if (automation.manualOverride || !runtime.controls?.write) {
+        return;
+      }
+      runtime.controls.write("\r");
+      logInfo(
+        `[cli-session] ${runtime.snapshot.id} auto-submitted Codex meeting prompt after delayed Enter.`,
+      );
     }, delayMs);
   }
 

@@ -92,8 +92,54 @@
   let _templates = null;
   const DEFAULT_THREAD_LAUNCH_INTERVAL_SECONDS = 2;
   const MAX_THREAD_LAUNCH_AGENTS = 4;
+  const THREAD_LAUNCH_ADAPTER_STORAGE_KEY = "acb.threadLaunchAdapters.v1";
   let _threadLaunchAgents = [];
   let _selectedThreadLaunchAgentId = "";
+
+  function readThreadLaunchAdapterPreferences() {
+    try {
+      const raw = globalThis.localStorage?.getItem(THREAD_LAUNCH_ADAPTER_STORAGE_KEY);
+      if (!raw) {
+        return [];
+      }
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+      return parsed
+        .map((value) => String(value || "").trim().toLowerCase())
+        .filter((value) => value === "codex" || value === "cursor" || value === "claude");
+    } catch {
+      return [];
+    }
+  }
+
+  function writeThreadLaunchAdapterPreferences() {
+    try {
+      const adapters = _threadLaunchAgents
+        .map((agent) => String(agent?.adapter || "").trim().toLowerCase())
+        .map((value) => (value === "cursor" || value === "claude" ? value : "codex"));
+      globalThis.localStorage?.setItem(
+        THREAD_LAUNCH_ADAPTER_STORAGE_KEY,
+        JSON.stringify(adapters),
+      );
+    } catch {
+      // Ignore storage failures and keep the modal usable.
+    }
+  }
+
+  function getPreferredThreadLaunchAdapter(slotIndex, fallback = "claude") {
+    const normalizedFallback = String(fallback || "claude").trim().toLowerCase();
+    const preferences = readThreadLaunchAdapterPreferences();
+    const preferred = String(preferences[slotIndex] || "").trim().toLowerCase();
+    if (preferred === "codex" || preferred === "cursor" || preferred === "claude") {
+      return preferred;
+    }
+    if (normalizedFallback === "codex" || normalizedFallback === "cursor" || normalizedFallback === "claude") {
+      return normalizedFallback;
+    }
+    return "claude";
+  }
 
   async function _loadTemplates(api) {
     if (_templates !== null) return _templates;
@@ -260,15 +306,21 @@
     return adapterLabel;
   }
 
-  function createThreadLaunchAgent(overrides = {}) {
+  function createThreadLaunchAgent(overrides = {}, slotIndex = 0) {
+    const requestedAdapter = String(overrides.adapter || "").trim().toLowerCase();
+    const adapter = getPreferredThreadLaunchAdapter(
+      slotIndex,
+      requestedAdapter || "claude",
+    );
     return {
       id: `thread-agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      adapter: "claude",
+      adapter,
       mode: "interactive",
       meetingTransport: "agent_mcp",
       displayName: "",
       initialInstruction: "",
       ...overrides,
+      adapter,
     };
   }
 
@@ -437,7 +489,7 @@
       return;
     }
     if (!_threadLaunchAgents.length) {
-      _threadLaunchAgents = [createThreadLaunchAgent()];
+      _threadLaunchAgents = [createThreadLaunchAgent({}, 0)];
     }
     if (!getThreadLaunchAgentById(_selectedThreadLaunchAgentId)) {
       _selectedThreadLaunchAgentId = _threadLaunchAgents[0]?.id || "";
@@ -529,12 +581,13 @@
     if (addBtn) {
       addBtn.disabled = _threadLaunchAgents.length >= MAX_THREAD_LAUNCH_AGENTS;
     }
+    writeThreadLaunchAdapterPreferences();
     syncThreadLaunchPromptPreview();
     syncThreadLaunchUi();
   }
 
   function resetThreadLaunchAgents() {
-    _threadLaunchAgents = [createThreadLaunchAgent({ adapter: "claude" })];
+    _threadLaunchAgents = [createThreadLaunchAgent({ adapter: "claude" }, 0)];
     _selectedThreadLaunchAgentId = _threadLaunchAgents[0].id;
     syncThreadLaunchGlobalInstructionField({ force: true });
     const intervalEl = document.getElementById("thread-launch-interval-seconds");
@@ -548,7 +601,10 @@
     if (_threadLaunchAgents.length >= MAX_THREAD_LAUNCH_AGENTS) {
       return;
     }
-    const nextAgent = createThreadLaunchAgent({ adapter: "codex" });
+    const nextAgent = createThreadLaunchAgent(
+      { adapter: "codex" },
+      _threadLaunchAgents.length,
+    );
     _threadLaunchAgents.push(nextAgent);
     _selectedThreadLaunchAgentId = nextAgent.id;
     renderThreadLaunchAgents();
@@ -589,6 +645,7 @@
       if (_threadLaunchAgents[0]?.id === agentId) {
         syncThreadLaunchGlobalInstructionField();
       }
+      writeThreadLaunchAdapterPreferences();
       renderThreadLaunchAgents();
       return;
     }
