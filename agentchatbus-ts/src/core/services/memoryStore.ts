@@ -525,12 +525,16 @@ export class MemoryStore {
       template_id: templateId,
       metadata: persistedMetadata
     };
-    this.threads.set(thread.id, thread);
-    this.threadMessages.set(thread.id, []);
-    this.threadParticipants.set(thread.id, new Set());
-    this.threadWaitStates.set(thread.id, new Map());
     const creatorAdminId = options?.creatorAdminId;
     const creatorAdminName = options?.creatorAdminName;
+    this.threads.set(thread.id, thread);
+    this.threadMessages.set(thread.id, []);
+    const participants = new Set<string>();
+    if (creatorAdminId) {
+      participants.add(creatorAdminId);
+    }
+    this.threadParticipants.set(thread.id, participants);
+    this.threadWaitStates.set(thread.id, new Map());
     this.threadSettings.set(thread.id, {
       auto_administrator_enabled: true,
       timeout_seconds: 60,
@@ -553,6 +557,25 @@ export class MemoryStore {
       "SELECT id, topic, status, created_at, updated_at, system_prompt, template_id, metadata FROM threads WHERE id = ?"
     ).get(threadId) as Record<string, unknown> | undefined;
     return row ? this.rowToThreadRecord(row) : undefined;
+  }
+
+  addThreadParticipant(threadId: string, agentId: string): boolean {
+    const thread = this.getThread(threadId);
+    const agent = this.getAgent(agentId);
+    if (!thread || !agent) {
+      return false;
+    }
+
+    const participants = this.threadParticipants.get(threadId) || new Set<string>();
+    const sizeBefore = participants.size;
+    participants.add(agentId);
+    this.threadParticipants.set(threadId, participants);
+    if (participants.size === sizeBefore) {
+      return true;
+    }
+
+    this.persistState();
+    return true;
   }
 
   updateThreadStatus(threadId: string, status: string): boolean {
@@ -1716,7 +1739,9 @@ export class MemoryStore {
     const messages = this.threadMessages.get(input.threadId) || [];
     messages.push(message);
     this.threadMessages.set(input.threadId, messages);
-    this.threadParticipants.get(input.threadId)?.add(input.author);
+    if (agent?.id) {
+      this.threadParticipants.get(input.threadId)?.add(agent.id);
+    }
     
     // 移植自：Python test_agent_registry.py L69-70
     // 更新 agent activity 为 'msg_post'
@@ -2050,6 +2075,10 @@ export class MemoryStore {
     };
   }
 
+  getThreadCurrentSeq(threadId: string): number {
+    return this.getLatestSeq(threadId);
+  }
+
   registerAgent(input: { ide: string; model: string; description?: string; capabilities?: string[]; display_name?: string; skills?: unknown[] }): AgentRecord {
     const agentId = randomUUID();
     const ide = input.ide.trim() || "Unknown IDE";
@@ -2222,6 +2251,26 @@ export class MemoryStore {
     this.persistState();
   }
 
+  setAgentOnlineState(agentId: string, isOnline: boolean, activity?: string): boolean {
+    const agent = this.getAgent(agentId);
+    if (!agent) {
+      return false;
+    }
+
+    const now = new Date().toISOString();
+    agent.is_online = isOnline;
+    agent.last_activity = activity || agent.last_activity || (isOnline ? "resume" : "offline");
+    agent.last_activity_time = now;
+    if (isOnline) {
+      agent.last_heartbeat = now;
+    }
+
+    this.upsertAgent(agent);
+    eventBus.emit({ type: "agent.updated", payload: agent });
+    this.persistState();
+    return true;
+  }
+
   unregisterAgent(agentId: string, token: string): boolean {
     const agent = this.getAgent(agentId);
     if (!agent || !agent.token || !safeCompare(agent.token, token)) {
@@ -2245,9 +2294,16 @@ export class MemoryStore {
   getThreadAgents(threadId: string): AgentRecord[] {
     // Ported from Python crud.py thread_agents_list
     // Sources:
+    // - explicit threadParticipants membership (invited/joined agents)
     // - message authors in the thread (messages.author_id)
     // - thread admin assignments (creator/auto-assigned) from thread_settings
     const participantIds = new Set<string>();
+
+    for (const participantId of this.threadParticipants.get(threadId) || []) {
+      if (participantId) {
+        participantIds.add(participantId);
+      }
+    }
 
     // Get message authors
     const authorRows = this.persistenceDb.prepare(

@@ -16,6 +16,7 @@
     const {
       getActiveThreadId,
       onMsgNew,
+      onMsgEdit,
       onThreadEvent,
       onAgentPresence,
       onCliSessionEvent,
@@ -49,6 +50,12 @@
         }
         if (onThreadEvent) {
           await onThreadEvent();
+        }
+      }
+
+      if (ev.type === "msg.edit") {
+        if (p.thread_id === activeThreadId && onMsgEdit) {
+          await onMsgEdit(p);
         }
       }
 

@@ -17,6 +17,7 @@ import {
   saveConfigDict,
 } from "../../core/config/env.js";
 import { CliSessionManager } from "../../core/services/cliSessionManager.js";
+import { CliMeetingOrchestrator } from "../../core/services/cliMeetingOrchestrator.js";
 import { MemoryStore, memoryStore } from "../../core/services/memoryStore.js";
 import { registerStore } from "../../core/services/storeSingleton.js";
 import { eventBus } from "../../shared/eventBus.js";
@@ -102,6 +103,7 @@ export function createHttpServer() {
     store = getMemoryStore();
   }
   const cliSessionManager = new CliSessionManager();
+  const cliMeetingOrchestrator = new CliMeetingOrchestrator(store, cliSessionManager);
 
   const adminDecisionBySource = new Map<string, {
     action: string;
@@ -135,6 +137,19 @@ export function createHttpServer() {
       return null;
     }
     return agentId;
+  }
+
+  function requireSessionController(
+    reply: FastifyReply,
+    session: { requested_by_agent_id: string },
+    agentId: string,
+  ): boolean {
+    if (session.requested_by_agent_id === agentId) {
+      return true;
+    }
+    reply.code(403);
+    void reply.send({ detail: "Only the session owner can control this CLI session" });
+    return false;
   }
 
   void fastify.register(multipart);
@@ -616,14 +631,55 @@ export function createHttpServer() {
       return reply;
     }
 
+    const participantAgentId = typeof body.participant_agent_id === "string"
+      ? body.participant_agent_id.trim()
+      : "";
+    const participantDisplayName = typeof body.participant_display_name === "string"
+      ? body.participant_display_name.trim()
+      : "";
+    if (participantAgentId && !store.getAgent(participantAgentId)) {
+      reply.code(400);
+      return { detail: "participant_agent_id does not reference a registered agent" };
+    }
+
+    const promptSeed = typeof body.initial_instruction === "string"
+      ? body.initial_instruction
+      : String(body.prompt || "");
+
     try {
+      let finalPrompt = promptSeed;
+      let participantRole: "administrator" | "participant" | undefined;
+      let contextDeliveryMode: "join" | "resume" | "incremental" | undefined;
+      let lastDeliveredSeq: number | undefined;
+      let finalParticipantDisplayName = participantDisplayName || undefined;
+
+      if (participantAgentId) {
+        const prepared = cliMeetingOrchestrator.prepareSession({
+          threadId: params.threadId,
+          participantAgentId,
+          participantDisplayName: participantDisplayName || undefined,
+          initialInstruction: promptSeed,
+        });
+        finalPrompt = prepared.prompt;
+        participantRole = prepared.participantRole;
+        contextDeliveryMode = prepared.contextDeliveryMode;
+        lastDeliveredSeq = prepared.lastDeliveredSeq;
+        finalParticipantDisplayName = prepared.participantDisplayName;
+      }
+
       const session = cliSessionManager.createSession({
         threadId: params.threadId,
         adapter: String(body.adapter || "cursor").trim() as "cursor" | "codex",
         mode: String(body.mode || "headless").trim() as "headless" | "interactive",
-        prompt: String(body.prompt || ""),
+        prompt: finalPrompt,
+        initialInstruction: promptSeed,
         workspace: typeof body.workspace === "string" ? body.workspace : undefined,
         requestedByAgentId,
+        participantAgentId: participantAgentId || undefined,
+        participantDisplayName: finalParticipantDisplayName,
+        participantRole,
+        contextDeliveryMode,
+        lastDeliveredSeq,
         cols: body.cols === undefined ? undefined : Number(body.cols),
         rows: body.rows === undefined ? undefined : Number(body.rows),
       });
@@ -666,13 +722,15 @@ export function createHttpServer() {
       return { detail: "Invalid agent_id/token" };
     }
 
+    const assignCreatorAdmin = body.assign_creator_admin !== false;
+
     const created = store.createThread(
       topic,
       typeof body.system_prompt === "string" ? body.system_prompt : undefined,
       undefined,
       {
-        creatorAdminId: creatorAgentId,
-        creatorAdminName: creator.display_name || creator.name || creatorAgentId,
+        creatorAdminId: assignCreatorAdmin ? creatorAgentId : undefined,
+        creatorAdminName: assignCreatorAdmin ? (creator.display_name || creator.name || creatorAgentId) : undefined,
         applySystemPromptContentFilter: true
       }
     );
@@ -823,7 +881,33 @@ export function createHttpServer() {
     if (!agentId) {
       return reply;
     }
+    const existingSession = cliSessionManager.getSession(params.sessionId);
+    if (!existingSession) {
+      reply.code(404);
+      return { detail: "CLI session not found" };
+    }
+    if (!requireSessionController(reply, existingSession, agentId)) {
+      return reply;
+    }
     try {
+      if (existingSession.participant_agent_id) {
+        const prepared = cliMeetingOrchestrator.prepareSession({
+          threadId: existingSession.thread_id,
+          participantAgentId: existingSession.participant_agent_id,
+          participantDisplayName: existingSession.participant_display_name,
+          initialInstruction: existingSession.initial_instruction,
+        });
+        cliSessionManager.updateSessionPrompt(params.sessionId, {
+          prompt: prepared.prompt,
+        });
+        cliSessionManager.updateMeetingState(params.sessionId, {
+          participant_role: prepared.participantRole,
+          context_delivery_mode: prepared.contextDeliveryMode,
+          last_delivered_seq: prepared.lastDeliveredSeq,
+          meeting_post_state: "pending",
+          meeting_post_error: "",
+        });
+      }
       const session = await cliSessionManager.restartSession(params.sessionId);
       if (!session) {
         reply.code(404);
@@ -843,6 +927,14 @@ export function createHttpServer() {
     if (!agentId) {
       return reply;
     }
+    const existingSession = cliSessionManager.getSession(params.sessionId);
+    if (!existingSession) {
+      reply.code(404);
+      return { detail: "CLI session not found" };
+    }
+    if (!requireSessionController(reply, existingSession, agentId)) {
+      return reply;
+    }
     const session = await cliSessionManager.stopSession(params.sessionId);
     if (!session) {
       reply.code(404);
@@ -856,6 +948,14 @@ export function createHttpServer() {
     const body = request.body as JsonBody;
     const agentId = requireAuthorizedAgent(request, reply, body, "requested_by_agent_id");
     if (!agentId) {
+      return reply;
+    }
+    const existingSession = cliSessionManager.getSession(params.sessionId);
+    if (!existingSession) {
+      reply.code(404);
+      return { detail: "CLI session not found" };
+    }
+    if (!requireSessionController(reply, existingSession, agentId)) {
       return reply;
     }
     const text = typeof body.text === "string" ? body.text : "";
@@ -877,6 +977,14 @@ export function createHttpServer() {
     const body = request.body as JsonBody;
     const agentId = requireAuthorizedAgent(request, reply, body, "requested_by_agent_id");
     if (!agentId) {
+      return reply;
+    }
+    const existingSession = cliSessionManager.getSession(params.sessionId);
+    if (!existingSession) {
+      reply.code(404);
+      return { detail: "CLI session not found" };
+    }
+    if (!requireSessionController(reply, existingSession, agentId)) {
       return reply;
     }
     const cols = Number(body.cols);
@@ -1699,6 +1807,11 @@ export function createHttpServer() {
   fastify.addHook('onClose', async () => {
     try {
       await cliSessionManager.close();
+    } catch {
+      // ignore
+    }
+    try {
+      cliMeetingOrchestrator.close();
     } catch {
       // ignore
     }

@@ -233,6 +233,76 @@ describe("HTTP compatibility shell", () => {
     await server.close();
   });
 
+  it("binds CLI sessions to explicit thread participants and restricts control to the session owner", async () => {
+    const server = createHttpServer();
+    const owner = (await server.inject({
+      method: "POST",
+      url: "/api/agents/register",
+      payload: { ide: "browser", model: "human-owner" }
+    })).json();
+    const participant = (await server.inject({
+      method: "POST",
+      url: "/api/agents/register",
+      payload: { ide: "CLI", model: "codex-worker", display_name: "Codex Worker" }
+    })).json();
+    const intruder = (await server.inject({
+      method: "POST",
+      url: "/api/agents/register",
+      payload: { ide: "browser", model: "human-intruder" }
+    })).json();
+
+    const threadResponse = await server.inject({
+      method: "POST",
+      url: "/api/threads",
+      headers: { "x-agent-token": owner.token },
+      payload: { topic: "cli-participant-thread", creator_agent_id: owner.agent_id }
+    });
+    expect(threadResponse.statusCode).toBe(201);
+    const thread = threadResponse.json();
+
+    const createSessionResponse = await server.inject({
+      method: "POST",
+      url: `/api/threads/${thread.id}/cli-sessions`,
+      headers: { "x-agent-token": owner.token },
+      payload: {
+        adapter: "cursor",
+        mode: "headless",
+        prompt: "hello from participant",
+        requested_by_agent_id: owner.agent_id,
+        participant_agent_id: participant.agent_id,
+        participant_display_name: "Codex Worker",
+      }
+    });
+
+    expect(createSessionResponse.statusCode).toBe(201);
+    const createSessionBody = createSessionResponse.json();
+    expect(createSessionBody.session.participant_agent_id).toBe(participant.agent_id);
+    expect(createSessionBody.session.participant_display_name).toBe("Codex Worker");
+
+    const threadAgentsResponse = await server.inject({
+      method: "GET",
+      url: `/api/threads/${thread.id}/agents`,
+    });
+    expect(threadAgentsResponse.statusCode).toBe(200);
+    const threadAgents = threadAgentsResponse.json();
+    expect(Array.isArray(threadAgents)).toBe(true);
+    expect(threadAgents.some((agent: any) => agent.id === participant.agent_id)).toBe(true);
+
+    const forbiddenControl = await server.inject({
+      method: "POST",
+      url: `/api/cli-sessions/${createSessionBody.session.id}/input`,
+      headers: { "x-agent-token": intruder.token },
+      payload: {
+        requested_by_agent_id: intruder.agent_id,
+        text: "malicious input",
+      }
+    });
+    expect(forbiddenControl.statusCode).toBe(403);
+    expect(forbiddenControl.json().detail).toContain("session owner");
+
+    await server.close();
+  });
+
   it("uploads an image and returns a data URL", async () => {
     const server = createHttpServer();
     const boundary = "----agentchatbus-boundary";

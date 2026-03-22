@@ -87,6 +87,8 @@
               </button>
             </div>
 
+            <div class="settings-field-description" style="margin-bottom:16px;">A thread is the shared meeting space for humans and agents.</div>
+
             <div class="settings-field" style="margin-bottom:16px;">
               <label for="modal-topic">Thread Topic</label>
               <input id="modal-topic" type="text" placeholder="What is this task about?..." onkeydown="if(event.key==='Enter') submitModal()" />
@@ -102,9 +104,162 @@
               <div class="settings-field-description">Templates apply predefined system prompts and coordination rules for specific workflows.</div>
             </div>
 
+            <div class="meeting-modal-section">
+              <div class="meeting-modal-section__title">Startup</div>
+              <div class="meeting-modal-radio-group">
+                <label class="meeting-modal-radio">
+                  <input type="radio" name="thread-launch-mode" value="thread_only" checked onchange="window.AcbModals && window.AcbModals.syncThreadLaunchUi()" />
+                  <div>
+                    <strong>Create thread only</strong>
+                    <span>Open an empty meeting space first and add agents later.</span>
+                  </div>
+                </label>
+                <label class="meeting-modal-radio">
+                  <input type="radio" name="thread-launch-mode" value="thread_with_agent" onchange="window.AcbModals && window.AcbModals.syncThreadLaunchUi()" />
+                  <div>
+                    <strong>Create and start first agent</strong>
+                    <span>Create the thread and immediately launch the first participant session.</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div id="thread-agent-config" class="meeting-modal-section meeting-modal-hidden">
+              <div class="meeting-modal-section__title">First Agent</div>
+              <div class="meeting-modal-grid">
+                <div class="settings-field">
+                  <label for="thread-agent-adapter">Adapter</label>
+                  <select id="thread-agent-adapter">
+                    <option value="codex">Codex</option>
+                    <option value="cursor">Cursor</option>
+                  </select>
+                </div>
+                <div class="settings-field">
+                  <label for="thread-agent-mode">Mode</label>
+                  <select id="thread-agent-mode">
+                    <option value="interactive">Interactive</option>
+                    <option value="headless">Headless</option>
+                  </select>
+                </div>
+                <div class="settings-field" style="grid-column:1 / -1;">
+                  <label for="thread-agent-display-name">Display Name</label>
+                  <input id="thread-agent-display-name" type="text" placeholder="Optional: Codex Planner" />
+                  <div class="settings-field-description">If left blank, AgentChatBus will generate a participant label automatically.</div>
+                </div>
+              </div>
+              <div class="settings-field" style="margin-bottom:0;">
+                <label for="thread-agent-instruction">Initial Instruction</label>
+                <textarea id="thread-agent-instruction" class="meeting-modal-textarea" placeholder="Optional: give the first agent a kickoff instruction."></textarea>
+                <div class="meeting-modal-hint">The first active agent in a new thread becomes the administrator.</div>
+              </div>
+            </div>
+
             <div class="modal-actions">
               <button class="btn-secondary" onclick="closeModal()">Cancel</button>
               <button id="btn-create-thread" class="btn-primary" onclick="submitModal()" disabled>Create Thread</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="agent-modal-overlay" onclick="closeAddAgentModal(event)" class="meeting-modal-hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.72);align-items:center;justify-content:center;z-index:100;animation:fade-in .15s ease;">
+          <div id="agent-modal" class="settings-modal-container" style="width:560px; height:auto; max-height:85vh;" onclick="event.stopPropagation()">
+            <div class="settings-modal-header">
+              <h3>Add Agent</h3>
+              <button class="settings-close-btn" onclick="closeAddAgentModal()" title="Close">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+
+            <div class="settings-content" style="background:var(--bg-base); padding: 24px; display:flex; flex-direction:column; gap:18px;">
+              <div id="agent-modal-context" class="settings-field-description">Launch another agent session into the current thread.</div>
+
+              <div class="meeting-modal-tabs" role="tablist" aria-label="Add agent mode">
+                <button
+                  id="agent-modal-tab-manual"
+                  class="meeting-modal-tab is-active"
+                  type="button"
+                  role="tab"
+                  aria-selected="true"
+                  onclick="window.AcbModals && window.AcbModals.switchAddAgentTab('manual')"
+                >
+                  Manual
+                </button>
+                <button
+                  id="agent-modal-tab-auto"
+                  class="meeting-modal-tab"
+                  type="button"
+                  role="tab"
+                  aria-selected="false"
+                  onclick="window.AcbModals && window.AcbModals.switchAddAgentTab('auto')"
+                >
+                  Auto Assemble (Experimental)
+                </button>
+              </div>
+
+              <div id="agent-modal-panel-manual" class="meeting-modal-tab-panel is-active">
+                <div class="meeting-modal-section" style="margin-bottom:0;">
+                  <div class="meeting-modal-section__title">Manual</div>
+                  <div class="meeting-modal-grid">
+                    <div class="settings-field">
+                      <label for="agent-modal-adapter">Adapter</label>
+                      <select id="agent-modal-adapter">
+                        <option value="codex">Codex</option>
+                        <option value="cursor">Cursor</option>
+                      </select>
+                    </div>
+                    <div class="settings-field">
+                      <label for="agent-modal-mode">Mode</label>
+                      <select id="agent-modal-mode">
+                        <option value="interactive">Interactive</option>
+                        <option value="headless">Headless</option>
+                      </select>
+                    </div>
+                    <div class="settings-field" style="grid-column:1 / -1;">
+                      <label for="agent-modal-display-name">Display Name</label>
+                      <input id="agent-modal-display-name" type="text" placeholder="Optional: Research Agent" />
+                      <div class="settings-field-description">Leave blank to use an automatically generated participant label.</div>
+                    </div>
+                  </div>
+                  <div class="settings-field" style="margin-bottom:0;">
+                    <label for="agent-modal-instruction">Initial Instruction</label>
+                    <textarea id="agent-modal-instruction" class="meeting-modal-textarea" placeholder="Optional: brief the agent on why it is joining this thread."></textarea>
+                    <div id="agent-modal-hint" class="meeting-modal-hint">New agents join as participants unless they are the first active agent in the thread.</div>
+                  </div>
+                </div>
+              </div>
+
+              <div id="agent-modal-panel-auto" class="meeting-modal-tab-panel meeting-modal-hidden">
+                <div class="meeting-modal-section" style="margin-bottom:0;">
+                  <div class="meeting-modal-section__title">Auto Assemble (Experimental)</div>
+                  <div class="settings-field">
+                    <label for="agent-auto-goal">Why do you need more agents?</label>
+                    <textarea id="agent-auto-goal" class="meeting-modal-textarea" placeholder="Describe the gap, pressure, or reason for expanding the meeting."></textarea>
+                  </div>
+                  <div class="meeting-modal-grid">
+                    <div class="settings-field">
+                      <label for="agent-auto-max">Maximum agents</label>
+                      <input id="agent-auto-max" type="number" min="1" max="6" value="2" />
+                    </div>
+                    <div class="settings-field">
+                      <label for="agent-auto-adapters">Allowed adapters</label>
+                      <select id="agent-auto-adapters">
+                        <option value="any">Any supported adapter</option>
+                        <option value="codex_only">Codex only</option>
+                        <option value="cursor_only">Cursor only</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="meeting-modal-placeholder">
+                    <strong>Planning UI only in Phase 2A.</strong><br>
+                    The proposal generator is intentionally deferred. This tab reserves the interaction model so we can wire suggestion and confirmation flows next.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-modal-footer">
+              <button class="btn-secondary" onclick="closeAddAgentModal()">Cancel</button>
+              <button id="btn-add-agent-submit" class="btn-primary" onclick="submitAddAgentModal()">Add Agent</button>
             </div>
           </div>
         </div>
@@ -179,6 +334,7 @@
 
       // UI-14: enable Create button only when topic is non-empty
       this._attachTopicGuard();
+      this._syncThreadLaunchButtonLabel();
       // Add intervention example tooltip
       this._attachInterventionTooltips();
     }
@@ -187,14 +343,27 @@
       const input = this.querySelector("#modal-topic");
       const btn = this.querySelector("#btn-create-thread");
       if (!input || !btn) return;
-      const sync = () => { btn.disabled = input.value.trim().length === 0; };
+      const sync = () => {
+        btn.disabled = input.value.trim().length === 0;
+        this._syncThreadLaunchButtonLabel();
+      };
       input.addEventListener("input", sync);
+      this.querySelectorAll('input[name="thread-launch-mode"]').forEach((radio) => {
+        radio.addEventListener("change", sync);
+      });
       // Re-sync when modal is opened (topic may have been cleared)
       const overlay = this.querySelector("#modal-overlay");
       if (overlay) {
         const observer = new MutationObserver(() => sync());
-        observer.observe(overlay, { attributes: true, attributeFilter: ["style"] });
+        observer.observe(overlay, { attributes: true, attributeFilter: ["class", "style"] });
       }
+    }
+
+    _syncThreadLaunchButtonLabel() {
+      const btn = this.querySelector("#btn-create-thread");
+      const mode = this.querySelector('input[name="thread-launch-mode"]:checked')?.value || "thread_only";
+      if (!btn) return;
+      btn.textContent = mode === "thread_with_agent" ? "Create and Start Agent" : "Create Thread";
     }
 
     _attachMinimapToggle() {

@@ -1,6 +1,6 @@
 {
   "name": "agentchatbus-ts",
-  "version": "0.2.14",
+  "version": "0.2.20",
   "private": true,
   "description": "Initial TypeScript backend workspace for AgentChatBus",
   "type": "module",

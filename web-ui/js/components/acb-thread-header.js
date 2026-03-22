@@ -5,18 +5,22 @@
 
       this.innerHTML = `
         <div id="thread-header" style="display:none">
-          <h2 id="thread-title"></h2>
+          <div class="thread-header__title-stack">
+            <h2 id="thread-title"></h2>
+            <div id="thread-admin-label" class="thread-header__admin" hidden></div>
+          </div>
           <div style="display:flex;gap:8px;align-items:center;">
             <button id="search-toggle-btn" type="button" title="Search messages (Ctrl+F)" aria-label="Search messages" onclick="window.AcbSearch && window.AcbSearch.toggle()">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
               </svg>
             </button>
-            <button id="codex-pty-btn" class="toolbar-btn" type="button" title="Launch Codex PTY" aria-label="Launch Codex PTY" onclick="window.launchCodexPtySession && window.launchCodexPtySession()">
+            <button id="add-agent-btn" class="thread-header-cta" type="button" title="Add agent to this thread" aria-label="Add agent to this thread" onclick="window.openAddAgentModal && window.openAddAgentModal()">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 5v14"/>
                 <path d="M5 12h14"/>
-                <path d="m12 5 7 7-7 7"/>
               </svg>
+              <span>Add Agent</span>
             </button>
             <button id="export-thread-btn" type="button" title="Export as Markdown" aria-label="Export thread as Markdown" onclick="exportFromHeader()">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">

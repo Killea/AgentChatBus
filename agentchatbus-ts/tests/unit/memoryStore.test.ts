@@ -64,4 +64,21 @@ describe("MemoryStore", () => {
       }
     }
   });
+
+  it("includes explicitly added thread participants before they post messages", () => {
+    const store = new MemoryStore(":memory:");
+    const creator = store.registerAgent({ ide: "CLI", model: "creator" });
+    const participant = store.registerAgent({ ide: "CLI", model: "participant" });
+    const { thread } = store.createThread("participant-thread", undefined, undefined, {
+      creatorAdminId: creator.id,
+      creatorAdminName: creator.display_name || creator.name,
+    });
+
+    expect(store.addThreadParticipant(thread.id, participant.id)).toBe(true);
+
+    const agents = store.getThreadAgents(thread.id);
+    const agentIds = new Set(agents.map((agent) => agent.id));
+    expect(agentIds.has(creator.id)).toBe(true);
+    expect(agentIds.has(participant.id)).toBe(true);
+  });
 });

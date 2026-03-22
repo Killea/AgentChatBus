@@ -1,4 +1,37 @@
 (function () {
+  function setThreadAdminLabel(admin) {
+    const adminEl = document.getElementById("thread-admin-label");
+    if (!adminEl) return;
+    const adminName = String(admin?.admin_name || "").trim();
+    if (!adminName) {
+      adminEl.hidden = true;
+      adminEl.textContent = "";
+      return;
+    }
+    const emoji = String(admin?.admin_emoji || "").trim() || "🤖";
+    const adminType = String(admin?.admin_type || "").trim();
+    const suffix = adminType === "creator"
+      ? "creator admin"
+      : (adminType === "auto_assigned" ? "meeting admin" : "admin");
+    adminEl.hidden = false;
+    adminEl.textContent = `Admin: ${emoji} ${adminName} (${suffix})`;
+  }
+
+  async function refreshThreadAdmin(threadId, api) {
+    if (!threadId) {
+      setThreadAdminLabel(null);
+      return null;
+    }
+    try {
+      const admin = await api(`/api/threads/${threadId}/admin`);
+      setThreadAdminLabel(admin);
+      return admin;
+    } catch {
+      setThreadAdminLabel(null);
+      return null;
+    }
+  }
+
   async function selectThread({
     id,
     topic,
@@ -53,6 +86,7 @@
     msgs.forEach(appendBubble);
     updateOnlinePresence();
     await updateStatusBar();
+    await refreshThreadAdmin(id, api);
     if (msgs.length) setLastSeq(msgs[msgs.length - 1].seq);
     // Render any mermaid diagrams in loaded history
     if (window.AcbMessageRenderer?.renderMermaidBlocks) {
@@ -118,6 +152,7 @@
   }) {
     const activeThreadId = getActiveThreadId();
     const input = document.getElementById("compose-input");
+    if (!input || !activeThreadId) return;
     const author = document.getElementById("compose-author").value.trim() || "human";
     const acb = document.querySelector('acb-compose-shell');
 
@@ -156,7 +191,7 @@
     // Get uploaded images first so image-only messages can be sent.
     const images = acb?.uploadedImages || [];
 
-    if ((!content && images.length === 0) || !activeThreadId) return;
+    if (!content && images.length === 0) return;
 
     updateOnlinePresence();
     input.innerHTML = '';
@@ -174,30 +209,61 @@
       images: images.length > 0 ? images : undefined
     };
 
-    let sync = getThreadSyncContext ? getThreadSyncContext(activeThreadId) : null;
-    if (!sync || typeof sync.current_seq !== "number" || !sync.reply_token) {
-      sync = await api(`/api/threads/${activeThreadId}/sync-context`, {
+    const loadFreshSyncContext = async () => {
+      return await api(`/api/threads/${activeThreadId}/sync-context`, {
         method: "POST",
         body: JSON.stringify({}),
       });
+    };
+
+    const isValidSyncContext = (sync) =>
+      sync && typeof sync.current_seq === "number" && typeof sync.reply_token === "string" && sync.reply_token;
+
+    const isValidMessageResponse = (message) =>
+      message && typeof message.id === "string" && typeof message.seq === "number" && typeof message.content === "string";
+
+    let sync = getThreadSyncContext ? getThreadSyncContext(activeThreadId) : null;
+    if (!isValidSyncContext(sync)) {
+      sync = await loadFreshSyncContext();
     }
-    if (!sync || typeof sync.current_seq !== "number" || !sync.reply_token) {
+    if (!isValidSyncContext(sync)) {
+      console.warn("[Chat] Unable to obtain sync context for human message.");
       return;
     }
-    payload.expected_last_seq = sync.current_seq;
-    payload.reply_token = sync.reply_token;
 
-    const m = await api(`/api/threads/${activeThreadId}/messages`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+    let response = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      payload.expected_last_seq = sync.current_seq;
+      payload.reply_token = sync.reply_token;
 
-    if (m) {
+      response = await api(`/api/threads/${activeThreadId}/messages`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+      if (isValidMessageResponse(response)) {
+        break;
+      }
+
+      if (response?.error === "SEQ_MISMATCH" && attempt === 0) {
+        sync = await loadFreshSyncContext();
+        if (!isValidSyncContext(sync)) {
+          console.warn("[Chat] Unable to refresh sync context after SEQ_MISMATCH.");
+          return;
+        }
+        continue;
+      }
+
+      console.warn("[Chat] Message send failed:", response);
+      return;
+    }
+
+    if (isValidMessageResponse(response)) {
       if (setThreadSyncContext) {
         setThreadSyncContext(activeThreadId, null);
       }
-      setLastSeq((prev) => Math.max(prev, m.seq));
-      appendBubble({ ...m, created_at: new Date().toISOString() });
+      setLastSeq((prev) => Math.max(prev, response.seq));
+      appendBubble(response);
       scrollBottom(true);
     }
   }
@@ -210,6 +276,7 @@
   }
 
   window.AcbChat = {
+    refreshThreadAdmin,
     selectThread,
     loadNewMessages,
     sendMessage,

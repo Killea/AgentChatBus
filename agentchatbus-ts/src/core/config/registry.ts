@@ -56,6 +56,10 @@ export interface AppConfig {
   configFile: string;
   webUiDir: string | null;
   uploadsDir: string | null;
+  cliWorkspace: string | null;
+  cursorAgentCommand: string | null;
+  codexCommand: string | null;
+  ptyUseConpty: boolean;
   ownerBootToken: string;
   ideHeartbeatTimeoutMs: number;
 }
@@ -1052,6 +1056,79 @@ export const CONFIG_REGISTRY: ReadonlyArray<ConfigDescriptor> = [
       const configured = getEnvValue("AGENTCHATBUS_UPLOADS_DIR");
       return configured ? resolve(configured) : null;
     },
+  },
+  {
+    key: "CLI_WORKSPACE",
+    envVar: "AGENTCHATBUS_CLI_WORKSPACE",
+    resolvedField: "cliWorkspace",
+    type: "string",
+    kind: "path",
+    defaultValue: null,
+    label: "CLI Workspace",
+    description: "Default workspace path used by CLI adapters when no explicit workspace is supplied.",
+    section: "internal",
+    scope: "hidden",
+    sensitivity: "path",
+    restartRequired: true,
+    order: 281,
+    resolve: () => {
+      const configured = getEnvValue("AGENTCHATBUS_CLI_WORKSPACE");
+      return configured ? resolve(configured) : null;
+    },
+  },
+  {
+    key: "CURSOR_AGENT_COMMAND",
+    envVar: "AGENTCHATBUS_CURSOR_AGENT_COMMAND",
+    resolvedField: "cursorAgentCommand",
+    type: "string",
+    kind: "text",
+    defaultValue: null,
+    label: "Cursor Agent Command",
+    description: "Optional override for the Cursor CLI command used by the headless adapter.",
+    section: "internal",
+    scope: "hidden",
+    sensitivity: "runtime",
+    restartRequired: true,
+    order: 282,
+    resolve: () => {
+      const configured = getEnvValue("AGENTCHATBUS_CURSOR_AGENT_COMMAND");
+      return configured ? configured : null;
+    },
+  },
+  {
+    key: "CODEX_COMMAND",
+    envVar: "AGENTCHATBUS_CODEX_COMMAND",
+    resolvedField: "codexCommand",
+    type: "string",
+    kind: "text",
+    defaultValue: null,
+    label: "Codex Command",
+    description: "Optional override for the Codex CLI command used by the interactive PTY adapter.",
+    section: "internal",
+    scope: "hidden",
+    sensitivity: "runtime",
+    restartRequired: true,
+    order: 283,
+    resolve: () => {
+      const configured = getEnvValue("AGENTCHATBUS_CODEX_COMMAND");
+      return configured ? configured : null;
+    },
+  },
+  {
+    key: "PTY_USE_CONPTY",
+    envVar: "AGENTCHATBUS_PTY_USE_CONPTY",
+    resolvedField: "ptyUseConpty",
+    type: "boolean",
+    kind: "feature_flag",
+    defaultValue: true,
+    label: "Use ConPTY",
+    description: "Controls whether Windows PTY sessions prefer ConPTY before falling back to WinPTY.",
+    section: "internal",
+    scope: "hidden",
+    sensitivity: "runtime",
+    restartRequired: true,
+    order: 284,
+    resolve: (ctx) => parseBoolLike(getRawValue(ctx, { envVar: "AGENTCHATBUS_PTY_USE_CONPTY" }, true), true),
   },
 ] as const;
 

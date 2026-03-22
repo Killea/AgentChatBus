@@ -4,6 +4,7 @@ import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 import xtermHeadless from "@xterm/headless";
+import { getConfig } from "../config/registry.js";
 import { eventBus } from "../../shared/eventBus.js";
 import { logError, logInfo } from "../../shared/logger.js";
 
@@ -28,8 +29,12 @@ export interface CliSessionSnapshot {
   mode: CliSessionMode;
   state: CliSessionState;
   prompt: string;
+  initial_instruction?: string;
   workspace: string;
   requested_by_agent_id: string;
+  participant_agent_id?: string;
+  participant_display_name?: string;
+  participant_role?: "administrator" | "participant";
   created_at: string;
   updated_at: string;
   run_count: number;
@@ -57,6 +62,12 @@ export interface CliSessionSnapshot {
   reply_capture_state?: string;
   reply_capture_excerpt?: string;
   reply_capture_error?: string;
+  context_delivery_mode?: "join" | "resume" | "incremental";
+  last_delivered_seq?: number;
+  last_posted_seq?: number;
+  meeting_post_state?: "pending" | "posting" | "posted" | "stale" | "error";
+  meeting_post_error?: string;
+  last_posted_message_id?: string;
 }
 
 export interface CliSessionOutputEntry {
@@ -71,10 +82,30 @@ export interface CreateCliSessionInput {
   adapter: CliSessionAdapterId;
   mode?: CliSessionMode;
   prompt?: string;
+  initialInstruction?: string;
   workspace?: string;
   requestedByAgentId: string;
+  participantAgentId?: string;
+  participantDisplayName?: string;
+  participantRole?: "administrator" | "participant";
+  contextDeliveryMode?: "join" | "resume" | "incremental";
+  lastDeliveredSeq?: number;
   cols?: number;
   rows?: number;
+}
+
+export interface CliSessionMeetingStatePatch {
+  participant_role?: "administrator" | "participant";
+  context_delivery_mode?: "join" | "resume" | "incremental";
+  last_delivered_seq?: number;
+  last_posted_seq?: number;
+  meeting_post_state?: "pending" | "posting" | "posted" | "stale" | "error";
+  meeting_post_error?: string;
+  last_posted_message_id?: string;
+}
+
+export interface CliSessionPromptPatch {
+  prompt: string;
 }
 
 type CliSessionControls = {
@@ -137,6 +168,7 @@ type CliSessionReplyCaptureRuntime = {
   excerpt?: string;
   error?: string;
   timeoutTimer: NodeJS.Timeout | null;
+  finalizeTimer: NodeJS.Timeout | null;
 };
 
 type CliAdapterRunInput = {
@@ -203,6 +235,7 @@ interface CursorCommandExecutor {
 const DEFAULT_TERMINAL_COLS = 120;
 const DEFAULT_TERMINAL_ROWS = 32;
 const INITIAL_CODEX_REPLY_TIMEOUT_MS = 20000;
+const CODEX_REPLY_FINALIZE_DEBOUNCE_MS = 900;
 const WINDOWS_POWERSHELL =
   `${process.env.SystemRoot || "C:\\Windows"}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
 const DEFAULT_HEADLESS_SCREEN_SNAPSHOT: CliSessionScreenSnapshot = {
@@ -501,7 +534,49 @@ function extractCodexReplyFromTranscript(rawOutput: string, prompt: string): str
   if (!reply) {
     return undefined;
   }
-  return clipText(reply, 2400);
+  return normalizeCodexReplyExcerpt(reply);
+}
+
+function hasDecorativeCodexBullet(line: string): boolean {
+  return /^\s*[•·●]\s+/.test(String(line || ""));
+}
+
+function normalizeCodexReplyExcerpt(reply: string | undefined): string | undefined {
+  const value = String(reply || "").trim();
+  if (!value) {
+    return undefined;
+  }
+
+  const lines = value.split("\n");
+  const nonEmptyLines = lines.filter((line) => Boolean(line.trim()));
+  const allNonEmptyLinesUseDecorativeBullets =
+    nonEmptyLines.length > 0 && nonEmptyLines.every((line) => hasDecorativeCodexBullet(line));
+  if (allNonEmptyLinesUseDecorativeBullets) {
+    for (let index = 0; index < lines.length; index += 1) {
+      if (hasDecorativeCodexBullet(lines[index] || "")) {
+        lines[index] = lines[index].replace(/^\s*[•·●]\s+/, "");
+      }
+    }
+  } else {
+    const firstNonEmptyIndex = lines.findIndex((line) => Boolean(line.trim()));
+    if (firstNonEmptyIndex >= 0 && hasDecorativeCodexBullet(lines[firstNonEmptyIndex] || "")) {
+      const remainingNonEmptyLines = lines
+        .slice(firstNonEmptyIndex + 1)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      const looksLikeSingleDecorativeLeadBullet =
+        remainingNonEmptyLines.length === 0 || !hasDecorativeCodexBullet(remainingNonEmptyLines[0]);
+      if (looksLikeSingleDecorativeLeadBullet) {
+        lines[firstNonEmptyIndex] = lines[firstNonEmptyIndex].replace(/^\s*[•·●]\s+/, "");
+      }
+    }
+  }
+
+  const normalized = lines.join("\n").trim();
+  if (!normalized) {
+    return undefined;
+  }
+  return clipText(normalized, 2400);
 }
 
 function findLastCodexReplyBlockStart(lines: string[], endExclusive: number): number {
@@ -613,7 +688,7 @@ function extractCodexReplyFromScreen(screen: CliSessionScreenSnapshot, prompt: s
   if (!reply) {
     return undefined;
   }
-  return clipText(reply, 2400);
+  return normalizeCodexReplyExcerpt(reply);
 }
 
 function stripTrailingPlaceholderLine(reply: string | undefined, screen: CliSessionScreenSnapshot): string | undefined {
@@ -642,9 +717,9 @@ function normalizeWorkspacePath(explicitPath?: string): string {
   if (direct) {
     return direct;
   }
-  const envPath = String(process.env.AGENTCHATBUS_CLI_WORKSPACE || "").trim();
-  if (envPath) {
-    return envPath;
+  const configuredWorkspace = String(getConfig().cliWorkspace || "").trim();
+  if (configuredWorkspace) {
+    return configuredWorkspace;
   }
   return process.cwd();
 }
@@ -670,7 +745,7 @@ function toPowerShellSingleQuoted(value: string): string {
 }
 
 function resolveCursorAgentCommand(): string {
-  const configured = String(process.env.AGENTCHATBUS_CURSOR_AGENT_COMMAND || "").trim();
+  const configured = String(getConfig().cursorAgentCommand || "").trim();
   if (configured) {
     return configured;
   }
@@ -699,16 +774,12 @@ function resolveCursorAgentCommand(): string {
 }
 
 function resolveCodexCommand(): string {
-  const configured = String(process.env.AGENTCHATBUS_CODEX_COMMAND || "").trim();
+  const configured = String(getConfig().codexCommand || "").trim();
   return configured || "codex";
 }
 
 function shouldUseConpty(): boolean {
-  const raw = String(process.env.AGENTCHATBUS_PTY_USE_CONPTY || "").trim().toLowerCase();
-  if (!raw) {
-    return true;
-  }
-  return !["0", "false", "no", "off"].includes(raw);
+  return getConfig().ptyUseConpty;
 }
 
 function isConptyOrWinptyStartupError(error: unknown): boolean {
@@ -1127,6 +1198,14 @@ export class CliSessionManager {
     const workspace = normalizeWorkspacePath(input.workspace);
     const cols = adapter.supportsResize ? normalizeTerminalCols(input.cols) : undefined;
     const rows = adapter.supportsResize ? normalizeTerminalRows(input.rows) : undefined;
+    const initialInstruction = String(input.initialInstruction || "").trim() || undefined;
+    const participantAgentId = String(input.participantAgentId || "").trim() || undefined;
+    const participantDisplayName = String(input.participantDisplayName || "").trim() || undefined;
+    const participantRole = input.participantRole;
+    const contextDeliveryMode = input.contextDeliveryMode;
+    const lastDeliveredSeq = Number.isFinite(Number(input.lastDeliveredSeq))
+      ? Number(input.lastDeliveredSeq)
+      : undefined;
     const snapshot: CliSessionSnapshot = {
       id: randomUUID(),
       thread_id: input.threadId,
@@ -1134,8 +1213,12 @@ export class CliSessionManager {
       mode,
       state: "created",
       prompt,
+      initial_instruction: initialInstruction,
       workspace,
       requested_by_agent_id: input.requestedByAgentId,
+      participant_agent_id: participantAgentId,
+      participant_display_name: participantDisplayName,
+      participant_role: participantRole,
       created_at: nowIso(),
       updated_at: nowIso(),
       run_count: 0,
@@ -1147,6 +1230,9 @@ export class CliSessionManager {
       cols,
       rows,
       shell: adapter.shell,
+      context_delivery_mode: contextDeliveryMode,
+      last_delivered_seq: lastDeliveredSeq,
+      meeting_post_state: participantAgentId ? "pending" : undefined,
     };
 
     const runtime: CliSessionRuntime = {
@@ -1170,6 +1256,47 @@ export class CliSessionManager {
   getSession(sessionId: string): CliSessionSnapshot | null {
     const runtime = this.runtimes.get(sessionId);
     return runtime ? this.cloneSnapshot(runtime.snapshot) : null;
+  }
+
+  updateSessionPrompt(sessionId: string, patch: CliSessionPromptPatch): CliSessionSnapshot | null {
+    const runtime = this.runtimes.get(sessionId);
+    if (!runtime) {
+      return null;
+    }
+    const nextPrompt = String(patch.prompt || "");
+    if (runtime.snapshot.prompt === nextPrompt) {
+      return this.cloneSnapshot(runtime.snapshot);
+    }
+    runtime.snapshot.prompt = nextPrompt;
+    runtime.snapshot.updated_at = nowIso();
+    this.emitSessionEvent("cli.session.state", runtime);
+    return this.cloneSnapshot(runtime.snapshot);
+  }
+
+  updateMeetingState(sessionId: string, patch: CliSessionMeetingStatePatch): CliSessionSnapshot | null {
+    const runtime = this.runtimes.get(sessionId);
+    if (!runtime) {
+      return null;
+    }
+    const entries = Object.entries(patch) as Array<[keyof CliSessionMeetingStatePatch, CliSessionMeetingStatePatch[keyof CliSessionMeetingStatePatch]]>;
+    let changed = false;
+    const snapshotRecord = runtime.snapshot as unknown as Record<string, unknown>;
+    for (const [key, value] of entries) {
+      if (value === undefined) {
+        continue;
+      }
+      if (snapshotRecord[key] === value) {
+        continue;
+      }
+      snapshotRecord[key] = value;
+      changed = true;
+    }
+    if (!changed) {
+      return this.cloneSnapshot(runtime.snapshot);
+    }
+    runtime.snapshot.updated_at = nowIso();
+    this.emitSessionEvent("cli.session.state", runtime);
+    return this.cloneSnapshot(runtime.snapshot);
   }
 
   listSessionsForThread(threadId: string): CliSessionSnapshot[] {
@@ -1234,6 +1361,10 @@ export class CliSessionManager {
     runtime.snapshot.reply_capture_state = undefined;
     runtime.snapshot.reply_capture_excerpt = undefined;
     runtime.snapshot.reply_capture_error = undefined;
+    runtime.snapshot.last_posted_seq = undefined;
+    runtime.snapshot.meeting_post_state = runtime.snapshot.participant_agent_id ? "pending" : undefined;
+    runtime.snapshot.meeting_post_error = undefined;
+    runtime.snapshot.last_posted_message_id = undefined;
     runtime.snapshot.updated_at = nowIso();
     this.disposeInteractiveRuntimeState(runtime);
     this.emitSessionEvent("cli.session.restarting", runtime);
@@ -1457,6 +1588,7 @@ export class CliSessionManager {
     if (stream === "stdout") {
       runtime.snapshot.stdout_excerpt = clipText(`${runtime.snapshot.stdout_excerpt || ""}${normalized}`);
       if (runtime.replyCapture) {
+        this.clearReplyCaptureFinalizeTimer(runtime);
         runtime.replyCapture.rawOutput = clipText(`${runtime.replyCapture.rawOutput}${normalized}`, 24000);
         this.updateReplyCaptureFromOutput(runtime);
       }
@@ -1532,6 +1664,10 @@ export class CliSessionManager {
       clearTimeout(runtime.replyCapture.timeoutTimer);
       runtime.replyCapture.timeoutTimer = null;
     }
+    if (runtime.replyCapture?.finalizeTimer) {
+      clearTimeout(runtime.replyCapture.finalizeTimer);
+      runtime.replyCapture.finalizeTimer = null;
+    }
     try {
       runtime.screenState?.terminal.dispose();
     } catch {
@@ -1594,6 +1730,7 @@ export class CliSessionManager {
       rawOutput: "",
       state: "waiting_for_reply",
       timeoutTimer: null,
+      finalizeTimer: null,
     };
     runtime.replyCapture = capture;
     this.refreshReplyCaptureSnapshot(runtime);
@@ -1618,6 +1755,15 @@ export class CliSessionManager {
     runtime.snapshot.reply_capture_error = runtime.replyCapture?.error;
   }
 
+  private clearReplyCaptureFinalizeTimer(runtime: CliSessionRuntime): void {
+    const capture = runtime.replyCapture;
+    if (!capture?.finalizeTimer) {
+      return;
+    }
+    clearTimeout(capture.finalizeTimer);
+    capture.finalizeTimer = null;
+  }
+
   private updateReplyCaptureState(
     runtime: CliSessionRuntime,
     nextState: CliSessionReplyCaptureState,
@@ -1636,9 +1782,12 @@ export class CliSessionManager {
     capture.state = nextState;
     capture.excerpt = nextExcerpt;
     capture.error = nextError;
-    if (options?.clearTimer && capture.timeoutTimer) {
-      clearTimeout(capture.timeoutTimer);
-      capture.timeoutTimer = null;
+    if (options?.clearTimer) {
+      if (capture.timeoutTimer) {
+        clearTimeout(capture.timeoutTimer);
+        capture.timeoutTimer = null;
+      }
+      this.clearReplyCaptureFinalizeTimer(runtime);
     }
     if (!changed) {
       return;
@@ -1657,7 +1806,7 @@ export class CliSessionManager {
     if (!excerpt) {
       return;
     }
-    const nextState = capture.state === "completed" ? "completed" : "streaming";
+    const nextState = "streaming";
     this.updateReplyCaptureState(runtime, nextState, { excerpt });
   }
 
@@ -1667,17 +1816,46 @@ export class CliSessionManager {
       return;
     }
     if (!looksLikeCodexReplyIdleScreen(screen)) {
+      this.clearReplyCaptureFinalizeTimer(runtime);
       return;
+    }
+    const automation = runtime.automationState;
+    if (automation?.profile === "codex-startup") {
+      if (!automation.initialPromptEnterSent) {
+        return;
+      }
+      const hasStableReplySignal = automation.sawWorkingScreen || Boolean(capture.excerpt);
+      if (!hasStableReplySignal) {
+        return;
+      }
     }
     const screenExcerpt = extractCodexReplyFromScreen(screen, capture.prompt);
     const finalExcerpt = stripTrailingPlaceholderLine(screenExcerpt || capture.excerpt, screen);
     if (!finalExcerpt) {
       return;
     }
-    this.updateReplyCaptureState(runtime, "completed", {
-      excerpt: finalExcerpt,
-      clearTimer: true,
-    });
+    this.clearReplyCaptureFinalizeTimer(runtime);
+    capture.finalizeTimer = setTimeout(() => {
+      if (runtime.replyCapture !== capture) {
+        return;
+      }
+      capture.finalizeTimer = null;
+      const latestScreen = runtime.screenState?.latest || screen;
+      if (!looksLikeCodexReplyIdleScreen(latestScreen)) {
+        return;
+      }
+      const latestExcerpt = stripTrailingPlaceholderLine(
+        extractCodexReplyFromScreen(latestScreen, capture.prompt) || capture.excerpt,
+        latestScreen,
+      );
+      if (!latestExcerpt) {
+        return;
+      }
+      this.updateReplyCaptureState(runtime, "completed", {
+        excerpt: latestExcerpt,
+        clearTimer: true,
+      });
+    }, CODEX_REPLY_FINALIZE_DEBOUNCE_MS);
   }
 
   private scheduleCodexPromptSubmit(runtime: CliSessionRuntime, delayMs: number): void {
@@ -1708,6 +1886,8 @@ export class CliSessionManager {
       }
       if (
         !automation.initialPromptEnterRetried
+        && !automation.sawWorkingScreen
+        && !runtime.replyCapture?.excerpt
         && looksLikeCodexIdlePrompt(latestScreen)
         && (
           isCodexPromptShowingText(latestScreen, initialPrompt)
@@ -1797,6 +1977,8 @@ export class CliSessionManager {
     if (
       automation.initialPromptEnterSent
       && !automation.initialPromptEnterRetried
+      && !automation.sawWorkingScreen
+      && !runtime.replyCapture?.excerpt
       && looksLikeCodexIdlePrompt(screen)
       && isCodexPromptShowingText(screen, initialPrompt)
     ) {

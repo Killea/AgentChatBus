@@ -4,6 +4,11 @@
       overlayId: "modal-overlay",
       visibility: "class",
     },
+    agent: {
+      overlayId: "agent-modal-overlay",
+      visibility: "style",
+      styleVisibleValue: "flex",
+    },
     settings: {
       overlayId: "settings-modal-overlay",
       visibility: "style",
@@ -118,8 +123,173 @@
     };
   }
 
+  function getThreadLaunchMode() {
+    return document.querySelector('input[name="thread-launch-mode"]:checked')?.value || "thread_only";
+  }
+
+  function syncThreadLaunchUi() {
+    const mode = getThreadLaunchMode();
+    const configEl = document.getElementById("thread-agent-config");
+    const submitBtn = document.getElementById("btn-create-thread");
+    if (configEl) {
+      configEl.classList.toggle("meeting-modal-hidden", mode !== "thread_with_agent");
+    }
+    if (submitBtn) {
+      submitBtn.textContent = mode === "thread_with_agent" ? "Create and Start Agent" : "Create Thread";
+    }
+  }
+
+  function resetAgentForm(prefix) {
+    const adapterEl = document.getElementById(`${prefix}-adapter`);
+    const modeEl = document.getElementById(`${prefix}-mode`);
+    const displayNameEl = document.getElementById(`${prefix}-display-name`);
+    const instructionEl = document.getElementById(`${prefix}-instruction`);
+    if (adapterEl) adapterEl.value = "codex";
+    if (modeEl) modeEl.value = "interactive";
+    if (displayNameEl) displayNameEl.value = "";
+    if (instructionEl) instructionEl.value = "";
+  }
+
+  function resetAutoAssembleForm() {
+    const goalEl = document.getElementById("agent-auto-goal");
+    const maxEl = document.getElementById("agent-auto-max");
+    const adaptersEl = document.getElementById("agent-auto-adapters");
+    if (goalEl) goalEl.value = "";
+    if (maxEl) maxEl.value = "2";
+    if (adaptersEl) adaptersEl.value = "any";
+  }
+
+  function getAddAgentTab() {
+    return document.getElementById("agent-modal")?.dataset.activeTab || "manual";
+  }
+
+  function switchAddAgentTab(tabId) {
+    const nextTab = tabId === "auto" ? "auto" : "manual";
+    const modalEl = document.getElementById("agent-modal");
+    if (!modalEl) return nextTab;
+    modalEl.dataset.activeTab = nextTab;
+
+    const tabs = [
+      {
+        id: "manual",
+        button: document.getElementById("agent-modal-tab-manual"),
+        panel: document.getElementById("agent-modal-panel-manual"),
+      },
+      {
+        id: "auto",
+        button: document.getElementById("agent-modal-tab-auto"),
+        panel: document.getElementById("agent-modal-panel-auto"),
+      },
+    ];
+
+    tabs.forEach((tab) => {
+      const active = tab.id === nextTab;
+      if (tab.button) {
+        tab.button.classList.toggle("is-active", active);
+        tab.button.setAttribute("aria-selected", active ? "true" : "false");
+      }
+      if (tab.panel) {
+        tab.panel.classList.toggle("meeting-modal-hidden", !active);
+        tab.panel.classList.toggle("is-active", active);
+      }
+    });
+
+    const submitBtn = document.getElementById("btn-add-agent-submit");
+    if (submitBtn) {
+      submitBtn.disabled = nextTab !== "manual";
+      submitBtn.textContent = nextTab === "manual" ? "Add Agent" : "Planning Soon";
+    }
+
+    return nextTab;
+  }
+
+  function readAgentLaunchConfig(prefix) {
+    const adapter = String(document.getElementById(`${prefix}-adapter`)?.value || "codex").trim();
+    const mode = String(document.getElementById(`${prefix}-mode`)?.value || "interactive").trim();
+    const displayName = String(document.getElementById(`${prefix}-display-name`)?.value || "").trim();
+    const initialInstruction = String(document.getElementById(`${prefix}-instruction`)?.value || "").trim();
+    return {
+      adapter,
+      mode,
+      displayName,
+      initialInstruction,
+    };
+  }
+
+  function buildDefaultParticipantName(config) {
+    if (config.displayName) {
+      return config.displayName;
+    }
+    const adapterLabel = config.adapter === "cursor" ? "Cursor" : "Codex";
+    const modeLabel = config.mode === "headless" ? "Headless" : "Interactive";
+    return `${adapterLabel} ${modeLabel}`;
+  }
+
+  function buildDefaultInstruction({ topic, config, isFirstAgent }) {
+    const roleLine = isFirstAgent
+      ? "You are the first active agent in this thread."
+      : "You are joining an existing thread as a participant.";
+    return [
+      `You are joining the AgentChatBus thread "${topic}".`,
+      roleLine,
+      "Introduce yourself briefly, explain what you can help with, and wait for further instructions.",
+      config.adapter === "cursor" && config.mode === "headless"
+        ? "Respond in plain text."
+        : "",
+    ].filter(Boolean).join(" ");
+  }
+
+  async function registerParticipantAgent(api, config) {
+    const adapterLabel = config.adapter === "cursor" ? "Cursor" : "Codex";
+    const modeLabel = config.mode === "headless" ? "Headless CLI" : "Interactive CLI";
+    const displayName = buildDefaultParticipantName(config);
+    const result = await api("/api/agents/register", {
+      method: "POST",
+      body: JSON.stringify({
+        ide: adapterLabel,
+        model: modeLabel,
+        display_name: displayName,
+      }),
+    });
+    return result?.agent_id && result?.token ? result : null;
+  }
+
+  async function createParticipantSession(api, options) {
+    const {
+      threadId,
+      threadTopic,
+      uiAgent,
+      participantAgent,
+      config,
+      isFirstAgent,
+    } = options;
+    const result = await api(`/api/threads/${threadId}/cli-sessions`, {
+      method: "POST",
+      headers: {
+        "X-Agent-Token": uiAgent.token,
+      },
+      body: JSON.stringify({
+        adapter: config.adapter,
+        mode: config.mode,
+        initial_instruction: config.initialInstruction || "",
+        requested_by_agent_id: uiAgent.agent_id,
+        participant_agent_id: participantAgent.agent_id,
+        participant_display_name: participantAgent.display_name || buildDefaultParticipantName(config),
+        cols: 120,
+        rows: 32,
+      }),
+    });
+    return result?.session || null;
+  }
+
   function openThreadModal(api) {
+    const launchThreadOnly = document.querySelector('input[name="thread-launch-mode"][value="thread_only"]');
+    if (launchThreadOnly) {
+      launchThreadOnly.checked = true;
+    }
+    resetAgentForm("thread-agent");
     setModalVisible("thread", true);
+    syncThreadLaunchUi();
     setTimeout(() => document.getElementById("modal-topic").focus(), 100);
     if (api) {
       _loadTemplates(api).then((templates) => _populateTemplateDropdown(templates));
@@ -140,6 +310,9 @@
 
     const templateSel = document.getElementById("modal-template");
     const template = templateSel ? templateSel.value || null : null;
+    const launchMode = getThreadLaunchMode();
+    const shouldLaunchFirstAgent = launchMode === "thread_with_agent";
+    const firstAgentConfig = shouldLaunchFirstAgent ? readAgentLaunchConfig("thread-agent") : null;
 
     // UI-14: get or register a browser-session agent to provide auth for thread creation
     const uiAgent = window.AcbUiAgent ? await window.AcbUiAgent.ensureUiAgent() : null;
@@ -148,21 +321,56 @@
       return;
     }
 
+    let creatorAuth = uiAgent;
+    let participantAgent = null;
+    if (shouldLaunchFirstAgent && firstAgentConfig) {
+      participantAgent = await registerParticipantAgent(api, firstAgentConfig);
+      if (!participantAgent) {
+        console.error("[Thread Create] Could not register participant agent");
+        return;
+      }
+      creatorAuth = {
+        agent_id: participantAgent.agent_id,
+        token: participantAgent.token,
+      };
+    }
+
     topicInput.value = "";
     if (templateSel) templateSel.value = "";
     const descEl = document.getElementById("modal-template-desc");
     if (descEl) descEl.textContent = "";
+    resetAgentForm("thread-agent");
+    const launchThreadOnly = document.querySelector('input[name="thread-launch-mode"][value="thread_only"]');
+    if (launchThreadOnly) {
+      launchThreadOnly.checked = true;
+    }
+    syncThreadLaunchUi();
     closeThreadModal();
 
     const t = await api("/api/threads", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Agent-Token": uiAgent.token,
+        "X-Agent-Token": creatorAuth.token,
       },
-      body: JSON.stringify({ topic, creator_agent_id: uiAgent.agent_id, ...(template ? { template } : {}) }),
+      body: JSON.stringify({
+        topic,
+        creator_agent_id: creatorAuth.agent_id,
+        assign_creator_admin: shouldLaunchFirstAgent,
+        ...(template ? { template } : {}),
+      }),
     });
     if (t) {
+      if (shouldLaunchFirstAgent && participantAgent && firstAgentConfig) {
+        await createParticipantSession(api, {
+          threadId: t.id,
+          threadTopic: topic,
+          uiAgent,
+          participantAgent,
+          config: firstAgentConfig,
+          isFirstAgent: true,
+        });
+      }
       const syncContext =
         typeof t.current_seq === "number" && t.reply_token
           ? {
@@ -173,6 +381,94 @@
           : null;
       await refreshThreads();
       selectThread(t.id, t.topic, t.status, syncContext);
+      if (window.AcbChat && typeof window.AcbChat.refreshThreadAdmin === "function") {
+        await window.AcbChat.refreshThreadAdmin(t.id, api);
+      }
+    }
+  }
+
+  async function openAddAgentModal(api) {
+    const threadId = window.currentThreadId;
+    if (!threadId) {
+      return;
+    }
+    resetAgentForm("agent-modal");
+    resetAutoAssembleForm();
+    switchAddAgentTab("manual");
+    const threadTitle = document.getElementById("thread-title")?.textContent?.trim() || "current thread";
+    const hintEl = document.getElementById("agent-modal-context");
+    const roleHintEl = document.getElementById("agent-modal-hint");
+    if (hintEl) {
+      hintEl.textContent = `Launch another agent session into "${threadTitle}".`;
+    }
+    if (roleHintEl && api) {
+      try {
+        const agentsRes = await api(`/api/threads/${threadId}/agents`);
+        const count = Array.isArray(agentsRes) ? agentsRes.length : 0;
+        roleHintEl.textContent = count > 0
+          ? "New agents join as participants."
+          : "The first launched agent in this thread will become the administrator.";
+      } catch {
+        roleHintEl.textContent = "New agents join as participants unless they are the first active agent in the thread.";
+      }
+    }
+    setModalVisible("agent", true);
+  }
+
+  function closeAddAgentModal(e) {
+    if (!e || isOverlayClick(e, "agent")) {
+      setModalVisible("agent", false);
+    }
+  }
+
+  async function submitAddAgentModal(deps) {
+    const { api, refreshAgents } = deps;
+    const threadId = window.currentThreadId;
+    if (!threadId) {
+      return;
+    }
+    if (getAddAgentTab() !== "manual") {
+      return;
+    }
+    const uiAgent = window.AcbUiAgent ? await window.AcbUiAgent.ensureUiAgent() : null;
+    if (!uiAgent) {
+      console.error("[Add Agent] Could not obtain UI agent token");
+      return;
+    }
+
+    const config = readAgentLaunchConfig("agent-modal");
+    const participantAgent = await registerParticipantAgent(api, config);
+    if (!participantAgent) {
+      console.error("[Add Agent] Could not register participant agent");
+      return;
+    }
+
+    const threadTopic = document.getElementById("thread-title")?.textContent?.trim() || "current thread";
+    const session = await createParticipantSession(api, {
+      threadId,
+      threadTopic,
+      uiAgent,
+      participantAgent,
+      config,
+      isFirstAgent: false,
+    });
+    if (!session) {
+      console.error("[Add Agent] Failed to create participant CLI session");
+      return;
+    }
+
+    closeAddAgentModal();
+    if (typeof refreshAgents === "function") {
+      await refreshAgents();
+    }
+    if (window.AcbCliSessions && typeof window.AcbCliSessions.refreshThread === "function") {
+      await window.AcbCliSessions.refreshThread(threadId, api);
+      if (typeof window.AcbCliSessions.selectSession === "function") {
+        window.AcbCliSessions.selectSession(session.id, threadId);
+      }
+    }
+    if (window.AcbChat && typeof window.AcbChat.refreshThreadAdmin === "function") {
+      await window.AcbChat.refreshThreadAdmin(threadId, api);
     }
   }
 
@@ -574,6 +870,11 @@
     openThreadModal,
     closeThreadModal,
     submitThreadModal,
+    syncThreadLaunchUi,
+    openAddAgentModal,
+    closeAddAgentModal,
+    submitAddAgentModal,
+    switchAddAgentTab,
     openSettingsModal,
     closeSettingsModal,
     submitSettings,
@@ -595,6 +896,18 @@
     openThreadSettingsModal(api);
   };
   window.closeThreadSettingsModal = closeThreadSettingsModal;
+  window.openAddAgentModal = function() {
+    const api = _resolveApi();
+    return openAddAgentModal(api);
+  };
+  window.closeAddAgentModal = closeAddAgentModal;
+  window.submitAddAgentModal = function() {
+    const api = _resolveApi();
+    return submitAddAgentModal({
+      api,
+      refreshAgents: typeof window.refreshAgents === "function" ? window.refreshAgents : null,
+    });
+  };
   window.submitThreadSettings = function() {
     const api = _resolveApi();
     submitThreadSettings(api);
