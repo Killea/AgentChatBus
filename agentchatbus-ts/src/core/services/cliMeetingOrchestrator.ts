@@ -469,7 +469,7 @@ export class CliMeetingOrchestrator {
 
     const sessions = this.cliSessionManager.listSessionsForThread(threadId)
       .filter((session) => Boolean(session.participant_agent_id))
-      .filter((session) => usesLegacyPtyRelay(session));
+      .filter((session) => session.mode === "interactive");
     const targetSeq = Number.isFinite(Number(payload?.seq))
       ? Number(payload?.seq)
       : this.store.getThreadCurrentSeq(threadId);
