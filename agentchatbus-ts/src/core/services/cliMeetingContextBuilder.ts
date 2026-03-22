@@ -14,6 +14,16 @@ export interface BuildCliMeetingPromptInput {
   deliveryMode?: CliMeetingDeliveryMode;
 }
 
+export interface BuildCliIncrementalPromptInput {
+  store: MemoryStore;
+  threadId: string;
+  participantAgentId: string;
+  participantRole: CliMeetingParticipantRole;
+  participantDisplayName?: string;
+  lastDeliveredSeq: number;
+  targetSeq?: number;
+}
+
 export interface ThreadAdministratorInfo {
   agentId?: string;
   name?: string;
@@ -52,12 +62,29 @@ function buildDefaultInstruction(input: {
     return `${participantName}, please introduce yourself, explain how you can help, and start coordinating this thread.`;
   }
   if (participantRole === "administrator") {
-    return `${participantName}, please review the thread history, introduce yourself briefly, and coordinate the next useful step.`;
+    return `${participantName}, please review the thread history, introduce yourself briefly, and respond to the latest discussion with the next useful coordinated step.`;
   }
   if (hasHistory && administrator.name) {
-    return `${participantName}, please introduce yourself briefly, respond to the existing thread context, and wait for coordination from ${administrator.name}.`;
+    return `${participantName}, please introduce yourself briefly, then respond directly to the latest visible thread context. Follow coordination from ${administrator.name} when relevant.`;
   }
   return `${participantName}, please introduce yourself briefly and explain how you can contribute to this thread.`;
+}
+
+function buildIncrementalInstruction(input: {
+  participantRole: CliMeetingParticipantRole;
+  participantName: string;
+  administrator: ThreadAdministratorInfo;
+  messageCount: number;
+}): string {
+  const { participantRole, participantName, administrator, messageCount } = input;
+  const messageWord = messageCount === 1 ? "message" : "messages";
+  if (participantRole === "administrator") {
+    return `${participantName}, you have ${messageCount} new ${messageWord}. Review only the newly delivered messages and respond with the next coordinated step.`;
+  }
+  if (administrator.name) {
+    return `${participantName}, you have ${messageCount} new ${messageWord}. Review only the newly delivered messages and respond only to the new context, while respecting coordination from ${administrator.name}.`;
+  }
+  return `${participantName}, you have ${messageCount} new ${messageWord}. Review only the newly delivered messages and respond only to the new context.`;
 }
 
 function formatHistory(messages: MessageRecord[]): string {
@@ -185,6 +212,79 @@ export function buildCliMeetingPrompt(input: BuildCliMeetingPromptInput): CliMee
     prompt,
     deliveredSeq,
     deliveryMode,
+    administrator,
+  };
+}
+
+export function buildCliIncrementalPrompt(input: BuildCliIncrementalPromptInput): CliMeetingPromptEnvelope {
+  const thread = input.store.getThread(input.threadId);
+  if (!thread) {
+    throw new Error(`Thread '${input.threadId}' not found.`);
+  }
+  const participant = input.store.getAgent(input.participantAgentId);
+  if (!participant) {
+    throw new Error(`Participant agent '${input.participantAgentId}' not found.`);
+  }
+
+  const participantName = String(input.participantDisplayName || getAgentDisplayName(participant)).trim();
+  const administrator = getThreadAdministratorInfo(input.store, input.threadId);
+  const targetSeq = Number.isFinite(Number(input.targetSeq))
+    ? Number(input.targetSeq)
+    : input.store.getThreadCurrentSeq(input.threadId);
+  const afterSeq = Math.max(0, Number(input.lastDeliveredSeq) || 0);
+  const projectedMessages = input.store.projectMessagesForAgent(
+    input.store
+      .getMessages(input.threadId, afterSeq, false)
+      .filter((message) => message.seq <= targetSeq),
+  );
+  const deliveredSeq = projectedMessages.length > 0
+    ? projectedMessages[projectedMessages.length - 1]!.seq
+    : afterSeq;
+  const initialInstruction = buildIncrementalInstruction({
+    participantRole: input.participantRole,
+    participantName,
+    administrator,
+    messageCount: projectedMessages.length,
+  });
+  const adminLabel = administrator.name || administrator.agentId || "Unassigned";
+  const roleLabel = input.participantRole === "administrator" ? "administrator" : "participant";
+  const machineContext = buildMachineContext({
+    threadId: thread.id,
+    topic: thread.topic,
+    status: thread.status,
+    systemPrompt: thread.system_prompt,
+    participantAgentId: input.participantAgentId,
+    participantName,
+    participantRole: input.participantRole,
+    administrator,
+    deliveryMode: "incremental",
+    deliveredSeq,
+    history: projectedMessages,
+    initialInstruction,
+  });
+
+  const prompt = [
+    `You are continuing participation in the AgentChatBus thread "${thread.topic}".`,
+    `Thread ID: ${thread.id}`,
+    `Thread status: ${thread.status}`,
+    `Your participant identity: ${participantName} (${input.participantAgentId})`,
+    `Your current role: ${roleLabel}`,
+    `Current administrator: ${adminLabel}`,
+    `This is an incremental delivery of messages with seq > ${afterSeq} and <= ${targetSeq}.`,
+    "Only the newly delivered visible messages are shown below. Do not repeat your earlier introduction unless the new messages require it.",
+    formatHistory(projectedMessages),
+    `Current instruction:\n${initialInstruction}`,
+    "Write only the message content that AgentChatBus should post to the thread on your behalf. Do not emit JSON wrappers, XML tags, terminal commentary, or tool-call narration.",
+    "Machine-readable context:",
+    "```json",
+    machineContext,
+    "```",
+  ].filter(Boolean).join("\n\n");
+
+  return {
+    prompt,
+    deliveredSeq,
+    deliveryMode: "incremental",
     administrator,
   };
 }

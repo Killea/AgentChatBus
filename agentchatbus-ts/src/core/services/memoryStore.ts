@@ -1752,9 +1752,17 @@ export class MemoryStore {
     }
     
     this.appendLog(`message posted: ${message.id} seq=${message.seq}`);
+
+    // Update thread activity time (match Python crud.py L1325)
+    this.threadSettingsUpdateActivity(input.threadId);
+    this.touchThreadUpdatedAt(input.threadId);
+
+    this.insertMessage(message);
+    this.persistState();
+
     eventBus.emit({ type: "msg.new", payload: message });
-    
-    // Emit msg.handoff and msg.stop events (UP-17) - match Python crud.py L1332-1344
+
+    // Emit secondary message events only after the canonical message is durable and queryable.
     if (message.metadata) {
       const handoffTarget = message.metadata.handoff_target;
       if (handoffTarget) {
@@ -1793,7 +1801,7 @@ export class MemoryStore {
         }
       });
     }
-    
+
     // Notify any msg_wait callers on this thread that a new message is available.
     // This allows event-driven wake-up instead of waiting for the 1s poll tick.
     // Matches Python dispatch.py L847-848:
@@ -1802,13 +1810,6 @@ export class MemoryStore {
     if (this._threadEvents.has(input.threadId)) {
       this._threadEvents.get(input.threadId)!.set();
     }
-    
-    // Update thread activity time (match Python crud.py L1325)
-    this.threadSettingsUpdateActivity(input.threadId);
-    this.touchThreadUpdatedAt(input.threadId);
-
-    this.insertMessage(message);
-    this.persistState();
     return message;
   }
 

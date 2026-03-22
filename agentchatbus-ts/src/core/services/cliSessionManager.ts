@@ -64,6 +64,7 @@ export interface CliSessionSnapshot {
   reply_capture_error?: string;
   context_delivery_mode?: "join" | "resume" | "incremental";
   last_delivered_seq?: number;
+  last_acknowledged_seq?: number;
   last_posted_seq?: number;
   meeting_post_state?: "pending" | "posting" | "posted" | "stale" | "error";
   meeting_post_error?: string;
@@ -98,6 +99,7 @@ export interface CliSessionMeetingStatePatch {
   participant_role?: "administrator" | "participant";
   context_delivery_mode?: "join" | "resume" | "incremental";
   last_delivered_seq?: number;
+  last_acknowledged_seq?: number;
   last_posted_seq?: number;
   meeting_post_state?: "pending" | "posting" | "posted" | "stale" | "error";
   meeting_post_error?: string;
@@ -1232,6 +1234,7 @@ export class CliSessionManager {
       shell: adapter.shell,
       context_delivery_mode: contextDeliveryMode,
       last_delivered_seq: lastDeliveredSeq,
+      last_acknowledged_seq: lastDeliveredSeq,
       meeting_post_state: participantAgentId ? "pending" : undefined,
     };
 
@@ -1361,6 +1364,7 @@ export class CliSessionManager {
     runtime.snapshot.reply_capture_state = undefined;
     runtime.snapshot.reply_capture_excerpt = undefined;
     runtime.snapshot.reply_capture_error = undefined;
+    runtime.snapshot.last_acknowledged_seq = runtime.snapshot.last_delivered_seq;
     runtime.snapshot.last_posted_seq = undefined;
     runtime.snapshot.meeting_post_state = runtime.snapshot.participant_agent_id ? "pending" : undefined;
     runtime.snapshot.meeting_post_error = undefined;
@@ -1417,6 +1421,70 @@ export class CliSessionManager {
     runtime.controls.write(text);
     runtime.snapshot.updated_at = nowIso();
     return { ok: true };
+  }
+
+  async deliverPrompt(
+    sessionId: string,
+    prompt: string,
+    options?: {
+      deliveryMode?: "join" | "resume" | "incremental";
+      deliveredSeq?: number;
+    },
+  ): Promise<{ ok: boolean; session?: CliSessionSnapshot; error?: string } | null> {
+    const runtime = this.runtimes.get(sessionId);
+    if (!runtime) {
+      return null;
+    }
+    if (!runtime.snapshot.supports_input || !runtime.controls?.write) {
+      return {
+        ok: false,
+        error: `Session adapter '${runtime.snapshot.adapter}' in mode '${runtime.snapshot.mode}' does not support interactive prompt delivery.`,
+      };
+    }
+    if (runtime.snapshot.state !== "running") {
+      return {
+        ok: false,
+        error: `Session '${sessionId}' is not running and cannot receive a coordinated prompt.`,
+      };
+    }
+
+    const normalizedPrompt = String(prompt || "").trim();
+    if (!normalizedPrompt) {
+      return {
+        ok: false,
+        error: "Prompt delivery requires non-empty content.",
+      };
+    }
+
+    runtime.snapshot.prompt = normalizedPrompt;
+    runtime.snapshot.context_delivery_mode = options?.deliveryMode || "incremental";
+    if (Number.isFinite(Number(options?.deliveredSeq))) {
+      runtime.snapshot.last_delivered_seq = Number(options?.deliveredSeq);
+    }
+    runtime.snapshot.last_posted_seq = undefined;
+    runtime.snapshot.last_posted_message_id = undefined;
+    runtime.snapshot.meeting_post_state = runtime.snapshot.participant_agent_id ? "pending" : undefined;
+    runtime.snapshot.meeting_post_error = undefined;
+    runtime.snapshot.reply_capture_state = undefined;
+    runtime.snapshot.reply_capture_excerpt = undefined;
+    runtime.snapshot.reply_capture_error = undefined;
+    if (runtime.replyCapture?.timeoutTimer) {
+      clearTimeout(runtime.replyCapture.timeoutTimer);
+    }
+    if (runtime.replyCapture?.finalizeTimer) {
+      clearTimeout(runtime.replyCapture.finalizeTimer);
+    }
+    runtime.replyCapture = null;
+    this.startReplyCapture(runtime, normalizedPrompt);
+    runtime.controls.write(normalizedPrompt);
+    runtime.controls.write("\r");
+    this.updateAutomationState(runtime, "meeting_delivery_prompt_sent");
+    runtime.snapshot.updated_at = nowIso();
+    this.emitSessionEvent("cli.session.state", runtime);
+    return {
+      ok: true,
+      session: this.cloneSnapshot(runtime.snapshot),
+    };
   }
 
   async resizeSession(

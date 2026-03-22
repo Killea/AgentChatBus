@@ -1,6 +1,7 @@
 import { eventBus } from "../../shared/eventBus.js";
 import { logError, logInfo } from "../../shared/logger.js";
 import {
+  buildCliIncrementalPrompt,
   buildCliMeetingPrompt,
   getThreadAdministratorInfo,
   type CliMeetingDeliveryMode,
@@ -13,6 +14,7 @@ const PARTICIPANT_HEARTBEAT_INTERVAL_MS = 10_000;
 const ONLINE_SESSION_STATES = new Set(["created", "starting", "running"]);
 const RELAY_BLOCKED_STATES = new Set(["stale", "error"]);
 const INTERACTIVE_PLACEHOLDER_REPLY = "Thinking...";
+const DELIVERY_BUSY_REPLY_STATES = new Set(["waiting_for_reply", "working", "streaming"]);
 
 export interface PrepareCliMeetingSessionInput {
   threadId: string;
@@ -66,6 +68,7 @@ function getDesiredRelayContent(session: CliSessionSnapshot): string | undefined
 export class CliMeetingOrchestrator {
   private readonly inFlightRelaySyncs = new Set<string>();
   private readonly pendingRelayResyncs = new Set<string>();
+  private readonly pendingDeliverySeqBySession = new Map<string, number>();
   private readonly heartbeatTimers = new Map<string, NodeJS.Timeout>();
   private readonly unsubscribe: () => void;
 
@@ -141,6 +144,11 @@ export class CliMeetingOrchestrator {
 
   private async handleEvent(event: Record<string, unknown>): Promise<void> {
     const type = String(event?.type || "");
+    if (type === "msg.new") {
+      await this.handleThreadMessage(event);
+      return;
+    }
+
     if (!type.startsWith("cli.session.")) {
       return;
     }
@@ -154,6 +162,45 @@ export class CliMeetingOrchestrator {
 
     this.syncParticipantPresence(session);
     await this.syncRelayMessage(session);
+    await this.flushPendingDelivery(session);
+  }
+
+  private async handleThreadMessage(event: Record<string, unknown>): Promise<void> {
+    const payload = event?.payload && typeof event.payload === "object"
+      ? (event.payload as {
+          thread_id?: string;
+          seq?: number;
+          author_id?: string;
+          content?: string;
+          metadata?: Record<string, unknown> | null;
+        })
+      : undefined;
+    const threadId = String(payload?.thread_id || "").trim();
+    if (!threadId) {
+      return;
+    }
+
+    const metadata = payload?.metadata && typeof payload.metadata === "object"
+      ? payload.metadata
+      : null;
+    const isInteractivePlaceholder =
+      String(payload?.content || "").trim() === INTERACTIVE_PLACEHOLDER_REPLY
+      && String(metadata?.cli_relay_mode || "") === "participant_session";
+    if (isInteractivePlaceholder) {
+      return;
+    }
+
+    const sessions = this.cliSessionManager.listSessionsForThread(threadId)
+      .filter((session) => Boolean(session.participant_agent_id));
+    const targetSeq = Number.isFinite(Number(payload?.seq))
+      ? Number(payload?.seq)
+      : this.store.getThreadCurrentSeq(threadId);
+    for (const session of sessions) {
+      if (session.participant_agent_id && session.participant_agent_id === payload?.author_id) {
+        continue;
+      }
+      await this.maybeDeliverIncrementalContext(session, targetSeq);
+    }
   }
 
   private syncParticipantPresence(session: CliSessionSnapshot): void {
@@ -211,6 +258,104 @@ export class CliMeetingOrchestrator {
     }
     clearInterval(timer);
     this.heartbeatTimers.delete(sessionId);
+  }
+
+  private getSessionWorkState(session: CliSessionSnapshot): "busy" | "idle" | "unavailable" {
+    if (!ONLINE_SESSION_STATES.has(session.state)) {
+      return "unavailable";
+    }
+    if (String(session.automation_state || "") === "codex_working") {
+      return "busy";
+    }
+    if (DELIVERY_BUSY_REPLY_STATES.has(String(session.reply_capture_state || ""))) {
+      return "busy";
+    }
+    if (String(session.meeting_post_state || "") === "posting") {
+      return "busy";
+    }
+    if (session.mode === "interactive" && session.state === "running") {
+      return "idle";
+    }
+    if (session.mode === "headless") {
+      return "busy";
+    }
+    return "unavailable";
+  }
+
+  private async maybeDeliverIncrementalContext(
+    session: CliSessionSnapshot,
+    requestedTargetSeq?: number,
+  ): Promise<void> {
+    if (!session.participant_agent_id) {
+      return;
+    }
+    if (session.mode !== "interactive") {
+      return;
+    }
+    const deliveredSeq = Number(session.last_delivered_seq) || 0;
+    const pendingSeq = this.pendingDeliverySeqBySession.get(session.id) || 0;
+    const latestSeq = Number.isFinite(Number(requestedTargetSeq))
+      ? Number(requestedTargetSeq)
+      : this.store.getThreadCurrentSeq(session.thread_id);
+    if (Number.isFinite(Number(requestedTargetSeq))) {
+      if (latestSeq <= deliveredSeq) {
+        return;
+      }
+    } else if (latestSeq <= Math.max(deliveredSeq, pendingSeq)) {
+      return;
+    }
+
+    const workState = this.getSessionWorkState(session);
+    if (workState !== "idle") {
+      this.pendingDeliverySeqBySession.set(
+        session.id,
+        Math.max(pendingSeq, latestSeq),
+      );
+      return;
+    }
+
+    const envelope = buildCliIncrementalPrompt({
+      store: this.store,
+      threadId: session.thread_id,
+      participantAgentId: session.participant_agent_id,
+      participantDisplayName: session.participant_display_name,
+      participantRole: session.participant_role || "participant",
+      lastDeliveredSeq: deliveredSeq,
+      targetSeq: latestSeq,
+    });
+
+    if (envelope.deliveredSeq <= deliveredSeq) {
+      this.pendingDeliverySeqBySession.delete(session.id);
+      return;
+    }
+
+    const result = await this.cliSessionManager.deliverPrompt(session.id, envelope.prompt, {
+      deliveryMode: envelope.deliveryMode,
+      deliveredSeq: envelope.deliveredSeq,
+    });
+    if (!result?.ok) {
+      this.pendingDeliverySeqBySession.set(session.id, latestSeq);
+      if (result?.error) {
+        logError(`[cli-meeting] failed to deliver incremental context to ${session.id}: ${result.error}`);
+      }
+      return;
+    }
+
+    this.pendingDeliverySeqBySession.delete(session.id);
+    logInfo(
+      `[cli-meeting] delivered incremental context through seq ${envelope.deliveredSeq} to session ${session.id}`,
+    );
+  }
+
+  private async flushPendingDelivery(session: CliSessionSnapshot): Promise<void> {
+    const pendingSeq = this.pendingDeliverySeqBySession.get(session.id);
+    if (!pendingSeq) {
+      return;
+    }
+    if (this.getSessionWorkState(session) !== "idle") {
+      return;
+    }
+    await this.maybeDeliverIncrementalContext(session, pendingSeq);
   }
 
   private async syncRelayMessage(session: CliSessionSnapshot): Promise<void> {
@@ -305,6 +450,7 @@ export class CliMeetingOrchestrator {
       this.cliSessionManager.updateMeetingState(session.id, {
         meeting_post_state: "posted",
         meeting_post_error: "",
+        last_acknowledged_seq: Number(session.last_delivered_seq) || 0,
         last_posted_seq: existingMessage.seq,
         last_posted_message_id: existingMessage.id,
       });
@@ -342,6 +488,7 @@ export class CliMeetingOrchestrator {
     this.cliSessionManager.updateMeetingState(session.id, {
       meeting_post_state: "posted",
       meeting_post_error: "",
+      last_acknowledged_seq: Number(session.last_delivered_seq) || 0,
       last_posted_seq: message.seq,
       last_posted_message_id: message.id,
     });
