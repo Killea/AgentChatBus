@@ -275,11 +275,81 @@
     }
   }
 
+  function summarizeNames(values) {
+    const names = Array.isArray(values) ? values.filter(Boolean) : [];
+    if (!names.length) {
+      return "";
+    }
+    if (names.length <= 2) {
+      return names.join(", ");
+    }
+    return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
+  }
+
+  function updateHumanDeliveryStateForRow(row, threadId) {
+    if (!row || row.getAttribute("data-is-human") !== "1") {
+      return;
+    }
+
+    const seq = Number(row.getAttribute("data-seq") || 0);
+    const deliveryMetaEl = row.querySelector(".msg-human-delivery");
+    const summary = window.AcbCliSessions?.getDeliverySummaryForSeq?.(seq, threadId);
+    if (!summary || !summary.participantCount) {
+      if (deliveryMetaEl) {
+        deliveryMetaEl.remove();
+      }
+      return;
+    }
+
+    const waitingLabel = summarizeNames(summary.waiting);
+    const deliveredLabel = summarizeNames(summary.delivered);
+    const chips = [];
+    if (summary.waiting.length) {
+      chips.push(
+        `<span class="msg-human-delivery__chip msg-human-delivery__chip--waiting" title="Waiting for: ${waitingLabel}">Waiting for ${waitingLabel}</span>`,
+      );
+    }
+    if (summary.delivered.length) {
+      chips.push(
+        `<span class="msg-human-delivery__chip msg-human-delivery__chip--delivered" title="Delivered to: ${deliveredLabel}">Delivered to ${deliveredLabel}</span>`,
+      );
+    }
+    if (!chips.length) {
+      if (deliveryMetaEl) {
+        deliveryMetaEl.remove();
+      }
+      return;
+    }
+
+    let target = deliveryMetaEl;
+    if (!target) {
+      target = document.createElement("div");
+      target.className = "msg-human-delivery";
+      const msgCol = row.querySelector(".msg-col");
+      const reactionsEl = row.querySelector(".msg-reactions");
+      if (msgCol) {
+        msgCol.insertBefore(target, reactionsEl || null);
+      }
+    }
+    target.innerHTML = `
+      <span class="msg-human-delivery__label">Agent delivery</span>
+      ${chips.join("")}
+    `;
+  }
+
+  function refreshHumanDeliveryIndicators(threadId) {
+    const activeThreadId = threadId || (window.currentThreadId || null);
+    document.querySelectorAll("#messages .msg-row[data-is-human='1']").forEach((row) => {
+      updateHumanDeliveryStateForRow(row, activeThreadId);
+    });
+  }
+
   window.AcbChat = {
     refreshThreadAdmin,
     selectThread,
     loadNewMessages,
     sendMessage,
     handleKey,
+    refreshHumanDeliveryIndicators,
   };
 })();

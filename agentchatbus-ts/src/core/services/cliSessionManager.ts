@@ -167,6 +167,7 @@ type CliSessionReplyCaptureRuntime = {
   prompt: string;
   rawOutput: string;
   state: CliSessionReplyCaptureState;
+  baselineExcerpt?: string;
   excerpt?: string;
   error?: string;
   timeoutTimer: NodeJS.Timeout | null;
@@ -579,6 +580,19 @@ function normalizeCodexReplyExcerpt(reply: string | undefined): string | undefin
     return undefined;
   }
   return clipText(normalized, 2400);
+}
+
+function normalizeReplyComparisonText(reply: string | undefined): string {
+  return String(normalizeCodexReplyExcerpt(reply) || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function areEquivalentReplyExcerpts(left: string | undefined, right: string | undefined): boolean {
+  const normalizedLeft = normalizeReplyComparisonText(left);
+  const normalizedRight = normalizeReplyComparisonText(right);
+  return Boolean(normalizedLeft) && normalizedLeft === normalizedRight;
 }
 
 function findLastCodexReplyBlockStart(lines: string[], endExclusive: number): number {
@@ -1474,8 +1488,11 @@ export class CliSessionManager {
     if (runtime.replyCapture?.finalizeTimer) {
       clearTimeout(runtime.replyCapture.finalizeTimer);
     }
+    const previousExcerpt = runtime.snapshot.reply_capture_excerpt;
     runtime.replyCapture = null;
-    this.startReplyCapture(runtime, normalizedPrompt);
+    this.startReplyCapture(runtime, normalizedPrompt, {
+      baselineExcerpt: previousExcerpt,
+    });
     runtime.controls.write(normalizedPrompt);
     runtime.controls.write("\r");
     this.updateAutomationState(runtime, "meeting_delivery_prompt_sent");
@@ -1788,7 +1805,11 @@ export class CliSessionManager {
     runtime.snapshot.screen_buffer = screen.bufferType;
   }
 
-  private startReplyCapture(runtime: CliSessionRuntime, prompt: string): void {
+  private startReplyCapture(
+    runtime: CliSessionRuntime,
+    prompt: string,
+    options?: { baselineExcerpt?: string },
+  ): void {
     if (runtime.replyCapture?.timeoutTimer) {
       clearTimeout(runtime.replyCapture.timeoutTimer);
     }
@@ -1797,6 +1818,7 @@ export class CliSessionManager {
       prompt,
       rawOutput: "",
       state: "waiting_for_reply",
+      baselineExcerpt: normalizeCodexReplyExcerpt(options?.baselineExcerpt),
       timeoutTimer: null,
       finalizeTimer: null,
     };
@@ -1874,6 +1896,9 @@ export class CliSessionManager {
     if (!excerpt) {
       return;
     }
+    if (areEquivalentReplyExcerpts(excerpt, capture.baselineExcerpt)) {
+      return;
+    }
     const nextState = "streaming";
     this.updateReplyCaptureState(runtime, nextState, { excerpt });
   }
@@ -1897,9 +1922,15 @@ export class CliSessionManager {
         return;
       }
     }
+    if (capture.baselineExcerpt && !capture.excerpt) {
+      return;
+    }
     const screenExcerpt = extractCodexReplyFromScreen(screen, capture.prompt);
     const finalExcerpt = stripTrailingPlaceholderLine(screenExcerpt || capture.excerpt, screen);
     if (!finalExcerpt) {
+      return;
+    }
+    if (areEquivalentReplyExcerpts(finalExcerpt, capture.baselineExcerpt)) {
       return;
     }
     this.clearReplyCaptureFinalizeTimer(runtime);
@@ -1917,6 +1948,9 @@ export class CliSessionManager {
         latestScreen,
       );
       if (!latestExcerpt) {
+        return;
+      }
+      if (areEquivalentReplyExcerpts(latestExcerpt, capture.baselineExcerpt)) {
         return;
       }
       this.updateReplyCaptureState(runtime, "completed", {

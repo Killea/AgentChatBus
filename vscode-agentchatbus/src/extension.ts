@@ -20,6 +20,7 @@ let settingsProvider: SettingsProvider | undefined;
 let cursorConfigManager: CursorMcpConfigManager | undefined;
 let serverManagerInstance: BusServerManager | undefined;
 let mainViewsInitialized = false;
+let workspaceDevUiWatcherRegistered = false;
 
 function isLocalServerUrl(rawUrl: string): boolean {
     const localIps: string[] = [];
@@ -182,6 +183,8 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     const serverManager = new BusServerManager(context);
+    const workspaceDevContext = serverManager.getWorkspaceDevContext();
+    ChatPanel.setWorkspaceDevWebUiRoot(workspaceDevContext?.webUiRoot);
     serverManagerInstance = serverManager;
     cursorConfigManager = new CursorMcpConfigManager();
     const setupProvider = new SetupProvider();
@@ -257,6 +260,8 @@ function initializeMainViews(context: vscode.ExtensionContext, serverManager: Bu
     mainViewsInitialized = true;
 
     console.log('[AgentChatBus] Initializing main views...');
+    ChatPanel.setWorkspaceDevWebUiRoot(serverManager.getWorkspaceDevContext()?.webUiRoot);
+    registerWorkspaceDevUiWatcher(context, serverManager);
     apiClient = new AgentChatBusApiClient();
     apiClient.connectSSE();
 
@@ -278,31 +283,52 @@ function initializeMainViews(context: vscode.ExtensionContext, serverManager: Bu
             mcpLogProvider?.clear();
         }),
         vscode.commands.registerCommand('agentchatbus.stopServer', async () => {
+            const messages = serverManager.getRestartActionMessages();
             const status = serverManager.getStatusMetadata();
             const isExternal = String(status.startupMode || '').startsWith('external-service');
             const confirmed = await vscode.window.showWarningMessage(
-                isExternal
-                    ? 'Force restart the externally managed AgentChatBus service? The extension will try force-shutdown via API, verify process exit, then kill the process if needed before starting a fresh service.'
-                    : 'Force restart AgentChatBus Server? This will force the current MCP process down and immediately start a fresh one.',
+                messages.mode === 'force-restart'
+                    ? (
+                        isExternal
+                            ? 'Force restart the externally managed AgentChatBus service? The extension will try force-shutdown via API, verify process exit, then kill the process if needed before starting a fresh service.'
+                            : messages.confirmMessage
+                    )
+                    : messages.confirmMessage,
                 { modal: true },
-                'Force Restart'
+                messages.confirmLabel
             );
-            if (confirmed === 'Force Restart') {
+            if (confirmed === messages.confirmLabel) {
                 const stopped = await serverManager.stopServer();
                 if (!stopped) {
                     const failure = serverManager.getLastStopFailureMessage();
                     vscode.window.showWarningMessage(
                         failure
                             ? failure
-                            : isExternal
-                                ? 'The external AgentChatBus service did not accept the shutdown request.'
-                                : 'No extension-managed MCP service could be force stopped.'
+                            : messages.mode === 'force-restart'
+                                ? (
+                                    isExternal
+                                        ? 'The external AgentChatBus service did not accept the shutdown request.'
+                                        : messages.failureMessage
+                                )
+                                : messages.failureMessage
                     );
                 }
             }
         }),
+        vscode.commands.registerCommand('agentchatbus.switchToManagedDevService', async () => {
+            await vscode.commands.executeCommand('agentchatbus.stopServer');
+        }),
+        vscode.commands.registerCommand('agentchatbus.restartManagedDevService', async () => {
+            await vscode.commands.executeCommand('agentchatbus.stopServer');
+        }),
         vscode.commands.registerCommand('agentchatbus.stopServerPending', () => {
-            vscode.window.showInformationMessage('Force restart is already in progress. Waiting for shutdown verification, kill fallback, or fresh startup.');
+            vscode.window.showInformationMessage(serverManager.getRestartActionMessages().pendingMessage);
+        }),
+        vscode.commands.registerCommand('agentchatbus.switchToManagedDevServicePending', () => {
+            vscode.window.showInformationMessage(serverManager.getRestartActionMessages().pendingMessage);
+        }),
+        vscode.commands.registerCommand('agentchatbus.restartManagedDevServicePending', () => {
+            vscode.window.showInformationMessage(serverManager.getRestartActionMessages().pendingMessage);
         }),
         vscode.commands.registerCommand('agentchatbus.openFullLog', () => {
             const logs = mcpLogProvider?.getLogs() || [];
@@ -414,7 +440,7 @@ function initializeMainViews(context: vscode.ExtensionContext, serverManager: Bu
                 const args = Array.isArray(metadata.args)
                     ? metadata.args.map((item: unknown) => String(item || '').toLowerCase()).join(' ')
                     : '';
-                if (metadata.startupMode === 'bundled-ts-service') {
+                if (metadata.startupMode === 'bundled-ts-service' || metadata.startupMode === 'workspace-dev-service') {
                     backendEngine = 'node';
                     backendEngineSource = 'startup-mode';
                 } else if (
@@ -557,4 +583,48 @@ export async function deactivate() {
     if (apiClient) {
         apiClient.disconnectSSE();
     }
+}
+
+function registerWorkspaceDevUiWatcher(
+    context: vscode.ExtensionContext,
+    serverManager: BusServerManager
+) {
+    if (workspaceDevUiWatcherRegistered) {
+        return;
+    }
+
+    const workspaceDevContext = serverManager.getWorkspaceDevContext();
+    if (!workspaceDevContext) {
+        return;
+    }
+
+    workspaceDevUiWatcherRegistered = true;
+    const pattern = new vscode.RelativePattern(
+        vscode.Uri.file(workspaceDevContext.webUiRoot),
+        'extension/**/*'
+    );
+    const watcher = vscode.workspace.createFileSystemWatcher(pattern);
+    let refreshTimer: NodeJS.Timeout | undefined;
+    const scheduleRefresh = () => {
+        ChatPanel.setWorkspaceDevWebUiRoot(serverManager.getWorkspaceDevContext()?.webUiRoot);
+        if (refreshTimer) {
+            clearTimeout(refreshTimer);
+        }
+        refreshTimer = setTimeout(() => {
+            ChatPanel.reloadCurrentPanelForSourceChange();
+        }, 150);
+    };
+
+    watcher.onDidChange(scheduleRefresh, undefined, context.subscriptions);
+    watcher.onDidCreate(scheduleRefresh, undefined, context.subscriptions);
+    watcher.onDidDelete(scheduleRefresh, undefined, context.subscriptions);
+    context.subscriptions.push(watcher);
+    context.subscriptions.push({
+        dispose: () => {
+            workspaceDevUiWatcherRegistered = false;
+            if (refreshTimer) {
+                clearTimeout(refreshTimer);
+            }
+        }
+    });
 }

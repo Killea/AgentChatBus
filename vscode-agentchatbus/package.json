@@ -7,7 +7,7 @@
   "name": "agentchatbus",
   "displayName": "AgentChatBus",
   "description": "AgentChatBus client for VS Code",
-  "version": "0.2.22",
+  "version": "0.2.23",
   "icon": "resources/bus_128.png",
   "engines": {
     "vscode": "^1.105.0"
@@ -187,6 +187,26 @@
         "icon": "$(sync~spin)"
       },
       {
+        "command": "agentchatbus.switchToManagedDevService",
+        "title": "Switch to Managed Dev Service",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "agentchatbus.switchToManagedDevServicePending",
+        "title": "Switch In Progress",
+        "icon": "$(sync~spin)"
+      },
+      {
+        "command": "agentchatbus.restartManagedDevService",
+        "title": "Restart Managed Dev Service",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "agentchatbus.restartManagedDevServicePending",
+        "title": "Managed Dev Restart In Progress",
+        "icon": "$(sync~spin)"
+      },
+      {
         "command": "agentchatbus.openWebConsole",
         "title": "Open Web Console",
         "icon": "$(browser)"
@@ -221,12 +241,32 @@
         },
         {
           "command": "agentchatbus.stopServer",
-          "when": "view == agentchatbus.mcpLogs && !agentchatbus:serverStopping",
+          "when": "view == agentchatbus.mcpLogs && !agentchatbus:serverStopping && !agentchatbus:workspaceDevSwitchableExternal && !agentchatbus:workspaceDevManaged",
           "group": "navigation@1"
         },
         {
           "command": "agentchatbus.stopServerPending",
-          "when": "view == agentchatbus.mcpLogs && agentchatbus:serverStopping",
+          "when": "view == agentchatbus.mcpLogs && agentchatbus:serverStopping && !agentchatbus:workspaceDevSwitchableExternal && !agentchatbus:workspaceDevManaged",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentchatbus.switchToManagedDevService",
+          "when": "view == agentchatbus.mcpLogs && !agentchatbus:serverStopping && agentchatbus:workspaceDevSwitchableExternal",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentchatbus.switchToManagedDevServicePending",
+          "when": "view == agentchatbus.mcpLogs && agentchatbus:serverStopping && agentchatbus:workspaceDevSwitchableExternal",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentchatbus.restartManagedDevService",
+          "when": "view == agentchatbus.mcpLogs && !agentchatbus:serverStopping && agentchatbus:workspaceDevManaged",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentchatbus.restartManagedDevServicePending",
+          "when": "view == agentchatbus.mcpLogs && agentchatbus:serverStopping && agentchatbus:workspaceDevManaged",
           "group": "navigation@1"
         },
         {

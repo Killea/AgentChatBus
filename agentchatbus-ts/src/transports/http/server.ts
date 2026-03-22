@@ -243,7 +243,9 @@ export function createHttpServer() {
   fastify.get("/health", async () => {
     const ideStatus = store.getIdeStatus();
     const cfg = getConfig();
-    const startupMode = cfg.ownerBootToken
+    const startupMode = cfg.workspaceDev
+      ? "workspace-dev-service"
+      : cfg.ownerBootToken
       ? "bundled-ts-service"
       : (ideStatus.ownership_assignable === true
         ? "external-service-extension-managed"

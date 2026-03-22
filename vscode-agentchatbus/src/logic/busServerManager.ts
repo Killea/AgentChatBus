@@ -2,6 +2,7 @@ import * as path from 'path';
 
 export type LaunchMode =
     | 'bundled-ts-service'
+    | 'workspace-dev-service'
     | 'external-service'
     | 'external-service-extension-managed'
     | 'external-service-manual'
@@ -23,6 +24,7 @@ export type HealthPayload = {
     version?: string;
     runtime?: string;
     transport?: string;
+    startup_mode?: string;
     management?: {
         ownership_assignable?: boolean;
         owner_instance_id?: string | null;
@@ -38,6 +40,8 @@ export const MIN_HOST_NODE_VERSION = {
 
 export const BUNDLED_RUNTIME_RESOLVED_BY =
     'Bundled agentchatbus-ts runtime packaged with the VS Code extension.';
+export const WORKSPACE_DEV_RUNTIME_RESOLVED_BY =
+    'Workspace-dev agentchatbus-ts runtime and local web-ui sources from the current AgentChatBus repo.';
 
 export function normalizeHealthString(value: unknown): string | undefined {
     if (typeof value !== 'string') {
@@ -63,6 +67,29 @@ export function classifyExternalStartupMode(health?: HealthPayload): LaunchMode 
         return 'external-service-manual';
     }
     return 'external-service-unknown';
+}
+
+export function classifyDetectedStartupMode(health?: HealthPayload): LaunchMode {
+    const normalizedMode = normalizeHealthString(health?.startup_mode)?.toLowerCase();
+    if (normalizedMode === 'bundled-ts-service') {
+        return 'bundled-ts-service';
+    }
+    if (normalizedMode === 'workspace-dev-service') {
+        return 'workspace-dev-service';
+    }
+    if (normalizedMode === 'external-service-extension-managed') {
+        return 'external-service-extension-managed';
+    }
+    if (normalizedMode === 'external-service-manual') {
+        return 'external-service-manual';
+    }
+    if (normalizedMode === 'external-service-unknown') {
+        return 'external-service-unknown';
+    }
+    if (normalizedMode === 'external-service') {
+        return 'external-service';
+    }
+    return classifyExternalStartupMode(health);
 }
 
 export function ensureSupportedHostNodeVersion(
@@ -137,5 +164,47 @@ export function buildBundledLaunchSpec(input: {
         },
         launchMode: 'bundled-ts-service',
         resolvedBy: BUNDLED_RUNTIME_RESOLVED_BY,
+    };
+}
+
+export function buildWorkspaceDevLaunchSpec(input: {
+    tsxCliEntrypoint: string;
+    tsServerRoot: string;
+    webUiDir: string;
+    globalStoragePath: string;
+    hostNodeExecutable: string;
+    serverUrl: string;
+    cliWorkspacePath?: string;
+    msgWaitMinTimeoutMs: number;
+    enforceMsgWaitMinTimeout: boolean;
+    processEnv?: NodeJS.ProcessEnv;
+}): BundledLaunchSpec {
+    const parsedUrl = new URL(input.serverUrl);
+    const port = Number(parsedUrl.port || (parsedUrl.protocol === 'https:' ? '443' : '80'));
+    const dbPath = path.join(input.globalStoragePath, 'bus-ts.db');
+    const configFile = path.join(input.globalStoragePath, 'config.json');
+
+    return {
+        command: input.hostNodeExecutable,
+        args: [input.tsxCliEntrypoint, 'watch', 'src/cli/index.ts', 'serve'],
+        cwd: input.tsServerRoot,
+        env: {
+            ...(input.processEnv || {}),
+            AGENTCHATBUS_HOST: parsedUrl.hostname,
+            AGENTCHATBUS_PORT: String(port),
+            AGENTCHATBUS_DB: dbPath,
+            AGENTCHATBUS_APP_DIR: input.globalStoragePath,
+            AGENTCHATBUS_CONFIG_FILE: configFile,
+            AGENTCHATBUS_WEB_UI_DIR: input.webUiDir,
+            ...(input.cliWorkspacePath
+                ? { AGENTCHATBUS_CLI_WORKSPACE: input.cliWorkspacePath }
+                : {}),
+            AGENTCHATBUS_WAIT_MIN_TIMEOUT_MS: String(input.msgWaitMinTimeoutMs),
+            AGENTCHATBUS_ENFORCE_MSG_WAIT_MIN_TIMEOUT: input.enforceMsgWaitMinTimeout ? '1' : '0',
+            AGENTCHATBUS_RELOAD: '1',
+            AGENTCHATBUS_WORKSPACE_DEV: '1',
+        },
+        launchMode: 'workspace-dev-service',
+        resolvedBy: WORKSPACE_DEV_RUNTIME_RESOLVED_BY,
     };
 }

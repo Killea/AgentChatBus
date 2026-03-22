@@ -47,6 +47,7 @@ export interface AppConfig {
   threadTimeoutMinutes: number;
   threadTimeoutSweepInterval: number;
   reloadEnabled: boolean;
+  workspaceDev: boolean;
   exposeThreadResources: boolean;
   contentFilterEnabled: boolean;
   enableHandoffTarget: boolean;
@@ -871,6 +872,22 @@ export const CONFIG_REGISTRY: ReadonlyArray<ConfigDescriptor> = [
     restartRequired: true,
     order: 190,
     resolve: () => parseBoolLike(getEnvValue("AGENTCHATBUS_RELOAD"), false),
+  },
+  {
+    key: "WORKSPACE_DEV",
+    envVar: "AGENTCHATBUS_WORKSPACE_DEV",
+    resolvedField: "workspaceDev",
+    type: "boolean",
+    kind: "feature_flag",
+    defaultValue: false,
+    label: "Workspace Dev Mode",
+    description: "Internal marker used when the VS Code extension launches the local workspace-dev runtime.",
+    section: "internal",
+    scope: "hidden",
+    sensitivity: "runtime",
+    restartRequired: true,
+    order: 191,
+    resolve: () => parseBoolLike(getEnvValue("AGENTCHATBUS_WORKSPACE_DEV"), false),
   },
   {
     key: "EXPOSE_THREAD_RESOURCES",

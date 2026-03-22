@@ -1580,6 +1580,40 @@ body[data-theme="light"] .cli-session-detail__empty {
   gap: 4px;
   margin-top: 4px;
 }
+.msg-human-delivery {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.msg-human-delivery__label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary, #9ca3af);
+}
+.msg-human-delivery__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.2;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.msg-human-delivery__chip--waiting {
+  background: rgba(245, 158, 11, 0.14);
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.28);
+}
+.msg-human-delivery__chip--delivered {
+  background: rgba(34, 197, 94, 0.14);
+  color: #22c55e;
+  border-color: rgba(34, 197, 94, 0.28);
+}
 .reaction-pill {
   display: inline-flex;
   align-items: center;

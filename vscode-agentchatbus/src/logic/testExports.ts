@@ -40,16 +40,22 @@ export {
     BUNDLED_RUNTIME_RESOLVED_BY,
     MIN_HOST_NODE_VERSION,
     buildBundledLaunchSpec,
+    buildWorkspaceDevLaunchSpec,
+    classifyDetectedStartupMode,
     classifyExternalStartupMode,
     ensureSupportedHostNodeVersion,
     extractOwnershipAssignable,
     normalizeHealthString,
+    WORKSPACE_DEV_RUNTIME_RESOLVED_BY,
 } from './busServerManager';
 export {
     appendLogLines,
     getMcpLogPresentation,
     getMcpLogRows,
 } from './mcpLogs';
+export {
+    resolveWorkspaceDevContext,
+} from './workspaceDev';
 export {
     appendSetupLogStep,
     createInitialSetupSteps,

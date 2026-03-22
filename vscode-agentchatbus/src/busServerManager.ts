@@ -7,7 +7,8 @@ import { SetupProvider } from './providers/setupProvider';
 import { McpLogProvider } from './providers/mcpLogProvider';
 import {
     buildBundledLaunchSpec,
-    classifyExternalStartupMode,
+    buildWorkspaceDevLaunchSpec,
+    classifyDetectedStartupMode,
     ensureSupportedHostNodeVersion,
     extractOwnershipAssignable,
     normalizeHealthString,
@@ -15,6 +16,10 @@ import {
     type HealthPayload,
     type LaunchMode,
 } from './logic/busServerManager';
+import {
+    resolveWorkspaceDevContext,
+    type WorkspaceDevContext,
+} from './logic/workspaceDev';
 
 type ServerMetadata = {
     command?: string;
@@ -86,6 +91,7 @@ export class BusServerManager {
         this.extensionVersion = String(context.extension.packageJSON?.version || 'unknown');
         this.outputChannel = vscode.window.createOutputChannel('AgentChatBus Server');
         void vscode.commands.executeCommand('setContext', 'agentchatbus:serverStopping', false);
+        this.updateRestartContexts();
     }
 
     setSetupProvider(provider: SetupProvider) {
@@ -119,6 +125,75 @@ export class BusServerManager {
         this.serverMetadata.resolutionAttempts = [];
     }
 
+    getWorkspaceDevContext(): WorkspaceDevContext | null {
+        const workspaceFolders = vscode.workspace.workspaceFolders || [];
+        const candidateRoots = workspaceFolders
+            .filter((folder) => folder.uri.scheme === 'file')
+            .map((folder) => folder.uri.fsPath);
+        return resolveWorkspaceDevContext(candidateRoots);
+    }
+
+    getRestartActionMode(): 'force-restart' | 'restart-workspace-dev' | 'switch-to-workspace-dev' {
+        const workspaceDevContext = this.getWorkspaceDevContext();
+        if (!workspaceDevContext) {
+            return 'force-restart';
+        }
+        if (this.serverMetadata.startupMode === 'workspace-dev-service') {
+            return 'restart-workspace-dev';
+        }
+        if (
+            this.isExternalStartupMode(this.serverMetadata.startupMode)
+            && this.isLoopbackServerUrl(this.getServerUrl())
+        ) {
+            return 'switch-to-workspace-dev';
+        }
+        return 'force-restart';
+    }
+
+    getRestartActionMessages(): {
+        mode: 'force-restart' | 'restart-workspace-dev' | 'switch-to-workspace-dev';
+        confirmLabel: string;
+        confirmMessage: string;
+        pendingMessage: string;
+        failureMessage: string;
+    } {
+        const mode = this.getRestartActionMode();
+        if (mode === 'switch-to-workspace-dev') {
+            return {
+                mode,
+                confirmLabel: 'Switch to Managed Dev Service',
+                confirmMessage:
+                    'This workspace is AgentChatBus development mode. Switch from the current external/local test service back to the extension-managed workspace-dev service?',
+                pendingMessage:
+                    'Switching from external service to the extension-managed workspace-dev service is already in progress.',
+                failureMessage:
+                    'Failed to switch back to the extension-managed workspace-dev service.',
+            };
+        }
+        if (mode === 'restart-workspace-dev') {
+            return {
+                mode,
+                confirmLabel: 'Restart Managed Dev Service',
+                confirmMessage:
+                    'This workspace is AgentChatBus development mode. Restart the extension-managed workspace-dev service and keep using local agentchatbus-ts + local web-ui?',
+                pendingMessage:
+                    'Workspace-dev service restart is already in progress.',
+                failureMessage:
+                    'Failed to restart the extension-managed workspace-dev service.',
+            };
+        }
+        return {
+            mode,
+            confirmLabel: 'Force Restart',
+            confirmMessage:
+                'Force restart AgentChatBus Server? This will force the current MCP process down and immediately start a fresh one.',
+            pendingMessage:
+                'Force restart is already in progress. Waiting for shutdown verification, kill fallback, or fresh startup.',
+            failureMessage:
+                'No extension-managed MCP service could be force stopped.',
+        };
+    }
+
     private recordResolutionAttempt(message: string): void {
         const attempts = this.serverMetadata.resolutionAttempts || [];
         attempts.push(message);
@@ -129,7 +204,28 @@ export class BusServerManager {
         this.log(message, 'search');
     }
 
+    private updateRestartContexts(): void {
+        const restartMode = this.getRestartActionMode();
+        void vscode.commands.executeCommand(
+            'setContext',
+            'agentchatbus:workspaceDevSwitchableExternal',
+            restartMode === 'switch-to-workspace-dev'
+        );
+        void vscode.commands.executeCommand(
+            'setContext',
+            'agentchatbus:workspaceDevManaged',
+            restartMode === 'restart-workspace-dev'
+        );
+    }
+
     async ensureServerRunning(): Promise<boolean> {
+        const workspaceDevContext = this.getWorkspaceDevContext();
+        if (workspaceDevContext) {
+            this.log(
+                `Workspace-dev detected. Using local agentchatbus-ts + local web-ui from ${workspaceDevContext.repoRoot}. Auto-reload enabled for dev sources.`,
+                'tools'
+            );
+        }
         this.log('Initialization sequence started.', 'info');
 
         const config = vscode.workspace.getConfiguration('agentchatbus');
@@ -146,7 +242,7 @@ export class BusServerManager {
         try {
             const probe = await this.probeServer(serverUrl);
             if (probe.ok) {
-                const startupMode = classifyExternalStartupMode(probe.health);
+                const startupMode = classifyDetectedStartupMode(probe.health);
                 this.serverMetadata.startupMode = startupMode;
                 this.serverMetadata.resolvedBy = 'Existing service detected via /health';
                 this.serverMetadata.backendEngine = normalizeHealthString(probe.health?.engine);
@@ -163,7 +259,23 @@ export class BusServerManager {
                         `External backend details: engine=${this.serverMetadata.backendEngine || 'unknown'}, version=${this.serverMetadata.backendVersion || 'unknown'}.`
                     );
                 }
-                this.log('Server detected (Managed Externally). Switching to shared log API.', 'warning');
+                if (
+                    workspaceDevContext
+                    && startupMode !== 'workspace-dev-service'
+                    && this.isLoopbackServerUrl(serverUrl)
+                ) {
+                    this.log(
+                        `Workspace-dev requested. Existing local service at ${serverUrl} is mode=${startupMode}. Restarting into workspace-dev runtime...`,
+                        'sync~spin'
+                    );
+                    return this.stopServer();
+                }
+                if (startupMode === 'workspace-dev-service') {
+                    this.log('Workspace-dev service detected. Switching to shared log API.', 'warning');
+                } else {
+                    this.log('Server detected (Managed Externally). Switching to shared log API.', 'warning');
+                }
+                this.updateRestartContexts();
                 this.startExternalLogPolling(serverUrl);
                 await this.ensureIdeSessionRegistered(false);
                 this.setServerReady(true);
@@ -560,6 +672,7 @@ export class BusServerManager {
         if (ready) {
             this.setServerStopping(false);
         }
+        this.updateRestartContexts();
         void vscode.commands.executeCommand('setContext', 'agentchatbus:serverReady', ready);
     }
 
@@ -797,6 +910,21 @@ export class BusServerManager {
         return Boolean(mode && mode.startsWith('external-service'));
     }
 
+    private isLoopbackServerUrl(rawUrl: string): boolean {
+        try {
+            const parsed = new URL(rawUrl);
+            const host = String(parsed.hostname || '').trim().toLowerCase();
+            return (
+                host === '127.0.0.1'
+                || host === 'localhost'
+                || host === '::1'
+                || host === '::ffff:127.0.0.1'
+            );
+        } catch {
+            return false;
+        }
+    }
+
     getStatusMetadata() {
         const serverUrl = this.getServerUrl();
         const lm = this.getLanguageModelNamespace();
@@ -854,13 +982,34 @@ export class BusServerManager {
 
     private async startServer(): Promise<boolean> {
         this.resetResolutionAttempts();
-        this.log('Preparing bundled AgentChatBus TS runtime...', 'search');
-        const bundledSpec = await this.resolveBundledLaunchSpec();
-        if (!bundledSpec) {
-            this.log('Bundled AgentChatBus TS runtime could not be resolved.', 'error');
+        const workspaceDevContext = this.getWorkspaceDevContext();
+        if (workspaceDevContext) {
+            this.log(
+                `Workspace-dev detected. Using local agentchatbus-ts + local web-ui from ${workspaceDevContext.repoRoot}. Auto-reload enabled for dev sources.`,
+                'tools'
+            );
+        }
+        const launchSpec = await this.resolveLaunchSpec();
+        if (!launchSpec) {
+            this.log('AgentChatBus runtime could not be resolved for startup.', 'error');
             return false;
         }
-        return this.spawnServer(bundledSpec);
+        return this.spawnServer(launchSpec);
+    }
+
+    private async resolveLaunchSpec(): Promise<LaunchSpec | null> {
+        const workspaceDevContext = this.getWorkspaceDevContext();
+        if (workspaceDevContext) {
+            this.log('Preparing workspace-dev AgentChatBus TS runtime...', 'search');
+            const workspaceDevSpec = await this.resolveWorkspaceDevLaunchSpec(workspaceDevContext);
+            if (workspaceDevSpec) {
+                return workspaceDevSpec;
+            }
+            this.log('Workspace-dev runtime could not be resolved. Falling back to bundled runtime...', 'warning');
+        } else {
+            this.log('Preparing bundled AgentChatBus TS runtime...', 'search');
+        }
+        return this.resolveBundledLaunchSpec();
     }
 
     private async resolveBundledLaunchSpec(): Promise<LaunchSpec | null> {
@@ -921,13 +1070,72 @@ export class BusServerManager {
         });
     }
 
+    private async resolveWorkspaceDevLaunchSpec(
+        workspaceDevContext: WorkspaceDevContext
+    ): Promise<LaunchSpec | null> {
+        const hostNodeVersionCheck = ensureSupportedHostNodeVersion(process.version);
+        if (!hostNodeVersionCheck.ok) {
+            this.recordResolutionAttempt(hostNodeVersionCheck.message);
+            this.log(hostNodeVersionCheck.message, 'error');
+            return null;
+        }
+
+        if (!fs.existsSync(workspaceDevContext.tsxCliEntrypoint)) {
+            this.recordResolutionAttempt(
+                `Workspace-dev tsx CLI is missing: ${workspaceDevContext.tsxCliEntrypoint}`
+            );
+            return null;
+        }
+
+        if (!fs.existsSync(path.join(workspaceDevContext.webUiRoot, 'index.html'))) {
+            this.recordResolutionAttempt(
+                `Workspace-dev web-ui assets are missing: ${workspaceDevContext.webUiRoot}`
+            );
+            return null;
+        }
+
+        await fs.promises.mkdir(this.globalStoragePath, { recursive: true });
+
+        const serverUrl = this.getServerUrl();
+        const config = vscode.workspace.getConfiguration('agentchatbus');
+        const cliWorkspacePath = this.resolvePreferredCliWorkspace();
+        const msgWaitMinTimeoutMs = Math.max(0, Math.floor(config.get<number>('msgWaitMinTimeoutMs', 60000)));
+        const enforceMsgWaitMinTimeout = Boolean(config.get<boolean>('enforceMsgWaitMinTimeout', false));
+
+        this.recordResolutionAttempt(`Resolved workspace-dev repo root: ${workspaceDevContext.repoRoot}`);
+        this.recordResolutionAttempt(`Resolved workspace-dev tsx CLI: ${workspaceDevContext.tsxCliEntrypoint}`);
+        this.recordResolutionAttempt(`Resolved workspace-dev web-ui: ${workspaceDevContext.webUiRoot}`);
+        this.recordResolutionAttempt(`Using extension storage for TS runtime data: ${this.globalStoragePath}`);
+        this.recordResolutionAttempt(
+            `Using IDE host Node runtime ${process.version} from ${this.hostNodeExecutable} to launch workspace-dev MCP.`
+        );
+        if (cliWorkspacePath) {
+            this.recordResolutionAttempt(`Using VS Code workspace as CLI working root: ${cliWorkspacePath}`);
+        } else {
+            this.recordResolutionAttempt('No file-based VS Code workspace detected for CLI working root; backend fallback will be used.');
+        }
+
+        return buildWorkspaceDevLaunchSpec({
+            tsxCliEntrypoint: workspaceDevContext.tsxCliEntrypoint,
+            tsServerRoot: workspaceDevContext.tsServerRoot,
+            webUiDir: workspaceDevContext.webUiRoot,
+            globalStoragePath: this.globalStoragePath,
+            hostNodeExecutable: this.hostNodeExecutable,
+            serverUrl,
+            cliWorkspacePath,
+            msgWaitMinTimeoutMs,
+            enforceMsgWaitMinTimeout,
+            processEnv: process.env,
+        });
+    }
+
     private async spawnServer(spec: LaunchSpec): Promise<boolean> {
         this.ownerBootToken = randomUUID();
         const env = {
             ...process.env,
             ...(spec.env || {}),
             AGENTCHATBUS_OWNER_BOOT_TOKEN: this.ownerBootToken,
-            AGENTCHATBUS_RELOAD: '0',
+            ...(spec.env?.AGENTCHATBUS_RELOAD ? {} : { AGENTCHATBUS_RELOAD: '0' }),
         };
         this.serverMetadata = {
             command: spec.command,
@@ -942,6 +1150,7 @@ export class BusServerManager {
             externalOwnershipAssignable: null,
             resolutionAttempts: [...(this.serverMetadata.resolutionAttempts || [])],
         };
+        this.updateRestartContexts();
         this.lastStartTime = new Date();
         this.stopExternalLogPolling();
 

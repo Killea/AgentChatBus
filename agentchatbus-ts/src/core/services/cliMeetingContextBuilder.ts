@@ -36,6 +36,24 @@ export interface CliMeetingPromptEnvelope {
   administrator: ThreadAdministratorInfo;
 }
 
+function buildMeetingControlInstructions(input: {
+  participantAgentId: string;
+  participantName: string;
+  multiParticipantMode: boolean;
+}): string | undefined {
+  if (!input.multiParticipantMode) {
+    return undefined;
+  }
+  return [
+    "Meeting control protocol:",
+    `- If your automatic participation is complete, append exactly one JSON block: {"agentchatbus_meeting_control":{"action":"leave","reason":"..."}}`,
+    `- If another offline participant should rejoin automatic routing, append exactly one JSON block: {"agentchatbus_meeting_control":{"action":"summon","target_agent_id":"...","reason":"..."}}`,
+    `- You may combine normal reply text with one control JSON block, but do not emit more than one control block per reply.`,
+    `- Never summon yourself (${input.participantAgentId}).`,
+    `- Do not emit control JSON unless you intentionally want to change meeting participation routing.`,
+  ].join("\n");
+}
+
 function getAgentDisplayName(agent: AgentRecord | undefined, fallback?: string): string {
   return String(agent?.display_name || agent?.name || fallback || "Unknown Agent").trim() || "Unknown Agent";
 }
@@ -97,6 +115,15 @@ function formatHistory(messages: MessageRecord[]): string {
     const content = String(message.content || "").trim() || "(empty message)";
     return `[seq ${message.seq}] ${author} (${role})\n${content}`;
   }).join("\n\n");
+}
+
+function isPlaceholderRelayMessage(message: MessageRecord): boolean {
+  const content = String(message.content || "").trim();
+  const relayMode = String(message.metadata?.cli_relay_mode || "").trim();
+  return (
+    relayMode === "participant_session"
+    && (/^Working\.\.\.(?: \(\d+s\))?$/.test(content) || content === "Thinking...")
+  );
 }
 
 function buildMachineContext(input: {
@@ -165,11 +192,17 @@ export function buildCliMeetingPrompt(input: BuildCliMeetingPromptInput): CliMee
   const participantName = String(input.participantDisplayName || getAgentDisplayName(participant)).trim();
   const deliveryMode = input.deliveryMode || "join";
   const administrator = getThreadAdministratorInfo(input.store, input.threadId);
+  const multiParticipantMode = input.store.getThreadAgents(input.threadId).length > 1;
   const initialInstruction = String(input.initialInstruction || "").trim() || buildDefaultInstruction({
     participantRole: input.participantRole,
     hasHistory: projectedMessages.length > 0,
     administrator,
     participantName,
+  });
+  const meetingControlInstructions = buildMeetingControlInstructions({
+    participantAgentId: input.participantAgentId,
+    participantName,
+    multiParticipantMode,
   });
   const adminLabel = administrator.name || administrator.agentId || "Unassigned";
   const roleLabel = input.participantRole === "administrator" ? "administrator" : "participant";
@@ -201,6 +234,7 @@ export function buildCliMeetingPrompt(input: BuildCliMeetingPromptInput): CliMee
     "Visible thread history follows. The synthetic system prompt, if present, is included as seq 0. If any content is marked as hidden, do not speculate about the hidden parts.",
     formatHistory(projectedMessages),
     `Current instruction:\n${initialInstruction}`,
+    meetingControlInstructions,
     "Write only the message content that AgentChatBus should post to the thread on your behalf. Do not emit JSON wrappers, XML tags, terminal commentary, or tool-call narration.",
     "Machine-readable context:",
     "```json",
@@ -228,6 +262,7 @@ export function buildCliIncrementalPrompt(input: BuildCliIncrementalPromptInput)
 
   const participantName = String(input.participantDisplayName || getAgentDisplayName(participant)).trim();
   const administrator = getThreadAdministratorInfo(input.store, input.threadId);
+  const multiParticipantMode = input.store.getThreadAgents(input.threadId).length > 1;
   const targetSeq = Number.isFinite(Number(input.targetSeq))
     ? Number(input.targetSeq)
     : input.store.getThreadCurrentSeq(input.threadId);
@@ -235,7 +270,8 @@ export function buildCliIncrementalPrompt(input: BuildCliIncrementalPromptInput)
   const projectedMessages = input.store.projectMessagesForAgent(
     input.store
       .getMessages(input.threadId, afterSeq, false)
-      .filter((message) => message.seq <= targetSeq),
+      .filter((message) => message.seq <= targetSeq)
+      .filter((message) => !isPlaceholderRelayMessage(message)),
   );
   const deliveredSeq = projectedMessages.length > 0
     ? projectedMessages[projectedMessages.length - 1]!.seq
@@ -246,23 +282,13 @@ export function buildCliIncrementalPrompt(input: BuildCliIncrementalPromptInput)
     administrator,
     messageCount: projectedMessages.length,
   });
-  const adminLabel = administrator.name || administrator.agentId || "Unassigned";
-  const roleLabel = input.participantRole === "administrator" ? "administrator" : "participant";
-  const machineContext = buildMachineContext({
-    threadId: thread.id,
-    topic: thread.topic,
-    status: thread.status,
-    systemPrompt: thread.system_prompt,
+  const meetingControlInstructions = buildMeetingControlInstructions({
     participantAgentId: input.participantAgentId,
     participantName,
-    participantRole: input.participantRole,
-    administrator,
-    deliveryMode: "incremental",
-    deliveredSeq,
-    history: projectedMessages,
-    initialInstruction,
+    multiParticipantMode,
   });
-
+  const adminLabel = administrator.name || administrator.agentId || "Unassigned";
+  const roleLabel = input.participantRole === "administrator" ? "administrator" : "participant";
   const prompt = [
     `You are continuing participation in the AgentChatBus thread "${thread.topic}".`,
     `Thread ID: ${thread.id}`,
@@ -271,14 +297,13 @@ export function buildCliIncrementalPrompt(input: BuildCliIncrementalPromptInput)
     `Your current role: ${roleLabel}`,
     `Current administrator: ${adminLabel}`,
     `This is an incremental delivery of messages with seq > ${afterSeq} and <= ${targetSeq}.`,
-    "Only the newly delivered visible messages are shown below. Do not repeat your earlier introduction unless the new messages require it.",
+    "Only the newly delivered visible messages are shown below.",
+    "Respond only to the newly delivered context. Do not repeat your earlier introduction or restate old context unless the new messages require it.",
     formatHistory(projectedMessages),
     `Current instruction:\n${initialInstruction}`,
-    "Write only the message content that AgentChatBus should post to the thread on your behalf. Do not emit JSON wrappers, XML tags, terminal commentary, or tool-call narration.",
-    "Machine-readable context:",
-    "```json",
-    machineContext,
-    "```",
+    meetingControlInstructions,
+    "Write only the message content that AgentChatBus should post to the thread on your behalf.",
+    "Do not emit JSON wrappers, XML tags, terminal commentary, tool-call narration, or repeated summaries of older messages.",
   ].filter(Boolean).join("\n\n");
 
   return {

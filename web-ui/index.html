@@ -10,7 +10,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet" />
-  <link rel="stylesheet" href="/static/css/main.css?v=15" />
+  <link rel="stylesheet" href="/static/css/main.css?v=16" />
   <link rel="stylesheet" href="/static/vendor/xterm/css/xterm.css" />
 </head>
 
@@ -172,7 +172,7 @@
   <script src="/static/js/shared-sse.js?v=3"></script>
   <script src="/static/vendor/xterm/lib/xterm.js"></script>
   <script src="/static/vendor/xterm-addon-fit/lib/addon-fit.js"></script>
-  <script src="/static/js/shared-cli-sessions.js?v=7"></script>
+  <script src="/static/js/shared-cli-sessions.js?v=8"></script>
   <script src="/static/js/shared-modals.js?v=10"></script>
   <script src="/static/js/components/acb-modal-shell.js?v=8"></script>
   <script src="/static/js/components/acb-empty-state.js?v=2"></script>
@@ -191,7 +191,7 @@
   <script src="/static/js/shared-agent-status.js?v=2"></script>
   <script src="/static/js/components/acb-agent-status-item.js?v=2"></script>
   <script src="/static/js/shared-agents.js?v=3"></script>
-  <script src="/static/js/shared-chat.js?v=3"></script>
+  <script src="/static/js/shared-chat.js?v=4"></script>
   <script src="/static/js/shared-nav-sidebar.js?v=1"></script>
   <script src="/static/js/shared-tooltip.js?v=2"></script>
   <script src="/static/js/components/acb-confirm-dialog.js?v=2"></script>
@@ -1544,6 +1544,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       row.setAttribute('data-author-id', String(m.author_id ?? authorLabel));
       row.setAttribute('data-seq', String(m.seq));
       row.setAttribute('data-msg-id', String(m.id ?? ''));
+      row.setAttribute('data-is-human', isHuman ? '1' : '0');
 
       // Check if this message has mentions (look in metadata if string/object)
       let metaObj = parseMessageMetadata(m.metadata);
@@ -1684,6 +1685,9 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       }
 
       box.appendChild(row);
+      if (isHuman && window.AcbChat?.refreshHumanDeliveryIndicators) {
+        window.AcbChat.refreshHumanDeliveryIndicators(window.currentThreadId || null);
+      }
       if (window.AcbNavSidebar) window.AcbNavSidebar.onNewMessage();
 
       // UI-07: collapse system prompt on first real message

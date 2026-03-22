@@ -6,10 +6,13 @@ const {
   BUNDLED_RUNTIME_RESOLVED_BY,
   MIN_HOST_NODE_VERSION,
   buildBundledLaunchSpec,
+  buildWorkspaceDevLaunchSpec,
+  classifyDetectedStartupMode,
   classifyExternalStartupMode,
   ensureSupportedHostNodeVersion,
   extractOwnershipAssignable,
   normalizeHealthString,
+  WORKSPACE_DEV_RUNTIME_RESOLVED_BY,
 } = require('../out/logic/testExports');
 
 test('normalizeHealthString trims strings and rejects non-string or empty values', () => {
@@ -35,6 +38,25 @@ test('classifyExternalStartupMode maps ownership management into startup modes',
     'external-service-manual',
   );
   assert.equal(classifyExternalStartupMode({}), 'external-service-unknown');
+});
+
+test('classifyDetectedStartupMode preserves explicit startup_mode values', () => {
+  assert.equal(
+    classifyDetectedStartupMode({ startup_mode: 'workspace-dev-service' }),
+    'workspace-dev-service',
+  );
+  assert.equal(
+    classifyDetectedStartupMode({ startup_mode: 'bundled-ts-service' }),
+    'bundled-ts-service',
+  );
+  assert.equal(
+    classifyDetectedStartupMode({ startup_mode: 'external-service-manual' }),
+    'external-service-manual',
+  );
+  assert.equal(
+    classifyDetectedStartupMode({ management: { ownership_assignable: true } }),
+    'external-service-extension-managed',
+  );
 });
 
 test('ensureSupportedHostNodeVersion enforces bundled runtime minimums', () => {
@@ -84,4 +106,43 @@ test('buildBundledLaunchSpec wires bundled runtime paths and server env', () => 
   assert.equal(spec.env.AGENTCHATBUS_CLI_WORKSPACE, 'C:\\Users\\me\\src\\project-a');
   assert.equal(spec.env.AGENTCHATBUS_WAIT_MIN_TIMEOUT_MS, '45000');
   assert.equal(spec.env.AGENTCHATBUS_ENFORCE_MSG_WAIT_MIN_TIMEOUT, '1');
+});
+
+test('buildWorkspaceDevLaunchSpec wires local tsx watcher and dev env', () => {
+  const spec = buildWorkspaceDevLaunchSpec({
+    tsxCliEntrypoint: 'C:\\repo\\agentchatbus-ts\\node_modules\\tsx\\dist\\cli.mjs',
+    tsServerRoot: 'C:\\repo\\agentchatbus-ts',
+    webUiDir: 'C:\\repo\\web-ui',
+    globalStoragePath: 'C:\\Users\\me\\AppData\\Roaming\\Code\\AgentChatBus',
+    hostNodeExecutable: 'C:\\Program Files\\Microsoft VS Code\\Code.exe-node',
+    serverUrl: 'http://127.0.0.1:39766',
+    cliWorkspacePath: 'C:\\repo',
+    msgWaitMinTimeoutMs: 1500,
+    enforceMsgWaitMinTimeout: false,
+    processEnv: { PATH: 'C:\\Windows\\System32' },
+  });
+
+  assert.equal(spec.command, 'C:\\Program Files\\Microsoft VS Code\\Code.exe-node');
+  assert.deepEqual(spec.args, [
+    'C:\\repo\\agentchatbus-ts\\node_modules\\tsx\\dist\\cli.mjs',
+    'watch',
+    'src/cli/index.ts',
+    'serve',
+  ]);
+  assert.equal(spec.cwd, 'C:\\repo\\agentchatbus-ts');
+  assert.equal(spec.launchMode, 'workspace-dev-service');
+  assert.equal(spec.resolvedBy, WORKSPACE_DEV_RUNTIME_RESOLVED_BY);
+  assert.equal(spec.env.PATH, 'C:\\Windows\\System32');
+  assert.equal(spec.env.AGENTCHATBUS_HOST, '127.0.0.1');
+  assert.equal(spec.env.AGENTCHATBUS_PORT, '39766');
+  assert.equal(spec.env.AGENTCHATBUS_WEB_UI_DIR, 'C:\\repo\\web-ui');
+  assert.equal(spec.env.AGENTCHATBUS_CLI_WORKSPACE, 'C:\\repo');
+  assert.equal(spec.env.AGENTCHATBUS_WAIT_MIN_TIMEOUT_MS, '1500');
+  assert.equal(spec.env.AGENTCHATBUS_ENFORCE_MSG_WAIT_MIN_TIMEOUT, '0');
+  assert.equal(spec.env.AGENTCHATBUS_RELOAD, '1');
+  assert.equal(spec.env.AGENTCHATBUS_WORKSPACE_DEV, '1');
+  assert.equal(
+    spec.env.AGENTCHATBUS_DB,
+    path.join('C:\\Users\\me\\AppData\\Roaming\\Code\\AgentChatBus', 'bus-ts.db'),
+  );
 });

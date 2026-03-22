@@ -13,8 +13,72 @@ import type { MemoryStore } from "./memoryStore.js";
 const PARTICIPANT_HEARTBEAT_INTERVAL_MS = 10_000;
 const ONLINE_SESSION_STATES = new Set(["created", "starting", "running"]);
 const RELAY_BLOCKED_STATES = new Set(["stale", "error"]);
-const INTERACTIVE_PLACEHOLDER_REPLY = "Thinking...";
 const DELIVERY_BUSY_REPLY_STATES = new Set(["waiting_for_reply", "working", "streaming"]);
+const MEETING_CONTROL_MARKER = "agentchatbus_meeting_control";
+
+function normalizeScreenText(value: string | undefined): string {
+  return String(value || "")
+    .replace(/\r/g, "\n")
+    .replace(/\u00a0/g, " ")
+    .toLowerCase();
+}
+
+function hasCodexPromptInScreen(screenExcerpt: string | undefined): boolean {
+  const lines = String(screenExcerpt || "")
+    .split("\n")
+    .map((line) => line.trim());
+  return lines.some((line) => /^(>|›)\s+/.test(line) || line === ">" || line === "›");
+}
+
+function looksLikeCodexIdleScreen(screenExcerpt: string | undefined): boolean {
+  const normalized = normalizeScreenText(screenExcerpt);
+  if (!normalized) {
+    return false;
+  }
+  if (normalized.includes("working") && normalized.includes("esc to interrupt")) {
+    return false;
+  }
+  if (normalized.includes("use /skills to list available skills")) {
+    return true;
+  }
+  return hasCodexPromptInScreen(screenExcerpt);
+}
+
+function extractInteractiveWorkingStatus(screenExcerpt: string | undefined): string | undefined {
+  const lines = String(screenExcerpt || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  for (const line of lines) {
+    const match = /^working\s*\((\d+s)(?:\s*[•·]\s*esc to interrupt)?\)$/i.exec(line);
+    if (match?.[1]) {
+      return `Working... (${match[1]})`;
+    }
+    if (/^working\b/i.test(line)) {
+      return "Working...";
+    }
+  }
+  return undefined;
+}
+
+function isInteractivePlaceholderContent(content: string | undefined): boolean {
+  const normalized = String(content || "").trim();
+  return /^Working\.\.\.(?: \(\d+s\))?$/.test(normalized) || normalized === "Thinking...";
+}
+
+type MeetingRoutingState = "online" | "offline";
+
+interface MeetingControlDirective {
+  action: "leave" | "summon";
+  target_agent_id?: string;
+  reason?: string;
+}
+
+interface RelayCandidate {
+  content?: string;
+  control?: MeetingControlDirective;
+  rawReply?: string;
+}
 
 export interface PrepareCliMeetingSessionInput {
   threadId: string;
@@ -60,15 +124,128 @@ function getDesiredRelayContent(session: CliSessionSnapshot): string | undefined
     return reply;
   }
   if (session.mode === "interactive" && ONLINE_SESSION_STATES.has(session.state)) {
-    return INTERACTIVE_PLACEHOLDER_REPLY;
+    return extractInteractiveWorkingStatus(session.screen_excerpt) || "Working...";
   }
   return undefined;
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function extractJsonCandidate(rawReply: string): string | undefined {
+  const source = String(rawReply || "");
+  const markerIndex = source.indexOf(MEETING_CONTROL_MARKER);
+  if (markerIndex < 0) {
+    return undefined;
+  }
+
+  let start = markerIndex;
+  while (start >= 0 && source[start] !== "{") {
+    start -= 1;
+  }
+  if (start < 0) {
+    return undefined;
+  }
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index] || "";
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (char === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === "\"") {
+      inString = true;
+      continue;
+    }
+    if (char === "{") {
+      depth += 1;
+      continue;
+    }
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(start, index + 1);
+      }
+    }
+  }
+  return undefined;
+}
+
+function parseMeetingControlDirective(rawReply: string): {
+  content?: string;
+  control?: MeetingControlDirective;
+} {
+  const normalizedReply = String(rawReply || "").trim();
+  if (!normalizedReply || !normalizedReply.includes(MEETING_CONTROL_MARKER)) {
+    return {
+      content: normalizedReply || undefined,
+    };
+  }
+
+  const jsonCandidate = extractJsonCandidate(normalizedReply);
+  if (!jsonCandidate) {
+    return {
+      content: normalizedReply || undefined,
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(jsonCandidate) as Record<string, unknown>;
+    const directiveRoot = parsed[MEETING_CONTROL_MARKER];
+    if (!isObjectRecord(directiveRoot)) {
+      return {
+        content: normalizedReply || undefined,
+      };
+    }
+
+    const action = String(directiveRoot.action || "").trim();
+    if (action !== "leave" && action !== "summon") {
+      return {
+        content: normalizedReply || undefined,
+      };
+    }
+
+    const control: MeetingControlDirective = {
+      action,
+      target_agent_id: typeof directiveRoot.target_agent_id === "string"
+        ? directiveRoot.target_agent_id.trim() || undefined
+        : undefined,
+      reason: typeof directiveRoot.reason === "string"
+        ? directiveRoot.reason.trim() || undefined
+        : undefined,
+    };
+    const content = normalizedReply.replace(jsonCandidate, "").trim() || undefined;
+    return { content, control };
+  } catch {
+    return {
+      content: normalizedReply || undefined,
+    };
+  }
+}
+
+function routingKey(threadId: string, participantAgentId: string): string {
+  return `${threadId}::${participantAgentId}`;
 }
 
 export class CliMeetingOrchestrator {
   private readonly inFlightRelaySyncs = new Set<string>();
   private readonly pendingRelayResyncs = new Set<string>();
   private readonly pendingDeliverySeqBySession = new Map<string, number>();
+  private readonly participantRoutingStates = new Map<string, MeetingRoutingState>();
   private readonly heartbeatTimers = new Map<string, NodeJS.Timeout>();
   private readonly unsubscribe: () => void;
 
@@ -110,6 +287,8 @@ export class CliMeetingOrchestrator {
       administrator = getThreadAdministratorInfo(this.store, input.threadId);
       participantRole = "administrator";
     }
+
+    this.setParticipantRoutingState(input.threadId, input.participantAgentId, "online");
 
     const deliveryMode: CliMeetingDeliveryMode = hasParticipantPosted(
       this.store,
@@ -184,7 +363,7 @@ export class CliMeetingOrchestrator {
       ? payload.metadata
       : null;
     const isInteractivePlaceholder =
-      String(payload?.content || "").trim() === INTERACTIVE_PLACEHOLDER_REPLY
+      isInteractivePlaceholderContent(String(payload?.content || ""))
       && String(metadata?.cli_relay_mode || "") === "participant_session";
     if (isInteractivePlaceholder) {
       return;
@@ -264,6 +443,17 @@ export class CliMeetingOrchestrator {
     if (!ONLINE_SESSION_STATES.has(session.state)) {
       return "unavailable";
     }
+    if (session.mode === "interactive" && looksLikeCodexIdleScreen(session.screen_excerpt)) {
+      return "idle";
+    }
+    if (
+      session.mode === "interactive"
+      && ["completed", "timeout", "error"].includes(String(session.reply_capture_state || ""))
+      && !looksLikeCodexIdleScreen(session.screen_excerpt)
+      && !String(session.screen_excerpt || "").trim()
+    ) {
+      return "idle";
+    }
     if (String(session.automation_state || "") === "codex_working") {
       return "busy";
     }
@@ -282,6 +472,90 @@ export class CliMeetingOrchestrator {
     return "unavailable";
   }
 
+  private isMultiParticipantThread(threadId: string): boolean {
+    const participantIds = new Set(
+      this.cliSessionManager
+        .listSessionsForThread(threadId)
+        .map((session) => String(session.participant_agent_id || "").trim())
+        .filter(Boolean),
+    );
+    if (participantIds.size > 1) {
+      return true;
+    }
+    return this.store.getThreadAgents(threadId).length > 1;
+  }
+
+  private getParticipantRoutingState(threadId: string, participantAgentId: string): MeetingRoutingState {
+    return this.participantRoutingStates.get(routingKey(threadId, participantAgentId)) || "online";
+  }
+
+  private setParticipantRoutingState(
+    threadId: string,
+    participantAgentId: string,
+    state: MeetingRoutingState,
+  ): void {
+    this.participantRoutingStates.set(routingKey(threadId, participantAgentId), state);
+  }
+
+  private getRelayCandidate(session: CliSessionSnapshot): RelayCandidate | undefined {
+    const desiredContent = getDesiredRelayContent(session);
+    if (!desiredContent) {
+      return undefined;
+    }
+    if (isInteractivePlaceholderContent(desiredContent)) {
+      return { content: desiredContent };
+    }
+    const parsed = parseMeetingControlDirective(desiredContent);
+    return {
+      content: parsed.content,
+      control: parsed.control,
+      rawReply: desiredContent,
+    };
+  }
+
+  private async applyMeetingControl(
+    session: CliSessionSnapshot,
+    control: MeetingControlDirective | undefined,
+  ): Promise<void> {
+    if (!control || !session.participant_agent_id) {
+      return;
+    }
+    if (!this.isMultiParticipantThread(session.thread_id)) {
+      return;
+    }
+
+    if (control.action === "leave") {
+      this.setParticipantRoutingState(session.thread_id, session.participant_agent_id, "offline");
+      logInfo(
+        `[cli-meeting] participant ${session.participant_agent_id} left automatic routing in thread ${session.thread_id}`,
+      );
+      return;
+    }
+
+    const targetAgentId = String(control.target_agent_id || "").trim();
+    if (!targetAgentId || targetAgentId === session.participant_agent_id) {
+      return;
+    }
+    if (!this.store.getAgent(targetAgentId)) {
+      return;
+    }
+    if (this.getParticipantRoutingState(session.thread_id, targetAgentId) === "online") {
+      return;
+    }
+
+    this.setParticipantRoutingState(session.thread_id, targetAgentId, "online");
+    logInfo(
+      `[cli-meeting] participant ${session.participant_agent_id} summoned ${targetAgentId} in thread ${session.thread_id}`,
+    );
+
+    const targetSession = this.cliSessionManager
+      .listSessionsForThread(session.thread_id)
+      .find((candidate) => candidate.participant_agent_id === targetAgentId);
+    if (targetSession) {
+      await this.maybeDeliverIncrementalContext(targetSession);
+    }
+  }
+
   private async maybeDeliverIncrementalContext(
     session: CliSessionSnapshot,
     requestedTargetSeq?: number,
@@ -290,6 +564,12 @@ export class CliMeetingOrchestrator {
       return;
     }
     if (session.mode !== "interactive") {
+      return;
+    }
+    if (
+      this.isMultiParticipantThread(session.thread_id)
+      && this.getParticipantRoutingState(session.thread_id, session.participant_agent_id) !== "online"
+    ) {
       return;
     }
     const deliveredSeq = Number(session.last_delivered_seq) || 0;
@@ -389,10 +669,11 @@ export class CliMeetingOrchestrator {
       return;
     }
 
-    const desiredContent = getDesiredRelayContent(session);
-    if (!desiredContent) {
+    const relayCandidate = this.getRelayCandidate(session);
+    if (!relayCandidate?.content && !relayCandidate?.control) {
       return;
     }
+    const desiredContent = relayCandidate.content;
 
     if (!session.last_posted_message_id) {
       const latestSeq = this.store.getThreadCurrentSeq(session.thread_id);
@@ -402,7 +683,7 @@ export class CliMeetingOrchestrator {
       const shouldBlockFirstRelayAsStale =
         deliveredSeq !== undefined
         && latestSeq > deliveredSeq
-        && (session.mode === "headless" || desiredContent !== INTERACTIVE_PLACEHOLDER_REPLY);
+        && (session.mode === "headless" || !isInteractivePlaceholderContent(desiredContent));
       if (shouldBlockFirstRelayAsStale) {
         this.cliSessionManager.updateMeetingState(session.id, {
           meeting_post_state: "stale",
@@ -411,6 +692,16 @@ export class CliMeetingOrchestrator {
         });
         return;
       }
+    }
+
+    if (!desiredContent) {
+      await this.applyMeetingControl(session, relayCandidate.control);
+      this.cliSessionManager.updateMeetingState(session.id, {
+        meeting_post_state: "posted",
+        meeting_post_error: "",
+        last_acknowledged_seq: Number(session.last_delivered_seq) || 0,
+      });
+      return;
     }
 
     if (session.last_posted_message_id) {
@@ -454,6 +745,7 @@ export class CliMeetingOrchestrator {
         last_posted_seq: existingMessage.seq,
         last_posted_message_id: existingMessage.id,
       });
+      await this.applyMeetingControl(session, relayCandidate.control);
       logInfo(
         `[cli-meeting] updated relayed message ${existingMessage.id} for session ${session.id}`,
       );
@@ -492,6 +784,7 @@ export class CliMeetingOrchestrator {
       last_posted_seq: message.seq,
       last_posted_message_id: message.id,
     });
+    await this.applyMeetingControl(session, relayCandidate.control);
     logInfo(
       `[cli-meeting] created relayed message ${message.id} seq=${message.seq} for session ${session.id}`,
     );

@@ -191,6 +191,41 @@
       .sort(compareSessionsForDisplay);
   }
 
+  function getParticipantSessionsForThread(threadId) {
+    return getSessionsForThread(threadId)
+      .filter((session) => Boolean(session?.participant_agent_id));
+  }
+
+  function getDeliverySummaryForSeq(seq, threadId = getActiveThreadId()) {
+    const normalizedSeq = Number(seq);
+    if (!threadId || !Number.isFinite(normalizedSeq) || normalizedSeq <= 0) {
+      return null;
+    }
+
+    const sessions = getParticipantSessionsForThread(threadId)
+      .filter((session) => isActiveSession(session));
+    if (!sessions.length) {
+      return null;
+    }
+
+    const delivered = [];
+    const waiting = [];
+    for (const session of sessions) {
+      const label = sessionDisplayName(session);
+      if ((Number(session?.last_delivered_seq) || 0) >= normalizedSeq) {
+        delivered.push(label);
+      } else {
+        waiting.push(label);
+      }
+    }
+
+    return {
+      participantCount: sessions.length,
+      delivered,
+      waiting,
+    };
+  }
+
   function choosePreferredSession(sessions) {
     return [...sessions].sort(compareSessionsForPreference)[0] || null;
   }
@@ -744,6 +779,9 @@
     }
 
     teardownTerminal();
+    if (window.AcbChat?.refreshHumanDeliveryIndicators) {
+      window.AcbChat.refreshHumanDeliveryIndicators(getActiveThreadId());
+    }
   }
 
   function renderThread(threadId = getActiveThreadId()) {
@@ -782,6 +820,9 @@
 
     const reuseInteractive = canReuseInteractiveSelection(panelEl, selectedSession);
     renderSessionDetail(panelEl, selectedSession, { reuseInteractive });
+    if (window.AcbChat?.refreshHumanDeliveryIndicators) {
+      window.AcbChat.refreshHumanDeliveryIndicators(threadId);
+    }
   }
 
   async function refreshThread(threadId, api) {
@@ -959,6 +1000,7 @@
     refreshThread,
     renderThread,
     handleSseEvent,
+    getDeliverySummaryForSeq,
     selectSession,
     selectSessionFromElement,
     startCodexInteractive: () => startCodexInteractive(window.AcbApi.api),

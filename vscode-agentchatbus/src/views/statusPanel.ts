@@ -161,7 +161,8 @@ export class StatusPanel {
             <div><span class="label">App Dir:</span> <span class="value">${appDir}</span></div>
             <div><span class="label">DB Path:</span> <span class="value">${dbPath}</span></div>
             <div class="mode-help">
-                <div><span class="label">Supported Modes:</span> <span class="value">4</span></div>
+                <div><span class="label">Supported Modes:</span> <span class="value">5</span></div>
+                <div class="mode-help-item">🛠️ <code>workspace-dev-service</code>: Extension launches local workspace agentchatbus-ts with local web-ui sources and dev auto-reload.</div>
                 <div class="mode-help-item">✅ <code>bundled-ts-service</code>: Extension launches bundled agentchatbus-ts (managed by VS Code extension).</div>
                 <div class="mode-help-item">🧩 <code>external-service-extension-managed</code>: External backend detected, ownership is assignable (typically started by an extension-managed bootstrap).</div>
                 <div class="mode-help-item">👤 <code>external-service-manual</code>: External backend detected, ownership is not assignable (typically started manually by command).</div>
@@ -253,6 +254,14 @@ export class StatusPanel {
         managedBy: string;
     } {
         const mode = String(startupMode || '').trim().toLowerCase();
+        if (mode === 'workspace-dev-service') {
+            return {
+                label: 'workspace-dev-service',
+                description: 'Launched directly from the current AgentChatBus workspace using local agentchatbus-ts and local web-ui sources.',
+                icon: '🛠️',
+                managedBy: '🧪 This extension (workspace-dev runtime)',
+            };
+        }
         if (mode === 'bundled-ts-service') {
             return {
                 label: 'bundled-ts-service',
@@ -295,7 +304,7 @@ export class StatusPanel {
         }
         return {
             label: mode || 'N/A',
-            description: 'Unknown mode. Extension currently documents bundled-ts-service and the 3 external-service variants.',
+            description: 'Unknown mode. Extension currently documents workspace-dev-service, bundled-ts-service, and the external-service variants.',
             icon: '🔎',
             managedBy: '❔ Unknown',
         };
@@ -307,6 +316,7 @@ export class StatusPanel {
         if (normalizedEngine === 'python') return 'Python';
 
         const mode = String(startupMode || '').trim().toLowerCase();
+        if (mode === 'workspace-dev-service') return 'Node.js';
         if (mode === 'bundled-ts-service') return 'Node.js';
         return 'Unknown';
     }

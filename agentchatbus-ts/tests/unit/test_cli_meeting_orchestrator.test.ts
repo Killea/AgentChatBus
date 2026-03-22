@@ -51,6 +51,7 @@ class FakeCliSessionManager {
         | "participant_role"
         | "context_delivery_mode"
         | "last_delivered_seq"
+        | "last_acknowledged_seq"
         | "last_posted_seq"
         | "meeting_post_state"
         | "meeting_post_error"
@@ -219,6 +220,44 @@ describe("CliMeetingOrchestrator", () => {
     }
   });
 
+  it("adds meeting control instructions when multiple participants are present", () => {
+    const store = new MemoryStore(":memory:");
+    const owner = store.registerAgent({ ide: "browser", model: "human-owner", display_name: "Human Owner" });
+    const participantA = store.registerAgent({
+      ide: "Codex",
+      model: "Interactive CLI",
+      display_name: "Codex Alpha",
+    });
+    const participantB = store.registerAgent({
+      ide: "Codex",
+      model: "Interactive CLI",
+      display_name: "Codex Beta",
+    });
+    const { thread } = store.createThread("meeting-control-thread", undefined, undefined, {
+      creatorAdminId: owner.id,
+      creatorAdminName: owner.display_name || owner.name,
+    });
+    store.addThreadParticipant(thread.id, participantA.id);
+    store.addThreadParticipant(thread.id, participantB.id);
+
+    const manager = new FakeCliSessionManager();
+    const orchestrator = new CliMeetingOrchestrator(store, manager as unknown as any);
+
+    try {
+      const prepared = orchestrator.prepareSession({
+        threadId: thread.id,
+        participantAgentId: participantA.id,
+        participantDisplayName: "Codex Alpha",
+      });
+
+      expect(prepared.prompt).toContain("agentchatbus_meeting_control");
+      expect(prepared.prompt).toContain('"action":"leave"');
+      expect(prepared.prompt).toContain('"action":"summon"');
+    } finally {
+      orchestrator.close();
+    }
+  });
+
   it("relays a completed participant reply back into the canonical thread", async () => {
     const store = new MemoryStore(":memory:");
     const owner = store.registerAgent({ ide: "browser", model: "human-owner" });
@@ -308,7 +347,7 @@ describe("CliMeetingOrchestrator", () => {
       await waitFor(() => manager.sessions.get(session.id)?.last_posted_message_id !== undefined);
       const placeholderMessageId = manager.sessions.get(session.id)?.last_posted_message_id;
       const placeholderMessage = placeholderMessageId ? store.getMessage(placeholderMessageId) : undefined;
-      expect(placeholderMessage?.content).toBe("Thinking...");
+      expect(placeholderMessage?.content).toBe("Working...");
 
       const streamingSession = manager.sessions.get(session.id);
       if (!streamingSession) {
@@ -550,6 +589,61 @@ describe("CliMeetingOrchestrator", () => {
     }
   });
 
+  it("treats a Codex session with a visible idle prompt as idle even if automation_state still says codex_working", async () => {
+    const store = new MemoryStore(":memory:");
+    const owner = store.registerAgent({ ide: "browser", model: "human-owner", display_name: "Human Owner" });
+    const participant = store.registerAgent({
+      ide: "Codex",
+      model: "Interactive CLI",
+      display_name: "Codex Worker",
+    });
+    const { thread } = store.createThread("idle-screen-overrides-stale-work-state", undefined, undefined, {
+      creatorAdminId: owner.id,
+      creatorAdminName: owner.display_name || owner.name,
+    });
+    store.addThreadParticipant(thread.id, participant.id);
+
+    const manager = new FakeCliSessionManager();
+    const orchestrator = new CliMeetingOrchestrator(store, manager as unknown as any);
+    const session = buildSessionSnapshot({
+      thread_id: thread.id,
+      participant_agent_id: participant.id,
+      participant_display_name: "Codex Worker",
+      participant_role: "participant",
+      state: "running",
+      mode: "interactive",
+      context_delivery_mode: "join",
+      last_delivered_seq: 0,
+      last_acknowledged_seq: 0,
+      reply_capture_state: "completed",
+      reply_capture_excerpt: "Previous reply finished.",
+      meeting_post_state: "posted",
+      automation_state: "codex_working",
+      screen_excerpt:
+        "Codex Worker finished the previous reply.\n\n› Use /skills to list available skills\n\n  gpt-5.4 high · 97% left · ~\\Documents\\AgentChatBus",
+    });
+    manager.sessions.set(session.id, session);
+
+    try {
+      const humanSync = store.issueSyncContext(thread.id, owner.id, "test-human");
+      const message = store.postMessage({
+        threadId: thread.id,
+        author: owner.id,
+        role: "user",
+        content: "A fresh request arrived after you became idle.",
+        expectedLastSeq: humanSync.current_seq,
+        replyToken: humanSync.reply_token,
+      });
+
+      await waitFor(() => manager.deliveredPrompts.length === 1);
+      expect(manager.deliveredPrompts[0]?.sessionId).toBe(session.id);
+      expect(manager.deliveredPrompts[0]?.deliveredSeq).toBe(message.seq);
+      expect(manager.deliveredPrompts[0]?.prompt).toContain("A fresh request arrived after you became idle.");
+    } finally {
+      orchestrator.close();
+    }
+  });
+
   it("delivers the same human message to every other idle interactive participant in the thread", async () => {
     const store = new MemoryStore(":memory:");
     const owner = store.registerAgent({ ide: "browser", model: "human-owner", display_name: "Human Owner" });
@@ -628,6 +722,117 @@ describe("CliMeetingOrchestrator", () => {
         manager.deliveredPrompts.every((entry) =>
           entry.prompt.includes("Both of you please react to this new requirement.")),
       ).toBe(true);
+    } finally {
+      orchestrator.close();
+    }
+  });
+
+  it("keeps a participant offline after leave control until another participant summons it", async () => {
+    const store = new MemoryStore(":memory:");
+    const owner = store.registerAgent({ ide: "browser", model: "human-owner", display_name: "Human Owner" });
+    const participantA = store.registerAgent({
+      ide: "Codex",
+      model: "Interactive CLI",
+      display_name: "Codex Alpha",
+    });
+    const participantB = store.registerAgent({
+      ide: "Codex",
+      model: "Interactive CLI",
+      display_name: "Codex Beta",
+    });
+    const { thread } = store.createThread("leave-summon-thread", undefined, undefined, {
+      creatorAdminId: owner.id,
+      creatorAdminName: owner.display_name || owner.name,
+    });
+    store.addThreadParticipant(thread.id, participantA.id);
+    store.addThreadParticipant(thread.id, participantB.id);
+
+    const manager = new FakeCliSessionManager();
+    const orchestrator = new CliMeetingOrchestrator(store, manager as unknown as any);
+    const sessionA = buildSessionSnapshot({
+      thread_id: thread.id,
+      participant_agent_id: participantA.id,
+      participant_display_name: "Codex Alpha",
+      participant_role: "participant",
+      state: "running",
+      mode: "interactive",
+      last_delivered_seq: 0,
+      last_acknowledged_seq: 0,
+      reply_capture_state: "completed",
+      reply_capture_excerpt:
+        "I am done for now.\n" +
+        '{"agentchatbus_meeting_control":{"action":"leave","reason":"Waiting unless summoned."}}',
+      meeting_post_state: "pending",
+    });
+    const sessionB = buildSessionSnapshot({
+      thread_id: thread.id,
+      participant_agent_id: participantB.id,
+      participant_display_name: "Codex Beta",
+      participant_role: "participant",
+      state: "running",
+      mode: "interactive",
+      last_delivered_seq: 0,
+      last_acknowledged_seq: 0,
+      reply_capture_state: "completed",
+      reply_capture_excerpt: "Codex Beta ready.",
+      meeting_post_state: "posted",
+    });
+    manager.sessions.set(sessionA.id, sessionA);
+    manager.sessions.set(sessionB.id, sessionB);
+
+    try {
+      eventBus.emit({
+        type: "cli.session.state",
+        payload: {
+          thread_id: thread.id,
+          session_id: sessionA.id,
+          session: { ...sessionA },
+        },
+      });
+
+      await waitFor(() => manager.sessions.get(sessionA.id)?.meeting_post_state === "posted");
+      const firstReply = store.getMessages(thread.id, 0, false)
+        .find((message) => message.author_id === participantA.id);
+      expect(firstReply?.content).toBe("I am done for now.");
+
+      manager.deliveredPrompts.length = 0;
+      const humanSync = store.issueSyncContext(thread.id, owner.id, "test-human");
+      const humanMessage = store.postMessage({
+        threadId: thread.id,
+        author: owner.id,
+        role: "user",
+        content: "New work arrived.",
+        expectedLastSeq: humanSync.current_seq,
+        replyToken: humanSync.reply_token,
+      });
+
+      await waitFor(() => manager.deliveredPrompts.length === 1);
+      expect(manager.deliveredPrompts[0]?.sessionId).toBe(sessionB.id);
+      expect(manager.deliveredPrompts[0]?.deliveredSeq).toBe(humanMessage.seq);
+
+      const summonedSessionB = manager.sessions.get(sessionB.id);
+      if (!summonedSessionB) {
+        throw new Error("Missing Beta session snapshot");
+      }
+      summonedSessionB.reply_capture_state = "completed";
+      summonedSessionB.reply_capture_excerpt =
+        "Bringing Alpha back.\n" +
+        `{"agentchatbus_meeting_control":{"action":"summon","target_agent_id":"${participantA.id}","reason":"Need Alpha again."}}`;
+      summonedSessionB.meeting_post_state = "pending";
+
+      eventBus.emit({
+        type: "cli.session.state",
+        payload: {
+          thread_id: thread.id,
+          session_id: summonedSessionB.id,
+          session: { ...summonedSessionB },
+        },
+      });
+
+      await waitFor(() => manager.deliveredPrompts.length >= 2);
+      const deliveryForA = manager.deliveredPrompts.find((entry) => entry.sessionId === sessionA.id);
+      expect(deliveryForA?.deliveredSeq).toBe(humanMessage.seq);
+      expect(deliveryForA?.prompt).toContain("New work arrived.");
     } finally {
       orchestrator.close();
     }

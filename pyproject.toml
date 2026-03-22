@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentchatbus"
-version = "0.2.22"
+version = "0.2.23"
 description = "Persistent multi-agent communication bus with MCP SSE + stdio transports"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import type { AgentChatBusApiClient } from '../api/client';
 import type { Thread, Message, SendMessagePayload } from '../api/types';
 import {
@@ -13,6 +15,7 @@ export class ChatPanel {
     public static readonly LEGACY_VIEW_TYPE = 'agentChatBusChat';
     public static currentPanel: ChatPanel | undefined;
     private static _extensionPath: string = '';
+    private static _workspaceDevWebUiRoot: string | undefined;
     private readonly _panel: vscode.WebviewPanel;
     private _thread: Thread;
     private readonly _apiClient: AgentChatBusApiClient;
@@ -72,10 +75,36 @@ export class ChatPanel {
         ChatPanel._extensionPath = path;
     }
 
+    public static setWorkspaceDevWebUiRoot(workspaceDevWebUiRoot: string | undefined) {
+        ChatPanel._workspaceDevWebUiRoot = workspaceDevWebUiRoot;
+    }
+
+    public static reloadCurrentPanelForSourceChange() {
+        if (ChatPanel.currentPanel) {
+            ChatPanel.currentPanel._reloadForSourceChange();
+        }
+    }
+
+    private static _getWebviewLocalResourceRoots() {
+        const roots: vscode.Uri[] = [vscode.Uri.file(ChatPanel._extensionPath)];
+        if (ChatPanel._workspaceDevWebUiRoot) {
+            roots.push(vscode.Uri.file(ChatPanel._workspaceDevWebUiRoot));
+        }
+        return roots;
+    }
+
+    private static _escapeHtml(value: string): string {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
     public static reviveRecoveredPanel(panel: vscode.WebviewPanel) {
         panel.title = 'ACB: Chat (Restore)';
         panel.webview.options = getRecoveredChatPanelWebviewOptions(
-            vscode.Uri.file(ChatPanel._extensionPath)
+            ChatPanel._getWebviewLocalResourceRoots()
         );
         panel.webview.html = buildRecoveredChatPanelHtml();
     }
@@ -95,7 +124,7 @@ export class ChatPanel {
                 ChatPanel.VIEW_TYPE,
                 `ACB: ${thread.topic || thread.id.substring(0, 8)}`,
                 column || vscode.ViewColumn.One,
-                getChatPanelWebviewOptions(vscode.Uri.file(ChatPanel._extensionPath))
+                getChatPanelWebviewOptions(ChatPanel._getWebviewLocalResourceRoots())
             );
             console.log('[ACB-ChatPanel] Panel created successfully, setting content...');
             ChatPanel.currentPanel = new ChatPanel(panel, thread, apiClient);
@@ -171,6 +200,11 @@ export class ChatPanel {
 
     private _pushMessage(message: Message) {
         this._panel.webview.postMessage({ command: 'newMessage', message });
+    }
+
+    private _reloadForSourceChange() {
+        this._update();
+        void this._loadInitialMessages();
     }
 
     private async _handleSendMessage(payload: SendMessagePayload | undefined) {
@@ -313,21 +347,36 @@ export class ChatPanel {
 
     private _getHtmlForWebview() {
         const webview = this._panel.webview;
-        
-        // Resource paths
         const extensionUri = vscode.Uri.file(ChatPanel._extensionPath);
-        const rendererScriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'resources', 'web-ui', 'extension', 'media', 'messageRenderer.js'));
-        const rendererStyleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'resources', 'web-ui', 'extension', 'media', 'messageRenderer.css'));
-        const panelScriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'resources', 'web-ui', 'extension', 'media', 'chatPanel.js'));
-        const panelStyleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'resources', 'web-ui', 'extension', 'media', 'chatPanel.css'));
+        const webUiBaseUri = ChatPanel._workspaceDevWebUiRoot
+            ? vscode.Uri.file(ChatPanel._workspaceDevWebUiRoot)
+            : vscode.Uri.joinPath(extensionUri, 'resources', 'web-ui');
+        const rendererScriptUri = webview.asWebviewUri(vscode.Uri.joinPath(webUiBaseUri, 'extension', 'media', 'messageRenderer.js'));
+        const rendererStyleUri = webview.asWebviewUri(vscode.Uri.joinPath(webUiBaseUri, 'extension', 'media', 'messageRenderer.css'));
+        const panelScriptUri = webview.asWebviewUri(vscode.Uri.joinPath(webUiBaseUri, 'extension', 'media', 'chatPanel.js'));
+        const panelStyleUri = webview.asWebviewUri(vscode.Uri.joinPath(webUiBaseUri, 'extension', 'media', 'chatPanel.css'));
         const config = {
             threadId: this._thread.id,
             threadTopic: this._thread.topic || this._thread.id.substring(0, 8),
             threadStatus: this._thread.status,
             baseUrl: this._apiClient.getBaseUrl(),
-            mermaidScriptUrl: webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'resources', 'web-ui', 'extension', 'media', 'mermaid.min.js')).toString(),
+            mermaidScriptUrl: webview.asWebviewUri(vscode.Uri.joinPath(webUiBaseUri, 'extension', 'media', 'mermaid.min.js')).toString(),
             theme: vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ? 'dark' : 'light'
         };
+        if (ChatPanel._workspaceDevWebUiRoot) {
+            const templateHtml = this._buildWorkspaceDevTemplateHtml({
+                templatePath: path.join(ChatPanel._workspaceDevWebUiRoot, 'extension', 'index.html'),
+                rendererScriptUri: rendererScriptUri.toString(),
+                rendererStyleUri: rendererStyleUri.toString(),
+                panelScriptUri: panelScriptUri.toString(),
+                panelStyleUri: panelStyleUri.toString(),
+                mermaidScriptUri: config.mermaidScriptUrl,
+                config,
+            });
+            if (templateHtml) {
+                return templateHtml;
+            }
+        }
         return buildChatPanelHtml(
             {
                 rendererScriptUri: rendererScriptUri.toString(),
@@ -337,5 +386,77 @@ export class ChatPanel {
             },
             config
         );
+    }
+
+    private _buildWorkspaceDevTemplateHtml(input: {
+        templatePath: string;
+        rendererScriptUri: string;
+        rendererStyleUri: string;
+        panelScriptUri: string;
+        panelStyleUri: string;
+        mermaidScriptUri: string;
+        config: {
+            threadId: string;
+            threadTopic: string;
+            threadStatus: string;
+            baseUrl: string;
+            theme: string;
+        };
+    }): string | null {
+        try {
+            let html = fs.readFileSync(input.templatePath, 'utf8');
+            html = html.replace(
+                /<script>\s*\(function configureDebugPanel\(\) \{[\s\S]*?<\/script>/,
+                ''
+            );
+            html = html.replace(
+                /\s*<script src="\/static\/extension\/media\/vscodeBridgeBrowser\.js"><\/script>/,
+                ''
+            );
+            html = html.replace(
+                /href="\/static\/extension\/media\/messageRenderer\.css"/,
+                `href="${input.rendererStyleUri}"`
+            );
+            html = html.replace(
+                /href="\/static\/extension\/media\/chatPanel\.css"/,
+                `href="${input.panelStyleUri}"`
+            );
+            html = html.replace(
+                /src="\/static\/extension\/media\/messageRenderer\.js"/,
+                `src="${input.rendererScriptUri}"`
+            );
+            html = html.replace(
+                /src="\/static\/extension\/media\/chatPanel\.js"/,
+                `src="${input.panelScriptUri}"`
+            );
+            html = html.replace(
+                /data-theme="[^"]*"/,
+                `data-theme="${ChatPanel._escapeHtml(input.config.theme)}"`
+            );
+            html = html.replace(
+                /data-thread-id="[^"]*"/,
+                `data-thread-id="${ChatPanel._escapeHtml(input.config.threadId)}"`
+            );
+            html = html.replace(
+                /data-thread-topic="[^"]*"/,
+                `data-thread-topic="${ChatPanel._escapeHtml(input.config.threadTopic)}"`
+            );
+            html = html.replace(
+                /data-thread-status="[^"]*"/,
+                `data-thread-status="${ChatPanel._escapeHtml(input.config.threadStatus)}"`
+            );
+            html = html.replace(
+                /data-base-url="[^"]*"/,
+                `data-base-url="${ChatPanel._escapeHtml(input.config.baseUrl)}"`
+            );
+            html = html.replace(
+                /data-mermaid-script-url="[^"]*"/,
+                `data-mermaid-script-url="${ChatPanel._escapeHtml(input.mermaidScriptUri)}"`
+            );
+            return html;
+        } catch (error) {
+            console.error('[ACB-ChatPanel] Failed to build workspace-dev template:', error);
+            return null;
+        }
     }
 }

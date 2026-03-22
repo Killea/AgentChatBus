@@ -32,21 +32,21 @@ function escapeText(value: string): string {
 }
 
 export function getChatPanelWebviewOptions(
-    localResourceRoot: unknown
+    localResourceRoots: readonly unknown[]
 ): WebviewOptions & WebviewPanelOptions {
     return {
         enableScripts: true,
         retainContextWhenHidden: true,
-        localResourceRoots: [localResourceRoot as never],
+        localResourceRoots: localResourceRoots as readonly never[],
     };
 }
 
 export function getRecoveredChatPanelWebviewOptions(
-    localResourceRoot: unknown
+    localResourceRoots: readonly unknown[]
 ): WebviewOptions & WebviewPanelOptions {
     return {
         enableScripts: false,
-        localResourceRoots: [localResourceRoot as never],
+        localResourceRoots: localResourceRoots as readonly never[],
     };
 }
 
