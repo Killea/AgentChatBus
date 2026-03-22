@@ -2,7 +2,26 @@
   const MINIMAP_KEY = "acb-minimap-enabled";
 
   function renderUiPreferences() {
+    const identity = window.AcbUiAgent?.getUiIdentity?.() || { display_name: "Browser User", emoji: "" };
     return `
+      <div class="settings-field-container" style="display:flex;flex-direction:column;gap:4px;margin-bottom:16px;">
+        <div style="font-size:13px; font-weight:600; color:var(--text-1); margin-bottom:8px;">Browser User Identity</div>
+        <div class="settings-field" style="margin-bottom:8px;">
+          <label for="setting-ui-display-name">Display Name</label>
+          <input id="setting-ui-display-name" type="text" value="${(identity.display_name || "").replace(/"/g, '&quot;')}" placeholder="Browser User" />
+        </div>
+        <div class="settings-field" style="margin-bottom:8px;">
+          <label for="setting-ui-emoji">Avatar Emoji</label>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <input id="setting-ui-emoji" type="text" value="${(identity.emoji || "").replace(/"/g, '&quot;')}" placeholder="🤖" style="width:80px; text-align:center; font-size:20px;" maxlength="8" />
+            <span id="setting-ui-emoji-preview" style="font-size:28px; line-height:1;">${identity.emoji || "🤖"}</span>
+          </div>
+          <div class="settings-field-description">A single emoji used as your avatar in message rows, badges, and tooltips. Leave blank for the server default.</div>
+        </div>
+        <button class="btn-primary" id="btn-save-ui-identity" style="align-self:flex-start; margin-top:4px;" onclick="window._saveUiIdentity()">Save Identity</button>
+        <div id="ui-identity-message" style="font-size:12px; display:none; margin-top:4px;"></div>
+      </div>
+      <hr style="border:none; border-top:1px solid var(--border); margin:8px 0 12px;" />
       <div class="settings-field-container" style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;">
         <div class="settings-field settings-field-row" style="margin-bottom:0;">
           <span style="font-size:13px;color:var(--text-1);font-weight:500;">Message minimap (Navigation sidebar)</span>
@@ -291,9 +310,51 @@
 
   }
 
+  function bindIdentityInputs() {
+    const emojiInput = document.getElementById("setting-ui-emoji");
+    const preview = document.getElementById("setting-ui-emoji-preview");
+    if (emojiInput && preview && emojiInput.dataset.bound !== "true") {
+      emojiInput.dataset.bound = "true";
+      emojiInput.addEventListener("input", () => {
+        preview.textContent = emojiInput.value.trim() || "🤖";
+      });
+    }
+  }
+
+  window._saveUiIdentity = async function () {
+    const nameInput = document.getElementById("setting-ui-display-name");
+    const emojiInput = document.getElementById("setting-ui-emoji");
+    const msg = document.getElementById("ui-identity-message");
+    if (!nameInput || !emojiInput || !msg) return;
+
+    const displayName = nameInput.value.trim();
+    const emoji = emojiInput.value.trim();
+
+    if (!window.AcbUiAgent?.updateUiAgentIdentity) {
+      msg.textContent = "UI agent module not loaded.";
+      msg.style.color = "var(--red, #f05555)";
+      msg.style.display = "block";
+      return;
+    }
+
+    const result = await window.AcbUiAgent.updateUiAgentIdentity(displayName, emoji);
+    if (result.ok) {
+      msg.textContent = "Identity saved and synced!";
+      msg.style.color = "var(--green)";
+    } else {
+      msg.textContent = result.reason === "no_session"
+        ? "Saved locally. Will apply on next page load."
+        : `Saved locally, but sync failed (${result.reason}).`;
+      msg.style.color = result.reason === "no_session" ? "var(--green)" : "var(--text-3)";
+    }
+    msg.style.display = "block";
+    setTimeout(() => { msg.style.display = "none"; }, 3000);
+  };
+
   window.AcbModalShell = {
     renderUiPreferencesHtml: renderUiPreferences,
     bindMinimapCheckbox,
+    bindIdentityInputs,
     syncMinimapCheckbox,
   };
 

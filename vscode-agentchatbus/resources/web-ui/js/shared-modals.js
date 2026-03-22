@@ -347,6 +347,9 @@
     } else if (window.AcbModalShell?.syncMinimapCheckbox) {
       window.AcbModalShell.syncMinimapCheckbox();
     }
+    if (window.AcbModalShell?.bindIdentityInputs) {
+      window.AcbModalShell.bindIdentityInputs();
+    }
 
     window.switchSettingsTab(activeSectionId);
   }
