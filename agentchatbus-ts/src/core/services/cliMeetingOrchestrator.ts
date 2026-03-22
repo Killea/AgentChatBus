@@ -722,12 +722,9 @@ export class CliMeetingOrchestrator {
 
       const thread = this.store.getThread(session.thread_id);
       const threadName = String(thread?.topic || session.thread_id).trim() || session.thread_id;
-      const result = await this.cliSessionManager.deliverPrompt(
+      const result = await this.cliSessionManager.deliverWakePrompt(
         session.id,
         buildMsgWaitWakePrompt(threadName),
-        {
-          deliveryMode: session.context_delivery_mode || "incremental",
-        },
       );
       if (!result?.ok) {
         this.pendingDeliverySeqBySession.set(session.id, latestSeq);

@@ -1130,6 +1130,59 @@ export class CliSessionManager {
     return { ok: true };
   }
 
+  async deliverWakePrompt(
+    sessionId: string,
+    prompt: string,
+  ): Promise<{ ok: boolean; session?: CliSessionSnapshot; error?: string } | null> {
+    const runtime = this.runtimes.get(sessionId);
+    if (!runtime) {
+      return null;
+    }
+    if (!runtime.snapshot.supports_input || !runtime.controls?.write) {
+      return {
+        ok: false,
+        error: `Session adapter '${runtime.snapshot.adapter}' in mode '${runtime.snapshot.mode}' does not support interactive wake prompts.`,
+      };
+    }
+    if (runtime.snapshot.state !== "running") {
+      return {
+        ok: false,
+        error: `Session '${sessionId}' is not running and cannot receive a wake prompt.`,
+      };
+    }
+
+    const normalizedPrompt = String(prompt || "").trim();
+    if (!normalizedPrompt) {
+      return {
+        ok: false,
+        error: "Wake prompt delivery requires non-empty content.",
+      };
+    }
+
+    runtime.snapshot.prompt = normalizedPrompt;
+    runtime.snapshot.updated_at = nowIso();
+    runtime.controls.write(normalizedPrompt);
+
+    if (runtime.snapshot.adapter === "codex" && runtime.snapshot.mode === "interactive") {
+      this.updateAutomationState(runtime, "meeting_wake_prompt_sent");
+      this.scheduleCodexDeliveryEnter(runtime, 300, "sent_codex_wake_enter");
+    } else if (runtime.snapshot.adapter === "cursor" && runtime.snapshot.mode === "interactive") {
+      this.updateAutomationState(runtime, "meeting_wake_prompt_sent");
+      this.scheduleCursorDelayedEnter(runtime, "sent_cursor_wake_enter", 300);
+    } else if (runtime.snapshot.adapter === "claude" && runtime.snapshot.mode === "interactive") {
+      this.updateAutomationState(runtime, "meeting_wake_prompt_sent");
+      this.scheduleClaudePastedTextEnter(runtime, "sent_claude_wake_enter", 300);
+    } else {
+      runtime.controls.write("\r");
+    }
+
+    this.emitSessionEvent("cli.session.state", runtime);
+    return {
+      ok: true,
+      session: this.cloneSnapshot(runtime.snapshot),
+    };
+  }
+
   async deliverPrompt(
     sessionId: string,
     prompt: string,
@@ -1771,7 +1824,11 @@ export class CliSessionManager {
     }, delayMs);
   }
 
-  private scheduleCodexDeliveryEnter(runtime: CliSessionRuntime, delayMs: number): void {
+  private scheduleCodexDeliveryEnter(
+    runtime: CliSessionRuntime,
+    delayMs: number,
+    nextState?: string,
+  ): void {
     const automation = runtime.automationState;
     if (!automation || automation.profile !== "codex-startup") {
       return;
@@ -1791,6 +1848,9 @@ export class CliSessionManager {
         return;
       }
       runtime.controls.write("\r");
+      if (nextState) {
+        this.updateAutomationState(runtime, nextState);
+      }
       logInfo(
         `[cli-session] ${runtime.snapshot.id} auto-submitted Codex meeting prompt after delayed Enter.`,
       );
