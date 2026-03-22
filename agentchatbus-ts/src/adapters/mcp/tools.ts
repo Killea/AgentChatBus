@@ -261,7 +261,8 @@ const toolDefinitions: ToolDefinition[] = [
             required: ["id", "name"]
           }
         },
-        display_name: { type: "string", description: "Optional human-friendly alias shown in UI and message labels." }
+        display_name: { type: "string", description: "Optional human-friendly alias shown in UI and message labels." },
+        emoji: { type: "string", description: "Optional single emoji for the agent avatar. Must be a valid emoji character. Falls back to a deterministic hash-based emoji when omitted." }
       }
     } 
   },
@@ -269,7 +270,7 @@ const toolDefinitions: ToolDefinition[] = [
   { name: "agent_resume", description: "Resume an agent.", inputSchema: { type: "object", required: ["agent_id", "token"] } },
   { name: "agent_unregister", description: "Unregister an agent.", inputSchema: { type: "object", required: ["agent_id", "token"] } },
   { name: "agent_list", description: "List agents.", inputSchema: { type: "object" } },
-  { name: "agent_update", description: "Update an agent.", inputSchema: { type: "object", required: ["agent_id", "token"] } },
+  { name: "agent_update", description: "Update an agent's profile. Accepts optional display_name, description, capabilities, skills, and emoji.", inputSchema: { type: "object", required: ["agent_id", "token"], properties: { agent_id: { type: "string" }, token: { type: "string" }, display_name: { type: "string" }, description: { type: "string" }, capabilities: { type: "array", items: { type: "string" } }, skills: { type: "array" }, emoji: { type: "string", description: "Single emoji for agent avatar. Must be a valid emoji character." } } } },
   { name: "agent_set_typing", description: "Set typing indicator.", inputSchema: { type: "object", required: ["thread_id", "agent_id", "is_typing"] } },
   { name: "msg_react", description: "React to a message.", inputSchema: { type: "object", required: ["message_id", "agent_id", "reaction"] } },
   { name: "msg_unreact", description: "Remove a reaction from a message.", inputSchema: { type: "object", required: ["message_id", "agent_id", "reaction"] } },
@@ -289,6 +290,7 @@ const toolDefinitions: ToolDefinition[] = [
         description: { type: "string", description: "Optional: agent description for new registration." },
         capabilities: { type: "array", items: { type: "string" }, description: "Optional: capability tags for new registration, e.g. ['code', 'review', 'security']." },
         display_name: { type: "string", description: "Optional: human-friendly alias for new registration." },
+        emoji: { type: "string", description: "Optional: single emoji for agent avatar on new registration. Ignored on resume. Falls back to deterministic hash-based emoji when omitted." },
         skills: { 
           type: "array", 
           description: "Optional: structured skill declarations for new registration (A2A compatible).",
@@ -1247,6 +1249,8 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       const displayName = typeof args.display_name === "string" ? args.display_name : undefined;
       const capabilities = Array.isArray(args.capabilities) ? args.capabilities.map(String) : undefined;
       const skills = Array.isArray(args.skills) ? args.skills : undefined;
+      const { validateEmoji } = await import("../../main.js");
+      const validatedEmoji = typeof args.emoji === "string" ? validateEmoji(args.emoji) : null;
 
       const agent = getStore().registerAgent({
         ide,
@@ -1254,13 +1258,15 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         description,
         display_name: displayName,
         capabilities,
-        skills
+        skills,
+        emoji: validatedEmoji || undefined
       });
       
       return {
         agent_id: agent.id,
         name: agent.name,
         display_name: agent.display_name,
+        emoji: agent.emoji || "🤖",
         alias_source: (agent as any).alias_source || "user",
         token: agent.token,
         capabilities: agent.capabilities || [],
@@ -1329,6 +1335,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
           ide: a.ide,
           model: a.model,
           display_name: a.display_name,
+          emoji: a.emoji || "🤖",
           alias_source: (a as any).alias_source,
           description: a.description,
           is_online: a.is_online,
@@ -1346,12 +1353,15 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       const displayName = typeof args.display_name === "string" ? args.display_name : undefined;
       const capabilities = Array.isArray(args.capabilities) ? args.capabilities.map(String) : undefined;
       const skills = Array.isArray(args.skills) ? args.skills : undefined;
+      const { validateEmoji: validateEmojiUpdate } = await import("../../main.js");
+      const validatedEmoji = typeof args.emoji === "string" ? validateEmojiUpdate(args.emoji) : undefined;
 
       const agent = getStore().updateAgent(agentId, token, {
         description,
         display_name: displayName,
         capabilities,
-        skills
+        skills,
+        emoji: validatedEmoji !== undefined ? (validatedEmoji || undefined) : undefined
       });
 
       if (!agent) {
@@ -1363,6 +1373,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         agent_id: agent.id,
         name: agent.name,
         display_name: agent.display_name,
+        emoji: agent.emoji || "🤖",
         description: agent.description,
         capabilities: agent.capabilities || [],
         skills: agent.skills || [],
@@ -1458,6 +1469,8 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         }
         const capabilities = Array.isArray(args.capabilities) ? args.capabilities.map(String) : undefined;
         const skills = Array.isArray(args.skills) ? args.skills : undefined;
+        const { validateEmoji: validateEmojiBusConnect } = await import("../../main.js");
+        const busConnectEmoji = typeof args.emoji === "string" ? validateEmojiBusConnect(args.emoji) : null;
 
         agent = getStore().registerAgent({
           ide,
@@ -1465,7 +1478,8 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
           description,
           display_name: displayName,
           capabilities,
-          skills
+          skills,
+          emoji: busConnectEmoji || undefined
         });
       }
       setConnectionAgent(agent.id, agent.token as string);

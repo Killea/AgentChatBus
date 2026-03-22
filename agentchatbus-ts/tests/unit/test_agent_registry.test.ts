@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MemoryStore } from '../../src/core/services/memoryStore.js';
-import { generateAgentEmoji } from '../../src/main.js';
+import { generateAgentEmoji, validateEmoji } from '../../src/main.js';
 
 describe('Agent Registry (Ported from test_agent_registry.py)', () => {
   let store: MemoryStore;
@@ -145,5 +145,69 @@ describe('Agent Registry (Ported from test_agent_registry.py)', () => {
     const found = store.listAgents().find((a) => a.id === agent.id);
     expect(found).toBeDefined();
     expect(found?.is_online).toBe(true);
+  });
+
+  it('register with explicit emoji persists it', () => {
+    const agent = store.registerAgent({ ide: 'Cursor', model: 'GPT-4', emoji: '🦊' });
+    expect(agent.emoji).toBe('🦊');
+
+    const retrieved = store.getAgent(agent.id);
+    expect(retrieved?.emoji).toBe('🦊');
+
+    const listed = store.listAgents().find(a => a.id === agent.id);
+    expect(listed?.emoji).toBe('🦊');
+  });
+
+  it('register without emoji falls back to deterministic hash', () => {
+    const agent = store.registerAgent({ ide: 'Cursor', model: 'GPT-4' });
+    const expected = generateAgentEmoji(agent.id);
+    expect(agent.emoji).toBe(expected);
+  });
+
+  it('updateAgent with emoji changes stored emoji', () => {
+    const agent = store.registerAgent({ ide: 'Cursor', model: 'GPT-4' });
+    const originalEmoji = agent.emoji;
+
+    const updated = store.updateAgent(agent.id, agent.token!, { emoji: '🎉' });
+    expect(updated?.emoji).toBe('🎉');
+    expect(updated?.emoji).not.toBe(originalEmoji);
+
+    const retrieved = store.getAgent(agent.id);
+    expect(retrieved?.emoji).toBe('🎉');
+  });
+
+  it('updateAgent without emoji preserves current emoji', () => {
+    const agent = store.registerAgent({ ide: 'Cursor', model: 'GPT-4', emoji: '🦊' });
+    const updated = store.updateAgent(agent.id, agent.token!, { display_name: 'Fox Agent' });
+    expect(updated?.emoji).toBe('🦊');
+  });
+});
+
+describe('validateEmoji', () => {
+  it('accepts single emoji', () => {
+    expect(validateEmoji('🦊')).toBe('🦊');
+    expect(validateEmoji('🤖')).toBe('🤖');
+    expect(validateEmoji('⚡')).toBe('⚡');
+  });
+
+  it('rejects plain text', () => {
+    expect(validateEmoji('hello')).toBeNull();
+    expect(validateEmoji('abc123')).toBeNull();
+  });
+
+  it('rejects empty and whitespace', () => {
+    expect(validateEmoji('')).toBeNull();
+    expect(validateEmoji('   ')).toBeNull();
+    expect(validateEmoji(null)).toBeNull();
+    expect(validateEmoji(undefined)).toBeNull();
+  });
+
+  it('trims whitespace around valid emoji', () => {
+    expect(validateEmoji('  🦊  ')).toBe('🦊');
+  });
+
+  it('rejects non-string types', () => {
+    expect(validateEmoji(42)).toBeNull();
+    expect(validateEmoji(true)).toBeNull();
   });
 });
