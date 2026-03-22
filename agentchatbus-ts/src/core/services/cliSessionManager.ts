@@ -11,7 +11,7 @@ import { logError, logInfo } from "../../shared/logger.js";
 type HeadlessTerminalInstance = import("@xterm/headless").Terminal;
 const { Terminal: HeadlessTerminal } = xtermHeadless;
 
-export type CliSessionAdapterId = "cursor" | "codex";
+export type CliSessionAdapterId = "cursor" | "codex" | "claude";
 export type CliSessionMode = "headless" | "interactive";
 export type CliSessionState =
   | "created"
@@ -148,6 +148,7 @@ type CliSessionAutomationRuntime = {
   initialPromptTextSent: boolean;
   initialPromptEnterSent: boolean;
   initialPromptEnterRetried: boolean;
+  deliveryPromptEnterRetried: boolean;
   manualOverride: boolean;
   sawReadyScreen: boolean;
   sawWorkingScreen: boolean;
@@ -237,7 +238,8 @@ interface CursorCommandExecutor {
 
 const DEFAULT_TERMINAL_COLS = 120;
 const DEFAULT_TERMINAL_ROWS = 32;
-const INITIAL_CODEX_REPLY_TIMEOUT_MS = 20000;
+const INITIAL_CODEX_REPLY_TIMEOUT_MS = 1800000; // 30 minutes
+const MEETING_CODEX_REPLY_TIMEOUT_MS = 1800000; // 30 minutes
 const CODEX_REPLY_FINALIZE_DEBOUNCE_MS = 900;
 const WINDOWS_POWERSHELL =
   `${process.env.SystemRoot || "C:\\Windows"}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
@@ -344,6 +346,32 @@ function buildHeadlessScreenSummary(screen: CliSessionScreenSnapshot): string | 
   return clipText(trimmed, 1200);
 }
 
+function looksLikeClaudeIdleScreen(screenExcerpt: string | undefined): boolean {
+  const normalized = normalizeScreenMatchText(String(screenExcerpt || ""));
+  if (!normalized) {
+    return false;
+  }
+  // Claude shows a simple prompt when ready for input
+  // Look for common patterns in Claude's interactive mode
+  return (
+    normalized.includes("how can i help")
+    || normalized.includes("what would you like")
+    || normalized.includes("anything else")
+    || /^[>\$#]\s*$/.test(normalized.trim())
+  );
+}
+
+function looksLikeClaudeWorkingScreen(screenExcerpt: string | undefined): boolean {
+  const text = String(screenExcerpt || "");
+  const normalized = normalizeScreenMatchText(text);
+  // Claude shows "Thinking..." or similar when working
+  return (
+    normalized.includes("thinking")
+    || normalized.includes("working")
+    || normalized.includes("processing")
+  );
+}
+
 function looksLikeCodexContinuePrompt(normalizedText: string): boolean {
   if (!normalizedText) {
     return false;
@@ -422,7 +450,7 @@ function looksLikeCodexReadyScreen(screen: CliSessionScreenSnapshot): boolean {
     )
     || (
       normalizedText.includes("openai codex")
-      && normalizedText.includes("100 left")
+      && looksLikeCodexStatusFooter(screen.text)
       && looksLikeCodexPromptLine(screen.text)
     )
     || (
@@ -430,15 +458,17 @@ function looksLikeCodexReadyScreen(screen: CliSessionScreenSnapshot): boolean {
       && normalizedText.includes("plan")
       && normalizedText.includes("search")
     )
+    || (
+      looksLikeCodexStatusFooter(screen.text)
+      && looksLikeCodexPromptLine(screen.text)
+    )
   );
 }
 
 function looksLikeCodexWorkingScreen(screen: CliSessionScreenSnapshot): boolean {
-  const normalizedText = screen.normalizedText;
-  if (!normalizedText) {
-    return false;
-  }
-  return normalizedText.includes("working") && normalizedText.includes("esc to interrupt");
+  return String(screen.text || "")
+    .split("\n")
+    .some((line) => isCodexWorkingLine(line));
 }
 
 function isCodexWorkingLine(line: string): boolean {
@@ -446,17 +476,34 @@ function isCodexWorkingLine(line: string): boolean {
   return normalizedText.includes("working") && normalizedText.includes("esc to interrupt");
 }
 
+function looksLikeCodexPastedContentPrompt(screen: CliSessionScreenSnapshot): boolean {
+  const promptLine = getCodexPromptLineText(screen.text);
+  if (!promptLine) {
+    return false;
+  }
+  const normalizedPromptLine = normalizePromptMatchText(promptLine);
+  return normalizedPromptLine.includes("pasted content");
+}
+
+function looksLikeCodexStatusFooter(text: string): boolean {
+  const normalized = normalizePromptMatchText(text);
+  if (!normalized) {
+    return false;
+  }
+  const hasUsageToken =
+    normalized.includes(" left")
+    || normalized.includes("% left")
+    || normalized.includes(" remaining");
+  const hasCodexIdentity =
+    normalized.includes("gpt 5")
+    || normalized.includes("gpt-5")
+    || normalized.includes("documents")
+    || normalized.includes("agentchatbus");
+  return hasUsageToken && hasCodexIdentity;
+}
+
 function isCodexFooterLine(line: string): boolean {
-  const normalized = normalizePromptMatchText(line);
-  return (
-    normalized.includes("100 left")
-    && (
-      normalized.includes("gpt 5")
-      || normalized.includes("gpt-5")
-      || normalized.includes("documents")
-      || normalized.includes("agentchatbus")
-    )
-  );
+  return looksLikeCodexStatusFooter(line);
 }
 
 function shouldTreatInputAsManualOverride(text: string): boolean {
@@ -485,6 +532,51 @@ function isCodexPromptShowingText(screen: CliSessionScreenSnapshot, prompt: stri
   const normalizedPromptLine = normalizePromptMatchText(promptLine);
   const normalizedPrompt = normalizePromptMatchText(prompt);
   return Boolean(normalizedPrompt) && normalizedPromptLine.includes(normalizedPrompt);
+}
+
+function extractClaudeReplyFromTranscript(rawOutput: string, prompt: string): string | undefined {
+  // Claude doesn't use prompt markers like Codex's "> prompt"
+  // Just extract everything after the prompt text appears
+  const lines = normalizeTranscriptText(rawOutput)
+    .split("\n")
+    .map((line) => line.trimEnd());
+
+  // Find where the prompt appears in the output
+  const normalizedPrompt = normalizePromptMatchText(prompt);
+  let promptIndex = -1;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (normalizePromptMatchText(line).includes(normalizedPrompt)) {
+      promptIndex = index;
+      break;
+    }
+  }
+
+  // If we can't find the prompt, just take everything
+  const startIndex = promptIndex >= 0 ? promptIndex + 1 : 0;
+
+  const replyLines: string[] = [];
+  for (let index = startIndex; index < lines.length; index += 1) {
+    const line = lines[index];
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (replyLines.length > 0) {
+        replyLines.push("");
+      }
+      continue;
+    }
+    // Skip the prompt marker ">"
+    if (trimmed === ">") {
+      break;
+    }
+    replyLines.push(trimmed);
+  }
+
+  const reply = replyLines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  if (!reply) {
+    return undefined;
+  }
+  return clipText(reply, 2400);
 }
 
 function extractCodexReplyFromTranscript(rawOutput: string, prompt: string): string | undefined {
@@ -738,6 +830,15 @@ function normalizeWorkspacePath(explicitPath?: string): string {
     return configuredWorkspace;
   }
   return process.cwd();
+}
+
+function getCodexReplyTimeoutMs(
+  deliveryMode?: CliSessionSnapshot["context_delivery_mode"],
+): number {
+  if (deliveryMode === "join" || deliveryMode === "resume" || deliveryMode === "incremental") {
+    return MEETING_CODEX_REPLY_TIMEOUT_MS;
+  }
+  return INITIAL_CODEX_REPLY_TIMEOUT_MS;
 }
 
 function normalizeTerminalCols(value?: number): number {
@@ -1011,6 +1112,288 @@ class CursorHeadlessAdapter implements CliSessionAdapter {
   }
 }
 
+class ClaudeInteractiveAdapter implements CliSessionAdapter {
+  readonly adapterId = "claude";
+  readonly mode = "interactive";
+  readonly supportsInput = true;
+  readonly supportsRestart = true;
+  readonly supportsResize = true;
+  readonly requiresPrompt = false;
+  readonly shell = "powershell";
+
+  constructor(
+    private readonly shellCommand = WINDOWS_POWERSHELL,
+    private readonly claudeCommand = "claude",
+  ) {}
+
+  async run(input: CliAdapterRunInput, hooks: CliAdapterRunHooks): Promise<CliAdapterRunResult> {
+    if (process.platform !== "win32") {
+      throw new Error("Claude interactive PTY mode currently requires Windows PowerShell.");
+    }
+
+    const preferConpty = shouldUseConpty();
+    try {
+      return await this.runWithBackend(input, hooks, preferConpty);
+    } catch (error) {
+      if (!preferConpty || !isConptyOrWinptyStartupError(error)) {
+        throw error;
+      }
+      logInfo("[cli-session] Claude PTY ConPTY startup failed, retrying with WinPTY fallback.");
+      return await this.runWithBackend(input, hooks, false);
+    }
+  }
+
+  private async runWithBackend(
+    input: CliAdapterRunInput,
+    hooks: CliAdapterRunHooks,
+    useConpty: boolean,
+  ): Promise<CliAdapterRunResult> {
+    const nodePty = await loadNodePty();
+    return await new Promise<CliAdapterRunResult>((resolve, reject) => {
+      const workspace = normalizeWorkspacePath(input.workspace);
+      const commandLine = `cd ${toPowerShellSingleQuoted(workspace)}; & ${toPowerShellSingleQuoted(this.claudeCommand)} --model sonnet`;
+
+      let terminal: PtyInstance | null = null;
+      let stdout = "";
+      let settled = false;
+      let startupGuardTimer: NodeJS.Timeout | null = null;
+
+      const disposeStartupGuard = () => {
+        if (startupGuardTimer) {
+          clearTimeout(startupGuardTimer);
+          startupGuardTimer = null;
+        }
+        process.off("uncaughtException", handleUncaughtException);
+      };
+
+      const finalize = (result: CliAdapterRunResult) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        disposeStartupGuard();
+        resolve(result);
+      };
+
+      const fail = (error: unknown) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        if (!isConptyOrWinptyStartupError(error)) {
+          disposeStartupGuard();
+        }
+        reject(error);
+      };
+
+      const handleUncaughtException = (error: unknown) => {
+        if (settled) {
+          return;
+        }
+        if (isConptyOrWinptyStartupError(error)) {
+          try {
+            terminal?.kill();
+          } catch {
+            // Best effort shutdown.
+          }
+          fail(error);
+          return;
+        }
+        disposeStartupGuard();
+        setImmediate(() => {
+          throw error;
+        });
+      };
+
+      process.on("uncaughtException", handleUncaughtException);
+      startupGuardTimer = setTimeout(() => {
+        disposeStartupGuard();
+      }, 5000);
+
+      try {
+        terminal = nodePty.spawn(
+          this.shellCommand,
+          [
+            "-NoLogo",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            commandLine,
+          ],
+          {
+            name: "xterm-256color",
+            cwd: workspace,
+            env: process.env,
+            cols: normalizeTerminalCols(input.cols),
+            rows: normalizeTerminalRows(input.rows),
+            useConpty,
+          }
+        );
+      } catch (error) {
+        fail(error);
+        return;
+      }
+
+      hooks.onControls({
+        kill: () => {
+          try {
+            terminal?.kill();
+          } catch {
+            // Best effort shutdown.
+          }
+        },
+        write: (text) => {
+          terminal?.write(text);
+        },
+        resize: (cols, rows) => {
+          terminal?.resize(normalizeTerminalCols(cols), normalizeTerminalRows(rows));
+        },
+      });
+
+      if (typeof terminal.pid === "number" && terminal.pid > 0) {
+        hooks.onProcessStart(terminal.pid);
+      }
+
+      terminal.onData((data) => {
+        disposeStartupGuard();
+        stdout += data;
+        hooks.onOutput("stdout", data);
+      });
+
+      terminal.onExit(({ exitCode }) => {
+        finalize({
+          exitCode,
+          stdout,
+          stderr: "",
+          resultText: summarizeInteractiveTranscript(stdout),
+          rawResult: null,
+        });
+      });
+
+      hooks.signal.addEventListener(
+        "abort",
+        () => {
+          try {
+            terminal?.kill();
+          } catch {
+            // Best effort shutdown.
+          }
+        },
+        { once: true }
+      );
+    });
+  }
+}
+
+class ClaudeHeadlessAdapter implements CliSessionAdapter {
+  readonly adapterId = "claude";
+  readonly mode = "headless";
+  readonly supportsInput = false;
+  readonly supportsRestart = true;
+  readonly supportsResize = false;
+  readonly requiresPrompt = true;
+
+  constructor(
+    private readonly command = "claude",
+  ) {}
+
+  async run(input: CliAdapterRunInput, hooks: CliAdapterRunHooks): Promise<CliAdapterRunResult> {
+    const workspace = normalizeWorkspacePath(input.workspace);
+    return await new Promise<CliAdapterRunResult>((resolve, reject) => {
+      const claudeArgs = [
+        "-p",
+        "--model", "sonnet",
+        input.prompt,
+      ];
+
+      let child: ChildProcessWithoutNullStreams;
+      try {
+        child = spawn(this.command, claudeArgs, {
+          cwd: workspace,
+          env: process.env,
+          shell: false,
+        });
+      } catch (error) {
+        reject(error);
+        return;
+      }
+
+      hooks.onControls({
+        kill: () => {
+          try {
+            child.kill();
+          } catch {
+            // Best effort shutdown.
+          }
+        },
+      });
+
+      let stdout = "";
+      let stderr = "";
+      let settled = false;
+
+      const finalize = (result: CliAdapterRunResult) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        resolve(result);
+      };
+
+      const fail = (error: unknown) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        reject(error);
+      };
+
+      if (typeof child.pid === "number" && child.pid > 0) {
+        hooks.onProcessStart(child.pid);
+      }
+
+      child.stdout.on("data", (chunk) => {
+        const text = chunk.toString();
+        stdout += text;
+        hooks.onOutput("stdout", text);
+      });
+
+      child.stderr.on("data", (chunk) => {
+        const text = chunk.toString();
+        stderr += text;
+        hooks.onOutput("stderr", text);
+      });
+
+      child.on("error", (error) => {
+        fail(error);
+      });
+
+      child.on("close", (code) => {
+        finalize({
+          exitCode: typeof code === "number" ? code : null,
+          stdout,
+          stderr,
+          resultText: stdout.trim() || undefined,
+          rawResult: null,
+        });
+      });
+
+      hooks.signal.addEventListener(
+        "abort",
+        () => {
+          try {
+            child.kill();
+          } catch {
+            // Best effort shutdown.
+          }
+        },
+        { once: true }
+      );
+    });
+  }
+}
+
 class CodexInteractiveAdapter implements CliSessionAdapter {
   readonly adapterId = "codex";
   readonly mode = "interactive";
@@ -1193,7 +1576,7 @@ export class CliSessionManager {
   private readonly runtimes = new Map<string, CliSessionRuntime>();
   private readonly adapters = new Map<string, CliSessionAdapter>();
 
-  constructor(adapters: CliSessionAdapter[] = [new CursorHeadlessAdapter(), new CodexInteractiveAdapter()]) {
+  constructor(adapters: CliSessionAdapter[] = [new CursorHeadlessAdapter(), new CodexInteractiveAdapter(), new ClaudeInteractiveAdapter(), new ClaudeHeadlessAdapter()]) {
     for (const adapter of adapters) {
       this.adapters.set(this.adapterKey(adapter.adapterId, adapter.mode), adapter);
     }
@@ -1479,6 +1862,7 @@ export class CliSessionManager {
     runtime.snapshot.last_posted_message_id = undefined;
     runtime.snapshot.meeting_post_state = runtime.snapshot.participant_agent_id ? "pending" : undefined;
     runtime.snapshot.meeting_post_error = undefined;
+    const previousExcerpt = runtime.snapshot.reply_capture_excerpt;
     runtime.snapshot.reply_capture_state = undefined;
     runtime.snapshot.reply_capture_excerpt = undefined;
     runtime.snapshot.reply_capture_error = undefined;
@@ -1488,10 +1872,13 @@ export class CliSessionManager {
     if (runtime.replyCapture?.finalizeTimer) {
       clearTimeout(runtime.replyCapture.finalizeTimer);
     }
-    const previousExcerpt = runtime.snapshot.reply_capture_excerpt;
+    if (runtime.automationState?.profile === "codex-startup") {
+      runtime.automationState.deliveryPromptEnterRetried = false;
+    }
     runtime.replyCapture = null;
     this.startReplyCapture(runtime, normalizedPrompt, {
       baselineExcerpt: previousExcerpt,
+      timeoutMs: getCodexReplyTimeoutMs(options?.deliveryMode),
     });
     runtime.controls.write(normalizedPrompt);
     runtime.controls.write("\r");
@@ -1729,6 +2116,7 @@ export class CliSessionManager {
         initialPromptTextSent: false,
         initialPromptEnterSent: false,
         initialPromptEnterRetried: false,
+        deliveryPromptEnterRetried: false,
         manualOverride: false,
         sawReadyScreen: false,
         sawWorkingScreen: false,
@@ -1737,6 +2125,24 @@ export class CliSessionManager {
       runtime.snapshot.automation_state = runtime.snapshot.prompt.trim()
         ? "waiting_for_codex_prompt"
         : "waiting_for_codex_startup";
+    }
+
+    if (runtime.snapshot.adapter === "claude" && runtime.snapshot.mode === "interactive") {
+      runtime.automationState = {
+        profile: "codex-startup",
+        continueSent: true,
+        initialPromptTextSent: false,
+        initialPromptEnterSent: false,
+        initialPromptEnterRetried: false,
+        deliveryPromptEnterRetried: false,
+        manualOverride: false,
+        sawReadyScreen: false,
+        sawWorkingScreen: false,
+        submitTimer: null,
+      };
+      runtime.snapshot.automation_state = runtime.snapshot.prompt.trim()
+        ? "waiting_for_claude_ready"
+        : "waiting_for_claude_startup";
     }
   }
 
@@ -1808,11 +2214,12 @@ export class CliSessionManager {
   private startReplyCapture(
     runtime: CliSessionRuntime,
     prompt: string,
-    options?: { baselineExcerpt?: string },
+    options?: { baselineExcerpt?: string; timeoutMs?: number },
   ): void {
     if (runtime.replyCapture?.timeoutTimer) {
       clearTimeout(runtime.replyCapture.timeoutTimer);
     }
+    const timeoutMs = Math.max(1000, Math.floor(Number(options?.timeoutMs) || INITIAL_CODEX_REPLY_TIMEOUT_MS));
     const capture: CliSessionReplyCaptureRuntime = {
       mode: "initial_prompt",
       prompt,
@@ -1831,12 +2238,12 @@ export class CliSessionManager {
       if (capture.excerpt) {
         return;
       }
-      capture.state = "timeout";
-      capture.error = `Timed out waiting for Codex reply to '${prompt}'.`;
-      this.refreshReplyCaptureSnapshot(runtime);
+      this.updateReplyCaptureState(runtime, "timeout", {
+        error: `Timed out waiting for ${runtime.snapshot.adapter === "claude" ? "Claude" : "Codex"} reply to '${prompt}'.`,
+      });
       this.updateAutomationState(runtime, "reply_timeout");
-      logError(`[cli-session] ${runtime.snapshot.id} ${capture.error}`);
-    }, INITIAL_CODEX_REPLY_TIMEOUT_MS);
+      logError(`[cli-session] ${runtime.snapshot.id} ${runtime.replyCapture?.error || "Reply capture timed out."}`);
+    }, timeoutMs);
   }
 
   private refreshReplyCaptureSnapshot(runtime: CliSessionRuntime): void {
@@ -1864,7 +2271,12 @@ export class CliSessionManager {
       return;
     }
     const nextExcerpt = options?.excerpt ?? capture.excerpt;
-    const nextError = options?.error ?? capture.error;
+    const nextError =
+      options?.error !== undefined
+        ? options.error
+        : nextState === "error" || nextState === "timeout"
+          ? capture.error
+          : undefined;
     const changed =
       capture.state !== nextState
       || capture.excerpt !== nextExcerpt
@@ -1892,7 +2304,12 @@ export class CliSessionManager {
     if (!capture) {
       return;
     }
-    const excerpt = extractCodexReplyFromTranscript(capture.rawOutput, capture.prompt);
+
+    // Use adapter-specific extraction
+    const excerpt = runtime.snapshot.adapter === "claude"
+      ? extractClaudeReplyFromTranscript(capture.rawOutput, capture.prompt)
+      : extractCodexReplyFromTranscript(capture.rawOutput, capture.prompt);
+
     if (!excerpt) {
       return;
     }
@@ -2015,6 +2432,7 @@ export class CliSessionManager {
 
     if (looksLikeCodexWorkingScreen(screen)) {
       automation.sawWorkingScreen = true;
+      automation.deliveryPromptEnterRetried = false;
       if (automation.submitTimer) {
         clearTimeout(automation.submitTimer);
         automation.submitTimer = null;
@@ -2088,6 +2506,25 @@ export class CliSessionManager {
       runtime.controls.write("\r");
       this.updateAutomationState(runtime, "resent_initial_prompt_enter");
       logInfo(`[cli-session] ${runtime.snapshot.id} retried Enter for Codex prompt submission.`);
+    }
+
+    if (
+      runtime.snapshot.automation_state === "meeting_delivery_prompt_sent"
+      && !automation.deliveryPromptEnterRetried
+      && runtime.replyCapture
+      && !runtime.replyCapture.excerpt
+      && looksLikeCodexIdlePrompt(screen)
+      && (
+        isCodexPromptShowingText(screen, initialPrompt)
+        || looksLikeCodexPastedContentPrompt(screen)
+      )
+    ) {
+      automation.deliveryPromptEnterRetried = true;
+      runtime.controls.write("\r");
+      this.updateAutomationState(runtime, "meeting_delivery_prompt_resent_enter");
+      logInfo(
+        `[cli-session] ${runtime.snapshot.id} retried Enter for Codex meeting prompt delivery.`,
+      );
     }
 
     this.finalizeReplyCaptureIfIdle(runtime, screen);

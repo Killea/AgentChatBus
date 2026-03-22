@@ -30,6 +30,20 @@ function hasCodexPromptInScreen(screenExcerpt: string | undefined): boolean {
   return lines.some((line) => /^(>|›)\s+/.test(line) || line === ">" || line === "›");
 }
 
+function looksLikeClaudeIdleScreen(screenExcerpt: string | undefined): boolean {
+  const normalized = normalizeScreenText(screenExcerpt);
+  if (!normalized) {
+    return false;
+  }
+  // Claude shows simple prompts when ready
+  return (
+    normalized.includes("how can i help")
+    || normalized.includes("what would you like")
+    || normalized.includes("anything else")
+    || /^[>\$#]\s*$/.test(normalized.trim())
+  );
+}
+
 function looksLikeCodexIdleScreen(screenExcerpt: string | undefined): boolean {
   const normalized = normalizeScreenText(screenExcerpt);
   if (!normalized) {
@@ -50,11 +64,12 @@ function extractInteractiveWorkingStatus(screenExcerpt: string | undefined): str
     .map((line) => line.trim())
     .filter(Boolean);
   for (const line of lines) {
-    const match = /^working\s*\((\d+s)(?:\s*[•·]\s*esc to interrupt)?\)$/i.exec(line);
+    const normalizedLine = line.replace(/^[•·●◦]\s*/, "");
+    const match = /^working\s*\((\d+s)(?:\s*[•·]\s*esc to interrupt)?\)$/i.exec(normalizedLine);
     if (match?.[1]) {
       return `Working... (${match[1]})`;
     }
-    if (/^working\b/i.test(line)) {
+    if (/^working\b/i.test(normalizedLine)) {
       return "Working...";
     }
   }
@@ -443,6 +458,23 @@ export class CliMeetingOrchestrator {
     if (!ONLINE_SESSION_STATES.has(session.state)) {
       return "unavailable";
     }
+
+    // Check for claude idle screen
+    if (session.adapter === "claude" && session.mode === "interactive") {
+      if (looksLikeClaudeIdleScreen(session.screen_excerpt)) {
+        return "idle";
+      }
+      // If reply capture is completed/timeout/error and no clear working indicator, consider idle
+      if (["completed", "timeout", "error"].includes(String(session.reply_capture_state || ""))) {
+        return "idle";
+      }
+      // If session is running and has some screen content, consider idle by default
+      if (session.state === "running" && String(session.screen_excerpt || "").trim()) {
+        return "idle";
+      }
+    }
+
+    // Original codex logic
     if (session.mode === "interactive" && looksLikeCodexIdleScreen(session.screen_excerpt)) {
       return "idle";
     }

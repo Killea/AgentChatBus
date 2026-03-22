@@ -144,7 +144,7 @@
     const modeEl = document.getElementById(`${prefix}-mode`);
     const displayNameEl = document.getElementById(`${prefix}-display-name`);
     const instructionEl = document.getElementById(`${prefix}-instruction`);
-    if (adapterEl) adapterEl.value = "codex";
+    if (adapterEl) adapterEl.value = "claude";
     if (modeEl) modeEl.value = "interactive";
     if (displayNameEl) displayNameEl.value = "";
     if (instructionEl) instructionEl.value = "";
@@ -220,7 +220,7 @@
     if (config.displayName) {
       return config.displayName;
     }
-    const adapterLabel = config.adapter === "cursor" ? "Cursor" : "Codex";
+    const adapterLabel = config.adapter === "cursor" ? "Cursor" : config.adapter === "claude" ? "Claude" : "Codex";
     const modeLabel = config.mode === "headless" ? "Headless" : "Interactive";
     return `${adapterLabel} ${modeLabel}`;
   }
@@ -240,7 +240,7 @@
   }
 
   async function registerParticipantAgent(api, config) {
-    const adapterLabel = config.adapter === "cursor" ? "Cursor" : "Codex";
+    const adapterLabel = config.adapter === "cursor" ? "Cursor" : config.adapter === "claude" ? "Claude" : "Codex";
     const modeLabel = config.mode === "headless" ? "Headless CLI" : "Interactive CLI";
     const displayName = buildDefaultParticipantName(config);
     const result = await api("/api/agents/register", {

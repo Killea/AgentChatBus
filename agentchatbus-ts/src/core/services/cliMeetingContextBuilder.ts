@@ -273,6 +273,9 @@ export function buildCliIncrementalPrompt(input: BuildCliIncrementalPromptInput)
       .filter((message) => message.seq <= targetSeq)
       .filter((message) => !isPlaceholderRelayMessage(message)),
   );
+  const deliveryMessages = projectedMessages.filter(
+    (message) => String(message.author_id || "") !== input.participantAgentId,
+  );
   const deliveredSeq = projectedMessages.length > 0
     ? projectedMessages[projectedMessages.length - 1]!.seq
     : afterSeq;
@@ -280,7 +283,7 @@ export function buildCliIncrementalPrompt(input: BuildCliIncrementalPromptInput)
     participantRole: input.participantRole,
     participantName,
     administrator,
-    messageCount: projectedMessages.length,
+    messageCount: deliveryMessages.length,
   });
   const meetingControlInstructions = buildMeetingControlInstructions({
     participantAgentId: input.participantAgentId,
@@ -299,7 +302,7 @@ export function buildCliIncrementalPrompt(input: BuildCliIncrementalPromptInput)
     `This is an incremental delivery of messages with seq > ${afterSeq} and <= ${targetSeq}.`,
     "Only the newly delivered visible messages are shown below.",
     "Respond only to the newly delivered context. Do not repeat your earlier introduction or restate old context unless the new messages require it.",
-    formatHistory(projectedMessages),
+    formatHistory(deliveryMessages),
     `Current instruction:\n${initialInstruction}`,
     meetingControlInstructions,
     "Write only the message content that AgentChatBus should post to the thread on your behalf.",

@@ -151,6 +151,7 @@
                   <select id="thread-agent-adapter">
                     <option value="codex">Codex</option>
                     <option value="cursor">Cursor</option>
+                    <option value="claude">Claude</option>
                   </select>
                 </div>
                 <div class="settings-field">
@@ -224,6 +225,7 @@
                       <select id="agent-modal-adapter">
                         <option value="codex">Codex</option>
                         <option value="cursor">Cursor</option>
+                        <option value="claude">Claude</option>
                       </select>
                     </div>
                     <div class="settings-field">

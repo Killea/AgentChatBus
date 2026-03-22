@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { CliSessionManager } from "../../src/core/services/cliSessionManager.js";
 
 function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
@@ -598,6 +598,104 @@ describe("CliSessionManager interactive sessions", () => {
     await waitFor(() => manager.getSession(session.id)?.state === "completed");
     expect(manager.getSession(session.id)?.reply_capture_excerpt).not.toContain("•");
     expect(manager.getSession(session.id)?.reply_capture_excerpt).not.toContain("Summarize recent commits");
+  });
+
+  it("allows longer reply capture windows for delivered meeting prompts", async () => {
+    vi.useFakeTimers();
+    try {
+      const writes: string[] = [];
+      let deliveryPrompt = "";
+      let resolveRun:
+        | ((value: { exitCode: number; stdout: string; stderr: string; resultText: string }) => void)
+        | null = null;
+
+      const interactiveAdapter = {
+        adapterId: "codex",
+        mode: "interactive",
+        supportsInput: true,
+        supportsRestart: true,
+        supportsResize: true,
+        requiresPrompt: false,
+        shell: "powershell",
+        run: (_input: unknown, hooks: any) => {
+          hooks.onProcessStart(47465);
+          hooks.onControls({
+            write: (text: string) => {
+              writes.push(text);
+              if (text === deliveryPrompt) {
+                hooks.onOutput(
+                  "stdout",
+                  `\u001b[2J\u001b[HOpenAI Codex (v0.116.0)\r\nmodel: gpt-5.4 medium   /model to change\r\n\r\n› ${deliveryPrompt}\r\n100 left  gpt-5.4 medium\r\n`,
+                );
+                return;
+              }
+              if (text === "\r" && writes.includes(deliveryPrompt)) {
+                hooks.onOutput("stdout", "\u001b[2J\u001b[HWorking (28s • esc to interrupt)\r\n");
+                setTimeout(() => {
+                  hooks.onOutput(
+                    "stdout",
+                    "\u001b[2J\u001b[H你好，我是 Codex Interactive。\r\n我正在继续参与这个线程，并会根据你刚发的新消息继续回复。\r\n\r\n› Use /skills to list available skills\r\n100 left  gpt-5.4 medium\r\n",
+                  );
+                }, 3000);
+              }
+            },
+            resize: () => {},
+            kill: () => {},
+          });
+          hooks.onOutput(
+            "stdout",
+            "OpenAI Codex (v0.116.0)\r\nmodel: gpt-5.4 medium   /model to change\r\ndirectory: ~\\Documents\\AgentChatBus\r\n\r\n› \r\n100 left  gpt-5.4 medium\r\n",
+          );
+          return new Promise((resolve) => {
+            resolveRun = resolve;
+          });
+        },
+      } as any;
+
+      const manager = new CliSessionManager([interactiveAdapter]);
+      const session = manager.createSession({
+        threadId: "thread-meeting-timeout",
+        adapter: "codex",
+        mode: "interactive",
+        prompt: "",
+        requestedByAgentId: "agent-meeting-timeout",
+        participantAgentId: "participant-meeting-timeout",
+        participantDisplayName: "Codex Interactive",
+        participantRole: "administrator",
+        cols: 120,
+        rows: 30,
+      });
+
+      deliveryPrompt = [
+        'You are continuing participation in the AgentChatBus thread "333".',
+        "Current instruction:",
+        "Codex Interactive, you have 1 new message.",
+      ].join("\n\n");
+
+      const deliveryResult = await manager.deliverPrompt(session.id, deliveryPrompt, {
+        deliveryMode: "incremental",
+        deliveredSeq: 505,
+      });
+      expect(deliveryResult?.ok).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(21000);
+      expect(manager.getSession(session.id)?.reply_capture_state).not.toBe("timeout");
+      expect(manager.getSession(session.id)?.reply_capture_error).toBeUndefined();
+
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(manager.getSession(session.id)?.reply_capture_state).toBe("completed");
+      expect(manager.getSession(session.id)?.reply_capture_excerpt).toContain("你好，我是 Codex Interactive");
+
+      resolveRun?.({
+        exitCode: 0,
+        stdout: "ok\r\n",
+        stderr: "",
+        resultText: "ok",
+      });
+      await vi.advanceTimersByTimeAsync(10);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("records a reply capture error when the session ends before any reply is captured", async () => {

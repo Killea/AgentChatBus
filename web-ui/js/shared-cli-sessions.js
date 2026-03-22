@@ -1,6 +1,7 @@
 (function () {
   const sessionsByThread = new Map();
   const activeSessionIdByThread = new Map();
+  const terminalVisibilityByThread = new Map();
   const ACTIVE_SESSION_STATES = new Set(["created", "starting", "running"]);
   const terminalState = {
     sessionId: null,
@@ -257,6 +258,28 @@
       return null;
     }
     return ensureSelectedSession(threadId);
+  }
+
+  function isTerminalVisible(threadId = getActiveThreadId()) {
+    if (!threadId) {
+      return true;
+    }
+    return terminalVisibilityByThread.get(threadId) !== false;
+  }
+
+  function setTerminalVisibility(threadId, visible) {
+    if (!threadId) {
+      return;
+    }
+    terminalVisibilityByThread.set(threadId, visible !== false);
+  }
+
+  function toggleTerminalVisibility(threadId = getActiveThreadId()) {
+    if (!threadId) {
+      return;
+    }
+    setTerminalVisibility(threadId, !isTerminalVisible(threadId));
+    renderThread(threadId);
   }
 
   function replaceSessionsForThread(threadId, sessions) {
@@ -518,12 +541,12 @@
     if ((session?.meeting_post_state === "error" || session?.meeting_post_state === "stale") && session?.meeting_post_error) {
       return `<div class="cli-session-strip__body cli-session-strip__body--error">Relay error: ${escapeHtml(session.meeting_post_error)}</div>`;
     }
-    if (session?.reply_capture_error) {
-      return `<div class="cli-session-strip__body cli-session-strip__body--error">Reply capture error: ${escapeHtml(session.reply_capture_error)}</div>`;
-    }
     if (session?.reply_capture_excerpt) {
       const state = session?.reply_capture_state ? ` (${escapeHtml(session.reply_capture_state)})` : "";
       return `<div class="cli-session-strip__body"><strong>Latest reply${state}:</strong><br>${escapeHtml(session.reply_capture_excerpt).replaceAll("\n", "<br>")}</div>`;
+    }
+    if (session?.reply_capture_error) {
+      return `<div class="cli-session-strip__body cli-session-strip__body--error">Reply capture error: ${escapeHtml(session.reply_capture_error)}</div>`;
     }
     if (session?.last_result) {
       return `<div class="cli-session-strip__body"><strong>Session result:</strong><br>${escapeHtml(session.last_result)}</div>`;
@@ -598,6 +621,7 @@
         </div>
         <div class="cli-session-strip__actions">
           <button class="thread-header-cta" type="button" onclick="window.openAddAgentModal && window.openAddAgentModal()">Add Agent</button>
+          <button id="cli-session-terminal-toggle" class="thread-header-cta" type="button" onclick="window.AcbCliSessions && window.AcbCliSessions.toggleTerminalVisibility()">Hide Terminal</button>
         </div>
       </div>
       <div id="cli-session-participants" class="cli-session-participants"></div>
@@ -613,6 +637,19 @@
     }
     const count = Array.isArray(sessions) ? sessions.length : 0;
     countEl.textContent = `${count} participant${count === 1 ? "" : "s"}`;
+  }
+
+  function renderTerminalToggle(threadId = getActiveThreadId()) {
+    const toggleEl = document.getElementById("cli-session-terminal-toggle");
+    if (!toggleEl) {
+      return;
+    }
+    const visible = isTerminalVisible(threadId);
+    toggleEl.textContent = visible ? "Hide Agent Panel" : "Show Agent Panel";
+    toggleEl.setAttribute(
+      "title",
+      visible ? "Hide the selected agent detail panel" : "Show the selected agent detail panel",
+    );
   }
 
   function renderParticipantsList(sessions, selectedSessionId) {
@@ -707,6 +744,15 @@
 
     panelEl.dataset.selectedSessionId = String(session.id || "");
     panelEl.dataset.selectedInteractive = isInteractiveSession(session) ? "1" : "0";
+    const terminalVisible = isTerminalVisible(session.thread_id);
+
+    if (!terminalVisible) {
+      detailEl.hidden = true;
+      teardownTerminal();
+      return;
+    }
+
+    detailEl.hidden = false;
 
     if (!options.reuseInteractive) {
       detailEl.innerHTML = `
@@ -737,7 +783,9 @@
             </div>
           </div>
           <div class="cli-session-detail__view">
-            ${isInteractiveSession(session) ? renderInteractiveBody(session) : renderPassiveBody(session)}
+            ${isInteractiveSession(session)
+              ? renderInteractiveBody(session)
+              : renderPassiveBody(session)}
           </div>
         </div>
       `;
@@ -767,6 +815,7 @@
 
     const detailEl = getDetailEl();
     if (detailEl) {
+      detailEl.hidden = false;
       detailEl.innerHTML = `
         <div class="cli-session-detail__empty">
           <strong>No agents have joined this thread yet.</strong><br>
@@ -802,6 +851,7 @@
 
     ensurePanelShell(panelEl);
     panelEl.hidden = false;
+    renderTerminalToggle(threadId);
 
     const sessions = getSessionsForThread(threadId);
     if (!sessions.length) {
@@ -1003,6 +1053,7 @@
     getDeliverySummaryForSeq,
     selectSession,
     selectSessionFromElement,
+    toggleTerminalVisibility,
     startCodexInteractive: () => startCodexInteractive(window.AcbApi.api),
     restartSelected: () => restartSelected(window.AcbApi.api),
     stopSelected: () => stopSelected(window.AcbApi.api),
