@@ -1165,7 +1165,7 @@ export class CliSessionManager {
 
     if (runtime.snapshot.adapter === "codex" && runtime.snapshot.mode === "interactive") {
       this.updateAutomationState(runtime, "meeting_wake_prompt_sent");
-      this.scheduleCodexDeliveryEnter(runtime, 300, "sent_codex_wake_enter");
+      this.scheduleCodexDeliveryEnter(runtime, 600, "sent_codex_wake_enter");
     } else if (runtime.snapshot.adapter === "cursor" && runtime.snapshot.mode === "interactive") {
       this.updateAutomationState(runtime, "meeting_wake_prompt_sent");
       this.scheduleCursorDelayedEnter(runtime, "sent_cursor_wake_enter", 300);
@@ -1246,7 +1246,7 @@ export class CliSessionManager {
     runtime.controls.write(normalizedPrompt);
     this.updateAutomationState(runtime, "meeting_delivery_prompt_sent");
     if (runtime.snapshot.adapter === "codex" && runtime.snapshot.mode === "interactive") {
-      this.scheduleCodexDeliveryEnter(runtime, 300);
+      this.scheduleCodexDeliveryEnter(runtime, 600);
     } else {
       runtime.controls.write("\r");
     }
@@ -2221,7 +2221,7 @@ export class CliSessionManager {
       this.startReplyCapture(runtime, initialPrompt);
       runtime.controls.write(initialPrompt);
       this.updateAutomationState(runtime, "sent_initial_prompt_text");
-      this.scheduleCodexPromptSubmit(runtime, 140);
+      this.scheduleCodexPromptSubmit(runtime, 600);
       logInfo(`[cli-session] ${runtime.snapshot.id} auto-typed initial Codex prompt.`);
       return;
     }
