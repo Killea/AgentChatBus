@@ -143,7 +143,7 @@
                         <div class="settings-field">
                           <label class="template-selector-label" for="modal-template">Collaboration Template</label>
                           <select id="modal-template">
-                            <option value="">No template (Standard chat)</option>
+                            <option value="">Stand chat</option>
                           </select>
                           <div id="modal-template-desc" class="settings-field-description" style="margin-top:4px; min-height:1.4em;"></div>
                         </div>
@@ -154,11 +154,11 @@
                       <div class="meeting-modal-section__title">Agents To Start</div>
                       <div class="settings-field thread-launch-shared-instruction">
                         <label for="thread-launch-global-instruction">Shared Instruction</label>
-                        <input
+                        <textarea
                           id="thread-launch-global-instruction"
-                          type="text"
                           placeholder="Shared instruction for all agents"
-                        />
+                          rows="5"
+                        ></textarea>
                         <div class="settings-field-description">Applies to every agent by default. Leave an individual agent override blank to use this shared instruction.</div>
                       </div>
                       <div class="thread-launch-toolbar">

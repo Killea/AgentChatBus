@@ -178,7 +178,7 @@
   function _populateTemplateDropdown(templates) {
     const sel = document.getElementById("modal-template");
     if (!sel) return;
-    // Keep the first "No template" option, remove the rest
+    // Keep the first built-in default option, remove the rest
     while (sel.options.length > 1) sel.remove(1);
     for (const t of templates) {
       const opt = document.createElement("option");
@@ -608,7 +608,7 @@
             onclick="window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
             onpointerdown="window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
           >
-            <div class="settings-field">
+            <div class="settings-field thread-launch-agent-field thread-launch-agent-field--adapter">
               <label>Adapter</label>
               <div
                 class="thread-launch-adapter-group"
@@ -702,7 +702,7 @@
                 </label>
               </div>
             </div>
-            <div class="settings-field">
+            <div class="settings-field thread-launch-agent-field thread-launch-agent-field--emoji">
               <label>Emoji</label>
               <div class="thread-launch-emoji-row">
                 <span class="thread-launch-emoji-preview" aria-hidden="true">${_escapeHtml(String(agent.emoji || "🤖").trim() || "🤖")}</span>
@@ -717,7 +717,7 @@
                 </select>
               </div>
             </div>
-            <div class="settings-field">
+            <div class="settings-field thread-launch-agent-field thread-launch-agent-field--instruction">
               <label>Instruction Override</label>
               <input
                 type="text"

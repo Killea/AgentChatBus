@@ -3049,6 +3049,11 @@ body[data-theme="light"] .meeting-modal-preview--collapsible {
   margin-bottom: 6px;
 }
 
+.thread-launch-shared-instruction textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
 .thread-launch-toolbar__meta {
   display: inline-flex;
   align-items: center;
@@ -3184,11 +3189,28 @@ body[data-theme="light"] .meeting-modal-preview--collapsible {
 
 .thread-launch-agent-row__fields {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
   gap: 14px;
   grid-area: fields;
   min-width: 0;
   align-items: start;
+}
+
+.thread-launch-agent-field--adapter,
+.thread-launch-agent-field--instruction {
+  min-width: 0;
+}
+
+.thread-launch-agent-field--adapter {
+  grid-column: 1 / -1;
+}
+
+.thread-launch-agent-field--emoji {
+  max-width: 132px;
+}
+
+.thread-launch-agent-field--instruction {
+  grid-column: 2;
 }
 
 .thread-launch-agent-row__fields .settings-field label {
@@ -3213,21 +3235,28 @@ body[data-theme="light"] .meeting-modal-preview--collapsible {
 
 .thread-launch-emoji-row {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: 40px 76px;
+  gap: 8px;
   align-items: center;
+}
+
+.thread-launch-emoji-row select {
+  width: 76px;
+  min-width: 76px;
+  justify-self: start;
+  padding-right: 26px;
 }
 
 .thread-launch-emoji-preview {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
+  width: 40px;
   height: 36px;
   border-radius: 10px;
   border: 1px solid var(--border-light);
   background: var(--bg-input);
-  font-size: 22px;
+  font-size: 20px;
   line-height: 1;
 }
 
@@ -4892,7 +4921,8 @@ body[data-theme="light"] .settings-nav-item.active {
 }
 
 .settings-field input[type="text"],
-.settings-field input[type="number"] {
+.settings-field input[type="number"],
+.settings-field textarea {
   width: 100%;
   background: var(--bg-input);
   border: 1px solid var(--border-light);
@@ -4904,7 +4934,8 @@ body[data-theme="light"] .settings-nav-item.active {
   transition: border-color .15s;
 }
 
-.settings-field input:focus {
+.settings-field input:focus,
+.settings-field textarea:focus {
   outline: none;
   border-color: var(--accent);
 }
