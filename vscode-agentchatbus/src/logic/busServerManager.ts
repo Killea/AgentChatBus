@@ -32,6 +32,33 @@ export type HealthPayload = {
     };
 };
 
+export type MetricsPayload = HealthPayload & Record<string, unknown>;
+
+export type StartupProbeEndpoint = 'health' | 'metrics';
+
+export type StartupProbeFailure = {
+    status?: number;
+    timedOut?: boolean;
+    timeoutMs?: number;
+    error?: string;
+};
+
+export type StartupProbeOutcome<T> =
+    | {
+        ok: true;
+        payload?: T;
+    }
+    | ({
+        ok: false;
+    } & StartupProbeFailure);
+
+export type StartupProbeResolution<T> = {
+    ok: boolean;
+    source: StartupProbeEndpoint | null;
+    payload?: T;
+    failureMessages: string[];
+};
+
 export const MIN_HOST_NODE_VERSION = {
     major: 20,
     minor: 0,
@@ -42,6 +69,10 @@ export const BUNDLED_RUNTIME_RESOLVED_BY =
     'Bundled agentchatbus-ts runtime packaged with the VS Code extension.';
 export const WORKSPACE_DEV_RUNTIME_RESOLVED_BY =
     'Workspace-dev agentchatbus-ts runtime and local web-ui sources from the current AgentChatBus repo.';
+
+function getStartupProbePath(endpoint: StartupProbeEndpoint): string {
+    return endpoint === 'health' ? '/health' : '/api/metrics';
+}
 
 export function normalizeHealthString(value: unknown): string | undefined {
     if (typeof value !== 'string') {
@@ -124,6 +155,85 @@ export function ensureSupportedHostNodeVersion(
     return {
         ok: false,
         message: `IDE host Node version ${hostNodeVersion} is too old for bundled MCP. AgentChatBus requires the IDE host runtime to provide Node ${minimum.major}.${minimum.minor}.${minimum.patch}+ .`,
+    };
+}
+
+export function describeStartupProbeFailure(
+    endpoint: StartupProbeEndpoint,
+    failure: StartupProbeFailure,
+): string {
+    const probePath = getStartupProbePath(endpoint);
+
+    if (failure.timedOut) {
+        return `Startup probe ${probePath} timed out after ${failure.timeoutMs ?? 'unknown'}ms.`;
+    }
+    if (typeof failure.status === 'number') {
+        return `Startup probe ${probePath} returned HTTP ${failure.status}.`;
+    }
+    if (failure.error) {
+        return `Startup probe ${probePath} failed: ${failure.error}.`;
+    }
+    return `Startup probe ${probePath} failed.`;
+}
+
+export function resolveStartupProbeResult(input: {
+    health: StartupProbeOutcome<HealthPayload>;
+    metrics?: StartupProbeOutcome<MetricsPayload>;
+}): StartupProbeResolution<HealthPayload | MetricsPayload> {
+    if (input.health.ok) {
+        return {
+            ok: true,
+            source: 'health',
+            payload: input.health.payload,
+            failureMessages: [],
+        };
+    }
+
+    const failureMessages = [describeStartupProbeFailure('health', input.health)];
+
+    if (input.metrics?.ok) {
+        return {
+            ok: true,
+            source: 'metrics',
+            payload: input.metrics.payload,
+            failureMessages,
+        };
+    }
+
+    if (input.metrics && !input.metrics.ok) {
+        failureMessages.push(describeStartupProbeFailure('metrics', input.metrics));
+    }
+
+    return {
+        ok: false,
+        source: null,
+        payload: undefined,
+        failureMessages,
+    };
+}
+
+export function createSingleFlightRunner<T>(operation: () => Promise<T>): () => Promise<T> {
+    let inFlight: Promise<T> | null = null;
+
+    return () => {
+        if (inFlight) {
+            return inFlight;
+        }
+
+        let execution: Promise<T>;
+        try {
+            execution = Promise.resolve(operation());
+        } catch (error) {
+            execution = Promise.reject(error);
+        }
+        const wrapped = execution.finally(() => {
+            if (inFlight === wrapped) {
+                inFlight = null;
+            }
+        });
+
+        inFlight = wrapped;
+        return wrapped;
     };
 }
 

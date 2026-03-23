@@ -9,9 +9,12 @@ const {
   buildWorkspaceDevLaunchSpec,
   classifyDetectedStartupMode,
   classifyExternalStartupMode,
+  createSingleFlightRunner,
+  describeStartupProbeFailure,
   ensureSupportedHostNodeVersion,
   extractOwnershipAssignable,
   normalizeHealthString,
+  resolveStartupProbeResult,
   WORKSPACE_DEV_RUNTIME_RESOLVED_BY,
 } = require('../out/logic/testExports');
 
@@ -145,4 +148,102 @@ test('buildWorkspaceDevLaunchSpec wires local tsx watcher and dev env', () => {
     spec.env.AGENTCHATBUS_DB,
     path.join('C:\\Users\\me\\AppData\\Roaming\\Code\\AgentChatBus', 'bus-ts.db'),
   );
+});
+
+test('describeStartupProbeFailure reports timeout, HTTP, and generic probe errors', () => {
+  assert.equal(
+    describeStartupProbeFailure('health', { timedOut: true, timeoutMs: 1000 }),
+    'Startup probe /health timed out after 1000ms.',
+  );
+  assert.equal(
+    describeStartupProbeFailure('metrics', { status: 503 }),
+    'Startup probe /api/metrics returned HTTP 503.',
+  );
+  assert.equal(
+    describeStartupProbeFailure('health', { error: 'socket hang up' }),
+    'Startup probe /health failed: socket hang up.',
+  );
+});
+
+test('resolveStartupProbeResult prefers /health when both probes succeed', () => {
+  const health = { engine: 'node', version: '0.2.14', runtime: 'node v22.22.1' };
+  const metrics = { engine: 'node', version: '0.2.14', runtime: 'node v22.22.1' };
+
+  assert.deepEqual(
+    resolveStartupProbeResult({
+      health: { ok: true, payload: health },
+      metrics: { ok: true, payload: metrics },
+    }),
+    {
+      ok: true,
+      source: 'health',
+      payload: health,
+      failureMessages: [],
+    },
+  );
+});
+
+test('resolveStartupProbeResult falls back to /api/metrics when /health is unavailable', () => {
+  const metrics = { engine: 'node', version: '0.2.14', runtime: 'node v22.22.1' };
+
+  assert.deepEqual(
+    resolveStartupProbeResult({
+      health: { ok: false, timedOut: true, timeoutMs: 1000 },
+      metrics: { ok: true, payload: metrics },
+    }),
+    {
+      ok: true,
+      source: 'metrics',
+      payload: metrics,
+      failureMessages: ['Startup probe /health timed out after 1000ms.'],
+    },
+  );
+});
+
+test('resolveStartupProbeResult reports both probe failures when no readiness signal is available', () => {
+  assert.deepEqual(
+    resolveStartupProbeResult({
+      health: { ok: false, status: 404 },
+      metrics: { ok: false, error: 'connect ECONNREFUSED 127.0.0.1:39765' },
+    }),
+    {
+      ok: false,
+      source: null,
+      payload: undefined,
+      failureMessages: [
+        'Startup probe /health returned HTTP 404.',
+        'Startup probe /api/metrics failed: connect ECONNREFUSED 127.0.0.1:39765.',
+      ],
+    },
+  );
+});
+
+test('createSingleFlightRunner coalesces concurrent calls and resets after completion', async () => {
+  let invocations = 0;
+  let releaseFirstRun;
+  const firstRunReleased = new Promise((resolve) => {
+    releaseFirstRun = resolve;
+  });
+
+  const runOnce = createSingleFlightRunner(async () => {
+    invocations += 1;
+    await firstRunReleased;
+    return invocations;
+  });
+
+  const first = runOnce();
+  const second = runOnce();
+
+  assert.equal(invocations, 1);
+  assert.strictEqual(first, second);
+
+  releaseFirstRun();
+
+  assert.equal(await first, 1);
+  assert.equal(await second, 1);
+
+  const third = runOnce();
+  assert.notStrictEqual(third, first);
+  assert.equal(await third, 2);
+  assert.equal(invocations, 2);
 });

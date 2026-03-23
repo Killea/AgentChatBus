@@ -43,9 +43,12 @@ export {
     buildWorkspaceDevLaunchSpec,
     classifyDetectedStartupMode,
     classifyExternalStartupMode,
+    createSingleFlightRunner,
+    describeStartupProbeFailure,
     ensureSupportedHostNodeVersion,
     extractOwnershipAssignable,
     normalizeHealthString,
+    resolveStartupProbeResult,
     WORKSPACE_DEV_RUNTIME_RESOLVED_BY,
 } from './busServerManager';
 export {

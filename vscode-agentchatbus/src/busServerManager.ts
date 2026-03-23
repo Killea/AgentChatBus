@@ -9,12 +9,18 @@ import {
     buildBundledLaunchSpec,
     buildWorkspaceDevLaunchSpec,
     classifyDetectedStartupMode,
+    createSingleFlightRunner,
     ensureSupportedHostNodeVersion,
     extractOwnershipAssignable,
     normalizeHealthString,
+    resolveStartupProbeResult,
     type BundledLaunchSpec as LaunchSpec,
     type HealthPayload,
+    type MetricsPayload,
     type LaunchMode,
+    type StartupProbeEndpoint,
+    type StartupProbeOutcome,
+    type StartupProbeResolution,
 } from './logic/busServerManager';
 import {
     resolveWorkspaceDevContext,
@@ -54,6 +60,7 @@ export class BusServerManager {
     private static readonly MCP_PROVIDER_ID = 'agentchatbus.provider';
     private static readonly MCP_PROVIDER_LABEL = 'AgentChatBus Local Server';
     private static readonly MAX_ATTEMPTS = 40;
+    private static readonly STARTUP_PROBE_TIMEOUT_MS = 2000;
 
     private outputChannel: vscode.OutputChannel;
     private serverProcess: child_process.ChildProcess | null = null;
@@ -72,6 +79,7 @@ export class BusServerManager {
     private readonly globalStoragePath: string;
     private readonly hostNodeExecutable: string;
     private readonly extensionVersion: string;
+    private readonly ensureServerRunningSingleFlight: () => Promise<boolean>;
     private ideSessionToken: string | null = null;
     private ownerBootToken: string | null = null;
     private ideSessionState: IdeSessionApiState = {
@@ -89,6 +97,7 @@ export class BusServerManager {
         this.globalStoragePath = context.globalStorageUri.fsPath;
         this.hostNodeExecutable = process.execPath;
         this.extensionVersion = String(context.extension.packageJSON?.version || 'unknown');
+        this.ensureServerRunningSingleFlight = createSingleFlightRunner(() => this.ensureServerRunningInternal());
         this.outputChannel = vscode.window.createOutputChannel('AgentChatBus Server');
         void vscode.commands.executeCommand('setContext', 'agentchatbus:serverStopping', false);
         this.updateRestartContexts();
@@ -219,6 +228,10 @@ export class BusServerManager {
     }
 
     async ensureServerRunning(): Promise<boolean> {
+        return this.ensureServerRunningSingleFlight();
+    }
+
+    private async ensureServerRunningInternal(): Promise<boolean> {
         const workspaceDevContext = this.getWorkspaceDevContext();
         if (workspaceDevContext) {
             this.log(
@@ -242,17 +255,27 @@ export class BusServerManager {
         try {
             const probe = await this.probeServer(serverUrl);
             if (probe.ok) {
-                const startupMode = classifyDetectedStartupMode(probe.health);
+                if (probe.source === 'metrics' && probe.failureMessages.length > 0) {
+                    for (const message of probe.failureMessages) {
+                        this.recordResolutionAttempt(message);
+                    }
+                    this.recordResolutionAttempt('Readiness fell back to /api/metrics because /health was unavailable.');
+                }
+                const startupMode = classifyDetectedStartupMode(probe.payload as HealthPayload);
                 this.serverMetadata.startupMode = startupMode;
-                this.serverMetadata.resolvedBy = 'Existing service detected via /health';
-                this.serverMetadata.backendEngine = normalizeHealthString(probe.health?.engine);
-                this.serverMetadata.backendVersion = normalizeHealthString(probe.health?.version);
-                this.serverMetadata.backendRuntime = normalizeHealthString(probe.health?.runtime);
+                this.serverMetadata.resolvedBy = probe.source === 'metrics'
+                    ? 'Existing service detected via /api/metrics fallback'
+                    : 'Existing service detected via /health';
+                this.serverMetadata.backendEngine = normalizeHealthString(probe.payload?.engine);
+                this.serverMetadata.backendVersion = normalizeHealthString(probe.payload?.version);
+                this.serverMetadata.backendRuntime = normalizeHealthString(probe.payload?.runtime);
                 this.serverMetadata.externalOwnershipAssignable =
-                    extractOwnershipAssignable(probe.health);
+                    extractOwnershipAssignable(probe.payload as HealthPayload);
                 this.ownerBootToken = null;
                 this.recordResolutionAttempt(
-                    `Detected an already-running AgentChatBus service via /health probe (mode=${startupMode}).`
+                    probe.source === 'metrics'
+                        ? `Detected an already-running AgentChatBus service via /api/metrics fallback (mode=${startupMode}).`
+                        : `Detected an already-running AgentChatBus service via /health probe (mode=${startupMode}).`
                 );
                 if (this.serverMetadata.backendEngine || this.serverMetadata.backendVersion) {
                     this.recordResolutionAttempt(
@@ -280,6 +303,9 @@ export class BusServerManager {
                 await this.ensureIdeSessionRegistered(false);
                 this.setServerReady(true);
                 return true;
+            }
+            for (const message of probe.failureMessages) {
+                this.recordResolutionAttempt(message);
             }
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -880,25 +906,63 @@ export class BusServerManager {
         );
     }
 
-    private async probeServer(url: string): Promise<{ ok: boolean; health?: HealthPayload }> {
+    private async probeJsonEndpoint<T>(
+        url: string,
+        endpoint: StartupProbeEndpoint,
+    ): Promise<StartupProbeOutcome<T>> {
+        const probePath = endpoint === 'health' ? '/health' : '/api/metrics';
+        const controller = new AbortController();
+        const timeoutMs = BusServerManager.STARTUP_PROBE_TIMEOUT_MS;
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
         try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 1000);
-            const response = await fetch(`${url}/health`, { signal: controller.signal });
-            clearTimeout(timeoutId);
+            const response = await fetch(`${url}${probePath}`, { signal: controller.signal });
             if (!response.ok) {
-                return { ok: false };
+                return {
+                    ok: false,
+                    status: response.status,
+                    timeoutMs,
+                };
             }
-            let health: HealthPayload | undefined;
+
+            let payload: T | undefined;
             try {
-                health = await response.json() as HealthPayload;
+                payload = await response.json() as T;
             } catch {
-                // Allow legacy health endpoints that return non-JSON.
+                // Allow legacy or partial probe endpoints that return non-JSON.
             }
-            return { ok: true, health };
-        } catch {
-            return { ok: false };
+
+            return {
+                ok: true,
+                payload,
+            };
+        } catch (error) {
+            if (error instanceof Error && error.name === 'AbortError') {
+                return {
+                    ok: false,
+                    timedOut: true,
+                    timeoutMs,
+                };
+            }
+
+            return {
+                ok: false,
+                error: error instanceof Error ? error.message : String(error),
+                timeoutMs,
+            };
+        } finally {
+            clearTimeout(timeoutId);
         }
+    }
+
+    private async probeServer(url: string): Promise<StartupProbeResolution<HealthPayload | MetricsPayload>> {
+        const health = await this.probeJsonEndpoint<HealthPayload>(url, 'health');
+        if (health.ok) {
+            return resolveStartupProbeResult({ health });
+        }
+
+        const metrics = await this.probeJsonEndpoint<MetricsPayload>(url, 'metrics');
+        return resolveStartupProbeResult({ health, metrics });
     }
 
     private async checkServer(url: string): Promise<boolean> {
@@ -1201,13 +1265,43 @@ export class BusServerManager {
             this.log('Waiting for health check response...', 'sync~spin');
             const serverUrl = this.getServerUrl();
             let retries = 20;
+            let lastProbeFailureSignature = '';
             while (retries > 0) {
                 await new Promise(resolve => setTimeout(resolve, 1000));
-                if (await this.checkServer(serverUrl)) {
-                    this.log('Server is online and ready.', 'check');
+                const probe = await this.probeServer(serverUrl);
+                if (probe.ok) {
+                    if (probe.source === 'metrics' && probe.failureMessages.length > 0) {
+                        for (const message of probe.failureMessages) {
+                            this.log(message, 'warning');
+                        }
+                        this.log('Readiness fell back to /api/metrics because /health was unavailable.', 'info');
+                    }
+                    this.serverMetadata.backendEngine =
+                        normalizeHealthString(probe.payload?.engine) || this.serverMetadata.backendEngine;
+                    this.serverMetadata.backendVersion =
+                        normalizeHealthString(probe.payload?.version) || this.serverMetadata.backendVersion;
+                    this.serverMetadata.backendRuntime =
+                        normalizeHealthString(probe.payload?.runtime) || this.serverMetadata.backendRuntime;
+                    this.serverMetadata.externalOwnershipAssignable =
+                        extractOwnershipAssignable(probe.payload as HealthPayload) ?? this.serverMetadata.externalOwnershipAssignable;
+                    this.log(
+                        probe.source === 'metrics'
+                            ? 'Server is online and ready via /api/metrics fallback.'
+                            : 'Server is online and ready via /health.',
+                        'check',
+                    );
                     await this.ensureIdeSessionRegistered(true);
                     return true;
                 }
+
+                const failureSignature = probe.failureMessages.join(' | ');
+                if (failureSignature && failureSignature !== lastProbeFailureSignature) {
+                    for (const message of probe.failureMessages) {
+                        this.log(message, 'warning');
+                    }
+                    lastProbeFailureSignature = failureSignature;
+                }
+
                 retries--;
             }
 
