@@ -14,7 +14,7 @@ import {
   PermissionError
 } from "../types/errors.js";
 import { eventBus } from "../../shared/eventBus.js";
-import { generateAgentEmoji } from "../../main.js";
+import { deriveAgentEmojiSeed, generateAgentEmoji, generateAgentEmojiCandidates } from "../../main.js";
 import { registerStore } from "./storeSingleton.js";
 import { checkContentOrThrow, ContentFilterError } from "./contentFilter.js";
 import { checkFilesystemDisclosureOrThrow, FilesystemDisclosureError } from "./filesystemDisclosureFilter.js";
@@ -38,6 +38,31 @@ function generateAgentToken(): string {
 
 function generateReplyToken(): string {
   return randomBytes(24).toString("base64url");
+}
+
+function selectFallbackAgentEmoji(
+  existingAgents: AgentRecord[],
+  input: { ide: string; model: string; display_name?: string; alias_source?: string },
+): string {
+  const seed = deriveAgentEmojiSeed(input);
+  if (!seed) {
+    return generateAgentEmoji(null);
+  }
+
+  const occupied = new Set(
+    existingAgents
+      .filter((agent) => agent.is_online)
+      .map((agent) => String(agent.emoji || "").trim())
+      .filter(Boolean),
+  );
+
+  for (const candidate of generateAgentEmojiCandidates(seed)) {
+    if (!occupied.has(candidate)) {
+      return candidate;
+    }
+  }
+
+  return generateAgentEmoji(seed);
 }
 
 /**
@@ -2100,6 +2125,7 @@ export class MemoryStore {
 
     const cleanDisplayName = (input.display_name || "").trim() || name;
     const aliasSource = (input.display_name || "").trim() ? "user" : "auto";
+    const existingAgents = this.listAgents();
     
     const agent: AgentRecord = {
       id: agentId,
@@ -2116,7 +2142,12 @@ export class MemoryStore {
       capabilities: input.capabilities || [],
       skills: input.skills ?? undefined,
       token: generateAgentToken(),
-      emoji: input.emoji || generateAgentEmoji(agentId),
+      emoji: input.emoji || selectFallbackAgentEmoji(existingAgents, {
+        ide,
+        model,
+        display_name: cleanDisplayName,
+        alias_source: aliasSource,
+      }),
       registered_at: new Date().toISOString()
     };
     this.agents.set(agent.id, agent);

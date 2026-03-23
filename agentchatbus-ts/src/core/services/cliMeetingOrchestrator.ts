@@ -369,12 +369,18 @@ export class CliMeetingOrchestrator {
       throw new Error(`Participant agent '${input.participantAgentId}' not found.`);
     }
 
+    // Keep CLI-invited agents in the thread participant set even before they post.
+    // This mirrors bus_connect semantics more closely and keeps thread membership durable.
+    this.store.addThreadParticipant(input.threadId, input.participantAgentId);
+
     let administrator = getThreadAdministratorInfo(this.store, input.threadId);
     let participantRole: CliMeetingParticipantRole =
       administrator.agentId === input.participantAgentId ? "administrator" : "participant";
 
     if (!administrator.agentId) {
-      this.store.assignAdmin(
+      // For the first CLI agent in a thread with no administrator, persist it as the
+      // creator administrator so the database state matches bus_connect-created threads.
+      this.store.setCreatorAdmin(
         input.threadId,
         input.participantAgentId,
         getParticipantName(this.store, input.participantAgentId, input.participantDisplayName),

@@ -45,3 +45,52 @@ export function generateAgentEmoji(agentId: string | null): string {
   const idx = Number(hash64 % BigInt(AGENT_EMOJIS.length));
   return AGENT_EMOJIS[idx];
 }
+
+function normalizeEmojiSeed(raw: string | null | undefined): string {
+  return String(raw || "").trim().toLowerCase();
+}
+
+function buildEmojiIndex(seed: string): number {
+  const digest = createHash("sha256").update(seed, "utf8").digest();
+  const hash64 = digest.readBigUInt64BE(0);
+  return Number(hash64 % BigInt(AGENT_EMOJIS.length));
+}
+
+export function deriveAgentEmojiSeed(input: {
+  ide?: string | null;
+  model?: string | null;
+  display_name?: string | null;
+  alias_source?: string | null;
+}): string {
+  const aliasSource = normalizeEmojiSeed(input.alias_source);
+  const displayName = String(input.display_name || "").trim();
+  if (aliasSource === "user" && displayName) {
+    return normalizeEmojiSeed(`display:${displayName}`);
+  }
+
+  const ide = String(input.ide || "").trim();
+  const model = String(input.model || "").trim();
+  if (ide || model) {
+    return normalizeEmojiSeed(`runtime:${ide}|${model}`);
+  }
+
+  if (displayName) {
+    return normalizeEmojiSeed(`display:${displayName}`);
+  }
+
+  return "";
+}
+
+export function generateAgentEmojiCandidates(seed: string | null | undefined): string[] {
+  const normalized = normalizeEmojiSeed(seed);
+  if (!normalized) {
+    return ["❔"];
+  }
+
+  const start = buildEmojiIndex(normalized);
+  const ordered: string[] = [];
+  for (let offset = 0; offset < AGENT_EMOJIS.length; offset += 1) {
+    ordered.push(AGENT_EMOJIS[(start + offset) % AGENT_EMOJIS.length]);
+  }
+  return ordered;
+}

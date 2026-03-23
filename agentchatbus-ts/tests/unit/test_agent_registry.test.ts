@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MemoryStore } from '../../src/core/services/memoryStore.js';
-import { generateAgentEmoji, validateEmoji } from '../../src/main.js';
+import { deriveAgentEmojiSeed, generateAgentEmoji, generateAgentEmojiCandidates, validateEmoji } from '../../src/main.js';
 
 describe('Agent Registry (Ported from test_agent_registry.py)', () => {
   let store: MemoryStore;
@@ -122,6 +122,32 @@ describe('Agent Registry (Ported from test_agent_registry.py)', () => {
     expect(emoji1).toBe(emoji3);
   });
 
+  it('derives a stable emoji seed from user display name', () => {
+    const seed1 = deriveAgentEmojiSeed({
+      ide: 'Cursor',
+      model: 'GPT-5',
+      display_name: 'Planner',
+      alias_source: 'user',
+    });
+    const seed2 = deriveAgentEmojiSeed({
+      ide: 'Cursor',
+      model: 'GPT-5',
+      display_name: ' planner ',
+      alias_source: 'user',
+    });
+
+    expect(seed1).toBe(seed2);
+    expect(seed1).toContain('display:planner');
+  });
+
+  it('produces a deterministic emoji preference order for a stable seed', () => {
+    const candidates1 = generateAgentEmojiCandidates('runtime:cursor|gpt-5');
+    const candidates2 = generateAgentEmojiCandidates('runtime:cursor|gpt-5');
+
+    expect(candidates1).toEqual(candidates2);
+    expect(new Set(candidates1).size).toBe(candidates1.length);
+  });
+
   it('agent_list marks stale heartbeat agents offline even if persisted is_online is true', () => {
     const agent = store.registerAgent({ ide: 'VSCode', model: 'GPT' });
     const stale = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
@@ -160,8 +186,36 @@ describe('Agent Registry (Ported from test_agent_registry.py)', () => {
 
   it('register without emoji falls back to deterministic hash', () => {
     const agent = store.registerAgent({ ide: 'Cursor', model: 'GPT-4' });
-    const expected = generateAgentEmoji(agent.id);
+    const expected = generateAgentEmojiCandidates('runtime:cursor|gpt-4')[0];
     expect(agent.emoji).toBe(expected);
+  });
+
+  it('keeps the fallback emoji stable across re-register for the same user alias', () => {
+    const first = store.registerAgent({
+      ide: 'Codex',
+      model: 'GPT-5',
+      display_name: 'Architect',
+    });
+    const firstEmoji = first.emoji;
+
+    expect(store.unregisterAgent(first.id, first.token!)).toBe(true);
+
+    const second = store.registerAgent({
+      ide: 'Codex',
+      model: 'GPT-5',
+      display_name: 'Architect',
+    });
+
+    expect(second.emoji).toBe(firstEmoji);
+  });
+
+  it('avoids duplicate fallback emoji for concurrently online agents with the same runtime seed', () => {
+    const first = store.registerAgent({ ide: 'Cursor', model: 'GPT-4' });
+    const second = store.registerAgent({ ide: 'Cursor', model: 'GPT-4' });
+
+    expect(first.emoji).toBeDefined();
+    expect(second.emoji).toBeDefined();
+    expect(second.emoji).not.toBe(first.emoji);
   });
 
   it('updateAgent with emoji changes stored emoji', () => {
