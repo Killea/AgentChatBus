@@ -99,6 +99,8 @@ export interface CreateCliSessionInput {
 }
 
 export interface CliSessionMeetingStatePatch {
+  participant_agent_id?: string;
+  participant_display_name?: string;
   participant_role?: "administrator" | "participant";
   context_delivery_mode?: "join" | "resume" | "incremental";
   last_delivered_seq?: number;
@@ -1159,7 +1161,6 @@ export class CliSessionManager {
       };
     }
 
-    runtime.snapshot.prompt = normalizedPrompt;
     runtime.snapshot.updated_at = nowIso();
     runtime.controls.write(normalizedPrompt);
 
@@ -1399,6 +1400,7 @@ export class CliSessionManager {
         this.emitSessionEvent("cli.session.failed", runtime);
       }
     } finally {
+      const settledState = runtime.snapshot.state;
       logInfo(
         `[cli-session] ${runtime.snapshot.adapter}/${runtime.snapshot.mode} ${runtime.snapshot.id} -> ${runtime.snapshot.state}`
       );
@@ -1406,6 +1408,10 @@ export class CliSessionManager {
       runtime.controls = null;
       runtime.runPromise = null;
       this.disposeInteractiveRuntimeState(runtime);
+      if (settledState === "completed" || settledState === "failed" || settledState === "stopped") {
+        runtime.snapshot.updated_at = nowIso();
+        this.emitSessionEvent("cli.session.state", runtime);
+      }
     }
   }
 

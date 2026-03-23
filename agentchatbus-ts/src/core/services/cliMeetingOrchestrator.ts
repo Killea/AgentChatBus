@@ -12,6 +12,7 @@ import type { MemoryStore } from "./memoryStore.js";
 
 const PARTICIPANT_HEARTBEAT_INTERVAL_MS = 10_000;
 const ONLINE_SESSION_STATES = new Set(["created", "starting", "running"]);
+const RESTARTABLE_SESSION_STATES = new Set(["completed", "failed", "stopped"]);
 const RELAY_BLOCKED_STATES = new Set(["stale", "error"]);
 const DELIVERY_BUSY_REPLY_STATES = new Set(["waiting_for_reply", "working", "streaming"]);
 const MEETING_CONTROL_MARKER = "agentchatbus_meeting_control";
@@ -347,7 +348,10 @@ export class CliMeetingOrchestrator {
     private readonly cliSessionManager: CliSessionManager,
   ) {
     this.unsubscribe = eventBus.subscribe((event) => {
-      void this.handleEvent(event);
+      void this.handleEvent(event).catch((error: unknown) => {
+        const detail = error instanceof Error ? (error.stack || error.message) : String(error);
+        logError(`[cli-meeting] event handling failed: ${detail}`);
+      });
     });
   }
 
@@ -448,6 +452,8 @@ export class CliMeetingOrchestrator {
           thread_id?: string;
           seq?: number;
           author_id?: string;
+          author_name?: string;
+          role?: string;
           content?: string;
           metadata?: Record<string, unknown> | null;
         })
@@ -466,6 +472,8 @@ export class CliMeetingOrchestrator {
     if (isInteractivePlaceholder) {
       return;
     }
+
+    this.adoptParticipantIdentityFromMessage(threadId, payload);
 
     const sessions = this.cliSessionManager.listSessionsForThread(threadId)
       .filter((session) => Boolean(session.participant_agent_id))
@@ -705,7 +713,46 @@ export class CliMeetingOrchestrator {
       return;
     }
 
+    if (!usesLegacyPtyRelay(session) && this.isParticipantActivelyWaiting(session.thread_id, session.participant_agent_id)) {
+      // When the participant is actively blocked in msg_wait, the bus itself will
+      // deliver the new message. Do not queue a redundant wake-up or restart.
+      this.pendingDeliverySeqBySession.delete(session.id);
+      return;
+    }
+
     const workState = this.getSessionWorkState(session);
+    if (!usesLegacyPtyRelay(session) && workState === "unavailable") {
+      if (
+        RESTARTABLE_SESSION_STATES.has(String(session.state || ""))
+        && session.supports_restart
+      ) {
+        try {
+          const restarted = await this.cliSessionManager.restartSession(session.id);
+          if (restarted) {
+            this.pendingDeliverySeqBySession.delete(session.id);
+            logInfo(
+              `[cli-meeting] restarted agent_mcp session ${session.id} to resume thread ${session.thread_id}`,
+            );
+            return;
+          }
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          this.pendingDeliverySeqBySession.set(
+            session.id,
+            Math.max(pendingSeq, latestSeq),
+          );
+          logInfo(
+            `[cli-meeting] delayed restart for session ${session.id}; session is not restart-ready yet (${detail})`,
+          );
+          return;
+        }
+      }
+      this.pendingDeliverySeqBySession.set(
+        session.id,
+        Math.max(pendingSeq, latestSeq),
+      );
+      return;
+    }
     if (workState !== "idle") {
       this.pendingDeliverySeqBySession.set(
         session.id,
@@ -715,11 +762,6 @@ export class CliMeetingOrchestrator {
     }
 
     if (!usesLegacyPtyRelay(session)) {
-      if (this.isParticipantActivelyWaiting(session.thread_id, session.participant_agent_id)) {
-        this.pendingDeliverySeqBySession.delete(session.id);
-        return;
-      }
-
       const thread = this.store.getThread(session.thread_id);
       const threadName = String(thread?.topic || session.thread_id).trim() || session.thread_id;
       const result = await this.cliSessionManager.deliverWakePrompt(
@@ -788,6 +830,75 @@ export class CliMeetingOrchestrator {
       return;
     }
     await this.maybeDeliverIncrementalContext(session, pendingSeq);
+  }
+
+  private adoptParticipantIdentityFromMessage(
+    threadId: string,
+    payload: {
+      author_id?: string;
+      author_name?: string;
+      role?: string;
+    } | undefined,
+  ): void {
+    const authorId = String(payload?.author_id || "").trim();
+    const role = String(payload?.role || "").trim().toLowerCase();
+    if (!authorId || authorId === "system" || role !== "assistant") {
+      return;
+    }
+
+    const sessions = this.cliSessionManager.listSessionsForThread(threadId)
+      .filter((session) => session.mode === "interactive")
+      .filter((session) => !usesLegacyPtyRelay(session))
+      .filter((session) => Boolean(session.participant_agent_id));
+    if (sessions.some((session) => session.participant_agent_id === authorId)) {
+      return;
+    }
+
+    const candidates = sessions
+      .filter((session) => ONLINE_SESSION_STATES.has(session.state))
+      .filter((session) => !hasParticipantPosted(this.store, threadId, session.participant_agent_id || ""));
+    if (candidates.length !== 1) {
+      return;
+    }
+
+    const candidate = candidates[0];
+    const previousAgentId = String(candidate.participant_agent_id || "").trim();
+    if (!previousAgentId || previousAgentId === authorId) {
+      return;
+    }
+
+    this.cliSessionManager.updateMeetingState(candidate.id, {
+      participant_agent_id: authorId,
+    });
+
+    const previousRoutingState = this.getParticipantRoutingState(threadId, previousAgentId);
+    this.participantRoutingStates.delete(routingKey(threadId, previousAgentId));
+    this.participantRoutingStates.set(routingKey(threadId, authorId), previousRoutingState);
+
+    this.store.setAgentOnlineState(previousAgentId, false, "cli_identity_superseded");
+
+    const actualAgent = this.store.getAgent(authorId);
+    const adoptedName = String(
+      candidate.participant_display_name
+      || actualAgent?.display_name
+      || actualAgent?.name
+      || payload?.author_name
+      || authorId,
+    ).trim() || authorId;
+    if (candidate.participant_display_name !== adoptedName) {
+      this.cliSessionManager.updateMeetingState(candidate.id, {
+        participant_display_name: adoptedName,
+      });
+    }
+    if (actualAgent?.token) {
+      this.store.heartbeatAgent(authorId, actualAgent.token);
+    } else {
+      this.store.setAgentOnlineState(authorId, true, "cli_session_running");
+    }
+
+    logInfo(
+      `[cli-meeting] adopted live participant identity ${authorId} for session ${candidate.id} (was ${previousAgentId})`,
+    );
   }
 
   private async syncRelayMessage(session: CliSessionSnapshot): Promise<void> {
