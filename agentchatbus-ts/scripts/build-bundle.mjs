@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { existsSync } from 'node:fs';
-import { mkdir, rm } from 'node:fs/promises';
+import { copyFile, mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
@@ -16,6 +16,16 @@ async function prepareDistDir() {
     await rm(distDir, { recursive: true, force: true });
   }
   await mkdir(path.join(distDir, 'cli'), { recursive: true });
+  await mkdir(path.join(distDir, 'workers'), { recursive: true });
+}
+
+async function copyWorkerAssets() {
+  const workers = [
+    ['src/core/services/adapters/workers/interactivePtyWorker.mjs', 'dist/workers/interactivePtyWorker.mjs'],
+  ];
+  for (const [source, target] of workers) {
+    await copyFile(path.join(projectRoot, source), path.join(projectRoot, target));
+  }
 }
 
 async function main() {
@@ -38,6 +48,8 @@ async function main() {
       js: '#!/usr/bin/env node',
     },
   });
+
+  await copyWorkerAssets();
 
   console.log('[build:bundle] bundled agentchatbus-ts runtime to dist/cli/index.js');
 }
