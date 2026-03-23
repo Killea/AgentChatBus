@@ -52,6 +52,18 @@ function looksLikeClaudeIdleScreen(screenExcerpt: string | undefined): boolean {
   );
 }
 
+function looksLikeClaudeWorkingScreen(screenExcerpt: string | undefined): boolean {
+  const normalized = normalizeScreenText(screenExcerpt);
+  if (!normalized) {
+    return false;
+  }
+  return (
+    normalized.includes("thinking")
+    || normalized.includes("working")
+    || normalized.includes("processing")
+  );
+}
+
 function looksLikeCodexIdleScreen(screenExcerpt: string | undefined): boolean {
   const normalized = normalizeScreenText(screenExcerpt);
   if (!normalized) {
@@ -602,22 +614,28 @@ export class CliMeetingOrchestrator {
       return "unavailable";
     }
 
-    // Check for claude idle screen
+    if (String(session.meeting_post_state || "") === "posting") {
+      return "busy";
+    }
+    if (DELIVERY_BUSY_REPLY_STATES.has(String(session.reply_capture_state || ""))) {
+      return "busy";
+    }
+    if (["codex_working", "claude_working", "cursor_working"].includes(String(session.automation_state || ""))) {
+      return "busy";
+    }
+
     if (session.adapter === "claude" && session.mode === "interactive") {
+      if (looksLikeClaudeWorkingScreen(session.screen_excerpt)) {
+        return "busy";
+      }
       if (looksLikeClaudeIdleScreen(session.screen_excerpt)) {
         return "idle";
       }
-      // If reply capture is completed/timeout/error and no clear working indicator, consider idle
       if (["completed", "timeout", "error"].includes(String(session.reply_capture_state || ""))) {
-        return "idle";
-      }
-      // If session is running and has some screen content, consider idle by default
-      if (session.state === "running" && String(session.screen_excerpt || "").trim()) {
         return "idle";
       }
     }
 
-    // Original codex logic
     if (session.mode === "interactive" && looksLikeCodexIdleScreen(session.screen_excerpt)) {
       return "idle";
     }
@@ -628,15 +646,6 @@ export class CliMeetingOrchestrator {
       && !String(session.screen_excerpt || "").trim()
     ) {
       return "idle";
-    }
-    if (String(session.automation_state || "") === "codex_working") {
-      return "busy";
-    }
-    if (DELIVERY_BUSY_REPLY_STATES.has(String(session.reply_capture_state || ""))) {
-      return "busy";
-    }
-    if (String(session.meeting_post_state || "") === "posting") {
-      return "busy";
     }
     if (session.mode === "interactive" && session.state === "running") {
       return "idle";

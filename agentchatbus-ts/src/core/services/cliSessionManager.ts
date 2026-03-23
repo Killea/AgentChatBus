@@ -212,6 +212,7 @@ const DEFAULT_HEADLESS_SCREEN_SNAPSHOT: CliSessionScreenSnapshot = {
   cursorY: 0,
   bufferType: "normal",
 };
+const CLAUDE_INITIAL_PROMPT_ENTER_DELAY_MS = 600;
 const ANSI_CSI_SEQUENCE = /\u001b\[[0-?]*[ -/]*[@-~]/g;
 const ANSI_OSC_SEQUENCE = /\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g;
 const ANSI_SINGLE_CHAR_SEQUENCE = /\u001b[@-_]/g;
@@ -337,6 +338,12 @@ function looksLikeClaudeUsableScreen(screen: CliSessionScreenSnapshot): boolean 
     return false;
   }
   return true;
+}
+
+function looksLikeClaudeReplyIdleScreen(screen: CliSessionScreenSnapshot): boolean {
+  return !looksLikeClaudeWorkingScreen(screen.text)
+    && !looksLikeClaudeProceedPrompt(screen.text)
+    && (looksLikeClaudeIdleScreen(screen.text) || looksLikeClaudeUsableScreen(screen));
 }
 
 function looksLikeClaudePastedTextPrompt(screenExcerpt: string | undefined): boolean {
@@ -1307,6 +1314,8 @@ export class CliSessionManager {
     this.updateAutomationState(runtime, "meeting_delivery_prompt_sent");
     if (runtime.snapshot.adapter === "codex" && runtime.snapshot.mode === "interactive") {
       this.scheduleCodexDeliveryEnter(runtime, 600);
+    } else if (runtime.snapshot.adapter === "claude" && runtime.snapshot.mode === "interactive") {
+      this.scheduleClaudePastedTextEnter(runtime, "sent_claude_delivery_enter", 300);
     } else {
       runtime.controls.write("\r");
     }
@@ -1780,6 +1789,15 @@ export class CliSessionManager {
     }
     const latestScreen = runtime.screenState?.latest;
     if (
+      runtime.snapshot.adapter === "claude"
+      && latestScreen
+      && looksLikeClaudeReplyIdleScreen(latestScreen)
+    ) {
+      this.updateReplyCaptureState(runtime, "streaming", { excerpt });
+      this.finalizeReplyCaptureIfIdle(runtime, latestScreen);
+      return;
+    }
+    if (
       runtime.snapshot.adapter === "codex"
       && latestScreen
       && looksLikeCodexReplyIdleScreen(latestScreen)
@@ -1800,6 +1818,50 @@ export class CliSessionManager {
   private finalizeReplyCaptureIfIdle(runtime: CliSessionRuntime, screen: CliSessionScreenSnapshot): void {
     const capture = runtime.replyCapture;
     if (!capture) {
+      return;
+    }
+    if (runtime.snapshot.adapter === "claude" && runtime.snapshot.mode === "interactive") {
+      if (!looksLikeClaudeReplyIdleScreen(screen)) {
+        this.clearReplyCaptureFinalizeTimer(runtime);
+        return;
+      }
+      const automation = runtime.automationState;
+      if (automation?.profile === "codex-startup") {
+        const hasStableReplySignal = automation.sawWorkingScreen || Boolean(capture.excerpt);
+        if (!hasStableReplySignal) {
+          return;
+        }
+      }
+      const finalExcerpt = String(capture.excerpt || "").trim();
+      if (!finalExcerpt) {
+        return;
+      }
+      if (areEquivalentReplyExcerpts(finalExcerpt, capture.baselineExcerpt)) {
+        return;
+      }
+      this.clearReplyCaptureFinalizeTimer(runtime);
+      capture.finalizeTimer = setTimeout(() => {
+        if (runtime.replyCapture !== capture) {
+          return;
+        }
+        capture.finalizeTimer = null;
+        const latestScreen = runtime.screenState?.latest || screen;
+        if (!looksLikeClaudeReplyIdleScreen(latestScreen)) {
+          return;
+        }
+        const latestExcerpt = String(runtime.replyCapture?.excerpt || "").trim();
+        if (!latestExcerpt) {
+          return;
+        }
+        if (areEquivalentReplyExcerpts(latestExcerpt, capture.baselineExcerpt)) {
+          return;
+        }
+        this.updateReplyCaptureState(runtime, "completed", {
+          excerpt: latestExcerpt,
+          clearTimer: true,
+        });
+        this.updateAutomationState(runtime, "waiting_for_claude_ready");
+      }, CLI_REPLY_FINALIZE_DEBOUNCE_MS);
       return;
     }
     if (!looksLikeCodexReplyIdleScreen(screen)) {
@@ -1985,7 +2047,7 @@ export class CliSessionManager {
       }
       runtime.controls.write("\r");
       this.updateAutomationState(runtime, nextState);
-      logInfo(`[cli-session] ${runtime.snapshot.id} auto-submitted Claude pasted text prompt.`);
+      logInfo(`[cli-session] ${runtime.snapshot.id} auto-submitted Claude prompt after delayed Enter.`);
     }, delayMs);
   }
 
@@ -2058,6 +2120,14 @@ export class CliSessionManager {
 
     if (looksLikeClaudeWorkingScreen(screenText)) {
       automation.sawWorkingScreen = true;
+      automation.deliveryPromptEnterRetried = false;
+      automation.wakePromptText = undefined;
+      automation.wakePromptEnterSent = false;
+      automation.wakePromptEnterRetried = false;
+      if (automation.submitTimer) {
+        clearTimeout(automation.submitTimer);
+        automation.submitTimer = null;
+      }
       if (runtime.replyCapture && runtime.replyCapture.state !== "completed") {
         this.updateReplyCaptureState(runtime, "working", {
           excerpt: runtime.replyCapture.excerpt,
@@ -2090,16 +2160,23 @@ export class CliSessionManager {
       automation.initialPromptTextSent = true;
       this.startReplyCapture(runtime, initialPrompt);
       runtime.controls.write(initialPrompt);
+      automation.initialPromptEnterSent = true;
       if (looksLikeClaudePastedTextPrompt(screenText)) {
-        automation.initialPromptEnterSent = true;
-        this.scheduleClaudePastedTextEnter(runtime, "sent_claude_initial_prompt", 300);
+        this.scheduleClaudePastedTextEnter(
+          runtime,
+          "sent_claude_initial_prompt",
+          CLAUDE_INITIAL_PROMPT_ENTER_DELAY_MS,
+        );
         this.updateAutomationState(runtime, "waiting_for_claude_paste_submit");
         logInfo(`[cli-session] ${runtime.snapshot.id} detected Claude pasted text UI for initial prompt.`);
       } else {
-        automation.initialPromptEnterSent = true;
-        runtime.controls.write("\r");
-        this.updateAutomationState(runtime, "sent_claude_initial_prompt");
-        logInfo(`[cli-session] ${runtime.snapshot.id} auto-submitted initial Claude prompt.`);
+        this.scheduleClaudePastedTextEnter(
+          runtime,
+          "sent_claude_initial_prompt",
+          CLAUDE_INITIAL_PROMPT_ENTER_DELAY_MS,
+        );
+        this.updateAutomationState(runtime, "waiting_for_claude_initial_submit");
+        logInfo(`[cli-session] ${runtime.snapshot.id} scheduled delayed Enter for initial Claude prompt.`);
       }
       return;
     }
@@ -2108,12 +2185,17 @@ export class CliSessionManager {
       automation.initialPromptTextSent
       && !automation.initialPromptEnterRetried
       && !automation.sawWorkingScreen
-      && looksLikeClaudePastedTextPrompt(screenText)
+      && !runtime.replyCapture?.excerpt
+      && isClaudePromptShowingText(screenText, initialPrompt)
     ) {
       automation.initialPromptEnterRetried = true;
-      this.scheduleClaudePastedTextEnter(runtime, "resent_claude_initial_paste_enter", 300);
-      this.updateAutomationState(runtime, "waiting_for_claude_initial_paste_submit");
-      logInfo(`[cli-session] ${runtime.snapshot.id} detected delayed Claude pasted text UI for initial prompt.`);
+      this.scheduleClaudePastedTextEnter(
+        runtime,
+        "resent_claude_initial_paste_enter",
+        CLAUDE_INITIAL_PROMPT_ENTER_DELAY_MS,
+      );
+      this.updateAutomationState(runtime, "waiting_for_claude_initial_retry_submit");
+      logInfo(`[cli-session] ${runtime.snapshot.id} retried delayed Enter for initial Claude prompt.`);
       return;
     }
 
@@ -2130,11 +2212,13 @@ export class CliSessionManager {
         this.updateAutomationState(runtime, "waiting_for_claude_delivery_paste_submit");
         logInfo(`[cli-session] ${runtime.snapshot.id} detected Claude pasted text UI for meeting prompt delivery.`);
       } else if (looksLikeClaudeUsableScreen(screen)) {
-        runtime.controls.write("\r");
-        this.updateAutomationState(runtime, "resent_claude_delivery_enter");
-        logInfo(`[cli-session] ${runtime.snapshot.id} retried Enter for Claude meeting prompt delivery.`);
+        this.scheduleClaudePastedTextEnter(runtime, "resent_claude_delivery_enter", 300);
+        this.updateAutomationState(runtime, "waiting_for_claude_delivery_submit");
+        logInfo(`[cli-session] ${runtime.snapshot.id} scheduled delayed Enter for Claude meeting prompt delivery.`);
       }
     }
+
+    this.finalizeReplyCaptureIfIdle(runtime, screen);
   }
 
   private runCursorAutomation(runtime: CliSessionRuntime, screen: CliSessionScreenSnapshot): void {

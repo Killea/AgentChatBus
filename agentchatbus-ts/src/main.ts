@@ -3,7 +3,29 @@
  */
 import { createHash } from "node:crypto";
 
-const AGENT_EMOJIS = ['🤖', '🧠', '⚡', '💡', '🔧', '🎯', '📊', '🚀'];
+// Keep this pool aligned with the original Python implementation in src/main.py.
+// The deterministic hash mapping and the Web UI launch picker both rely on this
+// larger set so avatars stay varied and stable across transports.
+export const AGENT_EMOJIS = [
+  // animals
+  "🦊", "🐼", "🐸", "🐙", "🦄", "🐯", "🦁", "🐵", "🐧", "🐢",
+  "🦉", "🐳", "🐝", "🦋", "🪲", "🦀", "🐞", "🦎", "🐊", "🐠",
+  "🐬", "🦖", "🦒", "🦓", "🦔", "🦦", "🦥", "🦩", "🐘", "🦛",
+  "🐨", "🐹", "🐰", "🐮", "🐷", "🐔", "🐧",
+  // plants & nature
+  "🌵", "🌲", "🌴", "🌿", "🍄", "🪴", "🍀",
+  // food
+  "🍉", "🍓", "🍒", "🍍", "🥑", "🌽", "🍕", "🍣", "🍜", "🍪",
+  "🍩", "🍫",
+  // objects & tools
+  "⚡", "🔥", "💡", "🔭", "🧪", "🧬", "🧭", "🪐", "🛰️", "📡",
+  "🔧", "🛠️", "🧰", "🧲", "🧯", "🔒", "🔑", "📌", "📎", "📚",
+  "🗺️", "🧠",
+  // games & music
+  "🎯", "🧩", "🎲", "♟️", "🎸", "🎧", "🎷",
+  // travel & misc
+  "🚲", "🛶", "🏄", "🧳", "🏺", "🪁", "🪄", "🧵", "🧶", "🪙", "🗝️",
+];
 
 // Unicode Emoji_Presentation property — covers the practical emoji range callers
 // are expected to use (single codepoints, optional VS-16, optional ZWJ sequences).

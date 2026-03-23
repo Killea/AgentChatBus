@@ -820,10 +820,10 @@ body[data-theme="light"] .thread-item .ti-waiting-agents {
 }
 
 #cli-session-strip {
-  flex: 0 0 clamp(360px, 30vw, 460px);
+  flex: 0 0 clamp(420px, 36vw, 620px);
   min-width: 0;
-  width: clamp(360px, 30vw, 460px);
-  max-width: clamp(360px, 30vw, 460px);
+  width: clamp(420px, 36vw, 620px);
+  max-width: clamp(420px, 36vw, 620px);
   min-height: 0;
   padding: 12px 14px 14px;
   border-left: 1px solid var(--border);

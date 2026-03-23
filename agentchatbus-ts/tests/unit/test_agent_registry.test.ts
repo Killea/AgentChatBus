@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MemoryStore } from '../../src/core/services/memoryStore.js';
-import { deriveAgentEmojiSeed, generateAgentEmoji, generateAgentEmojiCandidates, validateEmoji } from '../../src/main.js';
+import { AGENT_EMOJIS, deriveAgentEmojiSeed, generateAgentEmoji, generateAgentEmojiCandidates, validateEmoji } from '../../src/main.js';
 
 describe('Agent Registry (Ported from test_agent_registry.py)', () => {
   let store: MemoryStore;
@@ -146,6 +146,13 @@ describe('Agent Registry (Ported from test_agent_registry.py)', () => {
 
     expect(candidates1).toEqual(candidates2);
     expect(new Set(candidates1).size).toBe(candidates1.length);
+  });
+
+  it('keeps the expanded emoji pool from the original Python implementation', () => {
+    expect(AGENT_EMOJIS.length).toBeGreaterThanOrEqual(80);
+    expect(AGENT_EMOJIS).toContain('🦊');
+    expect(AGENT_EMOJIS).toContain('🛰️');
+    expect(AGENT_EMOJIS).toContain('🎸');
   });
 
   it('agent_list marks stale heartbeat agents offline even if persisted is_online is true', () => {

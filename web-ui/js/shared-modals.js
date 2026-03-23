@@ -93,7 +93,28 @@
   const DEFAULT_THREAD_LAUNCH_INTERVAL_SECONDS = 2;
   const MAX_THREAD_LAUNCH_AGENTS = 4;
   const THREAD_LAUNCH_ADAPTER_STORAGE_KEY = "acb.threadLaunchAdapters.v1";
-  const THREAD_LAUNCH_EMOJI_OPTIONS = ["🤖", "🧠", "⚡", "💡", "🔧", "🎯", "📊", "🚀"];
+  // Keep this list aligned with agentchatbus-ts/src/main.ts and src/main.py so
+  // the launch picker matches the server-side deterministic emoji pool.
+  const THREAD_LAUNCH_EMOJI_OPTIONS = [
+    // animals
+    "🦊", "🐼", "🐸", "🐙", "🦄", "🐯", "🦁", "🐵", "🐧", "🐢",
+    "🦉", "🐳", "🐝", "🦋", "🪲", "🦀", "🐞", "🦎", "🐊", "🐠",
+    "🐬", "🦖", "🦒", "🦓", "🦔", "🦦", "🦥", "🦩", "🐘", "🦛",
+    "🐨", "🐹", "🐰", "🐮", "🐷", "🐔", "🐧",
+    // plants & nature
+    "🌵", "🌲", "🌴", "🌿", "🍄", "🪴", "🍀",
+    // food
+    "🍉", "🍓", "🍒", "🍍", "🥑", "🌽", "🍕", "🍣", "🍜", "🍪",
+    "🍩", "🍫",
+    // objects & tools
+    "⚡", "🔥", "💡", "🔭", "🧪", "🧬", "🧭", "🪐", "🛰️", "📡",
+    "🔧", "🛠️", "🧰", "🧲", "🧯", "🔒", "🔑", "📌", "📎", "📚",
+    "🗺️", "🧠",
+    // games & music
+    "🎯", "🧩", "🎲", "♟️", "🎸", "🎧", "🎷",
+    // travel & misc
+    "🚲", "🛶", "🏄", "🧳", "🏺", "🪁", "🪄", "🧵", "🧶", "🪙", "🗝️",
+  ];
   let _threadLaunchAgents = [];
   let _selectedThreadLaunchAgentId = "";
 
