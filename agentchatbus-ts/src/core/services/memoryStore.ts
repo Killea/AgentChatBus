@@ -605,6 +605,60 @@ export class MemoryStore {
     return true;
   }
 
+  replaceThreadParticipantIdentity(
+    threadId: string,
+    previousAgentId: string,
+    nextAgentId: string,
+  ): boolean {
+    const thread = this.getThread(threadId);
+    const nextAgent = this.getAgent(nextAgentId);
+    if (!thread || !nextAgent) {
+      return false;
+    }
+    const previousId = String(previousAgentId || "").trim();
+    const nextId = String(nextAgentId || "").trim();
+    if (!previousId || !nextId || previousId === nextId) {
+      return false;
+    }
+
+    let changed = false;
+    const participants = this.threadParticipants.get(threadId) || new Set<string>();
+    if (participants.delete(previousId)) {
+      changed = true;
+    }
+    if (!participants.has(nextId)) {
+      participants.add(nextId);
+      changed = true;
+    }
+    this.threadParticipants.set(threadId, participants);
+
+    const settings = this.threadSettings.get(threadId);
+    if (settings) {
+      const nextName = String(nextAgent.display_name || nextAgent.name || nextId).trim() || nextId;
+      if (settings.creator_admin_id === previousId) {
+        settings.creator_admin_id = nextId;
+        settings.creator_admin_name = nextName;
+        changed = true;
+      }
+      if (settings.auto_assigned_admin_id === previousId) {
+        settings.auto_assigned_admin_id = nextId;
+        settings.auto_assigned_admin_name = nextName;
+        changed = true;
+      }
+      if (changed) {
+        this.threadSettings.set(threadId, settings);
+        this.upsertThreadSettings(threadId);
+      }
+    }
+
+    if (!changed) {
+      return false;
+    }
+
+    this.persistState();
+    return true;
+  }
+
   updateThreadStatus(threadId: string, status: string): boolean {
     const thread = this.getThread(threadId);
     if (!thread) {

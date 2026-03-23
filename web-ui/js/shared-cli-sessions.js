@@ -79,8 +79,16 @@
   }
 
   function sessionAvatar(session) {
+    const resolvedEmoji = String(session?.participant_emoji || "").trim();
+    if (resolvedEmoji) {
+      return resolvedEmoji;
+    }
     const candidate = sessionDisplayName(session).replace(/[^A-Za-z0-9]/g, "");
     return String(candidate.charAt(0) || String(session?.adapter || "A").charAt(0) || "A").toUpperCase();
+  }
+
+  function resolvedRole(session) {
+    return String(session?.resolved_participant_role || session?.participant_role || "").trim().toLowerCase();
   }
 
   function stateTone(state) {
@@ -102,11 +110,11 @@
   }
 
   function roleLabel(session) {
-    return session?.participant_role === "administrator" ? "Admin Target" : "Participant Target";
+    return resolvedRole(session) === "administrator" ? "Admin Target" : "Participant Target";
   }
 
   function roleTone(session) {
-    return session?.participant_role === "administrator" ? "admin" : "participant";
+    return resolvedRole(session) === "administrator" ? "admin" : "participant";
   }
 
   function isInteractiveSession(session) {
@@ -118,8 +126,8 @@
   }
 
   function compareSessionsForDisplay(left, right) {
-    const leftAdmin = left?.participant_role === "administrator" ? 0 : 1;
-    const rightAdmin = right?.participant_role === "administrator" ? 0 : 1;
+    const leftAdmin = resolvedRole(left) === "administrator" ? 0 : 1;
+    const rightAdmin = resolvedRole(right) === "administrator" ? 0 : 1;
     if (leftAdmin !== rightAdmin) {
       return leftAdmin - rightAdmin;
     }
@@ -340,42 +348,6 @@
     return window.AcbUiAgent ? await window.AcbUiAgent.ensureUiAgent() : null;
   }
 
-  async function sendRawInput(sessionId, text) {
-    const uiAgent = await getUiAgent();
-    if (!uiAgent) {
-      throw new Error("UI agent is not available.");
-    }
-
-    const result = await window.AcbApi.api(`/api/cli-sessions/${sessionId}/input`, {
-      method: "POST",
-      headers: {
-        "X-Agent-Token": uiAgent.token,
-      },
-      body: JSON.stringify({
-        requested_by_agent_id: uiAgent.agent_id,
-        text,
-      }),
-    });
-
-    if (result?.ok === false) {
-      throw new Error(result.error || "Input was rejected.");
-    }
-  }
-
-  function queueRawInput(sessionId, text) {
-    if (!text || !sessionId) {
-      return Promise.resolve();
-    }
-
-    terminalState.inputQueue = terminalState.inputQueue
-      .then(() => sendRawInput(sessionId, text))
-      .catch((error) => {
-        writeTerminalNotice(error instanceof Error ? error.message : String(error));
-      });
-
-    return terminalState.inputQueue;
-  }
-
   async function syncTerminalSize(sessionId) {
     if (!terminalState.fitAddon || !terminalState.sessionId || terminalState.sessionId !== sessionId) {
       return;
@@ -466,6 +438,7 @@
       allowTransparency: true,
       cursorBlink: true,
       convertEol: false,
+      disableStdin: true,
       fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
       fontSize: 12,
       scrollback: 5000,
@@ -479,10 +452,9 @@
     const fitAddon = new window.FitAddon.FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(terminalEl);
-
-    terminal.onData((data) => {
-      void queueRawInput(session.id, data);
-    });
+    if (typeof terminal.attachCustomKeyEventHandler === "function") {
+      terminal.attachCustomKeyEventHandler(() => false);
+    }
 
     terminalState.sessionId = session.id;
     terminalState.terminal = terminal;
@@ -507,7 +479,6 @@
       }
       const entries = Array.isArray(result?.entries) ? result.entries : [];
       entries.forEach((entry) => appendTerminalOutput(entry));
-      terminal.focus();
     } catch (error) {
       writeTerminalNotice(error instanceof Error ? error.message : String(error));
     }

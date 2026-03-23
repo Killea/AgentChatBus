@@ -101,6 +101,16 @@ function buildDefaultInstruction(input: {
   return `${participantName}, you are a participant in this thread. Please introduce yourself briefly and explain how you can contribute.`;
 }
 
+function buildDefaultMcpInstruction(input: {
+  participantName: string;
+  hasHistory: boolean;
+}): string {
+  const action = input.hasHistory
+    ? "Review the current thread context, introduce yourself briefly if helpful, and continue with the next useful step."
+    : "Introduce yourself briefly, explain how you can help, and wait for further instructions.";
+  return `${input.participantName}, ${action}`;
+}
+
 function buildIncrementalInstruction(input: {
   participantRole: CliMeetingParticipantRole;
   participantName: string;
@@ -351,13 +361,11 @@ export function buildCliMcpMeetingPrompt(input: BuildCliMcpMeetingPromptInput): 
   }
 
   const participantName = String(input.participantDisplayName || getAgentDisplayName(participant)).trim();
-  const administrator = getThreadAdministratorInfo(input.store, input.threadId);
   const deliveredSeq = input.store.getThreadCurrentSeq(input.threadId);
-  const initialInstruction = String(input.initialInstruction || "").trim() || buildDefaultInstruction({
-    participantRole: input.participantRole,
-    hasHistory: deliveredSeq > 0,
-    administrator,
+  const administrator = getThreadAdministratorInfo(input.store, input.threadId);
+  const initialInstruction = String(input.initialInstruction || "").trim() || buildDefaultMcpInstruction({
     participantName,
+    hasHistory: deliveredSeq > 0,
   });
   const serverUrl = String(input.serverUrl || "").trim();
 
@@ -366,11 +374,7 @@ export function buildCliMcpMeetingPrompt(input: BuildCliMcpMeetingPromptInput): 
     `Use \`bus_connect\` to join the thread "${thread.topic}".`,
     serverUrl ? `If the MCP client asks for the server URL, use: ${serverUrl}` : "",
     `When joining, resume the provided participant identity: ${participantName} (${input.participantAgentId}).`,
-    input.participantRole === "administrator"
-      ? "You have been selected as the administrator for this thread. After joining, coordinate the discussion and next steps."
-      : administrator.name
-        ? `You are joining as a participant. The administrator is ${administrator.name}. After joining, cooperate with the administrator's coordination.`
-        : "You are joining as a participant. After joining, cooperate with the thread administrator when one is assigned.",
+    "After `bus_connect`, treat the returned `agent.is_administrator`, `agent.role_assignment`, and `thread.administrator` fields as the source of truth for your role and the current administrator.",
     "If you need to wait for new messages, use `msg_wait` with a 10 minute timeout.",
     "`msg_wait` does not consume resources; use it to maintain the connection.",
     "After joining, stay connected, read new messages, and reply in-thread with AgentChatBus MCP tools.",

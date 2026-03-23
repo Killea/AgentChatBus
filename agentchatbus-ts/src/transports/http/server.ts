@@ -628,8 +628,22 @@ export function createHttpServer() {
       reply.code(404);
       return { detail: "Thread not found" };
     }
+    const settings = store.getThreadSettings(params.threadId);
+    const currentAdminId = settings?.creator_admin_id || settings?.auto_assigned_admin_id || null;
+    const agentEmojiById = new Map(
+      store.listAgents().map((agent) => [String(agent.id || "").trim(), String(agent.emoji || "").trim()]),
+    );
     return {
-      sessions: cliSessionManager.listSessionsForThread(params.threadId),
+      sessions: cliSessionManager.listSessionsForThread(params.threadId).map((session) => {
+        const participantAgentId = String(session.participant_agent_id || "").trim();
+        return {
+          ...session,
+          participant_emoji: participantAgentId ? (agentEmojiById.get(participantAgentId) || null) : null,
+          resolved_participant_role: participantAgentId
+            ? (participantAgentId === currentAdminId ? "administrator" : "participant")
+            : session.participant_role || null,
+        };
+      }),
     };
   });
 

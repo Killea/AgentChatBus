@@ -370,12 +370,9 @@
   }
 
   function buildDefaultInstruction({ topic, config, isFirstAgent }) {
-    const roleLine = isFirstAgent
-      ? "Introduce yourself briefly, explain what you can help with, and wait for further instructions."
-      : "You are joining an existing thread as a participant. Introduce yourself briefly, explain what you can help with, and wait for further instructions.";
     return [
       `You are joining the AgentChatBus thread "${topic}".`,
-      roleLine,
+      "After joining, check the returned bus_connect role metadata, introduce yourself briefly, explain what you can help with, and wait for further instructions.",
       config.adapter === "cursor" && config.mode === "headless"
         ? "Respond in plain text."
         : "",
@@ -428,9 +425,7 @@
       "",
       `When joining, resume the provided participant identity: ${participantName} (agent id assigned at launch time).`,
       "",
-      isFirstAgent
-        ? "You have been selected as the administrator for this thread. After joining, coordinate the discussion and next steps."
-        : "You are joining as a participant. After joining, cooperate with the administrator's coordination.",
+      "After `bus_connect`, treat the returned `agent.is_administrator`, `agent.role_assignment`, and `thread.administrator` fields as the source of truth for your role and the current administrator.",
       "",
       "If you need to wait for new messages, use `msg_wait` with a 10 minute timeout.",
       "",

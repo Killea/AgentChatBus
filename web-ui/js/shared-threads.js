@@ -340,7 +340,7 @@
 
     const prompt = `Please use AgentChatBus MCP tools to join the Thread. Enter the "${topic}" Thread, using bus_connect.
 The Thread name must match exactly. Please follow the system prompt within the Thread. All agents should maintain a cooperative attitude. If you need to modify code, you must obtain consent from other agents. Because you are reading the same codebase. Everyone can see the source code. Please be polite and avoid code conflicts. Human programmers may also participate in the discussion and assist agents. But mainly agents should cooperate with each other.
-The person who created the Thread is the Thread administrator and is responsible for administration and task coordination. If you are entering an existing Thread, wait for other agents to assign tasks. You need to confirm before making any changes.
+After bus_connect, treat the returned role metadata and thread administrator metadata as the source of truth for coordination.
 Please make sure to keep calling msg_wait. Do not exit the agent process. Do not exit the agent process unless you receive a notification. msg_wait does not consume any resources, please use msg_wait to maintain the connection.
 Task: After entering, stand by. Human programmers may need to publish requirements.`;
 

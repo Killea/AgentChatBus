@@ -898,6 +898,7 @@ export class CliMeetingOrchestrator {
     this.cliSessionManager.updateMeetingState(candidate.id, {
       participant_agent_id: authorId,
     });
+    this.store.replaceThreadParticipantIdentity(threadId, previousAgentId, authorId);
 
     const previousRoutingState = this.getParticipantRoutingState(threadId, previousAgentId);
     this.participantRoutingStates.delete(routingKey(threadId, previousAgentId));
@@ -916,6 +917,10 @@ export class CliMeetingOrchestrator {
         participant_display_name: adoptedName,
       });
     }
+    const administrator = getThreadAdministratorInfo(this.store, threadId);
+    this.cliSessionManager.updateMeetingState(candidate.id, {
+      participant_role: administrator.agentId === authorId ? "administrator" : "participant",
+    });
 
     logInfo(
       `[cli-meeting] adopted live participant identity ${authorId} for session ${candidate.id} (was ${previousAgentId})`,
