@@ -882,7 +882,7 @@
     if (shouldLaunchFirstAgent && firstAgentConfig) {
       participantAgent = await registerParticipantAgent(api, firstAgentConfig);
       if (!participantAgent) {
-        console.error("[Thread Create] Could not register participant agent");
+        console.error("[Thread Create] Could not register target agent");
         return;
       }
       creatorAuth = {
@@ -951,7 +951,7 @@
         }
         const nextParticipantAgent = await registerParticipantAgent(api, config);
         if (!nextParticipantAgent) {
-          console.error(`[Thread Create] Could not register participant agent ${index + 2}`);
+          console.error(`[Thread Create] Could not register target agent ${index + 2}`);
           continue;
         }
         const session = await createParticipantSession(api, {
@@ -963,7 +963,7 @@
           isFirstAgent: false,
         });
         if (!session) {
-          console.error(`[Thread Create] Failed to create participant CLI session ${index + 2}`);
+          console.error(`[Thread Create] Failed to create target agent CLI session ${index + 2}`);
         }
       }
       if (followupLaunchConfigs.length > 0 && window.AcbCliSessions && typeof window.AcbCliSessions.refreshThread === "function") {
@@ -1048,7 +1048,7 @@
     const config = readAgentLaunchConfig("agent-modal");
     const participantAgent = await registerParticipantAgent(api, config);
     if (!participantAgent) {
-      console.error("[Add Agent] Could not register participant agent");
+      console.error("[Add Agent] Could not register target agent");
       return;
     }
 
@@ -1062,7 +1062,7 @@
       isFirstAgent: false,
     });
     if (!session) {
-      console.error("[Add Agent] Failed to create participant CLI session");
+      console.error("[Add Agent] Failed to create target agent CLI session");
       return;
     }
 

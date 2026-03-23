@@ -48,30 +48,6 @@
     return document.getElementById("cli-session-terminal");
   }
 
-  function getComposerEl() {
-    return document.getElementById("cli-session-compose");
-  }
-
-  function getDetailBadgeEl() {
-    return document.getElementById("cli-session-selected-badge");
-  }
-
-  function getDetailTitleEl() {
-    return document.getElementById("cli-session-selected-title");
-  }
-
-  function getDetailRoleEl() {
-    return document.getElementById("cli-session-selected-role");
-  }
-
-  function getDetailMetaEl() {
-    return document.getElementById("cli-session-selected-meta");
-  }
-
-  function getDetailSummaryEl() {
-    return document.getElementById("cli-session-selected-summary");
-  }
-
   function getOrCreateSessionMap(threadId) {
     let sessionMap = sessionsByThread.get(threadId);
     if (!sessionMap) {
@@ -126,7 +102,7 @@
   }
 
   function roleLabel(session) {
-    return session?.participant_role === "administrator" ? "Admin" : "Participant";
+    return session?.participant_role === "administrator" ? "Admin Target" : "Participant Target";
   }
 
   function roleTone(session) {
@@ -537,78 +513,20 @@
     }
   }
 
-  function renderSessionSummary(session) {
-    if ((session?.meeting_post_state === "error" || session?.meeting_post_state === "stale") && session?.meeting_post_error) {
-      return `<div class="cli-session-strip__body cli-session-strip__body--error">Relay error: ${escapeHtml(session.meeting_post_error)}</div>`;
-    }
-    if (session?.reply_capture_excerpt) {
-      const state = session?.reply_capture_state ? ` (${escapeHtml(session.reply_capture_state)})` : "";
-      return `<div class="cli-session-strip__body"><strong>Latest reply${state}:</strong><br>${escapeHtml(session.reply_capture_excerpt).replaceAll("\n", "<br>")}</div>`;
-    }
-    if (session?.reply_capture_error) {
-      return `<div class="cli-session-strip__body cli-session-strip__body--error">Reply capture error: ${escapeHtml(session.reply_capture_error)}</div>`;
-    }
-    if (session?.last_result) {
-      return `<div class="cli-session-strip__body"><strong>Session result:</strong><br>${escapeHtml(session.last_result)}</div>`;
-    }
-    if (session?.last_error) {
-      return `<div class="cli-session-strip__body cli-session-strip__body--error">${escapeHtml(session.last_error)}</div>`;
-    }
-    return '<div class="cli-session-strip__body cli-session-strip__body--empty">No captured reply yet.</div>';
-  }
-
-  function renderInteractiveBody(session) {
-    const label = escapeHtml(sessionDisplayName(session));
+  function renderInteractiveBody(_session) {
     return `
-      <div class="cli-session-terminal__note">Click the terminal to focus it. Keystrokes are sent to the PTY in real time.</div>
       <div class="cli-session-terminal__shell">
         <div id="cli-session-terminal" class="cli-session-terminal"></div>
       </div>
-      <div class="cli-session-compose__row">
-        <textarea id="cli-session-compose" class="cli-session-compose" rows="2" placeholder="Optional: send a full prompt line to ${label}" onkeydown="return window.AcbCliSessions && window.AcbCliSessions.handleComposerKeydown(event)"></textarea>
-        <button class="toolbar-btn cli-session-compose__send" type="button" onclick="window.AcbCliSessions && window.AcbCliSessions.sendComposerInput()">Send</button>
-      </div>
-      <div id="cli-session-selected-summary">${renderSessionSummary(session)}</div>
     `;
   }
 
-  function renderPassiveBody(session) {
-    return `<div id="cli-session-selected-summary">${renderSessionSummary(session)}</div>`;
-  }
-
-  function buildMetaBits(session) {
-    const metaBits = [
-      `${escapeHtml(session.adapter)} / ${escapeHtml(session.mode)}`,
-      `run #${escapeHtml(session.run_count)}`,
-    ];
-    if (session.participant_display_name) {
-      metaBits.push(`participant ${escapeHtml(session.participant_display_name)}`);
-    }
-    if (session.participant_role) {
-      metaBits.push(`role ${escapeHtml(session.participant_role)}`);
-    }
-    if (session.meeting_transport) {
-      metaBits.push(`transport ${escapeHtml(session.meeting_transport)}`);
-    }
-    if (session.shell) {
-      metaBits.push(`shell ${escapeHtml(session.shell)}`);
-    }
-    if (session.automation_state) {
-      metaBits.push(`auto ${escapeHtml(session.automation_state)}`);
-    }
-    if (session.reply_capture_state) {
-      metaBits.push(`reply ${escapeHtml(session.reply_capture_state)}`);
-    }
-    if (session.meeting_post_state) {
-      metaBits.push(`relay ${escapeHtml(session.meeting_post_state)}`);
-    }
-    if (session.external_session_id) {
-      metaBits.push(`external ${escapeHtml(session.external_session_id)}`);
-    }
-    if (session.cols && session.rows) {
-      metaBits.push(`${escapeHtml(session.cols)}x${escapeHtml(session.rows)}`);
-    }
-    return metaBits;
+  function renderPassiveBody() {
+    return `
+      <div class="cli-session-terminal__fallback">
+        This session does not expose a live terminal.
+      </div>
+    `;
   }
 
   function ensurePanelShell(panelEl) {
@@ -619,12 +537,8 @@
     panelEl.innerHTML = `
       <div class="cli-session-strip__header">
         <div class="cli-session-strip__title">
-          <span>Participants & Sessions</span>
-          <span id="cli-session-count" class="cli-session-strip__count">0 participants</span>
-        </div>
-        <div class="cli-session-strip__actions">
-          <button class="thread-header-cta" type="button" onclick="window.openAddAgentModal && window.openAddAgentModal()">Add Agent</button>
-          <button id="cli-session-terminal-toggle" class="thread-header-cta" type="button" onclick="window.AcbCliSessions && window.AcbCliSessions.toggleTerminalVisibility()">Hide Terminal</button>
+          <span>Agent Sessions</span>
+          <span id="cli-session-count" class="cli-session-strip__count">0 sessions</span>
         </div>
       </div>
       <div id="cli-session-participants" class="cli-session-participants"></div>
@@ -639,16 +553,23 @@
       return;
     }
     const count = Array.isArray(sessions) ? sessions.length : 0;
-    countEl.textContent = `${count} participant${count === 1 ? "" : "s"}`;
+    countEl.textContent = `${count} session${count === 1 ? "" : "s"}`;
   }
 
   function renderTerminalToggle(threadId = getActiveThreadId()) {
-    const toggleEl = document.getElementById("cli-session-terminal-toggle");
+    const toggleEl = document.getElementById("thread-agent-panel-toggle");
     if (!toggleEl) {
       return;
     }
     const visible = isTerminalVisible(threadId);
-    toggleEl.textContent = visible ? "Hide Agent Panel" : "Show Agent Panel";
+    const labelEl = toggleEl.querySelector(".thread-agent-panel-toggle__label");
+    if (labelEl) {
+      labelEl.textContent = visible ? "Hide Agent Panel" : "Show Agent Panel";
+    }
+    toggleEl.setAttribute(
+      "aria-label",
+      visible ? "Hide agent panel" : "Show agent panel",
+    );
     toggleEl.setAttribute(
       "title",
       visible ? "Hide the selected agent detail panel" : "Show the selected agent detail panel",
@@ -689,43 +610,6 @@
     }).join("");
   }
 
-  function updateDetailChrome(session) {
-    const badgeEl = getDetailBadgeEl();
-    if (badgeEl) {
-      badgeEl.className = `cli-session-strip__badge cli-session-strip__badge--${stateTone(session.state)}`;
-      badgeEl.textContent = stateLabel(session.state);
-    }
-
-    const titleEl = getDetailTitleEl();
-    if (titleEl) {
-      titleEl.textContent = sessionDisplayName(session);
-    }
-
-    const roleEl = getDetailRoleEl();
-    if (roleEl) {
-      if (session?.participant_role) {
-        roleEl.hidden = false;
-        roleEl.className = `cli-session-role-badge cli-session-role-badge--${roleTone(session)}`;
-        roleEl.textContent = roleLabel(session);
-      } else {
-        roleEl.hidden = true;
-        roleEl.textContent = "";
-      }
-    }
-
-    const metaEl = getDetailMetaEl();
-    if (metaEl) {
-      metaEl.innerHTML = buildMetaBits(session)
-        .map((bit) => `<span>${bit}</span>`)
-        .join("");
-    }
-
-    const summaryEl = getDetailSummaryEl();
-    if (summaryEl) {
-      summaryEl.innerHTML = renderSessionSummary(session);
-    }
-  }
-
   function canReuseInteractiveSelection(panelEl, session) {
     return Boolean(
       panelEl
@@ -760,31 +644,6 @@
     if (!options.reuseInteractive) {
       detailEl.innerHTML = `
         <div class="cli-session-detail__card">
-          <div class="cli-session-detail__header">
-            <div class="cli-session-detail__title-stack">
-              <div class="cli-session-detail__title-row">
-                <span id="cli-session-selected-badge" class="cli-session-strip__badge cli-session-strip__badge--${stateTone(session.state)}">${escapeHtml(stateLabel(session.state))}</span>
-                <span id="cli-session-selected-title" class="cli-session-detail__title">${escapeHtml(sessionDisplayName(session))}</span>
-                <span id="cli-session-selected-role" class="cli-session-role-badge cli-session-role-badge--${roleTone(session)}"${session?.participant_role ? "" : " hidden"}>${escapeHtml(roleLabel(session))}</span>
-              </div>
-              <div id="cli-session-selected-meta" class="cli-session-strip__meta"></div>
-            </div>
-            <div class="cli-session-strip__actions">
-              <button class="toolbar-btn" type="button" title="Restart selected CLI session" aria-label="Restart selected CLI session" onclick="window.AcbCliSessions && window.AcbCliSessions.restartSelected()">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <polyline points="23 4 23 10 17 10"></polyline>
-                  <polyline points="1 20 1 14 7 14"></polyline>
-                  <path d="M3.51 9a9 9 0 0 1 14.13-3.36L23 10"></path>
-                  <path d="M20.49 15a9 9 0 0 1-14.13 3.36L1 14"></path>
-                </svg>
-              </button>
-              <button class="toolbar-btn" type="button" title="Stop selected CLI session" aria-label="Stop selected CLI session" onclick="window.AcbCliSessions && window.AcbCliSessions.stopSelected()">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                  <rect x="6" y="6" width="12" height="12" rx="2"></rect>
-                </svg>
-              </button>
-            </div>
-          </div>
           <div class="cli-session-detail__view">
             ${isInteractiveSession(session)
               ? renderInteractiveBody(session)
@@ -793,8 +652,6 @@
         </div>
       `;
     }
-
-    updateDetailChrome(session);
 
     if (isInteractiveSession(session)) {
       void mountTerminalForSession(session);
@@ -821,11 +678,8 @@
       detailEl.hidden = false;
       detailEl.innerHTML = `
         <div class="cli-session-detail__empty">
-          <strong>No agents have joined this thread yet.</strong><br>
-          Start the first participant when you are ready to turn this thread into an active meeting.
-          <div class="cli-session-detail__empty-actions">
-            <button class="thread-header-cta" type="button" onclick="window.openAddAgentModal && window.openAddAgentModal()">Add First Agent</button>
-          </div>
+          <strong>No agent sessions are active for this thread yet.</strong><br>
+          The panel will show a live terminal here after an interactive agent session starts.
         </div>
       `;
     }
@@ -853,8 +707,16 @@
     }
 
     ensurePanelShell(panelEl);
-    panelEl.hidden = false;
     renderTerminalToggle(threadId);
+    const terminalVisible = isTerminalVisible(threadId);
+    panelEl.hidden = !terminalVisible;
+    if (!terminalVisible) {
+      teardownTerminal();
+      if (window.AcbChat?.refreshHumanDeliveryIndicators) {
+        window.AcbChat.refreshHumanDeliveryIndicators(threadId);
+      }
+      return;
+    }
 
     const sessions = getSessionsForThread(threadId);
     if (!sessions.length) {
@@ -993,41 +855,6 @@
     return null;
   }
 
-  async function sendComposerInput() {
-    const session = getSelectedSession();
-    if (!session || !isInteractiveSession(session)) {
-      return null;
-    }
-
-    const composeEl = getComposerEl();
-    const value = String(composeEl?.value || "");
-    if (!value.trim()) {
-      return null;
-    }
-
-    if (composeEl) {
-      composeEl.value = "";
-    }
-
-    await queueRawInput(session.id, value.endsWith("\n") ? value : `${value}\r`);
-    if (terminalState.terminal) {
-      terminalState.terminal.focus();
-    }
-    return true;
-  }
-
-  function handleComposerKeydown(event) {
-    if (!event) {
-      return true;
-    }
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      void sendComposerInput();
-      return false;
-    }
-    return true;
-  }
-
   function handleSseEvent(event) {
     const type = String(event?.type || "");
     if (!type.startsWith("cli.session.")) {
@@ -1062,8 +889,6 @@
     stopSelected: () => stopSelected(window.AcbApi.api),
     restartLatest: () => restartSelected(window.AcbApi.api),
     stopLatest: () => stopSelected(window.AcbApi.api),
-    sendComposerInput,
-    handleComposerKeydown,
   };
 
   window.launchCodexPtySession = () => startCodexInteractive(window.AcbApi.api);

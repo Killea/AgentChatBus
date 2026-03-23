@@ -107,7 +107,7 @@
                 </button>
               </div>
 
-              <div class="meeting-modal-thread-shell__intro settings-field-description">Create a thread and launch one or more agents into it.</div>
+              <div class="meeting-modal-thread-shell__intro settings-field-description">Create a thread and launch one or more agent sessions into it.</div>
 
               <div class="meeting-modal-thread-shell__body">
                 <div id="thread-create-layout" class="meeting-modal-layout meeting-modal-layout--single">
@@ -119,7 +119,7 @@
                           <input type="radio" name="thread-launch-mode" value="thread_with_agent" checked onchange="window.AcbModals && window.AcbModals.syncThreadLaunchUi()" />
                           <div>
                             <strong>Create and start agents</strong>
-                            <span>Create the thread and immediately launch one or more participant sessions.</span>
+                            <span>Create the thread and immediately launch one or more agent sessions.</span>
                           </div>
                         </label>
                         <label class="meeting-modal-radio">
@@ -263,7 +263,7 @@
                     <div class="settings-field" style="grid-column:1 / -1;">
                       <label for="agent-modal-display-name">Display Name</label>
                       <input id="agent-modal-display-name" type="text" placeholder="Optional: Research Agent" />
-                      <div class="settings-field-description">Leave blank to use an automatically generated participant label.</div>
+                      <div class="settings-field-description">Leave blank to use an automatically generated agent label.</div>
                     </div>
                   </div>
                   <div class="settings-field" style="margin-bottom:0;">

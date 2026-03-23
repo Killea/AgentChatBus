@@ -233,7 +233,7 @@ describe("HTTP compatibility shell", () => {
     await server.close();
   });
 
-  it("binds CLI sessions to explicit thread participants and restricts control to the session owner", async () => {
+  it("binds CLI sessions to target agents without pre-registering thread participants and restricts control to the session owner", async () => {
     const server = createHttpServer();
     const owner = (await server.inject({
       method: "POST",
@@ -286,7 +286,7 @@ describe("HTTP compatibility shell", () => {
     expect(threadAgentsResponse.statusCode).toBe(200);
     const threadAgents = threadAgentsResponse.json();
     expect(Array.isArray(threadAgents)).toBe(true);
-    expect(threadAgents.some((agent: any) => agent.id === participant.agent_id)).toBe(true);
+    expect(threadAgents.some((agent: any) => agent.id === participant.agent_id)).toBe(false);
 
     const forbiddenControl = await server.inject({
       method: "POST",

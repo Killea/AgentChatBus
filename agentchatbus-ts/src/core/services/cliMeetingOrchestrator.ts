@@ -369,8 +369,6 @@ export class CliMeetingOrchestrator {
       throw new Error(`Participant agent '${input.participantAgentId}' not found.`);
     }
 
-    this.store.addThreadParticipant(input.threadId, input.participantAgentId);
-
     let administrator = getThreadAdministratorInfo(this.store, input.threadId);
     let participantRole: CliMeetingParticipantRole =
       administrator.agentId === input.participantAgentId ? "administrator" : "participant";
@@ -436,7 +434,6 @@ export class CliMeetingOrchestrator {
       return;
     }
     if (!usesLegacyPtyRelay(session)) {
-      this.syncParticipantPresence(session);
       await this.flushPendingDelivery(session);
       return;
     }
@@ -875,8 +872,6 @@ export class CliMeetingOrchestrator {
     this.participantRoutingStates.delete(routingKey(threadId, previousAgentId));
     this.participantRoutingStates.set(routingKey(threadId, authorId), previousRoutingState);
 
-    this.store.setAgentOnlineState(previousAgentId, false, "cli_identity_superseded");
-
     const actualAgent = this.store.getAgent(authorId);
     const adoptedName = String(
       candidate.participant_display_name
@@ -889,11 +884,6 @@ export class CliMeetingOrchestrator {
       this.cliSessionManager.updateMeetingState(candidate.id, {
         participant_display_name: adoptedName,
       });
-    }
-    if (actualAgent?.token) {
-      this.store.heartbeatAgent(authorId, actualAgent.token);
-    } else {
-      this.store.setAgentOnlineState(authorId, true, "cli_session_running");
     }
 
     logInfo(

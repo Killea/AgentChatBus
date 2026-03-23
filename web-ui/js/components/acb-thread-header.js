@@ -15,7 +15,14 @@
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
               </svg>
             </button>
-            <button id="add-agent-btn" class="thread-header-cta" type="button" title="Add agent to this thread" aria-label="Add agent to this thread" onclick="window.openAddAgentModal && window.openAddAgentModal()">
+            <button id="thread-agent-panel-toggle" class="thread-header-cta" type="button" title="Show agent panel" aria-label="Show agent panel" onclick="window.AcbCliSessions && window.AcbCliSessions.toggleTerminalVisibility()">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="16" rx="2"/>
+                <path d="M9 4v16"/>
+              </svg>
+              <span class="thread-agent-panel-toggle__label">Show Agent Panel</span>
+            </button>
+            <button id="thread-add-agent-btn" class="thread-header-cta" type="button" title="Add agent to this thread" aria-label="Add agent to this thread" onclick="window.openAddAgentModal && window.openAddAgentModal()">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M12 5v14"/>
                 <path d="M5 12h14"/>
