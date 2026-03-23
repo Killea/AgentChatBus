@@ -155,6 +155,9 @@ type CliSessionAutomationRuntime = {
   initialPromptEnterSent: boolean;
   initialPromptEnterRetried: boolean;
   deliveryPromptEnterRetried: boolean;
+  wakePromptText?: string;
+  wakePromptEnterSent: boolean;
+  wakePromptEnterRetried: boolean;
   manualOverride: boolean;
   sawReadyScreen: boolean;
   sawWorkingScreen: boolean;
@@ -550,6 +553,17 @@ function isCodexPromptShowingText(screen: CliSessionScreenSnapshot, prompt: stri
   const normalizedPromptLine = normalizePromptMatchText(promptLine);
   const normalizedPrompt = normalizePromptMatchText(prompt);
   return Boolean(normalizedPrompt) && normalizedPromptLine.includes(normalizedPrompt);
+}
+
+function isCodexWakePromptShowing(screen: CliSessionScreenSnapshot, prompt: string): boolean {
+  if (!prompt) {
+    return false;
+  }
+  if (isCodexPromptShowingText(screen, prompt)) {
+    return true;
+  }
+  const normalizedPrompt = normalizePromptMatchText(prompt);
+  return Boolean(normalizedPrompt) && screen.normalizedText.includes(normalizedPrompt);
 }
 
 function extractClaudeReplyFromTranscript(rawOutput: string, prompt: string): string | undefined {
@@ -1011,6 +1025,29 @@ export class CliSessionManager {
     return this.cloneSnapshot(runtime.snapshot);
   }
 
+  clearWakePromptState(sessionId: string): CliSessionSnapshot | null {
+    const runtime = this.runtimes.get(sessionId);
+    if (!runtime) {
+      return null;
+    }
+    const automation = runtime.automationState;
+    if (!automation) {
+      return this.cloneSnapshot(runtime.snapshot);
+    }
+    const hadWakePrompt =
+      Boolean(String(automation.wakePromptText || "").trim())
+      || automation.wakePromptEnterSent
+      || automation.wakePromptEnterRetried;
+    automation.wakePromptText = undefined;
+    automation.wakePromptEnterSent = false;
+    automation.wakePromptEnterRetried = false;
+    if (hadWakePrompt) {
+      runtime.snapshot.updated_at = nowIso();
+      this.emitSessionEvent("cli.session.state", runtime);
+    }
+    return this.cloneSnapshot(runtime.snapshot);
+  }
+
   listSessionsForThread(threadId: string): CliSessionSnapshot[] {
     return Array.from(this.runtimes.values())
       .filter((runtime) => runtime.snapshot.thread_id === threadId)
@@ -1161,12 +1198,31 @@ export class CliSessionManager {
       };
     }
 
+    const automation = runtime.automationState;
+    const pendingWakePrompt = String(automation?.wakePromptText || "").trim();
+    if (
+      automation
+      && pendingWakePrompt
+      && pendingWakePrompt === normalizedPrompt
+      && !automation.wakePromptEnterRetried
+    ) {
+      return {
+        ok: true,
+        session: this.cloneSnapshot(runtime.snapshot),
+      };
+    }
+
     runtime.snapshot.updated_at = nowIso();
     runtime.controls.write(normalizedPrompt);
+    if (automation) {
+      automation.wakePromptText = normalizedPrompt;
+      automation.wakePromptEnterSent = false;
+      automation.wakePromptEnterRetried = false;
+    }
 
     if (runtime.snapshot.adapter === "codex" && runtime.snapshot.mode === "interactive") {
       this.updateAutomationState(runtime, "meeting_wake_prompt_sent");
-      this.scheduleCodexDeliveryEnter(runtime, 600, "sent_codex_wake_enter");
+      this.scheduleCodexDeliveryEnter(runtime, 900, "sent_codex_wake_enter");
     } else if (runtime.snapshot.adapter === "cursor" && runtime.snapshot.mode === "interactive") {
       this.updateAutomationState(runtime, "meeting_wake_prompt_sent");
       this.scheduleCursorDelayedEnter(runtime, "sent_cursor_wake_enter", 300);
@@ -1238,6 +1294,9 @@ export class CliSessionManager {
     }
     if (runtime.automationState?.profile === "codex-startup") {
       runtime.automationState.deliveryPromptEnterRetried = false;
+      runtime.automationState.wakePromptText = undefined;
+      runtime.automationState.wakePromptEnterSent = false;
+      runtime.automationState.wakePromptEnterRetried = false;
     }
     runtime.replyCapture = null;
     this.startReplyCapture(runtime, normalizedPrompt, {
@@ -1491,6 +1550,9 @@ export class CliSessionManager {
         initialPromptEnterSent: false,
         initialPromptEnterRetried: false,
         deliveryPromptEnterRetried: false,
+        wakePromptText: undefined,
+        wakePromptEnterSent: false,
+        wakePromptEnterRetried: false,
         manualOverride: false,
         sawReadyScreen: false,
         sawWorkingScreen: false,
@@ -1853,6 +1915,9 @@ export class CliSessionManager {
       if (automation.manualOverride || !runtime.controls?.write) {
         return;
       }
+      if (String(automation.wakePromptText || "").trim()) {
+        automation.wakePromptEnterSent = true;
+      }
       runtime.controls.write("\r");
       if (nextState) {
         this.updateAutomationState(runtime, nextState);
@@ -2180,6 +2245,9 @@ export class CliSessionManager {
     if (looksLikeCodexWorkingScreen(screen)) {
       automation.sawWorkingScreen = true;
       automation.deliveryPromptEnterRetried = false;
+      automation.wakePromptText = undefined;
+      automation.wakePromptEnterSent = false;
+      automation.wakePromptEnterRetried = false;
       if (automation.submitTimer) {
         clearTimeout(automation.submitTimer);
         automation.submitTimer = null;
@@ -2238,6 +2306,21 @@ export class CliSessionManager {
       this.updateAutomationState(runtime, "sent_initial_prompt_enter");
       this.scheduleCodexPromptSubmit(runtime, 900);
       logInfo(`[cli-session] ${runtime.snapshot.id} auto-submitted initial Codex prompt.`);
+      return;
+    }
+
+    if (
+      automation.wakePromptText
+      && !automation.wakePromptEnterRetried
+      && !automation.sawWorkingScreen
+      && looksLikeCodexIdlePrompt(screen)
+      && isCodexWakePromptShowing(screen, automation.wakePromptText)
+    ) {
+      automation.wakePromptEnterRetried = true;
+      automation.wakePromptEnterSent = true;
+      runtime.controls.write("\r");
+      this.updateAutomationState(runtime, "meeting_wake_prompt_resent_enter");
+      logInfo(`[cli-session] ${runtime.snapshot.id} retried Enter for Codex wake prompt delivery.`);
       return;
     }
 

@@ -11,6 +11,7 @@ import type { CliSessionManager, CliSessionSnapshot } from "./cliSessionManager.
 import type { MemoryStore } from "./memoryStore.js";
 
 const PARTICIPANT_HEARTBEAT_INTERVAL_MS = 10_000;
+const MCP_WAKE_PROMPT_COOLDOWN_MS = 2_500;
 const ONLINE_SESSION_STATES = new Set(["created", "starting", "running"]);
 const RESTARTABLE_SESSION_STATES = new Set(["completed", "failed", "stopped"]);
 const RELAY_BLOCKED_STATES = new Set(["stale", "error"]);
@@ -332,13 +333,22 @@ function routingKey(threadId: string, participantAgentId: string): string {
 }
 
 function buildMsgWaitWakePrompt(threadName: string): string {
-  return `Please use msg_wait to process messages in "${threadName}".`;
+  return [
+    `Please use msg_wait to process messages in "${threadName}".`,
+    "When you are ready to contribute, please prefer to use msg_post to share your opinion in the thread.",
+  ].join(" ");
+}
+
+interface WakePromptRecord {
+  seq: number;
+  sentAt: number;
 }
 
 export class CliMeetingOrchestrator {
   private readonly inFlightRelaySyncs = new Set<string>();
   private readonly pendingRelayResyncs = new Set<string>();
   private readonly pendingDeliverySeqBySession = new Map<string, number>();
+  private readonly lastWakePromptBySession = new Map<string, WakePromptRecord>();
   private readonly participantRoutingStates = new Map<string, MeetingRoutingState>();
   private readonly heartbeatTimers = new Map<string, NodeJS.Timeout>();
   private readonly unsubscribe: () => void;
@@ -720,6 +730,7 @@ export class CliMeetingOrchestrator {
       // When the participant is actively blocked in msg_wait, the bus itself will
       // deliver the new message. Do not queue a redundant wake-up or restart.
       this.pendingDeliverySeqBySession.delete(session.id);
+      this.lastWakePromptBySession.delete(session.id);
       return;
     }
 
@@ -765,6 +776,19 @@ export class CliMeetingOrchestrator {
     }
 
     if (!usesLegacyPtyRelay(session)) {
+      const wakeRecord = this.lastWakePromptBySession.get(session.id);
+      if (wakeRecord && latestSeq <= wakeRecord.seq) {
+        this.pendingDeliverySeqBySession.delete(session.id);
+        return;
+      }
+      if (wakeRecord && Date.now() - wakeRecord.sentAt < MCP_WAKE_PROMPT_COOLDOWN_MS) {
+        this.pendingDeliverySeqBySession.set(
+          session.id,
+          Math.max(pendingSeq, latestSeq),
+        );
+        return;
+      }
+
       const thread = this.store.getThread(session.thread_id);
       const threadName = String(thread?.topic || session.thread_id).trim() || session.thread_id;
       const result = await this.cliSessionManager.deliverWakePrompt(
@@ -779,6 +803,10 @@ export class CliMeetingOrchestrator {
         return;
       }
 
+      this.lastWakePromptBySession.set(session.id, {
+        seq: latestSeq,
+        sentAt: Date.now(),
+      });
       this.pendingDeliverySeqBySession.delete(session.id);
       logInfo(
         `[cli-meeting] delivered msg_wait wake prompt for thread ${session.thread_id} to session ${session.id}`,

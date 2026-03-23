@@ -1,4 +1,19 @@
 (function () {
+  let _cachedAgents = [];
+
+  function setCachedAgents(agents) {
+    _cachedAgents = Array.isArray(agents) ? agents.slice() : [];
+    try {
+      window.__acbCurrentAgents = _cachedAgents;
+    } catch {
+      // Ignore global cache assignment failures and keep local cache usable.
+    }
+  }
+
+  function getCachedAgents() {
+    return Array.isArray(_cachedAgents) ? _cachedAgents.slice() : [];
+  }
+
   function updateOnlinePresence({
     onlineAgentKeys,
     onlineAgentLabelsByKey,
@@ -113,6 +128,7 @@
   }) {
     hideAgentTooltip();
     const allAgents = (await api("/api/agents")) || [];
+    setCachedAgents(allAgents);
     setCurrentAgents(allAgents);
     onlineAgentKeys.clear();
     onlineAgentLabelsByKey.clear();
@@ -148,6 +164,7 @@
       ? `/api/threads/${encodeURIComponent(activeThreadIdVal)}/agents`
       : "/api/agents";
     const allAgents = (await api(agentsPath)) || [];
+    setCachedAgents(allAgents);
     setCurrentAgents(allAgents);
     const container = document.getElementById("agent-status-list");
     if (!container) return;
@@ -220,6 +237,7 @@
   }
 
   window.AcbAgents = {
+    getCachedAgents,
     updateOnlinePresence,
     getAgentDisplayName,
     getAgentPresenceKey,

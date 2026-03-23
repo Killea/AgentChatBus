@@ -34,6 +34,29 @@
       return null;
     }
 
+    _getCachedAgents() {
+      if (typeof window.AcbAgents?.getCachedAgents === "function") {
+        return window.AcbAgents.getCachedAgents();
+      }
+      if (Array.isArray(window.__acbCurrentAgents)) {
+        return window.__acbCurrentAgents;
+      }
+      return [];
+    }
+
+    _resolveAgentEmoji(agentId, fallbackEmoji) {
+      const normalizedId = String(agentId || "").trim();
+      if (normalizedId) {
+        const agents = this._getCachedAgents();
+        const match = agents.find((agent) => String(agent?.id || agent?.agent_id || "").trim() === normalizedId);
+        const liveEmoji = String(match?.emoji || "").trim();
+        if (liveEmoji) {
+          return liveEmoji;
+        }
+      }
+      return String(fallbackEmoji || "").trim();
+    }
+
     _statusText(action, alreadyDecided) {
       const past = alreadyDecided ? "already " : "";
       if (action === "switch") return `Administrator switch ${past}confirmed.`;
@@ -107,8 +130,16 @@
       this.className = "msg-sys-admin-card";
       this.setAttribute("data-seq", String(message.seq ?? ""));
 
-      const currentBadge = `${meta.current_admin_emoji || "👑"} ${meta.current_admin_name || meta.current_admin_id || "Unknown"}`;
-      const candidateBadge = `${meta.candidate_admin_emoji || "🤖"} ${meta.candidate_admin_name || meta.candidate_admin_id || "Unknown"}`;
+      const currentAdminEmoji = this._resolveAgentEmoji(
+        meta.current_admin_id,
+        meta.current_admin_emoji || "👑",
+      ) || "👑";
+      const candidateAdminEmoji = this._resolveAgentEmoji(
+        meta.candidate_admin_id,
+        meta.candidate_admin_emoji || "🤖",
+      ) || "🤖";
+      const currentBadge = `${currentAdminEmoji} ${meta.current_admin_name || meta.current_admin_id || "Unknown"}`;
+      const candidateBadge = `${candidateAdminEmoji} ${meta.candidate_admin_name || meta.candidate_admin_id || "Unknown"}`;
 
       const defaultButtons = isTakeoverCard
         ? [
