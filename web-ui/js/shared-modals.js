@@ -93,6 +93,7 @@
   const DEFAULT_THREAD_LAUNCH_INTERVAL_SECONDS = 2;
   const MAX_THREAD_LAUNCH_AGENTS = 4;
   const THREAD_LAUNCH_ADAPTER_STORAGE_KEY = "acb.threadLaunchAdapters.v1";
+  const THREAD_LAUNCH_EMOJI_OPTIONS = ["🤖", "🧠", "⚡", "💡", "🔧", "🎯", "📊", "🚀"];
   let _threadLaunchAgents = [];
   let _selectedThreadLaunchAgentId = "";
 
@@ -306,15 +307,59 @@
     return adapterLabel;
   }
 
+  function getThreadLaunchUsedEmojis(excludeAgentId = "") {
+    const excluded = String(excludeAgentId || "").trim();
+    return new Set(
+      _threadLaunchAgents
+        .filter((agent) => String(agent?.id || "").trim() !== excluded)
+        .map((agent) => String(agent?.emoji || "").trim())
+        .filter((emoji) => THREAD_LAUNCH_EMOJI_OPTIONS.includes(emoji)),
+    );
+  }
+
+  function pickRandomThreadLaunchEmoji(excludeAgentId = "") {
+    const used = getThreadLaunchUsedEmojis(excludeAgentId);
+    const available = THREAD_LAUNCH_EMOJI_OPTIONS.filter((emoji) => !used.has(emoji));
+    const pool = available.length ? available : THREAD_LAUNCH_EMOJI_OPTIONS.slice();
+    if (!pool.length) {
+      return "🤖";
+    }
+    if (globalThis.crypto && typeof globalThis.crypto.getRandomValues === "function") {
+      const bytes = new Uint32Array(1);
+      globalThis.crypto.getRandomValues(bytes);
+      return pool[bytes[0] % pool.length];
+    }
+    return pool[Math.floor(Math.random() * pool.length)] || pool[0];
+  }
+
+  function getThreadLaunchEmojiOptions(agentId) {
+    const current = String(getThreadLaunchAgentById(agentId)?.emoji || "").trim();
+    const used = getThreadLaunchUsedEmojis(agentId);
+    return THREAD_LAUNCH_EMOJI_OPTIONS.filter((emoji) => emoji === current || !used.has(emoji));
+  }
+
+  function buildThreadLaunchEmojiOptionsHtml(agentId) {
+    const current = String(getThreadLaunchAgentById(agentId)?.emoji || "").trim() || "🤖";
+    return getThreadLaunchEmojiOptions(agentId).map((emoji) => (
+      `<option value="${_escapeHtml(emoji)}" ${emoji === current ? "selected" : ""}>${_escapeHtml(emoji)}</option>`
+    )).join("");
+  }
+
   function createThreadLaunchAgent(overrides = {}, slotIndex = 0) {
     const requestedAdapter = String(overrides.adapter || "").trim().toLowerCase();
     const adapter = getPreferredThreadLaunchAdapter(
       slotIndex,
       requestedAdapter || "claude",
     );
+    const requestedEmoji = String(overrides.emoji || "").trim();
+    const fallbackEmoji = pickRandomThreadLaunchEmoji();
+    const emoji = THREAD_LAUNCH_EMOJI_OPTIONS.includes(requestedEmoji)
+      ? requestedEmoji
+      : fallbackEmoji;
     return {
       id: `thread-agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       adapter,
+      emoji,
       mode: "interactive",
       meetingTransport: "agent_mcp",
       displayName: "",
@@ -331,6 +376,7 @@
   function getThreadLaunchAgentConfigs() {
     return _threadLaunchAgents.map((agent) => ({
       adapter: agent.adapter || "claude",
+      emoji: String(agent.emoji || "").trim() || pickRandomThreadLaunchEmoji(agent.id),
       mode: "interactive",
       meetingTransport: "agent_mcp",
       displayName: "",
@@ -418,12 +464,21 @@
   function buildLaunchPromptPreview({ topic, threadId, config, isFirstAgent }) {
     const participantName = buildDefaultParticipantName(config);
     const initialInstruction = getResolvedThreadLaunchInstruction({ topic, config, isFirstAgent });
+    const resolvedThreadTarget = threadId
+      ? `"${topic}" (${threadId})`
+      : `"${topic}"`;
     return [
       "Please use the MCP tool `agentchatbus` to join the discussion.",
       "",
-      `Use \`bus_connect\` to join the thread "${topic}".`,
+      `Use \`bus_connect\` to join the exact thread ${resolvedThreadTarget}.`,
       "",
-      `When joining, resume the provided participant identity: ${participantName} (agent id assigned at launch time).`,
+      `Resume the provided participant identity exactly: ${participantName}.`,
+      "",
+      "Do not call `agent_register`. Do not create a new identity for this launch.",
+      "",
+      "At launch time, the real prompt will include the exact `thread_id`, `agent_id`, and `token` to pass into `bus_connect`.",
+      "",
+      "The launched CLI should call `bus_connect` once with those exact credentials.",
       "",
       "After `bus_connect`, treat the returned `agent.is_administrator`, `agent.role_assignment`, and `thread.administrator` fields as the source of truth for your role and the current administrator.",
       "",
@@ -436,8 +491,6 @@
       "Do not exit the agent process unless notified to do so.",
       "",
       "Do not create a new thread.",
-      "",
-      "Do not replace the provided participant identity with a new one unless resuming fails.",
       "",
       `Initial instruction:\n${initialInstruction}`,
     ].join("\n");
@@ -518,7 +571,7 @@
                 onclick="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
                 onpointerdown="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
               >
-                Agent ${index + 1}
+                ${_escapeHtml(String(agent.emoji || "🤖").trim() || "🤖")} Agent ${index + 1}
               </button>
               <span class="thread-launch-agent-row__badge${isFirstAgent ? " thread-launch-agent-row__badge--admin" : ""}">
                 ${isFirstAgent ? "Administrator" : "Participant"}
@@ -589,6 +642,21 @@
                   />
                   <span>Claude</span>
                 </label>
+              </div>
+            </div>
+            <div class="settings-field">
+              <label>Emoji</label>
+              <div class="thread-launch-emoji-row">
+                <span class="thread-launch-emoji-preview" aria-hidden="true">${_escapeHtml(String(agent.emoji || "🤖").trim() || "🤖")}</span>
+                <select
+                  data-agent-id="${_escapeHtml(agent.id)}"
+                  data-field="emoji"
+                  onclick="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
+                  onpointerdown="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
+                  onchange="window.AcbModals && window.AcbModals.updateThreadLaunchAgentField(this)"
+                >
+                  ${buildThreadLaunchEmojiOptionsHtml(agent.id)}
+                </select>
               </div>
             </div>
             <div class="settings-field">
@@ -681,6 +749,15 @@
         syncThreadLaunchGlobalInstructionField();
       }
       writeThreadLaunchAdapterPreferences();
+      renderThreadLaunchAgents();
+      return;
+    }
+    if (field === "emoji") {
+      const nextEmoji = String(element.value || "").trim();
+      if (!THREAD_LAUNCH_EMOJI_OPTIONS.includes(nextEmoji)) {
+        return;
+      }
+      agent.emoji = nextEmoji;
       renderThreadLaunchAgents();
       return;
     }
@@ -805,6 +882,7 @@
         ide: adapterLabel,
         model: modeLabel,
         display_name: displayName,
+        emoji: String(config.emoji || "").trim() || undefined,
       }),
     });
     return result?.agent_id && result?.token ? result : null;

@@ -2469,6 +2469,56 @@ body[data-theme="light"] #empty-state .es-ad-banner-note {
   gap: 8px;
   align-items: center;
   flex-wrap: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+#agent-status-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.agent-status-action-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+
+.agent-status-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 9px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-input);
+  color: var(--text-1);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s, opacity 0.15s;
+}
+
+.agent-status-action:hover:not(:disabled) {
+  background: var(--bg-hover, var(--bg-input));
+}
+
+.agent-status-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.agent-status-action--danger {
+  border-color: rgba(239, 68, 68, 0.42);
+  color: #fca5a5;
+}
+
+body[data-theme="light"] .agent-status-action--danger {
+  color: #b91c1c;
+  border-color: rgba(185, 28, 28, 0.22);
 }
 
 /* ── Agent Card ── */
@@ -2494,6 +2544,18 @@ body[data-theme="light"] #empty-state .es-ad-banner-note {
 }
 
 /* Left: 48x48 avatar emoji */
+.asi-avatar-wrap {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+}
+
+.asi-avatar-wrap--compact {
+  width: 24px;
+  height: 24px;
+}
+
 .asi-avatar {
   width: 48px;
   height: 48px;
@@ -2504,6 +2566,24 @@ body[data-theme="light"] #empty-state .es-ad-banner-note {
   justify-content: center;
   flex-shrink: 0;
   filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.5));
+}
+
+.asi-admin-badge {
+  position: absolute;
+  top: -4px;
+  left: -5px;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, #f59e0b 28%, var(--bg-card));
+  border: 1px solid color-mix(in srgb, #f59e0b 55%, var(--border-light));
+  font-size: 12px;
+  line-height: 1;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
 }
 
 /* Right: 24x48 status panel with two 12x24 boxes */
@@ -2579,6 +2659,14 @@ body[data-theme="light"] #empty-state .es-ad-banner-note {
   height: 24px;
   font-size: 18px;
   flex-shrink: 0;
+}
+
+.agent-status-item--compact .asi-admin-badge {
+  top: -5px;
+  left: -6px;
+  width: 14px;
+  height: 14px;
+  font-size: 9px;
 }
 
 /* Dim avatar for offline agents */
@@ -3110,6 +3198,26 @@ body[data-theme="light"] .meeting-modal-preview--collapsible {
 .thread-launch-agent-row__fields input[type="text"] {
   position: relative;
   z-index: 1;
+}
+
+.thread-launch-emoji-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.thread-launch-emoji-preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-input);
+  font-size: 22px;
+  line-height: 1;
 }
 
 .thread-launch-adapter-group {

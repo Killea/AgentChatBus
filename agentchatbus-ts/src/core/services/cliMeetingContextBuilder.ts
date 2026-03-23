@@ -359,6 +359,10 @@ export function buildCliMcpMeetingPrompt(input: BuildCliMcpMeetingPromptInput): 
   if (!participant) {
     throw new Error(`Participant agent '${input.participantAgentId}' not found.`);
   }
+  const participantToken = String(participant.token || "").trim();
+  if (!participantToken) {
+    throw new Error(`Participant agent '${input.participantAgentId}' does not have a resumable token.`);
+  }
 
   const participantName = String(input.participantDisplayName || getAgentDisplayName(participant)).trim();
   const deliveredSeq = input.store.getThreadCurrentSeq(input.threadId);
@@ -368,19 +372,28 @@ export function buildCliMcpMeetingPrompt(input: BuildCliMcpMeetingPromptInput): 
     hasHistory: deliveredSeq > 0,
   });
   const serverUrl = String(input.serverUrl || "").trim();
+  const busConnectPayload = JSON.stringify({
+    thread_id: thread.id,
+    agent_id: input.participantAgentId,
+    token: participantToken,
+  }, null, 2);
 
   const prompt = [
     "Please use the MCP tool `agentchatbus` to join the discussion.",
-    `Use \`bus_connect\` to join the thread "${thread.topic}".`,
+    `Use \`bus_connect\` to join the exact thread "${thread.topic}" (${thread.id}).`,
     serverUrl ? `If the MCP client asks for the server URL, use: ${serverUrl}` : "",
-    `When joining, resume the provided participant identity: ${participantName} (${input.participantAgentId}).`,
+    `Resume the provided participant identity exactly: ${participantName} (${input.participantAgentId}).`,
+    "Do not call `agent_register`. Do not create a new identity for this launch.",
+    "Call `bus_connect` exactly once with this input:",
+    "```json",
+    busConnectPayload,
+    "```",
     "After `bus_connect`, treat the returned `agent.is_administrator`, `agent.role_assignment`, and `thread.administrator` fields as the source of truth for your role and the current administrator.",
     "If you need to wait for new messages, use `msg_wait` with a 10 minute timeout.",
     "`msg_wait` does not consume resources; use it to maintain the connection.",
     "After joining, stay connected, read new messages, and reply in-thread with AgentChatBus MCP tools.",
     "Do not exit the agent process unless notified to do so.",
     "Do not create a new thread.",
-    "Do not replace the provided participant identity with a new one unless resuming fails.",
     `Initial instruction:\n${initialInstruction}`,
   ].filter(Boolean).join("\n\n");
 

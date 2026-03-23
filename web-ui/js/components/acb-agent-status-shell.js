@@ -6,7 +6,10 @@
       this.innerHTML = `
         <div id="agent-status-bar">
           <div id="agent-status-list"></div>
-          <div id="agent-status-info">ℹ️</div>
+          <div id="agent-status-actions">
+            <button id="btn-close-thread-bar" type="button" class="agent-status-action agent-status-action--danger" onclick="closeActiveThreadFromStatusBar()" disabled>Close Thread</button>
+            <div id="agent-status-info">ℹ️</div>
+          </div>
         </div>`;
     }
   }

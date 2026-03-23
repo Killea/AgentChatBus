@@ -10,7 +10,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet" />
-  <link rel="stylesheet" href="/static/css/main.css?v=23" />
+  <link rel="stylesheet" href="/static/css/main.css?v=26" />
   <link rel="stylesheet" href="/static/vendor/xterm/css/xterm.css" />
 </head>
 
@@ -155,7 +155,12 @@
       <!-- Agent Status Bar -->
       <div id="agent-status-bar">
         <div id="agent-status-list"></div>
-        <div id="agent-status-info">ℹ️</div>
+        <div id="agent-status-actions">
+          <div id="btn-close-thread-wrap" class="agent-status-action-wrap">
+            <button id="btn-close-thread-bar" type="button" class="agent-status-action agent-status-action--danger" onclick="closeActiveThreadFromStatusBar()" disabled>Close Thread</button>
+          </div>
+          <div id="agent-status-info">ℹ️</div>
+        </div>
       </div>
     </div>
   </div>
@@ -178,7 +183,7 @@
   <script src="/static/vendor/xterm/lib/xterm.js"></script>
   <script src="/static/vendor/xterm-addon-fit/lib/addon-fit.js"></script>
   <script src="/static/js/shared-cli-sessions.js?v=11"></script>
-  <script src="/static/js/shared-modals.js?v=16"></script>
+  <script src="/static/js/shared-modals.js?v=18"></script>
   <script src="/static/js/components/acb-modal-shell.js?v=11"></script>
   <script src="/static/js/components/acb-empty-state.js?v=2"></script>
   <script src="/static/js/components/acb-icon-button.js?v=2"></script>
@@ -191,12 +196,12 @@
   <script src="/static/js/components/acb-message-tail-meta.js?v=1"></script>
   <script src="/static/js/components/acb-admin-switch-card.js?v=4"></script>
   <script src="/static/js/components/acb-compose-shell.js?v=3"></script>
-  <script src="/static/js/components/acb-agent-status-shell.js?v=2"></script>
-  <script src="/static/js/shared-threads.js?v=6"></script>
+  <script src="/static/js/components/acb-agent-status-shell.js?v=3"></script>
+  <script src="/static/js/shared-threads.js?v=8"></script>
   <script src="/static/js/shared-agent-status.js?v=2"></script>
   <script src="/static/js/components/acb-agent-status-item.js?v=2"></script>
   <script src="/static/js/shared-agents.js?v=4"></script>
-  <script src="/static/js/shared-chat.js?v=4"></script>
+  <script src="/static/js/shared-chat.js?v=5"></script>
   <script src="/static/js/shared-nav-sidebar.js?v=1"></script>
   <script src="/static/js/shared-tooltip.js?v=2"></script>
   <script src="/static/js/components/acb-confirm-dialog.js?v=2"></script>
@@ -712,6 +717,71 @@
       });
     })();
 
+    (function setupCloseThreadTooltip() {
+      const anchorEl = document.getElementById('btn-close-thread-wrap');
+      const buttonEl = document.getElementById('btn-close-thread-bar');
+      if (!anchorEl || !buttonEl || !window.AcbTooltip?.showRich) return;
+
+      function getCloseThreadTooltipHtml() {
+        const hasThread = Boolean(activeThreadId);
+        const normalizedStatus = String(activeThreadStatus || '').trim().toLowerCase();
+        const isClosed = normalizedStatus === 'closed' || normalizedStatus === 'archived';
+
+        if (!hasThread) {
+          return `
+            <div style="padding:10px 12px;min-width:320px;">
+              <div style="font-size:13px;font-weight:700;color:var(--text-1);margin-bottom:8px;">Close Thread</div>
+              <div style="color:var(--text-2);margin-bottom:8px;">
+                Select a thread first. This action applies to the currently active thread only.
+              </div>
+              <div style="color:var(--text-2);">
+                When used on an active thread, the thread lifecycle changes to <code>closed</code>, automatic CLI wake-up and relay coordination stop, and existing messages stay preserved. This does not delete the thread.
+              </div>
+            </div>`;
+        }
+
+        if (isClosed) {
+          return `
+            <div style="padding:10px 12px;min-width:320px;">
+              <div style="font-size:13px;font-weight:700;color:var(--text-1);margin-bottom:8px;">Thread Already Closed</div>
+              <div style="color:var(--text-2);margin-bottom:8px;">
+                This thread is already <code>${normalizedStatus}</code>. Automatic CLI wake-up and meeting coordination have already been stopped for it.
+              </div>
+              <div style="color:var(--text-2);">
+                Existing messages remain in history. Closing a thread is not the same as deleting it.
+              </div>
+            </div>`;
+        }
+
+        return `
+          <div style="padding:10px 12px;min-width:340px;">
+            <div style="font-size:13px;font-weight:700;color:var(--text-1);margin-bottom:8px;">Close Thread</div>
+            <div style="color:var(--text-2);margin-bottom:8px;">
+              This ends the active discussion lifecycle for the current thread. AgentChatBus will stop automatically reviving offline CLI agents and stop automatic coordination for this thread.
+            </div>
+            <div style="color:var(--text-2);margin-bottom:8px;">
+              Existing messages are kept. The thread is not deleted. You can still inspect its history later.
+            </div>
+            <div style="color:var(--text-2);">
+              Clicking the button opens an explicit confirmation dialog first, then an optional summary dialog so you can record a closing note before the thread is marked <code>closed</code>.
+            </div>
+          </div>`;
+      }
+
+      function showTooltip() {
+        window.AcbTooltip.showRich(anchorEl, getCloseThreadTooltipHtml(), {
+          interactive: false,
+          maxWidth: '420px',
+          className: 'acb-tooltip-info',
+        });
+      }
+
+      anchorEl.addEventListener('mouseenter', showTooltip);
+      anchorEl.addEventListener('mouseleave', () => window.AcbTooltip.scheduleHide(120));
+      buttonEl.addEventListener('focus', showTooltip);
+      buttonEl.addEventListener('blur', () => window.AcbTooltip.scheduleHide(120));
+    })();
+
     function getResumePromptForAgent(agentId, displayName, token) {
       const threadName = document.getElementById('thread-title')?.textContent?.trim() || '(current thread)';
       const tokenLine = token ? `Token: ${token}\n` : '';
@@ -773,10 +843,14 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       const isStdio = isStdioAgent ? isStdioAgent(agent) : false;
       const transportEmoji = state.toLowerCase() === 'offline' ? '❔' : (isStdio ? '✡️' : '🌟');
       const transportLabel = state.toLowerCase() === 'offline' ? 'unknown' : (isStdio ? 'stdio' : 'SSE');
+      const currentAdminId = String(window.__acbActiveThreadAdmin?.admin_id || '').trim();
+      const roleLabel = activeThreadId && currentAdminId
+        ? (currentAdminId === agentId ? 'administrator' : 'participant')
+        : 'not resolved';
 
       const html = `
         <div class="agent-tip-title">Agent Quick Prompt</div>
-        <div class="agent-tip-meta">Alias: <code>${esc(alias)}</code><br/>Agent ID: <code>${esc(agentId || '(unknown)')}</code><br/>IDE: <code>${esc(ide)}</code><br/>Model: <code>${esc(model)}</code></div>
+        <div class="agent-tip-meta">Alias: <code>${esc(alias)}</code><br/>Agent ID: <code>${esc(agentId || '(unknown)')}</code><br/>IDE: <code>${esc(ide)}</code><br/>Model: <code>${esc(model)}</code><br/>Thread role: <code>${esc(roleLabel)}</code></div>
         <pre class="agent-tip-prompt">${esc(prompt)}</pre>
         <div class="agent-tip-actions">
           <button type="button" data-copy="agent-id" data-copy-value="${esc(agentId)}">Copy Agent ID</button>
@@ -865,6 +939,15 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       });
     }
 
+    function updateCloseThreadButton() {
+      const btn = document.getElementById('btn-close-thread-bar');
+      if (!btn) return;
+      const hasThread = Boolean(activeThreadId);
+      const isClosed = activeThreadStatus === 'closed' || activeThreadStatus === 'archived';
+      btn.disabled = !hasThread || isClosed;
+      btn.textContent = activeThreadStatus === 'closed' ? 'Thread Closed' : 'Close Thread';
+    }
+
     function getAgentDisplayName(msg) {
       return window.AcbAgents.getAgentDisplayName(msg);
     }
@@ -942,6 +1025,16 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         api,
         getSelectedStatuses: () => selectedThreadStatuses,
         getActiveThreadId: () => activeThreadId,
+        onActiveThreadStatus: (status) => {
+          if (activeThreadId && status) {
+            activeThreadStatus = status;
+          }
+          const composeEl = document.getElementById('compose');
+          if (composeEl) {
+            composeEl.classList.toggle('visible', Boolean(activeThreadId) && activeThreadStatus !== 'closed' && activeThreadStatus !== 'archived');
+          }
+          updateCloseThreadButton();
+        },
         resetThreadSelection,
         onSelectThread: selectThread,
         onOpenContextMenu: openThreadContextMenu,
@@ -1030,6 +1123,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         clearThreadParticipants: () => activeThreadLastSeenMs.clear(),
         scrollBottom,
       }).then(() => {
+        updateCloseThreadButton();
         // UI-02: rebuild Fuse.js index after thread messages loaded
         if (window.AcbSearch) window.AcbSearch.rebuild();
         // UI-07: rebuild nav sidebar after thread messages loaded
@@ -1062,13 +1156,27 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     }
 
     async function closeThread(threadId = activeThreadId, x = null, y = null) {
-      return window.AcbThreads.closeThread({
+      const result = await window.AcbThreads.closeThread({
         threadId,
         api,
         refreshThreads,
         x,
         y,
       });
+      if (result?.ok && threadId && threadId === activeThreadId) {
+        activeThreadStatus = 'closed';
+        document.getElementById('compose').classList.remove('visible');
+        updateCloseThreadButton();
+        if (window.AcbCliSessions) window.AcbCliSessions.renderThread(threadId);
+      }
+      return result;
+    }
+
+    async function closeActiveThreadFromStatusBar() {
+      if (!activeThreadId || activeThreadStatus === 'closed' || activeThreadStatus === 'archived') {
+        return null;
+      }
+      return closeThread(activeThreadId);
     }
 
     function openThreadContextMenu(event, thread) {
@@ -1187,6 +1295,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       if (sysArea) sysArea.innerHTML = '';
       if (window.AcbCliSessions) window.AcbCliSessions.renderThread(null);
       updateOnlinePresence();
+      updateCloseThreadButton();
     }
 
     // ==============================================================================================

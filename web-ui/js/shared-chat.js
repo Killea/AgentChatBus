@@ -1,4 +1,12 @@
 (function () {
+  function setActiveThreadAdminCache(admin) {
+    try {
+      window.__acbActiveThreadAdmin = admin && typeof admin === "object" ? { ...admin } : null;
+    } catch {
+      // Ignore cache write failures and keep UI functional.
+    }
+  }
+
   function setThreadAdminLabel(admin) {
     const adminEl = document.getElementById("thread-admin-label");
     if (!adminEl) return;
@@ -19,14 +27,17 @@
 
   async function refreshThreadAdmin(threadId, api) {
     if (!threadId) {
+      setActiveThreadAdminCache(null);
       setThreadAdminLabel(null);
       return null;
     }
     try {
       const admin = await api(`/api/threads/${threadId}/admin`);
+      setActiveThreadAdminCache(admin);
       setThreadAdminLabel(admin);
       return admin;
     } catch {
+      setActiveThreadAdminCache(null);
       setThreadAdminLabel(null);
       return null;
     }
@@ -62,7 +73,7 @@
 
     document.getElementById("thread-header").style.display = "flex";
     document.getElementById("thread-title").textContent = topic;
-    document.getElementById("compose").classList.add("visible");
+    document.getElementById("compose").classList.toggle("visible", status !== "closed" && status !== "archived");
 
     const box = document.getElementById("messages");
     box.innerHTML = "";

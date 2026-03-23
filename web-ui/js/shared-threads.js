@@ -82,6 +82,7 @@
     api,
     getSelectedStatuses,
     getActiveThreadId,
+    onActiveThreadStatus,
     resetThreadSelection,
     onSelectThread,
     onOpenContextMenu,
@@ -94,6 +95,10 @@
     const selectedStatuses = getSelectedStatuses();
     const activeThreadId = getActiveThreadId();
     const threads = allThreads.filter((t) => selectedStatuses.has(t.status));
+    if (activeThreadId && typeof onActiveThreadStatus === "function") {
+      const activeThread = allThreads.find((t) => t.id === activeThreadId) || null;
+      onActiveThreadStatus(activeThread ? normalizeThreadStatus(activeThread.status) : null);
+    }
 
     const hasActiveThread = activeThreadId && threads.some((t) => t.id === activeThreadId);
     if (activeThreadId && !hasActiveThread) {
@@ -110,6 +115,10 @@
     });
 
     updateThreadFilterButton();
+  }
+
+  function normalizeThreadStatus(value) {
+    return String(value || "").trim() || null;
   }
 
   function openThreadContextMenu(event, thread, options = {}) {
@@ -201,18 +210,34 @@
   async function closeThread({ threadId, api, refreshThreads, x = null, y = null }) {
     if (!threadId) return;
 
+    const confirmDialog = document.getElementById('confirm-dialog');
     const inputDialog = document.getElementById('input-dialog');
-    if (!inputDialog) {
-      console.error('[closeThread] Input dialog not found');
+    if (!confirmDialog || !inputDialog) {
+      console.error('[closeThread] Confirm dialog or input dialog not found');
       return;
     }
 
+    const confirmed = await confirmDialog.show({
+      title: 'Close Thread',
+      message: `
+        <strong>Closing a thread stops automatic coordination.</strong><br><br>
+        AgentChatBus will stop automatically waking offline CLI agents for this thread and stop relaying new discussion turns through the CLI meeting coordinator.<br><br>
+        Existing messages are preserved. This action does not delete the thread.
+      `,
+      confirmText: 'Continue',
+      confirmClass: 'btn-destructive',
+      x,
+      y,
+    });
+
+    if (!confirmed) return;
+
     const summary = await inputDialog.show({
       title: 'Close Thread',
-      message: 'Optional summary for this thread (leave blank to skip):',
+      message: 'Optional closing summary for this thread (leave blank to skip):',
       placeholder: 'Enter summary...',
       value: '',
-      confirmText: 'Close',
+      confirmText: 'Close Thread',
       x,
       y,
     });
@@ -220,11 +245,12 @@
     // User cancelled the dialog
     if (summary === null) return;
 
-    await api(`/api/threads/${threadId}/close`, {
+    const result = await api(`/api/threads/${threadId}/close`, {
       method: "POST",
       body: JSON.stringify({ summary: summary || null }),
     });
     await refreshThreads();
+    return result;
   }
 
   async function archiveThreadFromMenu({

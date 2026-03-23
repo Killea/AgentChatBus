@@ -373,6 +373,27 @@ export class CliMeetingOrchestrator {
     this.heartbeatTimers.clear();
   }
 
+  private isThreadClosedForCoordination(threadId: string): boolean {
+    const thread = this.store.getThread(threadId);
+    const status = String(thread?.status || "").trim().toLowerCase();
+    return status === "closed" || status === "archived";
+  }
+
+  private clearThreadCoordinationState(threadId: string): void {
+    const sessions = this.cliSessionManager.listSessionsForThread(threadId);
+    for (const session of sessions) {
+      this.pendingDeliverySeqBySession.delete(session.id);
+      this.lastWakePromptBySession.delete(session.id);
+      this.cliSessionManager.clearWakePromptState(session.id);
+    }
+
+    for (const key of Array.from(this.participantRoutingStates.keys())) {
+      if (key.startsWith(`${threadId}::`)) {
+        this.participantRoutingStates.delete(key);
+      }
+    }
+  }
+
   prepareSession(input: PrepareCliMeetingSessionInput): PreparedCliMeetingSession {
     const participant = this.store.getAgent(input.participantAgentId);
     if (!participant) {
@@ -434,6 +455,19 @@ export class CliMeetingOrchestrator {
 
   private async handleEvent(event: Record<string, unknown>): Promise<void> {
     const type = String(event?.type || "");
+    if (type === "thread.state" || type === "thread.closed") {
+      const payload = event?.payload && typeof event.payload === "object"
+        ? (event.payload as { id?: string; thread_id?: string; status?: string })
+        : undefined;
+      const threadId = String(payload?.thread_id || payload?.id || "").trim();
+      const status = type === "thread.closed"
+        ? "closed"
+        : String(payload?.status || "").trim().toLowerCase();
+      if (threadId && (status === "closed" || status === "archived")) {
+        this.clearThreadCoordinationState(threadId);
+      }
+      return;
+    }
     if (type === "msg.new") {
       await this.handleThreadMessage(event);
       return;
@@ -473,6 +507,10 @@ export class CliMeetingOrchestrator {
       : undefined;
     const threadId = String(payload?.thread_id || "").trim();
     if (!threadId) {
+      return;
+    }
+    if (this.isThreadClosedForCoordination(threadId)) {
+      this.clearThreadCoordinationState(threadId);
       return;
     }
 
@@ -694,6 +732,12 @@ export class CliMeetingOrchestrator {
     session: CliSessionSnapshot,
     requestedTargetSeq?: number,
   ): Promise<void> {
+    if (this.isThreadClosedForCoordination(session.thread_id)) {
+      this.pendingDeliverySeqBySession.delete(session.id);
+      this.lastWakePromptBySession.delete(session.id);
+      this.cliSessionManager.clearWakePromptState(session.id);
+      return;
+    }
     if (!session.participant_agent_id) {
       return;
     }
@@ -951,6 +995,10 @@ export class CliMeetingOrchestrator {
   }
 
   private async syncRelayMessageOnce(session: CliSessionSnapshot): Promise<void> {
+    if (this.isThreadClosedForCoordination(session.thread_id)) {
+      this.pendingRelayResyncs.delete(session.id);
+      return;
+    }
     if (!session.participant_agent_id) {
       return;
     }

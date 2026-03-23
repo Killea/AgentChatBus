@@ -202,6 +202,9 @@
       const avatarEmoji = String(a?.emoji || "").trim() || "🤖";
       const stateEmoji = getStateEmoji(state);
       const label = String(a.display_name ?? a.name ?? "").trim() || "Unknown";
+      const currentAdminId = String(window.__acbActiveThreadAdmin?.admin_id || "").trim();
+      const currentAgentId = String(a?.id ?? a?.agent_id ?? "").trim();
+      const isAdministrator = Boolean(activeThreadIdVal && currentAdminId && currentAgentId === currentAdminId);
       const offlineTime = getOfflineTime(a);
       const offlineDisplay = offlineTime ? ` (${offlineTime})` : "";
       const isLongOffline = isOfflineMoreThanHour(a);
@@ -215,6 +218,7 @@
         stateEmoji,
         label,
         state,
+        isAdministrator,
         offlineDisplay,
         isLongOffline,
         compressedChar,

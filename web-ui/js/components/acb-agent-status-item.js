@@ -21,6 +21,7 @@
         avatarEmoji,
         label,
         state,
+        isAdministrator,
         offlineDisplay,
         isLongOffline,
         compressedChar,
@@ -49,7 +50,10 @@
           : `Offline ${offlineDisplay || compressedChar}`;
         this.innerHTML = `
           <div class="agent-status-item agent-status-item--compact" title="${esc(compactTitle)}">
-            <div class="asi-avatar asi-avatar--sm" style="background:${avatarBg}; border: 1px solid ${avatarBorder};">${avatarEmoji}</div>
+            <div class="asi-avatar-wrap asi-avatar-wrap--compact">
+              <div class="asi-avatar asi-avatar--sm" style="background:${avatarBg}; border: 1px solid ${avatarBorder};">${avatarEmoji}</div>
+              ${isAdministrator ? '<span class="asi-admin-badge" aria-label="Administrator">👑</span>' : ''}
+            </div>
             <span class="asi-state-emoji">${stateEmoji}</span>
           </div>
         `;
@@ -65,7 +69,10 @@
           : `<span class="asi-transport-emoji">🌟</span>`;
 
       this.innerHTML = `
-        <div class="asi-avatar" style="background:${avatarBg}; border: 1px solid ${avatarBorder};" data-tooltip="${esc(tooltipText || state)}">${avatarEmoji}</div>
+        <div class="asi-avatar-wrap">
+          <div class="asi-avatar" style="background:${avatarBg}; border: 1px solid ${avatarBorder};" data-tooltip="${esc(tooltipText || state)}">${avatarEmoji}</div>
+          ${isAdministrator ? '<span class="asi-admin-badge" aria-label="Administrator">👑</span>' : ''}
+        </div>
         <div class="asi-status-panel">
           <div class="asi-status-box" data-tooltip="${esc(state || 'unknown')}">${stateEmoji}</div>
           <div class="asi-transport-box" data-tooltip="${isOffline ? 'Connection unknown' : isStdio ? 'Stdio connection' : 'SSE connection'}">${transportIcon}</div>
