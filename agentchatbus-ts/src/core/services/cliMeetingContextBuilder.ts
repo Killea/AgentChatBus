@@ -87,15 +87,18 @@ function buildDefaultInstruction(input: {
 }): string {
   const { participantRole, hasHistory, administrator, participantName } = input;
   if (participantRole === "administrator" && !hasHistory) {
-    return `${participantName}, please introduce yourself, explain how you can help, and start coordinating this thread.`;
+    return `${participantName}, you have been selected as the administrator for this thread. Please introduce yourself, explain how you can help, and start coordinating the thread.`;
   }
   if (participantRole === "administrator") {
-    return `${participantName}, please review the thread history, introduce yourself briefly, and respond to the latest discussion with the next useful coordinated step.`;
+    return `${participantName}, you have been selected as the administrator for this thread. Please review the thread history, introduce yourself briefly, and respond to the latest discussion with the next useful coordinated step.`;
   }
   if (hasHistory && administrator.name) {
-    return `${participantName}, please introduce yourself briefly, then respond directly to the latest visible thread context. Follow coordination from ${administrator.name} when relevant.`;
+    return `${participantName}, you are a participant in this thread. The administrator is ${administrator.name}. Please introduce yourself briefly, respond directly to the latest visible thread context, and cooperate with the administrator's coordination.`;
   }
-  return `${participantName}, please introduce yourself briefly and explain how you can contribute to this thread.`;
+  if (administrator.name) {
+    return `${participantName}, you are a participant in this thread. The administrator is ${administrator.name}. Please introduce yourself briefly, explain how you can contribute, and cooperate with the administrator's coordination.`;
+  }
+  return `${participantName}, you are a participant in this thread. Please introduce yourself briefly and explain how you can contribute.`;
 }
 
 function buildIncrementalInstruction(input: {
@@ -107,12 +110,12 @@ function buildIncrementalInstruction(input: {
   const { participantRole, participantName, administrator, messageCount } = input;
   const messageWord = messageCount === 1 ? "message" : "messages";
   if (participantRole === "administrator") {
-    return `${participantName}, you have ${messageCount} new ${messageWord}. Review only the newly delivered messages and respond with the next coordinated step.`;
+    return `${participantName}, you are the administrator for this thread and you have ${messageCount} new ${messageWord}. Review only the newly delivered messages and respond with the next coordinated step.`;
   }
   if (administrator.name) {
-    return `${participantName}, you have ${messageCount} new ${messageWord}. Review only the newly delivered messages and respond only to the new context, while respecting coordination from ${administrator.name}.`;
+    return `${participantName}, you are a participant in this thread and the administrator is ${administrator.name}. You have ${messageCount} new ${messageWord}. Review only the newly delivered messages, respond only to the new context, and cooperate with the administrator's coordination.`;
   }
-  return `${participantName}, you have ${messageCount} new ${messageWord}. Review only the newly delivered messages and respond only to the new context.`;
+  return `${participantName}, you are a participant in this thread and you have ${messageCount} new ${messageWord}. Review only the newly delivered messages and respond only to the new context.`;
 }
 
 function formatHistory(messages: MessageRecord[]): string {
@@ -238,6 +241,11 @@ export function buildCliMeetingPrompt(input: BuildCliMeetingPromptInput): CliMee
     `Your participant identity: ${participantName} (${input.participantAgentId})`,
     `Your current role: ${roleLabel}`,
     `Current administrator: ${adminLabel}`,
+    input.participantRole === "administrator"
+      ? "You have been selected as the administrator for this thread. You are responsible for coordination and task assignment."
+      : administrator.name
+        ? `You are a participant in this thread. The administrator is ${administrator.name}. Please cooperate with the administrator's coordination.`
+        : "You are a participant in this thread. Cooperate with the thread administrator when one is assigned.",
     deliveryMode === "join"
       ? "This is your first delivery into this thread."
       : `This is a ${deliveryMode} delivery.`,
@@ -309,6 +317,11 @@ export function buildCliIncrementalPrompt(input: BuildCliIncrementalPromptInput)
     `Your participant identity: ${participantName} (${input.participantAgentId})`,
     `Your current role: ${roleLabel}`,
     `Current administrator: ${adminLabel}`,
+    input.participantRole === "administrator"
+      ? "You are the administrator for this thread. Continue coordinating the discussion and next steps."
+      : administrator.name
+        ? `You are a participant in this thread. The administrator is ${administrator.name}. Continue cooperating with the administrator's coordination.`
+        : "You are a participant in this thread. Continue cooperating with the thread administrator when one is assigned.",
     `This is an incremental delivery of messages with seq > ${afterSeq} and <= ${targetSeq}.`,
     "Only the newly delivered visible messages are shown below.",
     "Respond only to the newly delivered context. Do not repeat your earlier introduction or restate old context unless the new messages require it.",
@@ -353,6 +366,11 @@ export function buildCliMcpMeetingPrompt(input: BuildCliMcpMeetingPromptInput): 
     `Use \`bus_connect\` to join the thread "${thread.topic}".`,
     serverUrl ? `If the MCP client asks for the server URL, use: ${serverUrl}` : "",
     `When joining, resume the provided participant identity: ${participantName} (${input.participantAgentId}).`,
+    input.participantRole === "administrator"
+      ? "You have been selected as the administrator for this thread. After joining, coordinate the discussion and next steps."
+      : administrator.name
+        ? `You are joining as a participant. The administrator is ${administrator.name}. After joining, cooperate with the administrator's coordination.`
+        : "You are joining as a participant. After joining, cooperate with the thread administrator when one is assigned.",
     "If you need to wait for new messages, use `msg_wait` with a 10 minute timeout.",
     "`msg_wait` does not consume resources; use it to maintain the connection.",
     "After joining, stay connected, read new messages, and reply in-thread with AgentChatBus MCP tools.",

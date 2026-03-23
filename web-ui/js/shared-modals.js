@@ -371,12 +371,11 @@
 
   function buildDefaultInstruction({ topic, config, isFirstAgent }) {
     const roleLine = isFirstAgent
-      ? "You are the first active agent in this thread."
-      : "You are joining an existing thread as a participant.";
+      ? "Introduce yourself briefly, explain what you can help with, and wait for further instructions."
+      : "You are joining an existing thread as a participant. Introduce yourself briefly, explain what you can help with, and wait for further instructions.";
     return [
       `You are joining the AgentChatBus thread "${topic}".`,
       roleLine,
-      "Introduce yourself briefly, explain what you can help with, and wait for further instructions.",
       config.adapter === "cursor" && config.mode === "headless"
         ? "Respond in plain text."
         : "",
@@ -429,6 +428,10 @@
       "",
       `When joining, resume the provided participant identity: ${participantName} (agent id assigned at launch time).`,
       "",
+      isFirstAgent
+        ? "You have been selected as the administrator for this thread. After joining, coordinate the discussion and next steps."
+        : "You are joining as a participant. After joining, cooperate with the administrator's coordination.",
+      "",
       "If you need to wait for new messages, use `msg_wait` with a 10 minute timeout.",
       "",
       "`msg_wait` does not consume resources; use it to maintain the connection.",
@@ -449,6 +452,7 @@
     const previewEl = document.getElementById("thread-agent-prompt-preview");
     const metaEl = document.getElementById("thread-agent-prompt-meta");
     const detailsEl = document.getElementById("thread-agent-side");
+    const summaryEl = document.getElementById("thread-agent-prompt-summary");
     if (!previewEl) {
       return;
     }
@@ -458,6 +462,9 @@
       previewEl.textContent = "";
       if (metaEl) {
         metaEl.textContent = "";
+      }
+      if (summaryEl) {
+        summaryEl.textContent = "Resolved Launch Prompt";
       }
       if (detailsEl) {
         detailsEl.classList.add("meeting-modal-hidden");
@@ -473,6 +480,9 @@
       config: selectedAgent,
       isFirstAgent,
     });
+    if (summaryEl) {
+      summaryEl.textContent = `Resolved Launch Prompt · ${roleLabel}`;
+    }
     if (metaEl) {
       metaEl.textContent = `Previewing Agent ${index + 1} · ${roleLabel} · ${buildDefaultParticipantName(selectedAgent)}`;
     }

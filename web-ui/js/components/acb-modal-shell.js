@@ -183,7 +183,7 @@
                     </div>
 
                     <details id="thread-agent-side" class="meeting-modal-preview meeting-modal-preview--collapsible">
-                      <summary class="meeting-modal-preview__summary">Resolved Launch Prompt</summary>
+                      <summary id="thread-agent-prompt-summary" class="meeting-modal-preview__summary">Resolved Launch Prompt</summary>
                       <div id="thread-agent-prompt-meta" class="meeting-modal-preview__meta"></div>
                       <pre id="thread-agent-prompt-preview" class="meeting-modal-preview__body meeting-modal-preview__body--compact"></pre>
                     </details>
