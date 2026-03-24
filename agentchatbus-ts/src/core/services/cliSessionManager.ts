@@ -3,6 +3,11 @@ import xtermHeadless from "@xterm/headless";
 import { getConfig } from "../config/registry.js";
 import { eventBus } from "../../shared/eventBus.js";
 import { logError, logInfo } from "../../shared/logger.js";
+import { CursorInteractiveAdapter } from "./adapters/cursorInteractiveAdapter.js";
+import { CodexInteractiveAdapter } from "./adapters/codexInteractiveAdapter.js";
+import { ClaudeInteractiveAdapter } from "./adapters/claudeInteractiveAdapter.js";
+import { GeminiInteractiveAdapter } from "./adapters/geminiInteractiveAdapter.js";
+import { CopilotInteractiveAdapter } from "./adapters/copilotInteractiveAdapter.js";
 import { CURSOR_SESSION_ID_ENV_VAR, CursorHeadlessAdapter } from "./adapters/cursorHeadlessAdapter.js";
 import { CODEX_THREAD_ID_ENV_VAR, CodexHeadlessAdapter } from "./adapters/codexHeadlessAdapter.js";
 import { COPILOT_SESSION_ID_ENV_VAR, CopilotHeadlessAdapter } from "./adapters/copilotHeadlessAdapter.js";
@@ -1450,10 +1455,15 @@ export class CliSessionManager {
   private readonly adapters = new Map<string, CliSessionAdapter>();
 
   constructor(adapters: CliSessionAdapter[] = [
+    new CursorInteractiveAdapter(),
     new CursorHeadlessAdapter(),
+    new CodexInteractiveAdapter(),
     new CodexHeadlessAdapter(),
+    new CopilotInteractiveAdapter(),
     new CopilotHeadlessAdapter(),
+    new ClaudeInteractiveAdapter(),
     new ClaudeHeadlessAdapter(),
+    new GeminiInteractiveAdapter(),
     new GeminiHeadlessAdapter(),
   ]) {
     for (const adapter of adapters) {
@@ -1477,10 +1487,8 @@ export class CliSessionManager {
   createSession(input: CreateCliSessionInput): CliSessionSnapshot {
     const prompt = String(input.prompt || "");
     const adapterId = String(input.adapter || "").trim() as CliSessionAdapterId;
-    const requestedMode = (String(input.mode || "headless").trim() || "headless") as CliSessionMode;
-    const mode = requestedMode === "interactive"
-      ? "headless"
-      : requestedMode as CliSessionMode;
+    const requestedMode = (String(input.mode || "interactive").trim() || "interactive") as CliSessionMode;
+    const mode = requestedMode === "headless" ? "headless" : "interactive";
     const adapter = this.adapters.get(this.adapterKey(adapterId, mode));
     if (!adapter) {
       throw new Error(`Unsupported CLI adapter '${adapterId}' in mode '${mode}'`);

@@ -98,6 +98,21 @@
 
   function sessionLabel(session) {
     const participantLabel = String(session?.participant_display_name || "").trim();
+    if (session?.adapter === "codex" && session?.mode === "interactive") {
+      return participantLabel ? `${participantLabel} · Codex PTY` : "Codex PTY";
+    }
+    if (session?.adapter === "cursor" && session?.mode === "interactive") {
+      return participantLabel ? `${participantLabel} · Cursor PTY` : "Cursor PTY";
+    }
+    if (session?.adapter === "copilot" && session?.mode === "interactive") {
+      return participantLabel ? `${participantLabel} · Copilot PTY` : "Copilot PTY";
+    }
+    if (session?.adapter === "claude" && session?.mode === "interactive") {
+      return participantLabel ? `${participantLabel} · Claude PTY` : "Claude PTY";
+    }
+    if (session?.adapter === "gemini" && session?.mode === "interactive") {
+      return participantLabel ? `${participantLabel} · Gemini PTY` : "Gemini PTY";
+    }
     if (session?.adapter === "codex" && session?.mode === "headless") {
       return participantLabel ? `${participantLabel} · Codex JSON resume` : "Codex JSON resume";
     }

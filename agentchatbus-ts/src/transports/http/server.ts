@@ -785,7 +785,9 @@ export function createHttpServer() {
       const session = cliSessionManager.createSession({
         threadId: params.threadId,
         adapter: String(body.adapter || "cursor").trim() as "cursor" | "codex" | "claude" | "gemini" | "copilot",
-        mode: "headless",
+        mode: typeof body.mode === "string"
+          ? body.mode.trim() as "headless" | "interactive"
+          : "interactive",
         model: typeof body.model === "string" ? body.model.trim() : undefined,
         prompt: finalPrompt,
         initialInstruction: promptSeed,

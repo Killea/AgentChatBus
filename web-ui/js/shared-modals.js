@@ -617,7 +617,8 @@
   function readAgentLaunchConfig(prefix) {
     const adapter = String(document.getElementById(`${prefix}-adapter`)?.value || "codex").trim();
     const defaultMode = getThreadLaunchModeForAdapter(adapter);
-    const mode = defaultMode;
+    const requestedMode = String(document.getElementById(`${prefix}-mode`)?.value || defaultMode).trim();
+    const mode = requestedMode === "headless" ? "headless" : defaultMode;
     const model = getRequiredThreadLaunchModel(
       adapter,
       String(document.getElementById(`${prefix}-model`)?.value || "").trim(),
@@ -683,7 +684,19 @@
 
   function getThreadLaunchModeForAdapter(adapter) {
     void adapter;
-    return "headless";
+    return "interactive";
+  }
+
+  function getThreadLaunchModeLabel(mode) {
+    return mode === "headless" ? "Headless JSON Resume" : "Interactive PTY";
+  }
+
+  function buildThreadLaunchModeOptionsHtml(currentMode = "interactive") {
+    const normalized = currentMode === "headless" ? "headless" : "interactive";
+    return [
+      `<option value="interactive" ${normalized === "interactive" ? "selected" : ""}>Interactive PTY</option>`,
+      `<option value="headless" ${normalized === "headless" ? "selected" : ""}>Headless JSON Resume</option>`,
+    ].join("");
   }
 
   function getThreadLaunchUsedEmojis(excludeAgentId = "") {
@@ -1079,6 +1092,19 @@
                 </select>
               </div>
             </div>
+            <div class="settings-field thread-launch-agent-field">
+              <label>Mode</label>
+              <select
+                data-agent-id="${_escapeHtml(agent.id)}"
+                data-field="mode"
+                onclick="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
+                onpointerdown="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
+                onchange="window.AcbModals && window.AcbModals.updateThreadLaunchAgentField(this)"
+              >
+                ${buildThreadLaunchModeOptionsHtml(agent.mode)}
+              </select>
+              <div class="thread-launch-model-meta">${_escapeHtml(getThreadLaunchModeLabel(agent.mode))}</div>
+            </div>
             <div class="settings-field thread-launch-agent-field thread-launch-agent-field--model">
               <label>Model</label>
               <div class="thread-launch-model-row">
@@ -1233,6 +1259,14 @@
       renderThreadLaunchAgents();
       return;
     }
+    if (field === "mode") {
+      agent.mode = String(element.value || "").trim() === "headless" ? "headless" : "interactive";
+      if (_threadLaunchAgents[0]?.id === agentId) {
+        syncThreadLaunchGlobalInstructionField();
+      }
+      renderThreadLaunchAgents();
+      return;
+    }
     if (field === "model") {
       agent.model = getRequiredThreadLaunchModel(agent.adapter, element.value);
       syncThreadLaunchPromptPreview();
@@ -1362,7 +1396,7 @@
                          config.adapter === "claude" ? "Claude" :
                          config.adapter === "gemini" ? "Gemini" :
                          config.adapter === "copilot" ? "Copilot" : "Codex";
-    const modeLabel = "Headless CLI";
+    const modeLabel = config.mode === "headless" ? "Headless CLI" : "Interactive PTY";
     const displayName = buildDefaultParticipantName(config);
     const result = await api("/api/agents/register", {
       method: "POST",

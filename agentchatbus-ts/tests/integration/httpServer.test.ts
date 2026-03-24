@@ -278,6 +278,7 @@ describe("HTTP compatibility shell", () => {
     const createSessionBody = createSessionResponse.json();
     expect(createSessionBody.session.participant_agent_id).toBe(participant.agent_id);
     expect(createSessionBody.session.participant_display_name).toBe("Codex Worker");
+    expect(createSessionBody.session.mode).toBe("headless");
 
     const threadAgentsResponse = await server.inject({
       method: "GET",

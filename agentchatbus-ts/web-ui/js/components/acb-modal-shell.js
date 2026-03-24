@@ -270,6 +270,7 @@
                     <div class="settings-field">
                       <label for="agent-modal-mode">Mode</label>
                       <select id="agent-modal-mode">
+                        <option value="interactive">Interactive PTY</option>
                         <option value="headless">Headless JSON Resume</option>
                       </select>
                     </div>
