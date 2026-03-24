@@ -959,6 +959,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
           seq: message.seq,
           reply_to_msg_id: message.reply_to_msg_id
         };
+        emitObservedCliToolCall(authorAgentId, "msg_post", threadId);
 
         if (authorAgentId) {
           getStore().invalidateReplyTokensForAgent(threadId, authorAgentId);
@@ -1296,6 +1297,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
           forAgent,
           abortSignal: getToolAbortSignal()
         });
+        emitObservedCliToolCall(agentId, "msg_wait", threadId);
         
         // Match Python dispatch.py L1279-1296: support blocks return format
         if (returnFormat === "blocks") {
@@ -1737,6 +1739,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       }
 
       getStore().updateAgentActivity(agent.id, "bus_connect", true);
+      emitObservedCliToolCall(agent.id, "bus_connect", thread.id);
 
       // Phase 3: Fetch Messages + Sync Context
       const afterSeq = typeof args.after_seq === "number" ? args.after_seq : 0;

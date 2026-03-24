@@ -666,6 +666,30 @@
       .join(" · ");
   }
 
+  function renderTimingSummary(session) {
+    const parts = [];
+    parts.push(`Requested ${formatToolEventTime(session?.created_at)}`);
+    if (session?.launch_started_at) {
+      parts.push(`Launch ${formatToolEventTime(session.launch_started_at)}`);
+    }
+    if (session?.process_started_at) {
+      parts.push(`PID ${formatToolEventTime(session.process_started_at)}`);
+    }
+    if (session?.first_output_at) {
+      parts.push(`First output ${formatToolEventTime(session.first_output_at)}`);
+    }
+    if (session?.connected_at) {
+      parts.push(`bus_connect ${formatToolEventTime(session.connected_at)}`);
+    }
+    if (session?.last_tool_call_at) {
+      parts.push(`Last tool ${formatToolEventTime(session.last_tool_call_at)}`);
+    }
+    if (session?.last_output_at) {
+      parts.push(`Last output ${formatToolEventTime(session.last_output_at)}`);
+    }
+    return parts.join(" · ");
+  }
+
   function truncateMiddle(value, maxLength = 18) {
     const text = String(value || "").trim();
     if (!text || text.length <= maxLength) {
@@ -998,8 +1022,10 @@
       statusEl.dataset.tone = statusInfo.tone;
     }
     if (activityEl) {
-      activityEl.textContent = renderToolEventSummary(session);
-      activityEl.title = renderToolEventSummary(session);
+      const timingSummary = renderTimingSummary(session);
+      const toolSummary = renderToolEventSummary(session);
+      activityEl.textContent = `${timingSummary}\n${toolSummary}`;
+      activityEl.title = `${timingSummary}\n${toolSummary}`;
     }
 
     const isRunning = String(session?.state || "").trim().toLowerCase() === "running";

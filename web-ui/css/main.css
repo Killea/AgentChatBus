@@ -1113,7 +1113,7 @@ body[data-theme="light"] .thread-item .ti-waiting-agents {
   color: var(--text-2);
   font-size: 11px;
   line-height: 1.5;
-  white-space: normal;
+  white-space: pre-wrap;
   word-break: break-word;
 }
 
