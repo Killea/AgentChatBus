@@ -368,7 +368,7 @@
     if (!threadId) {
       return true;
     }
-    return terminalVisibilityByThread.get(threadId) !== false;
+    return terminalVisibilityByThread.get(threadId) === true;
   }
 
   function setTerminalVisibility(threadId, visible) {
@@ -1451,6 +1451,7 @@
     selectSession,
     selectSessionFromElement,
     toggleTerminalVisibility,
+    setTerminalVisibility,
     stopSessionById,
     kickAgentById,
     confirmAndStopSession,
