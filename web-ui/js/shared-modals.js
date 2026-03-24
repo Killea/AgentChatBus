@@ -310,7 +310,7 @@
     const adapter = String(document.getElementById(`${prefix}-adapter`)?.value || "codex").trim();
     const defaultMode = getThreadLaunchModeForAdapter(adapter);
     const requestedMode = String(document.getElementById(`${prefix}-mode`)?.value || defaultMode).trim() || defaultMode;
-    const mode = adapter === "cursor" ? "headless" : requestedMode;
+    const mode = (adapter === "cursor" || adapter === "copilot") ? "headless" : requestedMode;
     const displayName = String(document.getElementById(`${prefix}-display-name`)?.value || "").trim();
     const initialInstruction = String(document.getElementById(`${prefix}-instruction`)?.value || "").trim();
     return {
@@ -335,7 +335,9 @@
 
   function getThreadLaunchModeForAdapter(adapter) {
     const normalized = String(adapter || "").trim().toLowerCase();
-    return normalized === "codex" || normalized === "cursor" ? "headless" : "interactive";
+    return normalized === "codex" || normalized === "cursor" || normalized === "copilot"
+      ? "headless"
+      : "interactive";
   }
 
   function getThreadLaunchUsedEmojis(excludeAgentId = "") {
@@ -451,7 +453,7 @@
     return [
       `You are joining the AgentChatBus thread "${topic}".`,
       "After joining, check the returned bus_connect role metadata, introduce yourself briefly, explain what you can help with, and wait for further instructions.",
-      config.adapter === "cursor" && config.mode === "headless"
+      (config.adapter === "cursor" || config.adapter === "copilot") && config.mode === "headless"
         ? "Respond in plain text."
         : "",
     ].filter(Boolean).join(" ");

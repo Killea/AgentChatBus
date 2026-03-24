@@ -82,6 +82,9 @@
     if (session?.adapter === "cursor" && session?.mode === "headless") {
       return participantLabel ? `${participantLabel} · Cursor JSON resume` : "Cursor JSON resume";
     }
+    if (session?.adapter === "copilot" && session?.mode === "headless") {
+      return participantLabel ? `${participantLabel} · Copilot JSON resume` : "Copilot JSON resume";
+    }
     const base = `${String(session?.adapter || "cli")} ${String(session?.mode || "session")}`;
     return participantLabel ? `${participantLabel} · ${base}` : base;
   }

@@ -5,10 +5,10 @@ import { eventBus } from "../../shared/eventBus.js";
 import { logError, logInfo } from "../../shared/logger.js";
 import { CURSOR_SESSION_ID_ENV_VAR, CursorHeadlessAdapter } from "./adapters/cursorHeadlessAdapter.js";
 import { CODEX_THREAD_ID_ENV_VAR, CodexHeadlessAdapter } from "./adapters/codexHeadlessAdapter.js";
+import { COPILOT_SESSION_ID_ENV_VAR, CopilotHeadlessAdapter } from "./adapters/copilotHeadlessAdapter.js";
 import { CodexInteractiveAdapter } from "./adapters/codexInteractiveAdapter.js";
 import { ClaudeInteractiveAdapter } from "./adapters/claudeInteractiveAdapter.js";
 import { GeminiInteractiveAdapter } from "./adapters/geminiInteractiveAdapter.js";
-import { CopilotInteractiveAdapter } from "./adapters/copilotInteractiveAdapter.js";
 import { isCodexWorkingLine, looksLikeConversationalWorkingScreen } from "./cliInteractiveHeuristics.js";
 
 type HeadlessTerminalInstance = import("@xterm/headless").Terminal;
@@ -1363,9 +1363,9 @@ export class CliSessionManager {
     new CursorHeadlessAdapter(),
     new CodexHeadlessAdapter(),
     new CodexInteractiveAdapter(),
+    new CopilotHeadlessAdapter(),
     new ClaudeInteractiveAdapter(),
     new GeminiInteractiveAdapter(),
-    new CopilotInteractiveAdapter(),
   ]) {
     for (const adapter of adapters) {
       this.adapters.set(this.adapterKey(adapter.adapterId, adapter.mode), adapter);
@@ -1376,7 +1376,7 @@ export class CliSessionManager {
     const prompt = String(input.prompt || "");
     const adapterId = String(input.adapter || "").trim() as CliSessionAdapterId;
     const requestedMode = (String(input.mode || "headless").trim() || "headless") as CliSessionMode;
-    const mode = (adapterId === "cursor" && requestedMode === "interactive"
+    const mode = ((adapterId === "cursor" || adapterId === "copilot") && requestedMode === "interactive"
       ? "headless"
       : requestedMode) as CliSessionMode;
     const adapter = this.adapters.get(this.adapterKey(adapterId, mode));
@@ -1963,6 +1963,15 @@ export class CliSessionManager {
         runtime.launchEnv = {
           ...runtime.launchEnv,
           [CURSOR_SESSION_ID_ENV_VAR]: result.externalSessionId,
+        };
+      } else if (
+        runtime.snapshot.adapter === "copilot"
+        && runtime.snapshot.mode === "headless"
+        && result.externalSessionId
+      ) {
+        runtime.launchEnv = {
+          ...runtime.launchEnv,
+          [COPILOT_SESSION_ID_ENV_VAR]: result.externalSessionId,
         };
       }
 
