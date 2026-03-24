@@ -601,12 +601,12 @@ body[data-theme="light"] .thread-item.context-highlight {
 }
 
 .thread-item .ti-pin-btn:not(.is-pinned) {
-  opacity: 0;
+  opacity: .01;
   pointer-events: auto;
 }
 
-.thread-item:hover .ti-pin-btn:not(.is-pinned),
-.thread-item.active .ti-pin-btn:not(.is-pinned) {
+.thread-item .ti-pin-btn:not(.is-pinned):hover,
+.thread-item .ti-pin-btn:not(.is-pinned):focus-visible {
   opacity: .9;
 }
 
@@ -1096,6 +1096,23 @@ body[data-theme="light"] .thread-item .ti-pin-btn {
   color: var(--text-2);
 }
 
+.cli-session-card__prompt-tag {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  background: rgba(37, 99, 235, 0.14);
+  color: #bfdbfe;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  cursor: help;
+  user-select: none;
+}
+
 .cli-session-card__external-id {
   min-width: 0;
   font-size: 11px;
@@ -1389,6 +1406,12 @@ body[data-theme="light"] .cli-session-card__avatar {
 
 body[data-theme="light"] .cli-session-card__status {
   color: #475569;
+}
+
+body[data-theme="light"] .cli-session-card__prompt-tag {
+  border-color: rgba(37, 99, 235, 0.28);
+  background: rgba(219, 234, 254, 0.95);
+  color: #1d4ed8;
 }
 
 body[data-theme="light"] .cli-session-card__external-id {

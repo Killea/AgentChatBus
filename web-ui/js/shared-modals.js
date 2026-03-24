@@ -93,7 +93,7 @@
   const DEFAULT_THREAD_LAUNCH_INTERVAL_SECONDS = 2;
   const MAX_THREAD_LAUNCH_AGENTS = 4;
   const THREAD_LAUNCH_ADAPTER_STORAGE_KEY = "acb.threadLaunchAdapters.v1";
-  const THREAD_LAUNCH_MODEL_CACHE_KEY = "acb.threadLaunchModels.v1";
+  const THREAD_LAUNCH_MODEL_CACHE_KEY = "acb.threadLaunchModels.v2";
   const THREAD_LAUNCH_SELECTIONS_STORAGE_KEY = "acb.threadLaunchSelections.v1";
   // Keep this list aligned with agentchatbus-ts/src/main.ts and src/main.py so
   // the launch picker matches the server-side deterministic emoji pool.
@@ -152,7 +152,7 @@
         models: Array.isArray(next.models)
           ? next.models
             .map((model) => ({
-              id: String(model?.id || "").trim(),
+              id: normalizeThreadLaunchModelValue(adapter, model?.id),
               label: String(model?.label || model?.id || "").trim(),
             }))
             .filter((model) => model.id)
@@ -309,12 +309,8 @@
       const payload = await api(path, { method });
       if (payload) {
         const normalized = normalizeCliModelDiscovery(payload);
-        if (!normalized.fetched_at && _cliModelDiscovery?.fetched_at) {
-          // Preserve the last successful manual detection across server restarts.
-        } else {
-          _cliModelDiscovery = normalized;
-          writeCliModelDiscoveryCache(_cliModelDiscovery);
-        }
+        _cliModelDiscovery = normalized;
+        writeCliModelDiscoveryCache(_cliModelDiscovery);
       }
     } finally {
       _cliModelDiscoveryLoading = false;
@@ -365,7 +361,10 @@
           if (!(adapter === "codex" || adapter === "cursor" || adapter === "claude" || adapter === "gemini" || adapter === "copilot")) {
             return null;
           }
-          return { adapter, model };
+          return {
+            adapter,
+            model: normalizeThreadLaunchModelValue(adapter, model),
+          };
         })
         .filter((entry) => Boolean(entry));
     } catch {
@@ -391,11 +390,28 @@
     try {
       const selections = _threadLaunchAgents.map((agent) => ({
         adapter: String(agent?.adapter || "").trim().toLowerCase() || "claude",
-        model: String(agent?.model || "").trim(),
+        model: normalizeThreadLaunchModelValue(agent?.adapter, agent?.model),
       }));
       globalThis.localStorage?.setItem(
         THREAD_LAUNCH_SELECTIONS_STORAGE_KEY,
         JSON.stringify(selections),
+      );
+    } catch {
+      // Ignore storage failures and keep the modal usable.
+    }
+  }
+
+  function writeThreadLaunchSelectionPreferencesFromConfig(config) {
+    try {
+      const existing = readThreadLaunchSelectionPreferences();
+      const nextEntry = {
+        adapter: String(config?.adapter || "").trim().toLowerCase() || "claude",
+        model: normalizeThreadLaunchModelValue(config?.adapter, config?.model),
+      };
+      const nextSelections = [nextEntry, ...existing.slice(1)];
+      globalThis.localStorage?.setItem(
+        THREAD_LAUNCH_SELECTIONS_STORAGE_KEY,
+        JSON.stringify(nextSelections),
       );
     } catch {
       // Ignore storage failures and keep the modal usable.
@@ -420,13 +436,17 @@
     return String(preferences[slotIndex]?.model || "").trim();
   }
 
-  function getRequiredThreadLaunchModel(adapter, model) {
+  function normalizeThreadLaunchModelValue(adapter, model) {
     const normalizedAdapter = String(adapter || "").trim().toLowerCase();
     const normalizedModel = String(model || "").trim();
     if (normalizedAdapter === "cursor") {
       return normalizedModel || "auto";
     }
     return normalizedModel;
+  }
+
+  function getRequiredThreadLaunchModel(adapter, model) {
+    return normalizeThreadLaunchModelValue(adapter, model);
   }
 
   async function _loadTemplates(api) {
@@ -511,12 +531,34 @@
   function resetAgentForm(prefix) {
     const adapterEl = document.getElementById(`${prefix}-adapter`);
     const modeEl = document.getElementById(`${prefix}-mode`);
+    const modelEl = document.getElementById(`${prefix}-model`);
+    const modelSuggestionEl = document.getElementById(`${prefix}-model-suggestion`);
     const displayNameEl = document.getElementById(`${prefix}-display-name`);
+    const emojiEl = document.getElementById(`${prefix}-emoji`);
+    const emojiPreviewEl = document.getElementById(`${prefix}-emoji-preview`);
     const instructionEl = document.getElementById(`${prefix}-instruction`);
-    if (adapterEl) adapterEl.value = "claude";
-    if (modeEl) modeEl.value = getThreadLaunchModeForAdapter("claude");
+    const preferredAdapter = getPreferredThreadLaunchAdapter(0, "claude");
+    const preferredModel = getRequiredThreadLaunchModel(
+      preferredAdapter,
+      getPreferredThreadLaunchModel(0),
+    );
+    const preferredEmoji = pickRandomThreadLaunchEmoji();
+    if (adapterEl) adapterEl.value = preferredAdapter;
+    if (modeEl) modeEl.value = getThreadLaunchModeForAdapter(preferredAdapter);
+    if (modelEl) modelEl.value = preferredModel;
+    if (modelSuggestionEl) modelSuggestionEl.value = "";
     if (displayNameEl) displayNameEl.value = "";
+    if (emojiEl) {
+      emojiEl.innerHTML = THREAD_LAUNCH_EMOJI_OPTIONS.map((emoji) => (
+        `<option value="${_escapeHtml(emoji)}" ${emoji === preferredEmoji ? "selected" : ""}>${_escapeHtml(emoji)}</option>`
+      )).join("");
+      emojiEl.value = preferredEmoji;
+    }
+    if (emojiPreviewEl) {
+      emojiPreviewEl.textContent = preferredEmoji;
+    }
     if (instructionEl) instructionEl.value = "";
+    syncAddAgentModelControls(prefix);
   }
 
   function resetAutoAssembleForm() {
@@ -576,15 +618,56 @@
     const adapter = String(document.getElementById(`${prefix}-adapter`)?.value || "codex").trim();
     const defaultMode = getThreadLaunchModeForAdapter(adapter);
     const mode = defaultMode;
+    const model = getRequiredThreadLaunchModel(
+      adapter,
+      String(document.getElementById(`${prefix}-model`)?.value || "").trim(),
+    );
     const displayName = String(document.getElementById(`${prefix}-display-name`)?.value || "").trim();
+    const emoji = String(document.getElementById(`${prefix}-emoji`)?.value || "").trim();
     const initialInstruction = String(document.getElementById(`${prefix}-instruction`)?.value || "").trim();
     return {
       adapter,
+      model,
       mode,
       meetingTransport: "agent_mcp",
       displayName,
+      emoji,
       initialInstruction,
     };
+  }
+
+  function buildAddAgentModelOptionsHtml(adapter, currentModel = "") {
+    const options = getThreadLaunchAgentModelOptions({
+      adapter,
+      model: currentModel,
+    });
+    return options.map((model) => (
+      `<option value="${_escapeHtml(model.id)}">${_escapeHtml(model.label || model.id)}</option>`
+    )).join("");
+  }
+
+  function syncAddAgentModelControls(prefix) {
+    const adapterEl = document.getElementById(`${prefix}-adapter`);
+    const modelEl = document.getElementById(`${prefix}-model`);
+    const suggestionEl = document.getElementById(`${prefix}-model-suggestion`);
+    const emojiEl = document.getElementById(`${prefix}-emoji`);
+    const emojiPreviewEl = document.getElementById(`${prefix}-emoji-preview`);
+    if (!adapterEl) {
+      return;
+    }
+    const adapter = String(adapterEl.value || "claude").trim() || "claude";
+    if (modelEl) {
+      modelEl.value = getRequiredThreadLaunchModel(adapter, modelEl.value);
+      modelEl.required = !(adapter === "cursor" || adapter === "gemini");
+    }
+    if (suggestionEl) {
+      const currentModel = String(modelEl?.value || "").trim();
+      suggestionEl.innerHTML = `<option value="">Suggestions</option>${buildAddAgentModelOptionsHtml(adapter, currentModel)}`;
+      suggestionEl.value = "";
+    }
+    if (emojiEl && emojiPreviewEl) {
+      emojiPreviewEl.textContent = String(emojiEl.value || "").trim() || "🤖";
+    }
   }
 
   function buildDefaultParticipantName(config) {
@@ -1005,7 +1088,7 @@
                   data-agent-id="${_escapeHtml(agent.id)}"
                   data-field="model"
                   placeholder="Leave blank for adapter default, or type any model"
-                  ${agent.adapter === "cursor" ? "" : "required"}
+                  ${agent.adapter === "cursor" || agent.adapter === "gemini" ? "" : "required"}
                   onclick="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
                   onpointerdown="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
                   onfocus="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
@@ -1127,9 +1210,11 @@
       agent.adapter = String(element.value || "claude").trim() || "claude";
       agent.mode = getThreadLaunchModeForAdapter(agent.adapter);
       agent.meetingTransport = "agent_mcp";
-      if (agent.adapter === "cursor") {
+      if (agent.adapter === "cursor" || agent.adapter === "gemini") {
         agent.model = getRequiredThreadLaunchModel(agent.adapter, agent.model);
       } else if (previousAdapter === "cursor" && String(agent.model || "").trim() === "auto") {
+        agent.model = "";
+      } else if (previousAdapter === "gemini" && !String(agent.model || "").trim()) {
         agent.model = "";
       }
       if (_threadLaunchAgents[0]?.id === agentId) {
@@ -1504,11 +1589,52 @@
       return;
     }
     resetAgentForm("agent-modal");
+    syncAddAgentModelControls("agent-modal");
+    if (api) {
+      void loadCliModelDiscovery(api, { force: false }).then(() => {
+        syncAddAgentModelControls("agent-modal");
+      });
+    }
     bindInstructionAutofill("agent-modal", {
       getTopic: () => document.getElementById("thread-title")?.textContent?.trim() || "current thread",
       getThreadId: () => window.currentThreadId || "",
       isFirstAgent: false,
     });
+    const adapterEl = document.getElementById("agent-modal-adapter");
+    const modelEl = document.getElementById("agent-modal-model");
+    const modelSuggestionEl = document.getElementById("agent-modal-model-suggestion");
+    const emojiEl = document.getElementById("agent-modal-emoji");
+    const emojiPreviewEl = document.getElementById("agent-modal-emoji-preview");
+    if (adapterEl && adapterEl.dataset.addAgentBound !== "1") {
+      adapterEl.dataset.addAgentBound = "1";
+      adapterEl.addEventListener("change", () => {
+        syncAddAgentModelControls("agent-modal");
+        syncDefaultInstructionField("agent-modal", {
+          topic: document.getElementById("thread-title")?.textContent?.trim() || "current thread",
+          threadId: window.currentThreadId || "",
+          isFirstAgent: false,
+        });
+      });
+    }
+    if (modelSuggestionEl && modelSuggestionEl.dataset.addAgentBound !== "1") {
+      modelSuggestionEl.dataset.addAgentBound = "1";
+      modelSuggestionEl.addEventListener("change", () => {
+        if (modelEl && String(modelSuggestionEl.value || "").trim()) {
+          modelEl.value = getRequiredThreadLaunchModel(
+            String(adapterEl?.value || "claude").trim(),
+            modelSuggestionEl.value,
+          );
+        }
+      });
+    }
+    if (emojiEl && emojiEl.dataset.addAgentBound !== "1") {
+      emojiEl.dataset.addAgentBound = "1";
+      emojiEl.addEventListener("change", () => {
+        if (emojiPreviewEl) {
+          emojiPreviewEl.textContent = String(emojiEl.value || "").trim() || "🤖";
+        }
+      });
+    }
     resetAutoAssembleForm();
     switchAddAgentTab("manual");
     const threadTitle = document.getElementById("thread-title")?.textContent?.trim() || "current thread";
@@ -1571,7 +1697,13 @@
       return;
     }
 
+    const modelInput = document.getElementById("agent-modal-model");
+    if (modelInput instanceof HTMLInputElement && !modelInput.reportValidity()) {
+      return;
+    }
+
     const config = readAgentLaunchConfig("agent-modal");
+    writeThreadLaunchSelectionPreferencesFromConfig(config);
     const participantAgent = await registerParticipantAgent(api, config);
     if (!participantAgent) {
       console.error("[Add Agent] Could not register target agent");

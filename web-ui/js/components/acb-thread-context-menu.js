@@ -7,6 +7,7 @@
         <div id="thread-context-menu" role="menu">
           <button id="ctx-copy-name" class="ctx-item" type="button" role="menuitem" onclick="copyThreadNameFromMenu()">🧵 Copy Thread Name</button>
           <hr class="ctx-divider" aria-hidden="true">
+          <button id="ctx-rename" class="ctx-item" type="button" role="menuitem" onclick="renameThreadFromMenu()">✏️ Rename</button>
           <button id="ctx-close" class="ctx-item" type="button" role="menuitem" onclick="closeThreadFromMenu()">🔒 Close</button>
           <button id="ctx-archive" class="ctx-item" type="button" role="menuitem" onclick="archiveThreadFromMenu()">🗄️ Archive</button>
           <button id="ctx-unarchive" class="ctx-item" type="button" role="menuitem" onclick="unarchiveThreadFromMenu()" style="display: none;">📂 Unarchive</button>

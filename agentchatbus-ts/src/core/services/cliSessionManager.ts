@@ -32,6 +32,11 @@ export interface CliSessionSnapshot {
   model?: string;
   state: CliSessionState;
   prompt: string;
+  prompt_history?: Array<{
+    at: string;
+    kind: "initial" | "update" | "wake" | "delivery";
+    prompt: string;
+  }>;
   initial_instruction?: string;
   workspace: string;
   requested_by_agent_id: string;
@@ -1505,6 +1510,13 @@ export class CliSessionManager {
       model,
       state: "created",
       prompt,
+      prompt_history: prompt.trim()
+        ? [{
+          at: nowIso(),
+          kind: "initial",
+          prompt,
+        }]
+        : [],
       initial_instruction: initialInstruction,
       workspace,
       requested_by_agent_id: input.requestedByAgentId,
@@ -1568,6 +1580,7 @@ export class CliSessionManager {
       return this.cloneSnapshot(runtime.snapshot);
     }
     runtime.snapshot.prompt = nextPrompt;
+    this.recordPromptHistory(runtime, nextPrompt, "update");
     runtime.snapshot.updated_at = nowIso();
     this.emitSessionEvent("cli.session.state", runtime);
     return this.cloneSnapshot(runtime.snapshot);
@@ -1804,6 +1817,7 @@ export class CliSessionManager {
     }
 
     runtime.snapshot.updated_at = nowIso();
+    this.recordPromptHistory(runtime, normalizedPrompt, "wake");
     runtime.controls.write(normalizedPrompt);
     if (automation) {
       automation.wakePromptText = normalizedPrompt;
@@ -1871,6 +1885,7 @@ export class CliSessionManager {
     }
 
     runtime.snapshot.prompt = normalizedPrompt;
+    this.recordPromptHistory(runtime, normalizedPrompt, "delivery");
     runtime.snapshot.context_delivery_mode = options?.deliveryMode || "incremental";
     if (Number.isFinite(Number(options?.deliveredSeq))) {
       runtime.snapshot.last_delivered_seq = Number(options?.deliveredSeq);
@@ -3919,6 +3934,9 @@ export class CliSessionManager {
     return {
       ...snapshot,
       raw_result: snapshot.raw_result ? { ...snapshot.raw_result } : snapshot.raw_result,
+      prompt_history: Array.isArray(snapshot.prompt_history)
+        ? snapshot.prompt_history.map((entry) => ({ ...entry }))
+        : snapshot.prompt_history,
       recent_tool_events: Array.isArray(snapshot.recent_tool_events)
         ? snapshot.recent_tool_events.map((entry) => ({ ...entry }))
         : snapshot.recent_tool_events,
@@ -3930,5 +3948,33 @@ export class CliSessionManager {
 
   private adapterKey(adapterId: CliSessionAdapterId, mode: CliSessionMode): string {
     return `${adapterId}:${mode}`;
+  }
+
+  private recordPromptHistory(
+    runtime: CliSessionRuntime,
+    prompt: string,
+    kind: "initial" | "update" | "wake" | "delivery",
+  ): void {
+    const normalizedPrompt = String(prompt || "");
+    if (!normalizedPrompt.trim()) {
+      return;
+    }
+    const entries = Array.isArray(runtime.snapshot.prompt_history)
+      ? [...runtime.snapshot.prompt_history]
+      : [];
+    const lastEntry = entries[entries.length - 1];
+    if (
+      lastEntry
+      && lastEntry.kind === kind
+      && String(lastEntry.prompt || "") === normalizedPrompt
+    ) {
+      return;
+    }
+    entries.push({
+      at: nowIso(),
+      kind,
+      prompt: normalizedPrompt,
+    });
+    runtime.snapshot.prompt_history = entries.slice(-40);
   }
 }

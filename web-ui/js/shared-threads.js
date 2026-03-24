@@ -204,17 +204,20 @@
     event.stopPropagation();
 
     const menu = document.getElementById("thread-context-menu");
+    const renameBtn = document.getElementById("ctx-rename");
     const archiveBtn = document.getElementById("ctx-archive");
     const unarchiveBtn = document.getElementById("ctx-unarchive");
     const closeBtn = document.getElementById("ctx-close");
     const pinBtn = document.getElementById("ctx-pin");
     const deleteBtn = document.getElementById("ctx-delete");
-    if (!menu || !archiveBtn || !unarchiveBtn || !closeBtn || !pinBtn || !deleteBtn) return thread;
+    if (!menu || !renameBtn || !archiveBtn || !unarchiveBtn || !closeBtn || !pinBtn || !deleteBtn) return thread;
 
     const adModeEnabled = !!options.showAd;
 
     closeBtn.disabled = adModeEnabled;
     closeBtn.textContent = adModeEnabled ? "🔒 Close (disabled by show_ad)" : "🔒 Close";
+    renameBtn.disabled = false;
+    renameBtn.textContent = "✏️ Rename";
     archiveBtn.disabled = false;
     archiveBtn.textContent = "🗄️ Archive";
     pinBtn.disabled = false;
@@ -462,6 +465,66 @@ Task: After entering, stand by. Human programmers may need to publish requiremen
     }
   }
 
+  async function renameThreadFromMenu({
+    getContextMenuThread,
+    hideThreadContextMenu,
+    api,
+    refreshThreads,
+    getActiveThreadId,
+    onActiveThreadRenamed,
+  }) {
+    const ctx = getContextMenuThread();
+    if (!ctx?.id) return null;
+    const inputDialog = document.getElementById("input-dialog");
+    if (!inputDialog || typeof inputDialog.show !== "function") {
+      console.error("[renameThreadFromMenu] Input dialog not found");
+      return null;
+    }
+
+    const { id, topic = "", status = "discuss", _clickX = null, _clickY = null } = ctx;
+    hideThreadContextMenu();
+
+    const nextTopic = await inputDialog.show({
+      title: "Rename Thread",
+      message: "Enter a new thread name:",
+      placeholder: "Thread name",
+      value: topic,
+      confirmText: "Rename",
+      x: _clickX,
+      y: _clickY,
+    });
+
+    if (nextTopic === null) {
+      return null;
+    }
+
+    const normalizedTopic = String(nextTopic || "").trim();
+    if (!normalizedTopic || normalizedTopic === String(topic || "").trim()) {
+      return null;
+    }
+
+    const result = await api(`/api/threads/${id}/rename`, {
+      method: "POST",
+      body: JSON.stringify({ topic: normalizedTopic }),
+    });
+    if (!result || result.ok !== true || !result.thread) {
+      if (result?.detail) {
+        alert(result.detail);
+      }
+      return result || null;
+    }
+
+    await refreshThreads();
+    if (getActiveThreadId() === id && typeof onActiveThreadRenamed === "function") {
+      onActiveThreadRenamed({
+        id,
+        topic: String(result.thread.topic || normalizedTopic),
+        status: String(result.thread.status || status),
+      });
+    }
+    return result;
+  }
+
   async function pinThreadFromMenu({
     getContextMenuThread,
     hideThreadContextMenu,
@@ -489,6 +552,7 @@ Task: After entering, stand by. Human programmers may need to publish requiremen
     exportThread,
     copyThreadNameFromMenu,
     copyJoinPromptFromMenu,
+    renameThreadFromMenu,
     isThreadPinned,
     setThreadPinned,
     toggleThreadPinned,

@@ -725,6 +725,31 @@ export class MemoryStore {
     return true;
   }
 
+  renameThread(threadId: string, topic: string): ThreadRecord | undefined {
+    const thread = this.getThread(threadId);
+    if (!thread) {
+      return undefined;
+    }
+    const nextTopic = String(topic || "").trim();
+    if (!nextTopic) {
+      throw new Error("topic is required");
+    }
+    const existing = this.getThreadByTopic(nextTopic);
+    if (existing && existing.id !== threadId) {
+      throw new Error(`Thread topic '${nextTopic}' already exists.`);
+    }
+
+    const nextUpdatedAt = new Date().toISOString();
+    thread.topic = nextTopic;
+    thread.updated_at = nextUpdatedAt;
+    this.threads.set(threadId, thread);
+    this.appendLog(`thread renamed: ${threadId} ${nextTopic}`);
+    eventBus.emit({ type: "thread.updated", payload: thread });
+    this.upsertThread(thread);
+    this.persistState();
+    return thread;
+  }
+
   closeThread(threadId: string, summary?: string): boolean {
     const thread = this.getThread(threadId);
     if (!thread) {

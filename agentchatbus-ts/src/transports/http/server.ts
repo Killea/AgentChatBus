@@ -1322,6 +1322,27 @@ export function createHttpServer() {
 
   fastify.post("/api/threads/:threadId/archive", async (request, reply) => setThreadStatus(request, reply, "archived"));
   fastify.post("/api/threads/:threadId/unarchive", async (request, reply) => setThreadStatus(request, reply, "discuss"));
+  fastify.post("/api/threads/:threadId/rename", async (request, reply) => {
+    const params = request.params as { threadId: string };
+    const body = (request.body || {}) as JsonBody;
+    const topic = String(body.topic || "").trim();
+    if (!topic) {
+      reply.code(400);
+      return { detail: "topic is required" };
+    }
+    try {
+      const renamed = store.renameThread(params.threadId, topic);
+      if (!renamed) {
+        reply.code(404);
+        return { detail: "Thread not found" };
+      }
+      return { ok: true, thread: renamed };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      reply.code(message.includes("already exists") ? 409 : 400);
+      return { detail: message };
+    }
+  });
   fastify.post("/api/threads/:threadId/close", async (request, reply) => {
     const params = request.params as { threadId: string };
     const body = (request.body || {}) as JsonBody;

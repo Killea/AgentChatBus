@@ -49,6 +49,9 @@
           if (!pinBtn || !this._thread) return;
           e.preventDefault();
           e.stopPropagation();
+          if (typeof pinBtn.blur === "function") {
+            pinBtn.blur();
+          }
           this.dispatchEvent(
             new CustomEvent("thread-pin-toggle", {
               bubbles: true,

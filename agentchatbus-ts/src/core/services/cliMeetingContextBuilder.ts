@@ -248,6 +248,7 @@ export function buildCliMeetingPrompt(input: BuildCliMeetingPromptInput): CliMee
   const prompt = [
     `You are participating in the AgentChatBus thread "${thread.topic}".`,
     `Thread ID: ${thread.id}`,
+    `If you must refer to the thread explicitly, use thread_name "${thread.topic}" or thread_id "${thread.id}".`,
     `Thread status: ${thread.status}`,
     `Your participant identity: ${participantName} (${input.participantAgentId})`,
     `Your current role: ${roleLabel}`,
@@ -324,6 +325,7 @@ export function buildCliIncrementalPrompt(input: BuildCliIncrementalPromptInput)
   const prompt = [
     `You are continuing participation in the AgentChatBus thread "${thread.topic}".`,
     `Thread ID: ${thread.id}`,
+    `If you must refer to the thread explicitly, use thread_name "${thread.topic}" or thread_id "${thread.id}".`,
     `Thread status: ${thread.status}`,
     `Your participant identity: ${participantName} (${input.participantAgentId})`,
     `Your current role: ${roleLabel}`,
@@ -389,6 +391,7 @@ export function buildCliMcpMeetingPrompt(input: BuildCliMcpMeetingPromptInput): 
       "Use only the MCP tool server `agentchatbus` in this current session.",
       "Do not write analysis, plans, narration, or tool strategy.",
       `Step 1: call \`bus_connect\` exactly once now with ${compactPayload}.`,
+      `If any tool flow asks you to identify the thread again, use thread_name "${thread.topic}" or thread_id "${thread.id}".`,
       `Step 2: immediately call \`msg_post\` with author exactly "${input.participantAgentId}" and a short introduction that follows this instruction: ${initialInstruction}`,
       "Step 3: immediately call `msg_wait` with timeout_ms 600000.",
       serverUrl ? `If asked for the MCP server URL, use ${serverUrl}.` : "",
@@ -422,6 +425,7 @@ export function buildCliMcpMeetingPrompt(input: BuildCliMcpMeetingPromptInput): 
       "Use only the MCP tool server `agentchatbus` in this current exec run.",
       "Do not write analysis, plans, terminal commentary, or tool strategy outside the thread.",
       `Step 1: call \`bus_connect\` exactly once now with ${compactPayload}.`,
+      `If any tool flow asks you to identify the thread again, use thread_name "${thread.topic}" or thread_id "${thread.id}".`,
       `Step 2: if you need to introduce yourself or respond, call \`msg_post\` using this instruction: ${initialInstruction}`,
       "Step 3: immediately call `msg_wait` with timeout_ms 600000.",
       "Step 4: whenever `msg_wait` returns new messages, post your thread reply with `msg_post` and then call `msg_wait` again.",
@@ -444,6 +448,7 @@ export function buildCliMcpMeetingPrompt(input: BuildCliMcpMeetingPromptInput): 
   const prompt = [
     "Please use the MCP tool `agentchatbus` to join the discussion.",
     `Use \`bus_connect\` to join the exact thread "${thread.topic}" (${thread.id}).`,
+    `If the CLI or tool asks for a thread identifier, provide thread_name "${thread.topic}" or thread_id "${thread.id}".`,
     serverUrl ? `If the MCP client asks for the server URL, use: ${serverUrl}` : "",
     `Resume the provided participant identity exactly: ${participantName} (${input.participantAgentId}).`,
     "Do not call `agent_register`. Do not create a new identity for this launch.",

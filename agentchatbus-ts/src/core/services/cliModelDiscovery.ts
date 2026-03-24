@@ -79,10 +79,11 @@ const STATIC_MODELS: Record<CliSessionAdapterId, CliDiscoveredModel[]> = {
     { id: "gpt-4.1", label: "gpt-4.1" },
   ],
   gemini: [
-    { id: "gemini-3-pro", label: "gemini-3-pro" },
-    { id: "gemini-3-flash", label: "gemini-3-flash" },
+    { id: "gemini-3.1-pro-preview", label: "gemini-3.1-pro-preview" },
+    { id: "gemini-3-flash-preview", label: "gemini-3-flash-preview" },
     { id: "gemini-2.5-pro", label: "gemini-2.5-pro" },
     { id: "gemini-2.5-flash", label: "gemini-2.5-flash" },
+    { id: "gemini-2.5-flash-lite", label: "gemini-2.5-flash-lite" },
   ],
 };
 

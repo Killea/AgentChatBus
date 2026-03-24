@@ -264,6 +264,7 @@
                         <option value="cursor">Cursor</option>
                         <option value="copilot">Copilot</option>
                         <option value="claude">Claude</option>
+                        <option value="gemini">Gemini</option>
                       </select>
                     </div>
                     <div class="settings-field">
@@ -273,9 +274,25 @@
                       </select>
                     </div>
                     <div class="settings-field" style="grid-column:1 / -1;">
+                      <label for="agent-modal-model">Model</label>
+                      <div class="thread-launch-model-row">
+                        <input id="agent-modal-model" type="text" placeholder="Leave blank for adapter default, or type any model" />
+                        <select id="agent-modal-model-suggestion">
+                          <option value="">Suggestions</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="settings-field" style="grid-column:1 / -1;">
                       <label for="agent-modal-display-name">Display Name</label>
                       <input id="agent-modal-display-name" type="text" placeholder="Optional: Research Agent" />
                       <div class="settings-field-description">Leave blank to use an automatically generated agent label.</div>
+                    </div>
+                    <div class="settings-field" style="grid-column:1 / -1;">
+                      <label for="agent-modal-emoji">Emoji</label>
+                      <div class="thread-launch-emoji-row">
+                        <span id="agent-modal-emoji-preview" class="thread-launch-emoji-preview" aria-hidden="true">🤖</span>
+                        <select id="agent-modal-emoji"></select>
+                      </div>
                     </div>
                   </div>
                   <div class="settings-field" style="margin-bottom:0;">

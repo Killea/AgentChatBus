@@ -162,9 +162,9 @@ class GeminiHeadlessExecutor implements GeminiCommandExecutor {
         ...(resumeSessionId ? ["--resume", resumeSessionId] : []),
         ...(requestedModel ? ["-m", requestedModel] : []),
         "-p",
+        request.prompt,
         "--output-format",
         "json",
-        request.prompt,
       ];
 
       const env = { ...process.env, ...(request.env || {}) };

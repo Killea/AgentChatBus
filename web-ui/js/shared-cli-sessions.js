@@ -154,6 +154,56 @@
     return resolvedRole(session) === "administrator" ? "admin" : "participant";
   }
 
+  function getPromptHistoryEntries(session) {
+    if (Array.isArray(session?.prompt_history) && session.prompt_history.length) {
+      return session.prompt_history;
+    }
+    const fallbackPrompt = String(session?.prompt || "");
+    if (!fallbackPrompt.trim()) {
+      return [];
+    }
+    return [{
+      at: String(session?.created_at || session?.updated_at || ""),
+      kind: "initial",
+      prompt: fallbackPrompt,
+    }];
+  }
+
+  function promptHistoryKindLabel(kind) {
+    const normalized = String(kind || "").trim().toLowerCase();
+    if (normalized === "initial") {
+      return "Initial";
+    }
+    if (normalized === "delivery") {
+      return "Delivery";
+    }
+    if (normalized === "wake") {
+      return "Wake";
+    }
+    if (normalized === "update") {
+      return "Update";
+    }
+    return normalized || "Prompt";
+  }
+
+  function buildPromptHistoryTooltip(session) {
+    const entries = getPromptHistoryEntries(session);
+    if (!entries.length) {
+      return "";
+    }
+    return entries.map((entry, index) => {
+      const timestamp = formatToolEventTime(entry?.at);
+      const label = promptHistoryKindLabel(entry?.kind);
+      const prompt = String(entry?.prompt || "").trim() || "(empty)";
+      return `${index + 1}. ${label}${timestamp ? ` ${timestamp}` : ""}\n${prompt}`;
+    }).join("\n\n");
+  }
+
+  function buildPromptTagLabel(session) {
+    const count = getPromptHistoryEntries(session).length;
+    return count > 1 ? `Prompt ${count}` : "Prompt";
+  }
+
   function isActiveSession(session) {
     return ACTIVE_SESSION_STATES.has(String(session?.state || ""));
   }
@@ -914,6 +964,7 @@
             <div class="cli-session-card__identity-row">
               <span class="cli-session-card__name" data-role="name"></span>
               <span class="cli-session-role-badge" data-role="role"></span>
+              <span class="cli-session-card__prompt-tag" data-role="prompt-tag" hidden></span>
             </div>
             <div class="cli-session-card__meta" data-role="meta"></div>
             <div class="cli-session-card__external-id" data-role="external-id" hidden></div>
@@ -992,6 +1043,7 @@
     const avatarEl = card.querySelector('[data-role="avatar"]');
     const nameEl = card.querySelector('[data-role="name"]');
     const roleEl = card.querySelector('[data-role="role"]');
+    const promptTagEl = card.querySelector('[data-role="prompt-tag"]');
     const metaEl = card.querySelector('[data-role="meta"]');
     const externalIdEl = card.querySelector('[data-role="external-id"]');
     const statusEl = card.querySelector('[data-role="status"]');
@@ -1019,6 +1071,20 @@
     if (roleEl) {
       roleEl.textContent = roleLabel(session);
       roleEl.className = `cli-session-role-badge cli-session-role-badge--${roleTone(session)}`;
+    }
+    if (promptTagEl) {
+      const promptTooltip = buildPromptHistoryTooltip(session);
+      if (promptTooltip) {
+        promptTagEl.hidden = false;
+        promptTagEl.textContent = buildPromptTagLabel(session);
+        promptTagEl.title = promptTooltip;
+        promptTagEl.setAttribute("aria-label", promptTooltip);
+      } else {
+        promptTagEl.hidden = true;
+        promptTagEl.textContent = "";
+        promptTagEl.removeAttribute("title");
+        promptTagEl.removeAttribute("aria-label");
+      }
     }
     if (metaEl) {
       metaEl.textContent = buildSessionMeta(session);
