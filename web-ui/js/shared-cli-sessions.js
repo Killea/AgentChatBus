@@ -92,7 +92,21 @@
     return participantLabel ? `${participantLabel} · ${base}` : base;
   }
 
+  function hasBusConnectedParticipant(session) {
+    const participantAgent = getParticipantAgent(session);
+    const participantActivity = String(participantAgent?.last_activity || "").trim().toLowerCase();
+    return (
+      participantActivity === "bus_connect"
+      || participantActivity === "msg_wait"
+      || participantActivity === "msg_received"
+      || participantActivity === "msg_post"
+    );
+  }
+
   function sessionAvatar(session) {
+    if (!hasBusConnectedParticipant(session)) {
+      return "❓";
+    }
     const resolvedEmoji = String(session?.participant_emoji || "").trim();
     if (resolvedEmoji) {
       return resolvedEmoji;
@@ -116,10 +130,6 @@
 
   function roleTone(session) {
     return resolvedRole(session) === "administrator" ? "admin" : "participant";
-  }
-
-  function isInteractiveSession(session) {
-    return Boolean(session?.supports_input);
   }
 
   function isActiveSession(session) {
@@ -151,12 +161,6 @@
     const rightActive = isActiveSession(right) ? 0 : 1;
     if (leftActive !== rightActive) {
       return leftActive - rightActive;
-    }
-
-    const leftInteractive = isInteractiveSession(left) ? 0 : 1;
-    const rightInteractive = isInteractiveSession(right) ? 0 : 1;
-    if (leftInteractive !== rightInteractive) {
-      return leftInteractive - rightInteractive;
     }
 
     const updatedCompare = String(right?.updated_at || "").localeCompare(String(left?.updated_at || ""));
@@ -580,86 +584,6 @@
     }
   }
 
-  async function mountTerminalForSessionCard(session, hostEl) {
-    if (!isInteractiveSession(session) || !hostEl) {
-      return;
-    }
-
-    const existing = getTerminalInstance(session.id);
-    if (existing?.hostEl === hostEl && existing.terminal) {
-      scheduleTerminalResize(session.id);
-      return;
-    }
-
-    if (existing) {
-      teardownTerminalInstance(session.id);
-    }
-
-    hostEl.innerHTML = "";
-
-    if (!window.Terminal || !window.FitAddon || !window.FitAddon.FitAddon) {
-      hostEl.innerHTML = '<div class="cli-session-terminal__fallback">xterm.js did not load.</div>';
-      return;
-    }
-
-    const terminal = new window.Terminal({
-      allowTransparency: true,
-      cursorBlink: true,
-      convertEol: false,
-      disableStdin: true,
-      fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-      fontSize: 12,
-      scrollback: 5000,
-      theme: {
-        background: "#08111f",
-        foreground: "#dbeafe",
-        cursor: "#7dd3fc",
-        selectionBackground: "rgba(59, 130, 246, 0.28)",
-      },
-    });
-    const fitAddon = new window.FitAddon.FitAddon();
-    terminal.loadAddon(fitAddon);
-    terminal.open(hostEl);
-    if (typeof terminal.attachCustomKeyEventHandler === "function") {
-      terminal.attachCustomKeyEventHandler(() => false);
-    }
-
-    const runtime = {
-      sessionId: session.id,
-      threadId: session.thread_id,
-      terminal,
-      fitAddon,
-      hostEl,
-      outputCursor: 0,
-      resizeObserver: null,
-      resizeTimer: null,
-      lastResizeCols: null,
-      lastResizeRows: null,
-    };
-    terminalInstances.set(session.id, runtime);
-
-    if (typeof ResizeObserver === "function") {
-      runtime.resizeObserver = new ResizeObserver(() => {
-        scheduleTerminalResize(session.id);
-      });
-      runtime.resizeObserver.observe(hostEl);
-    }
-
-    scheduleTerminalResize(session.id);
-
-    try {
-      const result = await window.AcbApi.api(`/api/cli-sessions/${session.id}/output?after=0&limit=1000`);
-      const latest = getTerminalInstance(session.id);
-      if (!latest || latest.hostEl !== hostEl) {
-        return;
-      }
-      const entries = Array.isArray(result?.entries) ? result.entries : [];
-      entries.forEach((entry) => appendTerminalOutput(session.id, entry));
-    } catch (error) {
-      writeTerminalNotice(session.id, error instanceof Error ? error.message : String(error));
-    }
-  }
-
   function ensurePanelShell(panelEl) {
     if (!panelEl || panelEl.dataset.cliSessionShell === "1") {
       return;
@@ -712,15 +636,34 @@
     return state;
   }
 
-  function canSendManualControl(session) {
-    return Boolean(isInteractiveSession(session) && session?.supports_input && session?.state === "running");
-  }
-
   function buildSessionMeta(session) {
     return [
       String(session.adapter || "CLI"),
       String(session.mode || "session"),
     ].join(" · ");
+  }
+
+  function formatToolEventTime(value) {
+    const date = value ? new Date(value) : null;
+    if (!date || Number.isNaN(date.getTime())) {
+      return "--:--:--";
+    }
+    return date.toLocaleTimeString([], {
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  }
+
+  function renderToolEventSummary(session) {
+    const entries = Array.isArray(session?.recent_tool_events) ? session.recent_tool_events : [];
+    if (!entries.length) {
+      return "No MCP tool calls recorded yet.";
+    }
+    return entries
+      .map((entry) => `${formatToolEventTime(entry?.at)} ${String(entry?.tool_name || "").trim() || "unknown_tool"}`)
+      .join(" · ");
   }
 
   function truncateMiddle(value, maxLength = 18) {
@@ -823,6 +766,7 @@
     const automationState = String(session?.automation_state || "").trim().toLowerCase();
     const participantActivity = String(participantAgent?.last_activity || "").trim().toLowerCase();
     const participantOnline = participantAgent?.is_online;
+    const participantConnected = hasBusConnectedParticipant(session);
     const lastDeliveredSeq = Number(session?.last_delivered_seq) || 0;
     const lastAcknowledgedSeq = Number(session?.last_acknowledged_seq) || 0;
     const hasHeadlessOutput = Number(session?.output_cursor) > 0;
@@ -879,9 +823,11 @@
     }
     if (meetingPost === "posting" || participantActivity === "msg_post") {
       return {
-        headline: "Connected",
-        detail: "Posting a reply to the thread now.",
-        tone: "active",
+        headline: participantConnected ? "Connected" : "Connecting",
+        detail: participantConnected
+          ? "Posting a reply to the thread now."
+          : "CLI process is running, but bus_connect has not completed yet.",
+        tone: participantConnected ? "active" : "pending",
       };
     }
     if (
@@ -892,9 +838,11 @@
       || DELIVERY_BUSY_AUTOMATION_STATES.has(automationState)
     ) {
       return {
-        headline: "Connected",
-        detail: "Working on a reply right now.",
-        tone: "active",
+        headline: participantConnected ? "Connected" : "Connecting",
+        detail: participantConnected
+          ? "Working on a reply right now."
+          : "CLI process is running startup instructions and has not completed bus_connect yet.",
+        tone: participantConnected ? "active" : "pending",
       };
     }
     if (participantActivity === "msg_wait") {
@@ -906,10 +854,13 @@
     }
     if (meetingTransport === "agent_mcp" && participantOnline === true) {
       if (
+        participantConnected
+        && (
         state === "running"
         && hasHeadlessOutput
         && meetingPost !== "posting"
         && lastAcknowledgedSeq >= lastDeliveredSeq
+        )
       ) {
         return {
           headline: "Connected",
@@ -917,21 +868,26 @@
           tone: "ready",
         };
       }
-      if (participantActivity === "registered") {
+      if (
+        participantActivity === "registered"
+        || participantActivity === "resume"
+        || participantActivity === "heartbeat"
+        || participantActivity === "cli_session_running"
+      ) {
         return {
           headline: "Connecting",
-          detail: "Agent identity is registered, but the MCP wait loop is not ready yet.",
+          detail: "CLI process is running, but bus_connect has not completed yet.",
           tone: "pending",
         };
       }
-      if (participantActivity === "resume" || participantActivity === "heartbeat") {
+      if (!participantConnected && Number(session?.output_cursor) > 0) {
         return {
-          headline: "Connected",
-          detail: "Online, but not currently waiting in msg_wait.",
+          headline: "Connecting",
+          detail: "CLI produced output, but bus_connect has not completed yet.",
           tone: "pending",
         };
       }
-      if (Number(session?.output_cursor) > 0) {
+      if (participantConnected && Number(session?.output_cursor) > 0) {
         return {
           headline: "Connected",
           detail: "MCP session is active, but the wait state is not confirmed yet.",
@@ -953,12 +909,6 @@
     const card = document.createElement("section");
     card.className = "cli-session-card";
     card.dataset.sessionId = String(session.id || "");
-    const manualControlButtons = isInteractiveSession(session)
-      ? `
-          <button type="button" class="btn-secondary btn-compact" data-role="enter">Enter</button>
-          <button type="button" class="btn-secondary btn-compact cli-session-card__danger" data-role="escape">ESC</button>
-        `
-      : "";
     card.innerHTML = `
       <div class="cli-session-card__header">
         <div class="cli-session-card__identity">
@@ -976,18 +926,16 @@
         <div class="cli-session-card__actions">
           <button type="button" class="btn-secondary btn-compact" data-role="stop">Stop CLI</button>
           <button type="button" class="btn-secondary btn-compact cli-session-card__danger" data-role="kick">Kick Agent</button>
-          ${manualControlButtons}
         </div>
       </div>
       <div class="cli-session-card__body">
+        <div class="cli-session-card__activity" data-role="activity"></div>
         <div class="cli-session-terminal__shell cli-session-terminal__shell--card" data-role="terminal-shell">
           <div class="cli-session-terminal cli-session-terminal--card" data-role="terminal"></div>
         </div>
       </div>
     `;
 
-    const enterBtn = card.querySelector('[data-role="enter"]');
-    const escapeBtn = card.querySelector('[data-role="escape"]');
     const stopBtn = card.querySelector('[data-role="stop"]');
     const kickBtn = card.querySelector('[data-role="kick"]');
     if (stopBtn) {
@@ -998,16 +946,6 @@
     if (kickBtn) {
       kickBtn.addEventListener("click", () => {
         void confirmAndKickAgent(session.id);
-      });
-    }
-    if (enterBtn) {
-      enterBtn.addEventListener("click", () => {
-        void confirmAndSendControl(session.id, "enter");
-      });
-    }
-    if (escapeBtn) {
-      escapeBtn.addEventListener("click", () => {
-        void confirmAndSendControl(session.id, "escape");
       });
     }
     return card;
@@ -1023,10 +961,9 @@
     const metaEl = card.querySelector('[data-role="meta"]');
     const externalIdEl = card.querySelector('[data-role="external-id"]');
     const statusEl = card.querySelector('[data-role="status"]');
+    const activityEl = card.querySelector('[data-role="activity"]');
     const terminalEl = card.querySelector('[data-role="terminal"]');
     const terminalShellEl = card.querySelector('[data-role="terminal-shell"]');
-    const enterBtn = card.querySelector('[data-role="enter"]');
-    const escapeBtn = card.querySelector('[data-role="escape"]');
     const stopBtn = card.querySelector('[data-role="stop"]');
     const kickBtn = card.querySelector('[data-role="kick"]');
 
@@ -1060,20 +997,12 @@
       statusEl.textContent = `${statusInfo.headline} · ${statusInfo.detail}`;
       statusEl.dataset.tone = statusInfo.tone;
     }
+    if (activityEl) {
+      activityEl.textContent = renderToolEventSummary(session);
+      activityEl.title = renderToolEventSummary(session);
+    }
 
-    const manualEnabled = canSendManualControl(session);
     const isRunning = String(session?.state || "").trim().toLowerCase() === "running";
-    const showManualControls = isInteractiveSession(session);
-    if (enterBtn) {
-      enterBtn.hidden = !showManualControls;
-      enterBtn.disabled = !manualEnabled;
-      enterBtn.title = manualEnabled ? "Send Enter to the CLI after confirmation" : "This session cannot receive manual input right now";
-    }
-    if (escapeBtn) {
-      escapeBtn.hidden = !showManualControls;
-      escapeBtn.disabled = !manualEnabled;
-      escapeBtn.title = manualEnabled ? "Send ESC to the CLI after confirmation" : "This session cannot receive manual input right now";
-    }
     if (stopBtn) {
       stopBtn.disabled = !isRunning;
       stopBtn.title = isRunning ? "Stop this CLI process after confirmation" : "This CLI process is not running";
@@ -1086,21 +1015,12 @@
         : "No participant agent is attached to this session";
     }
 
-    if (isInteractiveSession(session)) {
-      if (terminalShellEl) {
-        terminalShellEl.hidden = false;
-      }
-      if (terminalEl) {
-        void mountTerminalForSessionCard(session, terminalEl);
-      }
-    } else {
-      teardownTerminalInstance(session.id);
-      if (terminalShellEl) {
-        terminalShellEl.hidden = false;
-      }
-      if (terminalEl) {
-        void mountHeadlessOutputForSessionCard(session, terminalEl);
-      }
+    teardownTerminalInstance(session.id);
+    if (terminalShellEl) {
+      terminalShellEl.hidden = false;
+    }
+    if (terminalEl) {
+      void mountHeadlessOutputForSessionCard(session, terminalEl);
     }
   }
 
@@ -1218,42 +1138,6 @@
     return getSelectedSession(threadId);
   }
 
-  async function startHeadlessCodexSession(api) {
-    const threadId = getActiveThreadId();
-    if (!threadId) {
-      return null;
-    }
-
-    const uiAgent = await getUiAgent();
-    if (!uiAgent) {
-      return null;
-    }
-
-    const result = await api(`/api/threads/${threadId}/cli-sessions`, {
-      method: "POST",
-      headers: {
-        "X-Agent-Token": uiAgent.token,
-      },
-      body: JSON.stringify({
-        adapter: "codex",
-        mode: "headless",
-        meeting_transport: "agent_mcp",
-        prompt: "who are you",
-        requested_by_agent_id: uiAgent.agent_id,
-        cols: 120,
-        rows: 32,
-      }),
-    });
-
-    if (result?.session) {
-      upsertSession(result.session);
-      selectSession(result.session.id, threadId);
-      return result.session;
-    }
-
-    return null;
-  }
-
   async function restartSelected(api) {
     const threadId = getActiveThreadId();
     const session = getSelectedSession(threadId);
@@ -1356,62 +1240,6 @@
     });
   }
 
-  async function sendManualInput(sessionId, text, notice) {
-    const uiAgent = await getUiAgent();
-    if (!uiAgent) {
-      return null;
-    }
-
-    const result = await window.AcbApi.api(`/api/cli-sessions/${sessionId}/input`, {
-      method: "POST",
-      headers: {
-        "X-Agent-Token": uiAgent.token,
-      },
-      body: JSON.stringify({
-        requested_by_agent_id: uiAgent.agent_id,
-        text,
-      }),
-    });
-
-    if (result?.ok) {
-      writeTerminalNotice(sessionId, notice);
-    }
-    return result;
-  }
-
-  async function confirmAndSendControl(sessionId, controlType) {
-    const session = getSessionsForThread(getActiveThreadId()).find((item) => item.id === sessionId);
-    if (!session || !canSendManualControl(session)) {
-      return null;
-    }
-
-    const confirmDialog = document.getElementById("confirm-dialog");
-    if (!confirmDialog || typeof confirmDialog.show !== "function") {
-      return null;
-    }
-
-    const isEscape = controlType === "escape";
-    const keyLabel = isEscape ? "ESC" : "Enter";
-    const confirmed = await confirmDialog.show({
-      title: `Send ${keyLabel}`,
-      message: `
-        <strong>This sends a real ${keyLabel} keypress to the CLI terminal.</strong><br><br>
-        This is meant as a manual recovery tool when an agent appears stuck or is waiting at a prompt.<br><br>
-        It can interrupt or alter the current automatic flow, so only continue if you really want to send ${keyLabel} to <code>${escapeHtml(sessionDisplayName(session))}</code>.
-      `,
-      confirmText: `Send ${keyLabel}`,
-      confirmClass: isEscape ? "btn-destructive" : "btn-primary",
-    });
-
-    if (!confirmed) {
-      return null;
-    }
-
-    const text = isEscape ? "\u001b" : "\r";
-    const notice = isEscape ? "Manual ESC sent." : "Manual Enter sent.";
-    return await sendManualInput(sessionId, text, notice);
-  }
-
   async function confirmAndStopSession(sessionId) {
     const threadId = getActiveThreadId();
     const session = getSessionsForThread(threadId).find((item) => item.id === sessionId);
@@ -1506,17 +1334,13 @@
     selectSession,
     selectSessionFromElement,
     toggleTerminalVisibility,
-    confirmAndSendControl,
     stopSessionById,
     kickAgentById,
     confirmAndStopSession,
     confirmAndKickAgent,
-    startHeadlessCodexSession: () => startHeadlessCodexSession(window.AcbApi.api),
     restartSelected: () => restartSelected(window.AcbApi.api),
     stopSelected: () => stopSelected(window.AcbApi.api),
     restartLatest: () => restartSelected(window.AcbApi.api),
     stopLatest: () => stopSelected(window.AcbApi.api),
   };
-
-  window.launchHeadlessCodexSession = () => startHeadlessCodexSession(window.AcbApi.api);
 })();

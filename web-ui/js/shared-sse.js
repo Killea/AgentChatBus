@@ -72,7 +72,7 @@
         }
       }
 
-      if (ev.type === "agent.online" || ev.type === "agent.offline") {
+      if (ev.type === "agent.online" || ev.type === "agent.offline" || ev.type === "agent.updated") {
         if (onAgentPresence) {
           await onAgentPresence();
         }

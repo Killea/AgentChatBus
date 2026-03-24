@@ -74,6 +74,16 @@ export interface CliSessionSnapshot {
   meeting_post_state?: "pending" | "posting" | "posted" | "stale" | "error";
   meeting_post_error?: string;
   last_posted_message_id?: string;
+  launch_started_at?: string;
+  process_started_at?: string;
+  first_output_at?: string;
+  last_output_at?: string;
+  connected_at?: string;
+  last_tool_call_at?: string;
+  recent_tool_events?: Array<{
+    at: string;
+    tool_name: string;
+  }>;
 }
 
 export interface CliSessionOutputEntry {
@@ -128,6 +138,7 @@ type CliSessionControls = {
 type CliSessionRuntime = {
   snapshot: CliSessionSnapshot;
   output: CliSessionOutputEntry[];
+  outputParseBuffer: string;
   stopRequested: boolean;
   abortController: AbortController | null;
   runPromise: Promise<void> | null;
@@ -233,9 +244,78 @@ const COPILOT_ACTIVITY_SETTLE_MS = 2000;
 const ANSI_CSI_SEQUENCE = /\u001b\[[0-?]*[ -/]*[@-~]/g;
 const ANSI_OSC_SEQUENCE = /\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g;
 const ANSI_SINGLE_CHAR_SEQUENCE = /\u001b[@-_]/g;
+const KNOWN_MCP_TOOL_NAMES = new Set([
+  "bus_connect",
+  "msg_wait",
+  "msg_post",
+  "msg_get",
+  "msg_list",
+  "msg_edit",
+  "msg_react",
+  "msg_unreact",
+  "thread_create",
+  "thread_get",
+  "thread_list",
+  "thread_close",
+  "thread_archive",
+  "thread_unarchive",
+  "thread_set_state",
+  "thread_settings_get",
+  "thread_settings_update",
+  "thread_wait_state_get",
+  "agent_register",
+  "agent_update",
+  "agent_resume",
+  "agent_heartbeat",
+  "agent_list",
+]);
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function normalizeToolNameCandidate(value: string | undefined): string | undefined {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  if (!normalized) {
+    return undefined;
+  }
+  return KNOWN_MCP_TOOL_NAMES.has(normalized) ? normalized : undefined;
+}
+
+function extractToolNamesFromStructuredEvent(value: unknown, keyHint = "", depth = 0): string[] {
+  if (depth > 6 || value === null || value === undefined) {
+    return [];
+  }
+
+  if (typeof value === "string") {
+    const key = String(keyHint || "").toLowerCase();
+    if (!key || !/(tool|function|name|method|command|invocation|call)/.test(key)) {
+      return [];
+    }
+    const normalized = normalizeToolNameCandidate(value);
+    return normalized ? [normalized] : [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => extractToolNamesFromStructuredEvent(entry, keyHint, depth + 1));
+  }
+
+  if (typeof value !== "object") {
+    return [];
+  }
+
+  const record = value as Record<string, unknown>;
+  const eventType = String(record.type || "").toLowerCase();
+  const inspectAllNameLikeFields = /tool|function|call/.test(eventType);
+  const found = new Set<string>();
+  for (const [key, child] of Object.entries(record)) {
+    const nextHint = inspectAllNameLikeFields ? "tool" : key;
+    extractToolNamesFromStructuredEvent(child, nextHint, depth + 1).forEach((name) => found.add(name));
+  }
+  return Array.from(found);
 }
 
 function stripTerminalControlSequences(input: string): string {
@@ -1368,6 +1448,19 @@ export class CliSessionManager {
     for (const adapter of adapters) {
       this.adapters.set(this.adapterKey(adapter.adapterId, adapter.mode), adapter);
     }
+    eventBus.subscribe((event) => {
+      if (String(event?.type || "") !== "mcp.tool.called") {
+        return;
+      }
+      const payload = (event?.payload || {}) as Record<string, unknown>;
+      const agentId = typeof payload.agent_id === "string" ? payload.agent_id : undefined;
+      const threadId = typeof payload.thread_id === "string" ? payload.thread_id : undefined;
+      const toolName = typeof payload.tool_name === "string" ? payload.tool_name : undefined;
+      const at = typeof payload.at === "string" ? payload.at : undefined;
+      if (agentId && toolName) {
+        this.recordObservedToolCall(agentId, toolName, threadId, at);
+      }
+    });
   }
 
   createSession(input: CreateCliSessionInput): CliSessionSnapshot {
@@ -1431,6 +1524,7 @@ export class CliSessionManager {
     const runtime: CliSessionRuntime = {
       snapshot,
       output: [],
+      outputParseBuffer: "",
       stopRequested: false,
       abortController: null,
       runPromise: null,
@@ -1874,9 +1968,17 @@ export class CliSessionManager {
     runtime.stopRequested = false;
     runtime.abortController = new AbortController();
     runtime.controls = null;
+    runtime.outputParseBuffer = "";
     this.prepareInteractiveRuntimeState(runtime);
     runtime.snapshot.run_count += 1;
     runtime.snapshot.state = "starting";
+    runtime.snapshot.launch_started_at = nowIso();
+    runtime.snapshot.process_started_at = undefined;
+    runtime.snapshot.first_output_at = undefined;
+    runtime.snapshot.last_output_at = undefined;
+    runtime.snapshot.connected_at = undefined;
+    runtime.snapshot.last_tool_call_at = undefined;
+    runtime.snapshot.recent_tool_events = [];
     runtime.snapshot.updated_at = nowIso();
     this.emitSessionEvent("cli.session.started", runtime);
 
@@ -1907,6 +2009,7 @@ export class CliSessionManager {
           onOutput: (stream, text) => this.appendOutput(runtime, stream, text),
           onProcessStart: (pid) => {
             runtime.snapshot.pid = pid;
+            runtime.snapshot.process_started_at = nowIso();
             runtime.snapshot.updated_at = nowIso();
             this.emitSessionEvent("cli.session.state", runtime);
           },
@@ -2045,6 +2148,8 @@ export class CliSessionManager {
       created_at: nowIso(),
     };
     runtime.snapshot.output_cursor = entry.seq;
+    runtime.snapshot.first_output_at = runtime.snapshot.first_output_at || entry.created_at;
+    runtime.snapshot.last_output_at = entry.created_at;
     runtime.output.push(entry);
     // Use more efficient array truncation to avoid memory fragmentation
     const MAX_OUTPUT_ENTRIES = 5000;
@@ -2054,6 +2159,7 @@ export class CliSessionManager {
     }
     if (stream === "stdout") {
       runtime.snapshot.stdout_excerpt = clipText(`${runtime.snapshot.stdout_excerpt || ""}${normalized}`);
+      this.captureRecentToolEvents(runtime, normalized);
       if (runtime.replyCapture) {
         this.clearReplyCaptureFinalizeTimer(runtime);
         runtime.replyCapture.rawOutput = clipText(`${runtime.replyCapture.rawOutput}${normalized}`, 24000);
@@ -2074,6 +2180,113 @@ export class CliSessionManager {
         entry: { ...entry },
       },
     });
+  }
+
+  private captureRecentToolEvents(runtime: CliSessionRuntime, text: string): void {
+    if (!text) {
+      return;
+    }
+
+    runtime.outputParseBuffer = `${runtime.outputParseBuffer}${text}`;
+    const lines = runtime.outputParseBuffer.split(/\r?\n/g);
+    runtime.outputParseBuffer = lines.pop() || "";
+
+    let changed = false;
+    for (const line of lines) {
+      const trimmed = String(line || "").trim();
+      if (!trimmed || !(trimmed.startsWith("{") || trimmed.startsWith("["))) {
+        continue;
+      }
+      try {
+        const parsed = JSON.parse(trimmed) as unknown;
+        const toolNames = extractToolNamesFromStructuredEvent(parsed);
+        for (const toolName of toolNames) {
+          if (this.pushRecentToolEvent(runtime, toolName)) {
+            changed = true;
+          }
+        }
+      } catch {
+        // Ignore non-JSON or partial diagnostic lines.
+      }
+    }
+
+    if (changed) {
+      runtime.snapshot.updated_at = nowIso();
+      this.emitSessionEvent("cli.session.state", runtime);
+    }
+  }
+
+  private pushRecentToolEvent(runtime: CliSessionRuntime, toolName: string): boolean {
+    const normalizedToolName = normalizeToolNameCandidate(toolName);
+    if (!normalizedToolName) {
+      return false;
+    }
+
+    const entries = Array.isArray(runtime.snapshot.recent_tool_events)
+      ? [...runtime.snapshot.recent_tool_events]
+      : [];
+    const latest = entries[entries.length - 1];
+    const nowIsoValue = nowIso();
+    const now = new Date(nowIsoValue);
+    if (latest?.tool_name === normalizedToolName) {
+      const latestAt = Date.parse(String(latest.at || ""));
+      if (Number.isFinite(latestAt) && now.getTime() - latestAt < 1000) {
+        return false;
+      }
+    }
+
+    entries.push({
+      at: nowIsoValue,
+      tool_name: normalizedToolName,
+    });
+    runtime.snapshot.recent_tool_events = entries.slice(-24);
+    runtime.snapshot.last_tool_call_at = nowIsoValue;
+    if (normalizedToolName === "bus_connect" && !runtime.snapshot.connected_at) {
+      runtime.snapshot.connected_at = nowIsoValue;
+    }
+    return true;
+  }
+
+  private recordObservedToolCall(
+    agentId: string,
+    toolName: string,
+    threadId?: string,
+    at?: string,
+  ): void {
+    const normalizedToolName = normalizeToolNameCandidate(toolName);
+    if (!normalizedToolName) {
+      return;
+    }
+
+    const eventAt = String(at || "").trim() || nowIso();
+    let changed = false;
+    for (const runtime of this.runtimes.values()) {
+      if (String(runtime.snapshot.participant_agent_id || "").trim() !== agentId) {
+        continue;
+      }
+      if (threadId && String(runtime.snapshot.thread_id || "").trim() !== threadId) {
+        continue;
+      }
+      const entries = Array.isArray(runtime.snapshot.recent_tool_events)
+        ? [...runtime.snapshot.recent_tool_events]
+        : [];
+      const latest = entries[entries.length - 1];
+      if (latest?.tool_name === normalizedToolName && latest?.at === eventAt) {
+        continue;
+      }
+      entries.push({ at: eventAt, tool_name: normalizedToolName });
+      runtime.snapshot.recent_tool_events = entries.slice(-24);
+      runtime.snapshot.last_tool_call_at = eventAt;
+      if (normalizedToolName === "bus_connect" && !runtime.snapshot.connected_at) {
+        runtime.snapshot.connected_at = eventAt;
+      }
+      runtime.snapshot.updated_at = nowIso();
+      this.emitSessionEvent("cli.session.state", runtime);
+      changed = true;
+    }
+    if (changed) {
+      return;
+    }
   }
 
   private prepareInteractiveRuntimeState(runtime: CliSessionRuntime): void {
@@ -3683,6 +3896,9 @@ export class CliSessionManager {
     return {
       ...snapshot,
       raw_result: snapshot.raw_result ? { ...snapshot.raw_result } : snapshot.raw_result,
+      recent_tool_events: Array.isArray(snapshot.recent_tool_events)
+        ? snapshot.recent_tool_events.map((entry) => ({ ...entry }))
+        : snapshot.recent_tool_events,
     };
   }
 

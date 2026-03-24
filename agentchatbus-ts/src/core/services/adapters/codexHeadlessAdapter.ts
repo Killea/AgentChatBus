@@ -7,7 +7,7 @@ import spawn from "cross-spawn";
 import { getConfig } from "../../config/registry.js";
 import type { CliSessionAdapter, CliAdapterRunInput, CliAdapterRunHooks, CliAdapterRunResult } from "./types.js";
 import { WINDOWS_POWERSHELL } from "./constants.js";
-import { normalizeWorkspacePath } from "./utils.js";
+import { normalizeWorkspacePath, terminateChildProcessTree } from "./utils.js";
 
 export const CODEX_THREAD_ID_ENV_VAR = "AGENTCHATBUS_CODEX_THREAD_ID";
 
@@ -302,11 +302,7 @@ class CodexHeadlessExecutor implements CodexCommandExecutor {
 
       hooks.onControls({
         kill: () => {
-          try {
-            child.kill();
-          } catch {
-            // Best effort shutdown.
-          }
+          terminateChildProcessTree(child);
         },
       });
 
@@ -361,11 +357,7 @@ class CodexHeadlessExecutor implements CodexCommandExecutor {
       hooks.signal.addEventListener(
         "abort",
         () => {
-          try {
-            child.kill();
-          } catch {
-            // Best effort shutdown.
-          }
+          terminateChildProcessTree(child);
         },
         { once: true },
       );

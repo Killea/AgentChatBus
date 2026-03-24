@@ -5,7 +5,7 @@ import spawn from "cross-spawn";
 import { getConfig } from "../../config/registry.js";
 import type { CliSessionAdapter, CliAdapterRunInput, CliAdapterRunHooks, CliAdapterRunResult } from "./types.js";
 import { WINDOWS_POWERSHELL } from "./constants.js";
-import { normalizeWorkspacePath } from "./utils.js";
+import { normalizeWorkspacePath, terminateChildProcessTree } from "./utils.js";
 
 export const COPILOT_SESSION_ID_ENV_VAR = "AGENTCHATBUS_COPILOT_SESSION_ID";
 
@@ -209,11 +209,7 @@ class CopilotHeadlessExecutor implements CopilotCommandExecutor {
 
       hooks.onControls({
         kill: () => {
-          try {
-            child.kill();
-          } catch {
-            // Best effort shutdown.
-          }
+          terminateChildProcessTree(child);
         },
       });
 
@@ -268,11 +264,7 @@ class CopilotHeadlessExecutor implements CopilotCommandExecutor {
       hooks.signal.addEventListener(
         "abort",
         () => {
-          try {
-            child.kill();
-          } catch {
-            // Best effort shutdown.
-          }
+          terminateChildProcessTree(child);
         },
         { once: true },
       );

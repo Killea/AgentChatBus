@@ -250,30 +250,10 @@
       method: "POST",
       body: JSON.stringify({ summary: summary || null }),
     });
-    try {
-      const uiAgent = window.AcbUiAgent && typeof window.AcbUiAgent.ensureUiAgent === "function"
-        ? await window.AcbUiAgent.ensureUiAgent()
-        : null;
-      const sessionsResult = await api(`/api/threads/${threadId}/cli-sessions`);
-      const sessions = Array.isArray(sessionsResult?.sessions) ? sessionsResult.sessions : [];
-      const runningSessions = sessions.filter(
-        (session) => String(session?.state || "").trim().toLowerCase() === "running",
-      );
-      await Promise.allSettled(
-        runningSessions.map((session) =>
-          api(`/api/cli-sessions/${session.id}/stop`, {
-            method: "POST",
-            headers: uiAgent?.token ? { "X-Agent-Token": uiAgent.token } : undefined,
-            body: uiAgent?.agent_id
-              ? JSON.stringify({ requested_by_agent_id: uiAgent.agent_id })
-              : undefined,
-          }),
-        ),
-      );
-    } catch (error) {
-      console.warn("[closeThread] Failed to stop one or more CLI sessions:", error);
-    }
     await refreshThreads();
+    if (window.AcbCliSessions && typeof window.AcbCliSessions.refreshThread === "function") {
+      await window.AcbCliSessions.refreshThread(threadId, api);
+    }
     return result;
   }
 

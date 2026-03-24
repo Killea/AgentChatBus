@@ -742,10 +742,6 @@ export function createHttpServer() {
     const promptSeed = typeof body.initial_instruction === "string"
       ? body.initial_instruction
       : String(body.prompt || "");
-    const meetingTransport = typeof body.meeting_transport === "string"
-      ? body.meeting_transport.trim()
-      : "agent_mcp";
-
     try {
       let finalPrompt = promptSeed;
       let participantRole: "administrator" | "participant" | undefined;
@@ -766,30 +762,28 @@ export function createHttpServer() {
         contextDeliveryMode = prepared.contextDeliveryMode;
         lastDeliveredSeq = prepared.lastDeliveredSeq;
         finalParticipantDisplayName = prepared.participantDisplayName;
-        if (meetingTransport === "agent_mcp") {
-          finalPrompt = buildCliMcpMeetingPrompt({
-            store,
-            threadId: params.threadId,
-            participantAgentId,
-            participantDisplayName: finalParticipantDisplayName,
-            participantRole: prepared.participantRole,
-            initialInstruction: promptSeed,
-            serverUrl,
-            adapter: String(body.adapter || "cursor").trim(),
-          }).prompt;
-          launchEnv = buildCliMcpLaunchEnv({
-            threadId: params.threadId,
-            threadName: thread.topic,
-            participantAgentId,
-            participantDisplayName: finalParticipantDisplayName,
-          });
-        }
+        finalPrompt = buildCliMcpMeetingPrompt({
+          store,
+          threadId: params.threadId,
+          participantAgentId,
+          participantDisplayName: finalParticipantDisplayName,
+          participantRole: prepared.participantRole,
+          initialInstruction: promptSeed,
+          serverUrl,
+          adapter: String(body.adapter || "cursor").trim(),
+        }).prompt;
+        launchEnv = buildCliMcpLaunchEnv({
+          threadId: params.threadId,
+          threadName: thread.topic,
+          participantAgentId,
+          participantDisplayName: finalParticipantDisplayName,
+        });
       }
 
       const session = cliSessionManager.createSession({
         threadId: params.threadId,
         adapter: String(body.adapter || "cursor").trim() as "cursor" | "codex" | "claude" | "gemini" | "copilot",
-        mode: String(body.mode || "headless").trim() as "headless" | "interactive",
+        mode: "headless",
         prompt: finalPrompt,
         initialInstruction: promptSeed,
         workspace: typeof body.workspace === "string" ? body.workspace : undefined,
@@ -797,7 +791,7 @@ export function createHttpServer() {
         participantAgentId: participantAgentId || undefined,
         participantDisplayName: finalParticipantDisplayName,
         participantRole,
-        meetingTransport: meetingTransport === "agent_mcp" ? "agent_mcp" : "pty_relay",
+        meetingTransport: "agent_mcp",
         contextDeliveryMode,
         lastDeliveredSeq,
         cols: body.cols === undefined ? undefined : Number(body.cols),
@@ -1018,30 +1012,25 @@ export function createHttpServer() {
           participantDisplayName: existingSession.participant_display_name,
           initialInstruction: existingSession.initial_instruction,
         });
-        const nextPrompt =
-          existingSession.meeting_transport === "agent_mcp"
-            ? buildCliMcpMeetingPrompt({
-                store,
-                threadId: existingSession.thread_id,
-                participantAgentId: existingSession.participant_agent_id,
-                participantDisplayName: existingSession.participant_display_name,
-                participantRole: prepared.participantRole,
-                initialInstruction: existingSession.initial_instruction,
-                serverUrl,
-                adapter: existingSession.adapter,
-              }).prompt
-            : prepared.prompt;
-        if (existingSession.meeting_transport === "agent_mcp") {
-          cliSessionManager.updateSessionLaunchEnv(
-            params.sessionId,
-            buildCliMcpLaunchEnv({
-              threadId: existingSession.thread_id,
-              threadName: store.getThread(existingSession.thread_id)?.topic || existingSession.thread_id,
-              participantAgentId: existingSession.participant_agent_id,
-              participantDisplayName: existingSession.participant_display_name,
-            }),
-          );
-        }
+        const nextPrompt = buildCliMcpMeetingPrompt({
+          store,
+          threadId: existingSession.thread_id,
+          participantAgentId: existingSession.participant_agent_id,
+          participantDisplayName: existingSession.participant_display_name,
+          participantRole: prepared.participantRole,
+          initialInstruction: existingSession.initial_instruction,
+          serverUrl,
+          adapter: existingSession.adapter,
+        }).prompt;
+        cliSessionManager.updateSessionLaunchEnv(
+          params.sessionId,
+          buildCliMcpLaunchEnv({
+            threadId: existingSession.thread_id,
+            threadName: store.getThread(existingSession.thread_id)?.topic || existingSession.thread_id,
+            participantAgentId: existingSession.participant_agent_id,
+            participantDisplayName: existingSession.participant_display_name,
+          }),
+        );
         cliSessionManager.updateSessionPrompt(params.sessionId, {
           prompt: nextPrompt,
         });
@@ -1086,35 +1075,6 @@ export function createHttpServer() {
       return { detail: "CLI session not found" };
     }
     return { session, requested_by_agent_id: agentId };
-  });
-
-  fastify.post("/api/cli-sessions/:sessionId/input", async (request, reply) => {
-    const params = request.params as { sessionId: string };
-    const body = request.body as JsonBody;
-    const agentId = requireAuthorizedAgent(request, reply, body, "requested_by_agent_id");
-    if (!agentId) {
-      return reply;
-    }
-    const existingSession = cliSessionManager.getSession(params.sessionId);
-    if (!existingSession) {
-      reply.code(404);
-      return { detail: "CLI session not found" };
-    }
-    if (!requireSessionController(reply, existingSession, agentId)) {
-      return reply;
-    }
-    const text = typeof body.text === "string" ? body.text : "";
-    if (!text.length) {
-      reply.code(400);
-      return { detail: "text is required" };
-    }
-    const result = await cliSessionManager.sendInput(params.sessionId, text);
-    if (!result) {
-      reply.code(404);
-      return { detail: "CLI session not found" };
-    }
-    reply.code(result.ok ? 200 : 400);
-    return { ...result, requested_by_agent_id: agentId };
   });
 
   fastify.post("/api/cli-sessions/:sessionId/resize", async (request, reply) => {
@@ -1355,6 +1315,15 @@ export function createHttpServer() {
     const params = request.params as { threadId: string };
     const body = (request.body || {}) as JsonBody;
     const summary = typeof body.summary === "string" ? body.summary : undefined;
+    const sessions = cliSessionManager.listSessionsForThread(params.threadId);
+    await Promise.allSettled(
+      sessions
+        .filter((session) => {
+          const state = String(session.state || "").trim().toLowerCase();
+          return state === "created" || state === "starting" || state === "running";
+        })
+        .map((session) => cliSessionManager.stopSession(session.id)),
+    );
     const ok = store.closeThread(params.threadId, summary);
     if (!ok) {
       reply.code(404);

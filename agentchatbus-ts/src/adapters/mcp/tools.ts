@@ -28,6 +28,22 @@ export type ToolDefinition = {
   inputSchema: Record<string, unknown>;
 };
 
+function emitObservedCliToolCall(agentId: string | undefined, toolName: string, threadId?: string): void {
+  const normalizedAgentId = String(agentId || "").trim();
+  if (!normalizedAgentId) {
+    return;
+  }
+  eventBus.emit({
+    type: "mcp.tool.called",
+    payload: {
+      agent_id: normalizedAgentId,
+      thread_id: String(threadId || "").trim() || undefined,
+      tool_name: toolName,
+      at: new Date().toISOString(),
+    },
+  });
+}
+
 const toolDefinitions: ToolDefinition[] = [
   // Thread Management
   { 
@@ -1719,6 +1735,8 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         thread = created.thread;
         threadCreated = true;
       }
+
+      getStore().updateAgentActivity(agent.id, "bus_connect", true);
 
       // Phase 3: Fetch Messages + Sync Context
       const afterSeq = typeof args.after_seq === "number" ? args.after_seq : 0;

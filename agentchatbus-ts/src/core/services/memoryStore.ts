@@ -2412,6 +2412,7 @@ export class MemoryStore {
       agent.last_heartbeat = new Date().toISOString();
     }
     
+    eventBus.emit({ type: "agent.updated", payload: agent });
     this.upsertAgent(agent);
     this.persistState();
   }

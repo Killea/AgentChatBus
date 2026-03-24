@@ -2,7 +2,7 @@ import { dirname } from "node:path";
 import { existsSync } from "node:fs";
 import spawn from "cross-spawn";
 import type { CliSessionAdapter, CliAdapterRunInput, CliAdapterRunHooks, CliAdapterRunResult } from "./types.js";
-import { normalizeWorkspacePath } from "./utils.js";
+import { normalizeWorkspacePath, terminateChildProcessTree } from "./utils.js";
 import { WINDOWS_POWERSHELL } from "./constants.js";
 
 export const CLAUDE_SESSION_ID_ENV_VAR = "AGENTCHATBUS_CLAUDE_SESSION_ID";
@@ -169,11 +169,7 @@ class ClaudeHeadlessExecutor implements ClaudeCommandExecutor {
 
       hooks.onControls({
         kill: () => {
-          try {
-            child.kill();
-          } catch {
-            // Best effort shutdown.
-          }
+          terminateChildProcessTree(child);
         },
       });
 
@@ -228,11 +224,7 @@ class ClaudeHeadlessExecutor implements ClaudeCommandExecutor {
       hooks.signal.addEventListener(
         "abort",
         () => {
-          try {
-            child.kill();
-          } catch {
-            // Best effort shutdown.
-          }
+          terminateChildProcessTree(child);
         },
         { once: true },
       );

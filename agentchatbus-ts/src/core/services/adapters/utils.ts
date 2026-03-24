@@ -1,3 +1,5 @@
+import { execFile } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { DEFAULT_TERMINAL_COLS, DEFAULT_TERMINAL_ROWS } from "./constants.js";
 
 export function normalizeWorkspacePath(explicitPath?: string): string {
@@ -71,4 +73,33 @@ export function isConptyOrWinptyStartupError(error: unknown): boolean {
     message.includes("winpty") ||
     message.includes("conpty")
   );
+}
+
+export function terminateChildProcessTree(child: ChildProcess | null | undefined): void {
+  if (!child) {
+    return;
+  }
+  const pid = typeof child.pid === "number" ? child.pid : 0;
+  if (!pid) {
+    return;
+  }
+
+  if (process.platform === "win32") {
+    try {
+      execFile("taskkill.exe", ["/pid", String(pid), "/t", "/f"], {
+        windowsHide: true,
+      }, () => {
+        // Best effort shutdown.
+      });
+      return;
+    } catch {
+      // Fall back to child.kill below.
+    }
+  }
+
+  try {
+    child.kill("SIGTERM");
+  } catch {
+    // Best effort shutdown.
+  }
 }

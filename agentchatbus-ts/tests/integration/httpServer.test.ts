@@ -233,7 +233,7 @@ describe("HTTP compatibility shell", () => {
     await server.close();
   });
 
-  it("binds CLI sessions to target agents without pre-registering thread participants and restricts control to the session owner", async () => {
+  it("binds CLI sessions to target agents without pre-registering thread participants and restricts stop control to the session owner", async () => {
     const server = createHttpServer();
     const owner = (await server.inject({
       method: "POST",
@@ -292,11 +292,10 @@ describe("HTTP compatibility shell", () => {
 
     const forbiddenControl = await server.inject({
       method: "POST",
-      url: `/api/cli-sessions/${createSessionBody.session.id}/input`,
+      url: `/api/cli-sessions/${createSessionBody.session.id}/stop`,
       headers: { "x-agent-token": intruder.token },
       payload: {
         requested_by_agent_id: intruder.agent_id,
-        text: "malicious input",
       }
     });
     expect(forbiddenControl.statusCode).toBe(403);

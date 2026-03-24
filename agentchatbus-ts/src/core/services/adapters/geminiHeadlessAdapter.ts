@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import spawn from "cross-spawn";
 import type { CliSessionAdapter, CliAdapterRunInput, CliAdapterRunHooks, CliAdapterRunResult } from "./types.js";
-import { normalizeWorkspacePath } from "./utils.js";
+import { normalizeWorkspacePath, terminateChildProcessTree } from "./utils.js";
 import { WINDOWS_POWERSHELL } from "./constants.js";
 import { getConfig } from "../../config/registry.js";
 
@@ -199,11 +199,7 @@ class GeminiHeadlessExecutor implements GeminiCommandExecutor {
 
       hooks.onControls({
         kill: () => {
-          try {
-            child.kill();
-          } catch {
-            // Best effort shutdown.
-          }
+          terminateChildProcessTree(child);
         },
       });
 
@@ -258,11 +254,7 @@ class GeminiHeadlessExecutor implements GeminiCommandExecutor {
       hooks.signal.addEventListener(
         "abort",
         () => {
-          try {
-            child.kill();
-          } catch {
-            // Best effort shutdown.
-          }
+          terminateChildProcessTree(child);
         },
         { once: true },
       );

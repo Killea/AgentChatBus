@@ -1096,9 +1096,25 @@ body[data-theme="light"] .thread-item .ti-waiting-agents {
 
 .cli-session-card__body {
   display: flex;
+  flex-direction: column;
   flex: 1;
+  gap: 10px;
   min-height: 0;
   min-width: 0;
+}
+
+.cli-session-card__activity {
+  max-height: 54px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, .5);
+  border: 1px solid rgba(148, 163, 184, .16);
+  color: var(--text-2);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .cli-session-card__danger {
@@ -1230,6 +1246,11 @@ body[data-theme="light"] .cli-session-role-badge--participant {
 body[data-theme="light"] .cli-session-card {
   background: rgba(255, 255, 255, .94);
   border-color: rgba(148, 163, 184, .16);
+}
+
+body[data-theme="light"] .cli-session-card__activity {
+  background: rgba(248, 250, 252, .95);
+  border-color: rgba(148, 163, 184, .22);
 }
 
 body[data-theme="light"] .cli-session-card__avatar {
