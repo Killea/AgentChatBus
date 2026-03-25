@@ -677,7 +677,7 @@
     const headerEl = cardEl?.querySelector(".cli-session-card__header");
     const shellPaddingPx = 24;
     const cardPaddingPx = 24;
-    const shellWidth = Math.ceil((terminalCols * cellWidth) + shellPaddingPx);
+    const shellWidth = Math.ceil(((terminalCols * cellWidth) + shellPaddingPx) * 0.76);
     const headerWidth = headerEl ? Math.ceil(headerEl.scrollWidth + cardPaddingPx) : 0;
     const cardWidth = Math.max(shellWidth + cardPaddingPx, headerWidth);
 
