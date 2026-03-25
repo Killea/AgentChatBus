@@ -31,6 +31,7 @@ import {
   connectLegacySseTransport,
   getLegacySseTransport,
 } from "../mcp/streamableHttp.js";
+import { resolveDefaultWorkspacePath } from "../../core/services/adapters/utils.js";
 
 // Allow tests to override the global memoryStore instance
 export let memoryStoreInstance: MemoryStore | null = null;
@@ -714,6 +715,21 @@ export function createHttpServer() {
       return { detail: "Thread not found" };
     }
     return store.issueSyncContext(params.threadId);
+  });
+
+  fastify.get("/api/cli-defaults", async () => {
+    const resolution = resolveDefaultWorkspacePath();
+    return {
+      workspace: resolution.workspace,
+      source: resolution.source,
+      configured_workspace: resolution.configuredWorkspace,
+      candidates: resolution.candidates,
+      fallback_chain: [
+        "AGENTCHATBUS_CLI_WORKSPACE",
+        "process.cwd()",
+        "homedir()",
+      ],
+    };
   });
 
   fastify.post("/api/threads/:threadId/cli-sessions", async (request, reply) => {

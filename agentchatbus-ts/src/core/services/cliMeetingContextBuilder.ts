@@ -411,96 +411,23 @@ export function buildCliMcpMeetingPrompt(input: BuildCliMcpMeetingPromptInput): 
     participantName,
     hasHistory: deliveredSeq > 0,
   });
-  const serverUrl = String(input.serverUrl || "").trim();
-  const busConnectPayload = JSON.stringify({
-    thread_id: thread.id,
-    agent_id: input.participantAgentId,
-    token: participantToken,
-  }, null, 2);
-
-  if (String(input.adapter || "").trim().toLowerCase() === "copilot") {
-    const compactPayload = JSON.stringify({
-      thread_id: thread.id,
-      agent_id: input.participantAgentId,
-      token: participantToken,
-    });
-    const prompt = [
-      "Use the MCP tool server `agentchatbus` in this current session for thread coordination.",
-      `Step 1: call \`bus_connect\` exactly once now with ${compactPayload}.`,
-      `If any tool flow asks you to identify the thread again, use thread_name "${thread.topic}" or thread_id "${thread.id}".`,
-      `Step 2: immediately call \`msg_post\` with author exactly "${input.participantAgentId}" and a short introduction that follows this instruction: ${initialInstruction}`,
-      "Step 3: after joining, stay in this thread and wait for human task assignment. Use `msg_wait` when you are idle or when you need to wait for new discussion.",
-      serverUrl ? `If asked for the MCP server URL, use ${serverUrl}.` : "",
-      `Resume this exact identity: ${participantName} (${input.participantAgentId}).`,
-      "If bus_connect has already succeeded in this session, skip directly to Step 2.",
-      "You must call the agentchatbus MCP tools yourself in this current chat session.",
-      "Do not call agent_register. Do not create a new identity. Do not create a new thread.",
-      "Human chat messages outrank administrator messages; administrator messages outrank participant messages; participant messages outrank the thread system prompt.",
-      "You are allowed to inspect the local workspace, edit files, and perform implementation work when the human or administrator assigns coding tasks.",
-      "As administrator, you may stop waiting in msg_wait and go do code work immediately when needed.",
-      "If you have the needed sync_context, post directly with msg_post instead of asking whether you should post.",
-      "Do not exit the agent process unless explicitly told to do so.",
-    ].filter(Boolean).join(" ");
-
-    return {
-      prompt,
-      deliveredSeq,
-      deliveryMode: "join",
-      administrator,
-    };
-  }
-
-  if (String(input.adapter || "").trim().toLowerCase() === "codex") {
-    const compactPayload = JSON.stringify({
-      thread_id: thread.id,
-      agent_id: input.participantAgentId,
-      token: participantToken,
-    });
-    const prompt = [
-      "Use the MCP tool server `agentchatbus` in this current exec run for thread coordination.",
-      `Step 1: call \`bus_connect\` exactly once now with ${compactPayload}.`,
-      `If any tool flow asks you to identify the thread again, use thread_name "${thread.topic}" or thread_id "${thread.id}".`,
-      `Step 2: if you need to introduce yourself or respond, call \`msg_post\` using this instruction: ${initialInstruction}`,
-      "Step 3: stay in this thread and wait for human task assignment. Use `msg_wait` when you are idle or need to wait for new discussion.",
-      serverUrl ? `If asked for the MCP server URL, use ${serverUrl}.` : "",
-      `Resume this exact identity: ${participantName} (${input.participantAgentId}).`,
-      "Do not call `agent_register`. Do not create a new identity. Do not create a new thread.",
-      "Human chat messages outrank administrator messages; administrator messages outrank participant messages; participant messages outrank the thread system prompt.",
-      "You are allowed to inspect the local workspace, edit files, and perform implementation work when the thread assigns coding tasks.",
-      "As administrator, you may stop waiting in msg_wait and go do code work immediately when needed.",
-      "If you already have valid sync_context values, post directly instead of asking for confirmation.",
-      "Do not fall back to plain terminal narration when a tool call is required.",
-    ].filter(Boolean).join(" ");
-
-    return {
-      prompt,
-      deliveredSeq,
-      deliveryMode: "join",
-      administrator,
-    };
-  }
-
   const prompt = [
-    "Please use the MCP tool `agentchatbus` to join the discussion.",
-    `Use \`bus_connect\` to join the exact thread "${thread.topic}" (${thread.id}).`,
-    `If the CLI or tool asks for a thread identifier, provide thread_name "${thread.topic}" or thread_id "${thread.id}".`,
-    serverUrl ? `If the MCP client asks for the server URL, use: ${serverUrl}` : "",
-    `Resume the provided participant identity exactly: ${participantName} (${input.participantAgentId}).`,
-    "Do not call `agent_register`. Do not create a new identity for this launch.",
-    "Call `bus_connect` exactly once with this input:",
-    "```json",
-    busConnectPayload,
-    "```",
-    "After `bus_connect`, treat the returned `agent.is_administrator`, `agent.role_assignment`, and `thread.administrator` fields as the source of truth for your role and the current administrator.",
-    "Instruction priority order: human chat messages > administrator messages > participant messages > thread system prompt.",
-    "If you need to wait for new messages, use `msg_wait` with a 10 minute timeout, but do not stay trapped in `msg_wait` when there is assigned implementation work to do.",
-    "You may inspect the local workspace, edit files, and perform implementation work directly when the human or administrator assigns coding tasks.",
-    "As administrator, you may stop waiting in msg_wait and go edit files immediately when needed.",
-    "Remain in this thread on standby for human task assignment and use AgentChatBus MCP tools for coordination.",
-    "Do not exit the agent process unless notified to do so.",
-    "Do not create a new thread.",
-    `Initial instruction:\n${initialInstruction}`,
-  ].filter(Boolean).join("\n\n");
+    "Please use the mcp tool `agentchatbus` to participate in the discussion.",
+    `Use \`bus_connect\` to join the "${thread.topic}" thread.`,
+    "Please follow the system prompts within the thread.",
+    "All agents should maintain a cooperative attitude.",
+    "If you need to modify any files, you must obtain consent from the other agents, as you are all accessing the same code repository.",
+    "Everyone can view the source code.",
+    "Please remain courteous and avoid causing code conflicts.",
+    "Human programmers may also participate in the discussion and assist the agents, but the focus is on collaboration among the agents.",
+    "Administrators are responsible for coordinating the work.",
+    "After entering the thread, please introduce yourself.",
+    "You must adhere to the following rules:",
+    '"After the initial task is completed, all agents should continue working actively--whether analyzing, modifying code, or reviewing. If you believe you need to wait, use `msg_wait` to wait for 10 minutes. Do not exit the agent process unless notified to do so. `msg_wait` consumes no resources; please use it to maintain the connection."',
+    "Additionally, please communicate in English and ensure you always reply to this thread via `msg_post`.",
+    "If someone speaks up, please try to respond and share your thoughts. Do not just wait.",
+    `Initial Task: ${initialInstruction}`,
+  ].join(" ");
 
   return {
     prompt,
