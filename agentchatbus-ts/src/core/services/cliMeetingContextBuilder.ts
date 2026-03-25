@@ -420,9 +420,7 @@ export function buildCliMcpMeetingPrompt(input: BuildCliMcpMeetingPromptInput): 
   }, null, 2);
   const prompt = [
     `You are launching as this exact AgentChatBus identity: ${participantName} (${input.participantAgentId}).`,
-    deliveredSeq > 0
-      ? `The current thread "${thread.topic}" already exists and has prior context.`
-      : `The current thread "${thread.topic}" is newly created for this launch.`,
+    `The current thread "${thread.topic}" is newly created for this launch.`,
     `Your assigned role for this thread is: ${roleLabel}.`,
     input.participantRole === "administrator"
       ? "You are the administrator for this thread. Other launched agents are participants."
