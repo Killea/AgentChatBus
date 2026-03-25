@@ -182,6 +182,7 @@ type CliSessionScreenRuntime = {
 type CliSessionAutomationRuntime = {
   profile: "codex-startup";
   continueSent: boolean;
+  initialPromptTextScheduled: boolean;
   initialPromptTextSent: boolean;
   initialPromptEnterSent: boolean;
   initialPromptEnterRetried: boolean;
@@ -253,6 +254,8 @@ const DEFAULT_HEADLESS_SCREEN_SNAPSHOT: CliSessionScreenSnapshot = {
   cursorY: 0,
   bufferType: "normal",
 };
+const CODEX_READY_SETTLE_DELAY_MS = 800;
+const CODEX_INITIAL_PROMPT_ENTER_DELAY_MS = 1000;
 const CLAUDE_INITIAL_PROMPT_ENTER_DELAY_MS = 1000;
 const COPILOT_TOOL_APPROVAL_ENTER_COOLDOWN_MS = 200;
 const COPILOT_DECISION_PROMPT_COOLDOWN_MS = 3000;
@@ -2386,6 +2389,7 @@ export class CliSessionManager {
       runtime.automationState = {
         profile: "codex-startup",
         continueSent: false,
+        initialPromptTextScheduled: false,
         initialPromptTextSent: false,
         initialPromptEnterSent: false,
         initialPromptEnterRetried: false,
@@ -2411,6 +2415,7 @@ export class CliSessionManager {
       runtime.automationState = {
         profile: "codex-startup",
         continueSent: false,
+        initialPromptTextScheduled: false,
         initialPromptTextSent: false,
         initialPromptEnterSent: false,
         initialPromptEnterRetried: false,
@@ -2436,6 +2441,7 @@ export class CliSessionManager {
       runtime.automationState = {
         profile: "codex-startup",
         continueSent: false,
+        initialPromptTextScheduled: false,
         initialPromptTextSent: false,
         initialPromptEnterSent: false,
         initialPromptEnterRetried: false,
@@ -2461,6 +2467,7 @@ export class CliSessionManager {
       runtime.automationState = {
         profile: "codex-startup",
         continueSent: false,
+        initialPromptTextScheduled: false,
         initialPromptTextSent: Boolean(runtime.snapshot.prompt.trim()),
         initialPromptEnterSent: Boolean(runtime.snapshot.prompt.trim()),
         initialPromptEnterRetried: false,
@@ -2942,6 +2949,54 @@ export class CliSessionManager {
         this.updateAutomationState(runtime, "resent_initial_prompt_enter");
         logInfo(`[cli-session] ${runtime.snapshot.id} retried Enter for Codex prompt submission.`);
       }
+    }, delayMs);
+  }
+
+  private scheduleCodexInitialPrompt(runtime: CliSessionRuntime, delayMs: number): void {
+    const automation = runtime.automationState;
+    if (!automation || automation.profile !== "codex-startup") {
+      return;
+    }
+    if (runtime.snapshot.adapter !== "codex" || runtime.snapshot.mode !== "interactive") {
+      return;
+    }
+    if (automation.submitTimer) {
+      clearTimeout(automation.submitTimer);
+    }
+    automation.initialPromptTextScheduled = true;
+    automation.submitTimer = setTimeout(() => {
+      automation.submitTimer = null;
+      if (runtime.snapshot.adapter !== "codex" || runtime.snapshot.mode !== "interactive") {
+        return;
+      }
+      const latestScreen = runtime.screenState?.latest;
+      const initialPrompt = String(runtime.snapshot.prompt || "").trim();
+      const normalizedScreen = latestScreen?.normalizedText || "";
+      const canSendPrompt = automation.sawReadyScreen
+        || (
+          automation.continueSent
+          && Boolean(normalizedScreen)
+          && !looksLikeCodexContinuePrompt(normalizedScreen)
+        );
+      if (
+        !initialPrompt
+        || automation.manualOverride
+        || !runtime.controls?.write
+        || automation.initialPromptTextSent
+        || !canSendPrompt
+      ) {
+        automation.initialPromptTextScheduled = false;
+        return;
+      }
+      automation.initialPromptTextScheduled = false;
+      automation.initialPromptTextSent = true;
+      this.startReplyCapture(runtime, initialPrompt);
+      runtime.controls.write(initialPrompt);
+      this.updateAutomationState(runtime, "sent_initial_prompt_text");
+      this.scheduleCodexPromptSubmit(runtime, CODEX_INITIAL_PROMPT_ENTER_DELAY_MS);
+      logInfo(
+        `[cli-session] ${runtime.snapshot.id} auto-typed initial Codex prompt after ready settle delay.`,
+      );
     }, delayMs);
   }
 
@@ -3841,6 +3896,7 @@ export class CliSessionManager {
     const normalizedScreen = screen.normalizedText;
     if (looksLikeCodexContinuePrompt(normalizedScreen) && !automation.continueSent) {
       automation.continueSent = true;
+      automation.initialPromptTextScheduled = false;
       runtime.controls.write("\r");
       this.updateAutomationState(runtime, "sent_continue_enter");
       logInfo(`[cli-session] ${runtime.snapshot.id} auto-sent Enter for Codex startup prompt.`);
@@ -3868,12 +3924,11 @@ export class CliSessionManager {
     }
 
     if (!automation.initialPromptTextSent) {
-      automation.initialPromptTextSent = true;
-      this.startReplyCapture(runtime, initialPrompt);
-      runtime.controls.write(initialPrompt);
-      this.updateAutomationState(runtime, "sent_initial_prompt_text");
-      this.scheduleCodexPromptSubmit(runtime, 600);
-      logInfo(`[cli-session] ${runtime.snapshot.id} auto-typed initial Codex prompt.`);
+      if (!automation.initialPromptTextScheduled) {
+        this.scheduleCodexInitialPrompt(runtime, CODEX_READY_SETTLE_DELAY_MS);
+        this.updateAutomationState(runtime, "waiting_for_codex_ready_settle");
+        logInfo(`[cli-session] ${runtime.snapshot.id} waiting for Codex ready screen to settle before sending initial prompt.`);
+      }
       return;
     }
 
@@ -3881,7 +3936,7 @@ export class CliSessionManager {
       automation.initialPromptEnterSent = true;
       runtime.controls.write("\r");
       this.updateAutomationState(runtime, "sent_initial_prompt_enter");
-      this.scheduleCodexPromptSubmit(runtime, 900);
+      this.scheduleCodexPromptSubmit(runtime, CODEX_INITIAL_PROMPT_ENTER_DELAY_MS);
       logInfo(`[cli-session] ${runtime.snapshot.id} auto-submitted initial Codex prompt.`);
       return;
     }
