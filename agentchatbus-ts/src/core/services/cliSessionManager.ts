@@ -3094,6 +3094,69 @@ export class CliSessionManager {
     }, delayMs);
   }
 
+  private scheduleClaudeInitialPrompt(
+    runtime: CliSessionRuntime,
+    prompt: string,
+    delayMs: number,
+  ): void {
+    const automation = runtime.automationState;
+    if (!automation || automation.profile !== "codex-startup") {
+      return;
+    }
+    if (!isClaudeFamilyAdapter(runtime.snapshot.adapter) || runtime.snapshot.mode !== "interactive") {
+      return;
+    }
+    if (automation.submitTimer) {
+      clearTimeout(automation.submitTimer);
+    }
+    automation.initialPromptTextScheduled = true;
+    automation.submitTimer = setTimeout(() => {
+      automation.submitTimer = null;
+      if (!isClaudeFamilyAdapter(runtime.snapshot.adapter) || runtime.snapshot.mode !== "interactive") {
+        return;
+      }
+      const screenText = String(runtime.screenState?.latest?.text || runtime.snapshot.screen_excerpt || "");
+      if (
+        automation.manualOverride
+        || !runtime.controls?.write
+        || automation.initialPromptTextSent
+        || !prompt
+        || !automation.sawReadyScreen
+      ) {
+        automation.initialPromptTextScheduled = false;
+        return;
+      }
+      automation.initialPromptTextScheduled = false;
+      automation.initialPromptTextSent = true;
+      automation.initialPromptEnterSent = true;
+      this.startReplyCapture(runtime, prompt);
+      runtime.controls.write(prompt);
+      const statePrefix = getClaudeFamilyStatePrefix(runtime.snapshot.adapter);
+      const adapterLabel = getClaudeFamilyAdapterLabel(runtime.snapshot.adapter);
+      if (looksLikeClaudePastedTextPrompt(screenText)) {
+        this.scheduleClaudePastedTextEnter(
+          runtime,
+          `sent_${statePrefix}_initial_prompt`,
+          CLAUDE_INITIAL_PROMPT_ENTER_DELAY_MS,
+        );
+        this.updateAutomationState(runtime, `waiting_for_${statePrefix}_paste_submit`);
+        logInfo(
+          `[cli-session] ${runtime.snapshot.id} detected ${adapterLabel} pasted text UI for initial prompt after ready settle delay.`,
+        );
+      } else {
+        this.scheduleClaudePastedTextEnter(
+          runtime,
+          `sent_${statePrefix}_initial_prompt`,
+          CLAUDE_INITIAL_PROMPT_ENTER_DELAY_MS,
+        );
+        this.updateAutomationState(runtime, `waiting_for_${statePrefix}_initial_submit`);
+        logInfo(
+          `[cli-session] ${runtime.snapshot.id} scheduled delayed Enter for initial ${adapterLabel} prompt after ready settle delay.`,
+        );
+      }
+    }, delayMs);
+  }
+
   private scheduleCursorStartupEnter(runtime: CliSessionRuntime, delayMs: number): void {
     const automation = runtime.automationState;
     if (!automation || automation.profile !== "codex-startup") {
@@ -3146,6 +3209,59 @@ export class CliSessionManager {
       runtime.controls.write("\r");
       this.updateAutomationState(runtime, nextState);
       logInfo(`[cli-session] ${runtime.snapshot.id} auto-submitted Cursor prompt after delayed Enter.`);
+    }, delayMs);
+  }
+
+  private scheduleCursorInitialPrompt(
+    runtime: CliSessionRuntime,
+    prompt: string,
+    delayMs: number,
+  ): void {
+    const automation = runtime.automationState;
+    if (!automation || automation.profile !== "codex-startup") {
+      return;
+    }
+    if (runtime.snapshot.adapter !== "cursor" || runtime.snapshot.mode !== "interactive") {
+      return;
+    }
+    if (automation.submitTimer) {
+      clearTimeout(automation.submitTimer);
+    }
+    automation.initialPromptTextScheduled = true;
+    automation.submitTimer = setTimeout(() => {
+      automation.submitTimer = null;
+      if (runtime.snapshot.adapter !== "cursor" || runtime.snapshot.mode !== "interactive") {
+        return;
+      }
+      const screenText = String(runtime.screenState?.latest?.text || runtime.snapshot.screen_excerpt || "");
+      if (
+        automation.manualOverride
+        || !runtime.controls?.write
+        || automation.initialPromptTextSent
+        || !prompt
+        || !automation.sawReadyScreen
+      ) {
+        automation.initialPromptTextScheduled = false;
+        return;
+      }
+      automation.initialPromptTextScheduled = false;
+      automation.initialPromptTextSent = true;
+      automation.initialPromptEnterSent = true;
+      this.startReplyCapture(runtime, prompt);
+      runtime.controls.write(prompt);
+      if (looksLikeCursorPastedTextPrompt(screenText)) {
+        this.scheduleCursorDelayedEnter(runtime, "sent_cursor_initial_prompt", 1000);
+        this.updateAutomationState(runtime, "waiting_for_cursor_paste_submit");
+        logInfo(
+          `[cli-session] ${runtime.snapshot.id} detected Cursor pasted text UI for initial prompt after ready settle delay.`,
+        );
+      } else {
+        this.scheduleCursorDelayedEnter(runtime, "sent_cursor_initial_prompt", 1000);
+        this.updateAutomationState(runtime, "waiting_for_cursor_initial_submit");
+        logInfo(
+          `[cli-session] ${runtime.snapshot.id} scheduled delayed Enter for initial Cursor prompt after ready settle delay.`,
+        );
+      }
     }, delayMs);
   }
 
@@ -3439,26 +3555,12 @@ export class CliSessionManager {
     }
 
     if (!automation.initialPromptTextSent) {
-      automation.initialPromptTextSent = true;
-      this.startReplyCapture(runtime, initialPrompt);
-      runtime.controls.write(initialPrompt);
-      automation.initialPromptEnterSent = true;
-      if (looksLikeClaudePastedTextPrompt(screenText)) {
-        this.scheduleClaudePastedTextEnter(
-          runtime,
-          `sent_${statePrefix}_initial_prompt`,
-          CLAUDE_INITIAL_PROMPT_ENTER_DELAY_MS,
+      if (!automation.initialPromptTextScheduled) {
+        this.scheduleClaudeInitialPrompt(runtime, initialPrompt, CODEX_READY_SETTLE_DELAY_MS);
+        this.updateAutomationState(runtime, `waiting_for_${statePrefix}_ready_settle`);
+        logInfo(
+          `[cli-session] ${runtime.snapshot.id} waiting for ${adapterLabel} ready screen to settle before sending initial prompt.`,
         );
-        this.updateAutomationState(runtime, `waiting_for_${statePrefix}_paste_submit`);
-        logInfo(`[cli-session] ${runtime.snapshot.id} detected ${adapterLabel} pasted text UI for initial prompt.`);
-      } else {
-        this.scheduleClaudePastedTextEnter(
-          runtime,
-          `sent_${statePrefix}_initial_prompt`,
-          CLAUDE_INITIAL_PROMPT_ENTER_DELAY_MS,
-        );
-        this.updateAutomationState(runtime, `waiting_for_${statePrefix}_initial_submit`);
-        logInfo(`[cli-session] ${runtime.snapshot.id} scheduled delayed Enter for initial ${adapterLabel} prompt.`);
       }
       return;
     }
@@ -3560,18 +3662,12 @@ export class CliSessionManager {
     }
 
     if (!automation.initialPromptTextSent) {
-      automation.initialPromptTextSent = true;
-      this.startReplyCapture(runtime, initialPrompt);
-      runtime.controls.write(initialPrompt);
-      automation.initialPromptEnterSent = true;
-      if (looksLikeCursorPastedTextPrompt(screenText)) {
-        this.scheduleCursorDelayedEnter(runtime, "sent_cursor_initial_prompt", 1000);
-        this.updateAutomationState(runtime, "waiting_for_cursor_paste_submit");
-        logInfo(`[cli-session] ${runtime.snapshot.id} detected Cursor pasted text UI for initial prompt.`);
-      } else {
-        this.scheduleCursorDelayedEnter(runtime, "sent_cursor_initial_prompt", 1000);
-        this.updateAutomationState(runtime, "waiting_for_cursor_initial_submit");
-        logInfo(`[cli-session] ${runtime.snapshot.id} scheduled delayed Enter for initial Cursor prompt.`);
+      if (!automation.initialPromptTextScheduled) {
+        this.scheduleCursorInitialPrompt(runtime, initialPrompt, CODEX_READY_SETTLE_DELAY_MS);
+        this.updateAutomationState(runtime, "waiting_for_cursor_ready_settle");
+        logInfo(
+          `[cli-session] ${runtime.snapshot.id} waiting for Cursor ready screen to settle before sending initial prompt.`,
+        );
       }
       return;
     }

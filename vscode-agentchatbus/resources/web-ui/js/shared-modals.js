@@ -1589,6 +1589,9 @@
       if (window.AcbCliSessions && typeof window.AcbCliSessions.refreshThread === "function") {
         await window.AcbCliSessions.refreshThread(t.id, api);
       }
+      if (shouldLaunchFirstAgent && window.AcbCliSessions?.setTerminalVisibility) {
+        window.AcbCliSessions.setTerminalVisibility(t.id, true);
+      }
       for (let index = 0; index < followupLaunchConfigs.length; index += 1) {
         const config = followupLaunchConfigs[index];
         if (launchIntervalMs > 0) {
@@ -1767,6 +1770,9 @@
       if (typeof window.AcbCliSessions.selectSession === "function") {
         window.AcbCliSessions.selectSession(session.id, threadId);
       }
+    }
+    if (window.AcbCliSessions?.setTerminalVisibility) {
+      window.AcbCliSessions.setTerminalVisibility(threadId, true);
     }
     if (window.AcbChat && typeof window.AcbChat.refreshThreadAdmin === "function") {
       await window.AcbChat.refreshThreadAdmin(threadId, api);
