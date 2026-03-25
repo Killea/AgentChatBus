@@ -160,12 +160,23 @@
     clearThreadCache(threadId);
   }
 
+  function resolveParticipantLabel(session) {
+    const participantAgent = getParticipantAgent(session);
+    const agentLabel = String(
+      participantAgent?.preferred_display_name || participantAgent?.display_name || participantAgent?.name || ""
+    ).trim();
+    if (agentLabel) {
+      return agentLabel;
+    }
+    return String(session?.participant_display_name || "").trim();
+  }
+
   function sessionDisplayName(session) {
-    return String(session?.participant_display_name || "").trim() || sessionLabel(session);
+    return resolveParticipantLabel(session) || sessionLabel(session);
   }
 
   function sessionLabel(session) {
-    const participantLabel = String(session?.participant_display_name || "").trim();
+    const participantLabel = resolveParticipantLabel(session);
     if (session?.adapter === "codex" && session?.mode === "interactive") {
       return participantLabel ? `${participantLabel} · Codex PTY` : "Codex PTY";
     }

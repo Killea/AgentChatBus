@@ -47,6 +47,17 @@ describe("close_meeting MCP integration", () => {
     });
     expect(memoryStore.getThread(created.thread.id)?.status).toBe("closed");
     expect(memoryStore.getThread(created.thread.id)?.summary).toBe("finished");
+    const messages = memoryStore.getMessages(created.thread.id, 0);
+    expect(messages.at(-1)).toMatchObject({
+      role: "system",
+      author: "system",
+      metadata: {
+        event: "meeting_closed",
+        closed_by_agent_id: admin.id,
+        closed_by_name: admin.name,
+      },
+    });
+    expect(String(messages.at(-1)?.content || "")).toContain(`administrator ${admin.name}`);
   });
 
   it("rejects participants who are not thread administrators", async () => {
@@ -198,6 +209,15 @@ describe("close_meeting MCP integration", () => {
       thread_id: thread.id,
       status: "closed",
       closed_sessions_count: 1,
+    });
+    const messagesAfterClose = store.getMessages(thread.id, 0);
+    expect(messagesAfterClose.at(-1)).toMatchObject({
+      role: "system",
+      author: "system",
+      metadata: {
+        event: "meeting_closed",
+        closed_by_agent_id: owner.agent_id,
+      },
     });
 
     sessionsResponse = await server.inject({

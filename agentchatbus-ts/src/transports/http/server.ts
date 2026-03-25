@@ -16,6 +16,7 @@ import {
   isIpAllowed,
   saveConfigDict,
 } from "../../core/config/env.js";
+import { resolvePreferredAgentDisplayName } from "../../main.js";
 import { buildCliMcpMeetingPrompt } from "../../core/services/cliMeetingContextBuilder.js";
 import {
   closeMeetingLikeHuman,
@@ -45,6 +46,43 @@ export function getMemoryStore(): MemoryStore {
 }
 
 type JsonBody = Record<string, unknown>;
+
+function decorateAgentsForPresentation<T extends Record<string, any>>(agents: T[]): Array<T & {
+  preferred_display_name: string;
+  configured_display_name?: string;
+}> {
+  const used = new Set<string>();
+  return agents.map((agent) => {
+    const configuredDisplayName = String(agent.display_name || "").trim();
+    const legacyFallback = configuredDisplayName || String(agent.name || agent.id || "").trim() || "Unknown";
+    const preferredDisplayName = resolvePreferredAgentDisplayName({
+      ide: typeof agent.ide === "string" ? agent.ide : undefined,
+      model: typeof agent.model === "string" ? agent.model : undefined,
+      emoji: typeof agent.emoji === "string" ? agent.emoji : undefined,
+      display_name: configuredDisplayName || undefined,
+      name: typeof agent.name === "string" ? agent.name : undefined,
+      id: typeof agent.id === "string" ? agent.id : undefined,
+      existingDisplayNames: used,
+    });
+    used.add(String(preferredDisplayName || legacyFallback).trim().toLowerCase());
+    return {
+      ...agent,
+      configured_display_name: configuredDisplayName || undefined,
+      preferred_display_name: preferredDisplayName || legacyFallback,
+      display_name: preferredDisplayName || legacyFallback,
+    };
+  });
+}
+
+function decorateAgentForPresentation<T extends Record<string, any>>(agent: T | undefined): (T & {
+  preferred_display_name: string;
+  configured_display_name?: string;
+}) | undefined {
+  if (!agent) {
+    return undefined;
+  }
+  return decorateAgentsForPresentation([agent])[0];
+}
 
 function resolveStaticPath(): string {
   const envStaticPath = getConfig().webUiDir;
@@ -158,7 +196,7 @@ export function createHttpServer() {
       AGENTCHATBUS_AGENT_ID: input.participantAgentId,
       AGENTCHATBUS_AGENT_TOKEN: participant.token,
       AGENTCHATBUS_AGENT_DISPLAY_NAME:
-        input.participantDisplayName || participant.display_name || participant.name || input.participantAgentId,
+        input.participantDisplayName || resolvePreferredAgentDisplayName(participant) || input.participantAgentId,
     };
   }
 
@@ -646,12 +684,12 @@ export function createHttpServer() {
     
     // Add waiting_agents for each thread (match Python main.py L990-1002)
     const threadsWithWaitingAgents = threads.map(thread => {
-      const waitingAgents = store.getWaitingAgentsForThread(thread.id);
+      const waitingAgents = decorateAgentsForPresentation(store.getWaitingAgentsForThread(thread.id));
       return {
         ...thread,
         waiting_agents: waitingAgents.map(agent => ({
           id: agent.id,
-          display_name: agent.display_name || agent.name,
+          display_name: agent.preferred_display_name || agent.display_name || agent.name,
           emoji: agent.emoji || "🤖"
         }))
       };
@@ -690,7 +728,21 @@ export function createHttpServer() {
       reply.code(400);
       return { detail: `Invalid priority filter '${priority}'` };
     }
-    return store.getMessages(params.threadId, afterSeq, includeSystemPrompt, priority).slice(0, limit);
+    const presentedAgentsById = new Map(
+      decorateAgentsForPresentation(store.listAgents()).map((agent) => [String(agent.id || "").trim(), agent]),
+    );
+    return store.getMessages(params.threadId, afterSeq, includeSystemPrompt, priority).slice(0, limit).map((message) => {
+      const authorId = String(message.author_id || "").trim();
+      const presentedAgent = authorId ? presentedAgentsById.get(authorId) : undefined;
+      if (!presentedAgent) {
+        return message;
+      }
+      return {
+        ...message,
+        author_name: presentedAgent.preferred_display_name || presentedAgent.display_name || message.author_name,
+        author_emoji: String(message.author_emoji || "").trim() || presentedAgent.emoji || "🤖",
+      };
+    });
   });
 
   fastify.get("/api/threads/:threadId/cli-sessions", async (request, reply) => {
@@ -886,7 +938,7 @@ export function createHttpServer() {
       undefined,
       {
         creatorAdminId: assignCreatorAdmin ? creatorAgentId : undefined,
-        creatorAdminName: assignCreatorAdmin ? (creator.display_name || creator.name || creatorAgentId) : undefined,
+        creatorAdminName: assignCreatorAdmin ? resolvePreferredAgentDisplayName(creator) : undefined,
         applySystemPromptContentFilter: true
       }
     );
@@ -1003,7 +1055,7 @@ export function createHttpServer() {
     }
   });
 
-  fastify.get("/api/agents", async () => store.listAgents());
+  fastify.get("/api/agents", async () => decorateAgentsForPresentation(store.listAgents()));
 
   fastify.get("/api/cli-sessions/:sessionId", async (request, reply) => {
     const params = request.params as { sessionId: string };
@@ -1179,7 +1231,7 @@ export function createHttpServer() {
 
   fastify.get("/api/threads/:threadId/agents", async (request) => {
     const params = request.params as { threadId: string };
-    return store.getThreadAgents(params.threadId);
+    return decorateAgentsForPresentation(store.getThreadAgents(params.threadId));
   });
 
   fastify.get("/api/agents/:agentId", async (request, reply) => {
@@ -1189,7 +1241,7 @@ export function createHttpServer() {
       reply.code(404);
       return { detail: "Agent not found" };
     }
-    return agent;
+    return decorateAgentForPresentation(agent);
   });
 
   fastify.put("/api/agents/:agentId", async (request, reply) => {
@@ -1208,7 +1260,7 @@ export function createHttpServer() {
       reply.code(401);
       return { detail: "Invalid agent_id/token" };
     }
-    return { ok: true, ...agent, agent_id: agent.id };
+    return { ok: true, ...decorateAgentForPresentation(agent), agent_id: agent.id };
   });
 
   fastify.post("/api/agents/register", async (request, reply) => {
@@ -1230,12 +1282,15 @@ export function createHttpServer() {
       reply.code(200);
       const cfg = getConfig();
       const isShowAd = cfg.showAd;
+      const presentedAgent = decorateAgentForPresentation(agent)!;
       return {
         ok: true,
         id: agent.id,
         agent_id: agent.id,
         name: agent.name,
-        display_name: agent.display_name,
+        display_name: presentedAgent.display_name,
+        preferred_display_name: presentedAgent.preferred_display_name,
+        configured_display_name: presentedAgent.configured_display_name,
         // SEC-05: Suppress token in public demo mode (SHOW_AD=true) to prevent token leakage.
         // Private deployments (localhost or non-SHOW_AD) still receive the token for agent auth.
         ...(cfg.showAd ? {} : { token: agent.token }),
@@ -1268,11 +1323,14 @@ export function createHttpServer() {
       reply.code(401);
       return { detail: "Invalid agent_id/token" };
     }
+    const presentedAgent = decorateAgentForPresentation(agent)!;
     return {
       ok: true,
       agent_id: agent.id,
       name: agent.name,
-      display_name: agent.display_name,
+      display_name: presentedAgent.display_name,
+      preferred_display_name: presentedAgent.preferred_display_name,
+      configured_display_name: presentedAgent.configured_display_name,
       is_online: agent.is_online,
       last_heartbeat: agent.last_heartbeat
     };
@@ -1644,7 +1702,10 @@ export function createHttpServer() {
     const settings = store.getThreadSettings(params.threadId);
     // Priority: creator_admin > auto_assigned_admin
     const adminId = settings?.creator_admin_id || settings?.auto_assigned_admin_id || null;
-    const adminName = settings?.creator_admin_name || settings?.auto_assigned_admin_name || null;
+    const adminAgent = adminId ? store.getAgent(adminId) : undefined;
+    const adminName = adminAgent
+      ? resolvePreferredAgentDisplayName(adminAgent)
+      : (settings?.creator_admin_name || settings?.auto_assigned_admin_name || null);
     const adminType = settings?.creator_admin_id ? "creator" : (settings?.auto_assigned_admin_id ? "auto_assigned" : null);
     const assignedAt = settings?.creator_assignment_time || settings?.admin_assignment_time || null;
     
@@ -1692,12 +1753,14 @@ export function createHttpServer() {
       if (!agentId) return "Unknown";
       const agents = store.listAgents();
       const agent = agents.find(a => a.id === agentId);
-      return agent?.display_name || agent?.name || agentId;
+      return resolvePreferredAgentDisplayName(agent || { id: agentId });
     };
 
     const settings = store.getThreadSettings(params.threadId);
     const currentAdminId = settings?.creator_admin_id || settings?.auto_assigned_admin_id || null;
-    const currentAdminName = settings?.creator_admin_name || settings?.auto_assigned_admin_name || null;
+    const currentAdminName = currentAdminId
+      ? getAgentName(currentAdminId)
+      : (settings?.creator_admin_name || settings?.auto_assigned_admin_name || null);
 
     // Check for source_message_id and already decided
     if (body.source_message_id) {
@@ -1756,7 +1819,7 @@ export function createHttpServer() {
           return { detail: "Candidate admin agent not found" };
         }
 
-        const candidateName = candidate.display_name || candidate.name || candidate.id;
+        const candidateName = resolvePreferredAgentDisplayName(candidate);
         store.switchAdmin(params.threadId, candidate.id, candidateName);
 
         const oldBadge = `${getAgentEmoji(currentAdminId)} ${currentAdminName || currentAdminId || "Unknown"}`;
@@ -1845,7 +1908,7 @@ export function createHttpServer() {
           return { detail: "Takeover administrator agent not found" };
         }
 
-        const targetName = targetAdmin.display_name || targetAdmin.name || targetAdmin.id;
+        const targetName = resolvePreferredAgentDisplayName(targetAdmin);
         const targetEmoji = getAgentEmoji(targetAdmin.id);
         const instruction = `Coordinator decision: ${targetEmoji} ${targetName}, all other agents appear offline/unavailable. Please take over now, continue work directly, and do not keep waiting in msg_wait.`;
         const decidedAt = new Date().toISOString();
@@ -1924,7 +1987,7 @@ export function createHttpServer() {
         return { detail: "Candidate admin agent not found" };
       }
 
-      const candidateName = candidate.display_name || candidate.name || candidate.id;
+      const candidateName = resolvePreferredAgentDisplayName(candidate);
       store.switchAdmin(params.threadId, candidate.id, candidateName);
 
       return {

@@ -1,6 +1,16 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MemoryStore } from '../../src/core/services/memoryStore.js';
-import { AGENT_EMOJIS, deriveAgentEmojiSeed, generateAgentEmoji, generateAgentEmojiCandidates, validateEmoji } from '../../src/main.js';
+import {
+  AGENT_EMOJIS,
+  AGENT_EMOJI_LABELS,
+  buildLegacyAutoAgentDisplayNameCandidates,
+  buildAutoAgentDisplayName,
+  deriveAgentEmojiSeed,
+  describeAgentEmoji,
+  generateAgentEmoji,
+  generateAgentEmojiCandidates,
+  validateEmoji,
+} from '../../src/main.js';
 
 describe('Agent Registry (Ported from test_agent_registry.py)', () => {
   let store: MemoryStore;
@@ -92,6 +102,124 @@ describe('Agent Registry (Ported from test_agent_registry.py)', () => {
     expect(second.name).toBe('VSCode (GPT) 2');
   });
 
+  it('auto display_name uses runtime label plus emoji semantics', () => {
+    const emoji = AGENT_EMOJIS[56];
+    const agent = store.registerAgent({
+      ide: 'CLI',
+      model: 'codex-worker',
+      emoji,
+    });
+
+    expect(agent.alias_source).toBe('auto');
+    expect(agent.display_name).toBe(`Codex ${describeAgentEmoji(emoji)}`);
+  });
+
+  it('auto display_name adds suffix when the same runtime and emoji label repeat', () => {
+    const emoji = AGENT_EMOJIS[57];
+    const first = store.registerAgent({
+      ide: 'Codex',
+      model: 'interactive',
+      emoji,
+    });
+    const second = store.registerAgent({
+      ide: 'Codex',
+      model: 'interactive',
+      emoji,
+    });
+
+    expect(first.display_name).toBe(`Codex ${describeAgentEmoji(emoji)}`);
+    expect(second.display_name).toBe(`Codex ${describeAgentEmoji(emoji)} 2`);
+  });
+
+  it('persists alias_source for auto-named agents', () => {
+    const agent = store.registerAgent({
+      ide: 'Codex',
+      model: 'interactive',
+      emoji: AGENT_EMOJIS[58],
+    });
+
+    const row = (store as any).persistenceDb
+      .prepare('SELECT display_name, alias_source FROM agents WHERE id = ?')
+      .get(agent.id) as { display_name: string; alias_source: string };
+
+    expect(row.display_name).toBe(agent.display_name);
+    expect(row.alias_source).toBe('auto');
+    expect(store.getAgent(agent.id)?.alias_source).toBe('auto');
+  });
+
+  it('backfills legacy auto display names when alias metadata is missing', () => {
+    const agent = store.registerAgent({
+      ide: 'Codex',
+      model: 'interactive',
+      emoji: AGENT_EMOJIS[59],
+    });
+    const expectedDisplayName = agent.display_name;
+
+    (store as any).persistenceDb
+      .prepare('UPDATE agents SET display_name = NULL, alias_source = NULL WHERE id = ?')
+      .run(agent.id);
+
+    const restored = store.getAgent(agent.id);
+    expect(restored?.display_name).toBe(expectedDisplayName);
+    expect(restored?.alias_source).toBe('auto');
+
+    const row = (store as any).persistenceDb
+      .prepare('SELECT display_name, alias_source FROM agents WHERE id = ?')
+      .get(agent.id) as { display_name: string; alias_source: string };
+    expect(row.display_name).toBe(expectedDisplayName);
+    expect(row.alias_source).toBe('auto');
+  });
+
+  it('preserves legacy user display names when alias metadata is missing', () => {
+    const agent = store.registerAgent({
+      ide: 'Codex',
+      model: 'interactive',
+      display_name: 'Architect',
+      emoji: AGENT_EMOJIS[60],
+    });
+
+    (store as any).persistenceDb
+      .prepare('UPDATE agents SET alias_source = NULL WHERE id = ?')
+      .run(agent.id);
+
+    const restored = store.getAgent(agent.id);
+    expect(restored?.display_name).toBe('Architect');
+    expect(restored?.alias_source).toBe('user');
+  });
+
+  it('upgrades legacy launch-ui adapter aliases like Codex to emoji auto names', () => {
+    const agent = store.registerAgent({
+      ide: 'Codex',
+      model: 'gpt-5.4',
+      emoji: AGENT_EMOJIS[62],
+    });
+
+    (store as any).persistenceDb
+      .prepare('UPDATE agents SET display_name = ?, alias_source = NULL WHERE id = ?')
+      .run('Codex', agent.id);
+
+    const restored = store.getAgent(agent.id);
+    expect(restored?.display_name).toBe(`Codex ${describeAgentEmoji(AGENT_EMOJIS[62])}`);
+    expect(restored?.alias_source).toBe('auto');
+  });
+
+  it('clearing a user alias restores the auto display name', () => {
+    const agent = store.registerAgent({
+      ide: 'Codex',
+      model: 'interactive',
+      emoji: AGENT_EMOJIS[61],
+    });
+    const originalAutoName = agent.display_name;
+
+    const renamed = store.updateAgent(agent.id, agent.token!, { display_name: 'Architect' });
+    expect(renamed?.display_name).toBe('Architect');
+    expect(renamed?.alias_source).toBe('user');
+
+    const restored = store.updateAgent(agent.id, agent.token!, { display_name: '' });
+    expect(restored?.display_name).toBe(originalAutoName);
+    expect(restored?.alias_source).toBe('auto');
+  });
+
   it('agent register preserves empty description as empty string', () => {
     const agent = store.registerAgent({ ide: 'VSCode', model: 'GPT' });
     const resumed = store.resumeAgent(agent.id, agent.token);
@@ -165,6 +293,28 @@ describe('Agent Registry (Ported from test_agent_registry.py)', () => {
     const found = store.listAgents().find((a) => a.id === agent.id);
     expect(found).toBeDefined();
     expect(found?.is_online).toBe(false);
+  });
+
+  it('buildAutoAgentDisplayName is deterministic for a chosen emoji label', () => {
+    const name = buildAutoAgentDisplayName({
+      ide: 'CLI',
+      model: 'codex-worker',
+      emoji: AGENT_EMOJIS[58],
+      existingDisplayNames: [],
+    });
+
+    expect(AGENT_EMOJIS.length).toBe(AGENT_EMOJI_LABELS.length);
+    expect(name).toBe(`Codex ${AGENT_EMOJI_LABELS[58]}`);
+  });
+
+  it('buildLegacyAutoAgentDisplayNameCandidates includes bare runtime labels used by old launch UI', () => {
+    const candidates = buildLegacyAutoAgentDisplayNameCandidates({
+      ide: 'Codex',
+      model: 'gpt-5.4',
+    });
+
+    expect(candidates).toContain('Codex');
+    expect(candidates.map((value) => value.toLowerCase())).toContain('codex gpt-5.4');
   });
 
   it('agent_list treats recent activity as online even when heartbeat is stale', () => {

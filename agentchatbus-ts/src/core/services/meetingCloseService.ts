@@ -40,7 +40,14 @@ export function getThreadAdministratorIds(store: MemoryStore, threadId: string):
 
 export async function closeMeetingLikeHuman(
   store: MemoryStore,
-  input: { threadId: string; summary?: string },
+  input: {
+    threadId: string;
+    summary?: string;
+    closedBy?: {
+      agentId: string;
+      name: string;
+    };
+  },
 ): Promise<CloseMeetingResult> {
   const threadId = String(input.threadId || "").trim();
   const thread = store.getThread(threadId);
@@ -64,6 +71,20 @@ export async function closeMeetingLikeHuman(
       error: "THREAD_NOT_FOUND",
       detail: `Thread '${threadId}' not found`,
     };
+  }
+
+  if (!alreadyClosed && input.closedBy) {
+    store.postSystemMessage(
+      threadId,
+      `This thread was closed by administrator ${input.closedBy.name} (${input.closedBy.agentId}) at ${new Date().toISOString()}.`,
+      JSON.stringify({
+        event: "meeting_closed",
+        closed_by_agent_id: input.closedBy.agentId,
+        closed_by_name: input.closedBy.name,
+        closed_at: new Date().toISOString(),
+      }),
+      false,
+    );
   }
 
   return {

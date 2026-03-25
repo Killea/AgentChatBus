@@ -14,7 +14,14 @@ import {
   PermissionError
 } from "../types/errors.js";
 import { eventBus } from "../../shared/eventBus.js";
-import { deriveAgentEmojiSeed, generateAgentEmoji, generateAgentEmojiCandidates } from "../../main.js";
+import {
+  buildAutoAgentDisplayName,
+  buildLegacyAutoAgentDisplayNameCandidates,
+  deriveAgentEmojiSeed,
+  generateAgentEmoji,
+  generateAgentEmojiCandidates,
+  resolvePreferredAgentDisplayName,
+} from "../../main.js";
 import { registerStore } from "./storeSingleton.js";
 import { checkContentOrThrow, ContentFilterError } from "./contentFilter.js";
 import { checkFilesystemDisclosureOrThrow, FilesystemDisclosureError } from "./filesystemDisclosureFilter.js";
@@ -691,7 +698,7 @@ export class MemoryStore {
 
     const settings = this.threadSettings.get(threadId);
     if (settings) {
-      const nextName = String(nextAgent.display_name || nextAgent.name || nextId).trim() || nextId;
+      const nextName = resolvePreferredAgentDisplayName(nextAgent) || nextId;
       if (settings.creator_admin_id === previousId) {
         settings.creator_admin_id = nextId;
         settings.creator_admin_name = nextName;
@@ -850,7 +857,7 @@ export class MemoryStore {
     }
 
     const agentLabel = (agent?: AgentRecord, fallbackId?: string): string => {
-      return String(agent?.display_name || agent?.name || agent?.id || fallbackId || "Unknown");
+      return resolvePreferredAgentDisplayName(agent || { id: fallbackId || "Unknown" });
     };
 
     const threadWaitStates = this.getThreadWaitStatesGrouped();
@@ -1909,7 +1916,7 @@ export class MemoryStore {
       priority: input.priority || "normal",
       author: agent?.name || input.author,
       author_id: agent?.id || undefined,
-      author_name: agent?.name || input.author,
+      author_name: agent ? resolvePreferredAgentDisplayName(agent) : input.author,
       author_emoji: agent?.emoji || (input.role === "system" ? "⚙️" : ((input.author === "human" || input.role === "user") ? "👤" : "🤖")),
       role: input.role || "user",
       content: input.content,
@@ -2281,9 +2288,21 @@ export class MemoryStore {
       name = `${baseName} ${suffix}`;
     }
 
-    const cleanDisplayName = (input.display_name || "").trim() || name;
-    const aliasSource = (input.display_name || "").trim() ? "user" : "auto";
     const existingAgents = this.listAgents();
+    const requestedDisplayName = (input.display_name || "").trim();
+    const aliasSource = requestedDisplayName ? "user" : "auto";
+    const selectedEmoji = input.emoji || selectFallbackAgentEmoji(existingAgents, {
+      ide,
+      model,
+      display_name: requestedDisplayName || undefined,
+      alias_source: aliasSource,
+    });
+    const cleanDisplayName = requestedDisplayName || buildAutoAgentDisplayName({
+      ide,
+      model,
+      emoji: selectedEmoji,
+      existingDisplayNames: existingAgents.map((agent) => agent.display_name || agent.name || ""),
+    });
     
     const agent: AgentRecord = {
       id: agentId,
@@ -2300,12 +2319,7 @@ export class MemoryStore {
       capabilities: input.capabilities || [],
       skills: input.skills ?? undefined,
       token: generateAgentToken(),
-      emoji: input.emoji || selectFallbackAgentEmoji(existingAgents, {
-        ide,
-        model,
-        display_name: cleanDisplayName,
-        alias_source: aliasSource,
-      }),
+      emoji: selectedEmoji,
       registered_at: new Date().toISOString()
     };
     this.agents.set(agent.id, agent);
@@ -2325,7 +2339,7 @@ export class MemoryStore {
       `
     ).all() as Array<Record<string, unknown>>;
     // Token should NOT be exposed in agent list for security (Python parity)
-    return rows.map((row) => this.rowToAgentRecord(row));
+    return this.normalizeAgentRecords(rows.map((row) => this.rowToAgentRecord(row)), { persist: true });
   }
 
   getAgent(agentId: string): AgentRecord | undefined {
@@ -2336,7 +2350,7 @@ export class MemoryStore {
         FROM agents WHERE id = ?
       `
     ).get(agentId) as Record<string, unknown> | undefined;
-    return row ? this.rowToAgentRecord(row) : undefined;
+    return row ? this.normalizeAgentRecords([this.rowToAgentRecord(row)], { persist: true })[0] : undefined;
   }
 
   getAgentById(agentId: string): AgentRecord | undefined {
@@ -2352,9 +2366,10 @@ export class MemoryStore {
       agent.description = input.description;
     }
     if (input.display_name !== undefined) {
-      agent.display_name = input.display_name;
+      const nextDisplayName = String(input.display_name || "").trim();
+      agent.display_name = nextDisplayName || undefined;
       // Fix #28: update alias_source based on display_name
-      agent.alias_source = (input.display_name || "").trim() ? "user" : "auto";
+      agent.alias_source = nextDisplayName ? "user" : "auto";
     }
     if (input.capabilities !== undefined) {
       agent.capabilities = input.capabilities;
@@ -2364,6 +2379,18 @@ export class MemoryStore {
     }
     if (input.emoji !== undefined) {
       agent.emoji = input.emoji;
+    }
+    if (this.inferAliasSource(agent) === "auto") {
+      const existingDisplayNames = this.listAgents()
+        .filter((candidate) => candidate.id !== agent.id)
+        .map((candidate) => candidate.display_name || candidate.name || "");
+      agent.display_name = buildAutoAgentDisplayName({
+        ide: agent.ide,
+        model: agent.model,
+        emoji: agent.emoji,
+        existingDisplayNames,
+      });
+      agent.alias_source = "auto";
     }
     agent.last_activity = "update";
     agent.last_activity_time = new Date().toISOString();
@@ -2561,7 +2588,7 @@ export class MemoryStore {
         FROM agents WHERE id IN (${placeholders})
       `
     ).all(...Array.from(participantIds)) as Array<Record<string, unknown>>;
-    return rows.map((row) => this.rowToAgentRecord(row));
+    return this.normalizeAgentRecords(rows.map((row) => this.rowToAgentRecord(row)), { persist: true });
   }
 
   getThreadWaitingAgents(threadId: string): Array<{ id: string; display_name?: string; emoji?: string }> {
@@ -2574,11 +2601,13 @@ export class MemoryStore {
         WHERE w.thread_id = ?
       `
     ).all(threadId) as Array<Record<string, unknown>>;
+    const agentsById = new Map(this.listAgents().map((agent) => [agent.id, agent]));
     return rows
       .filter((row) => this.computeAgentOnline(row))
       .map((agent) => ({
         id: String(agent.id),
-        display_name: agent.display_name ? String(agent.display_name) : String(agent.name),
+        display_name: agentsById.get(String(agent.id))?.display_name
+          || (agent.display_name ? String(agent.display_name) : String(agent.name)),
         emoji: agent.emoji ? String(agent.emoji) : "🤖"
       }));
   }
@@ -3609,6 +3638,122 @@ export class MemoryStore {
     };
   }
 
+  private inferAliasSource(agent: AgentRecord): "user" | "auto" {
+    const aliasSource = String(agent.alias_source || "").trim().toLowerCase();
+    const displayName = String(agent.display_name || "").trim();
+    const internalName = String(agent.name || "").trim();
+    const normalizedDisplayName = displayName.toLowerCase();
+
+    if (aliasSource === "user" && displayName) {
+      return "user";
+    }
+    if (aliasSource === "auto") {
+      return "auto";
+    }
+    if (!displayName) {
+      return "auto";
+    }
+    if (normalizedDisplayName === internalName.toLowerCase()) {
+      return "auto";
+    }
+
+    const legacyAutoCandidates = buildLegacyAutoAgentDisplayNameCandidates({
+      ide: agent.ide,
+      model: agent.model,
+    }).map((candidate) => candidate.toLowerCase());
+    if (legacyAutoCandidates.some((candidate) =>
+      normalizedDisplayName === candidate || normalizedDisplayName.match(new RegExp(`^${candidate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\d+$`, "i"))
+    )) {
+      return "auto";
+    }
+    return "user";
+  }
+
+  private persistNormalizedAgentAlias(agent: AgentRecord): void {
+    this.persistenceDb.prepare(
+      `
+        UPDATE agents
+        SET display_name = ?, alias_source = ?
+        WHERE id = ?
+      `
+    ).run(agent.display_name || null, agent.alias_source || null, agent.id);
+
+    const existing = this.agents.get(agent.id);
+    if (existing) {
+      this.agents.set(agent.id, {
+        ...existing,
+        display_name: agent.display_name,
+        alias_source: agent.alias_source,
+      });
+    }
+  }
+
+  private normalizeAgentRecords(records: AgentRecord[], options?: { persist?: boolean }): AgentRecord[] {
+    if (records.length === 0) {
+      return records;
+    }
+
+    const persist = options?.persist === true;
+    const normalizedById = new Map<string, AgentRecord>();
+    const takenDisplayNames = new Set<string>();
+    const autoRecords: AgentRecord[] = [];
+
+    for (const record of records) {
+      const displayName = String(record.display_name || "").trim();
+      const aliasSource = this.inferAliasSource(record);
+
+      if (aliasSource === "user" && displayName) {
+        const normalized: AgentRecord = {
+          ...record,
+          display_name: displayName,
+          alias_source: "user",
+        };
+        normalizedById.set(record.id, normalized);
+        takenDisplayNames.add(displayName.toLowerCase());
+        continue;
+      }
+
+      autoRecords.push({
+        ...record,
+        alias_source: "auto",
+      });
+    }
+
+    for (const record of autoRecords) {
+      const displayName = buildAutoAgentDisplayName({
+        ide: record.ide,
+        model: record.model,
+        emoji: record.emoji,
+        existingDisplayNames: takenDisplayNames,
+      });
+      const normalized: AgentRecord = {
+        ...record,
+        display_name: displayName,
+        alias_source: "auto",
+      };
+      normalizedById.set(record.id, normalized);
+      takenDisplayNames.add(displayName.toLowerCase());
+    }
+
+    const normalizedRecords = records.map((record) => {
+      const normalized = normalizedById.get(record.id) || record;
+      const changedDisplayName =
+        String(normalized.display_name || "").trim() !== String(record.display_name || "").trim();
+      const changedAliasSource =
+        String(normalized.alias_source || "").trim() !== String(record.alias_source || "").trim();
+
+      if (changedDisplayName || changedAliasSource) {
+        if (persist) {
+          this.persistNormalizedAgentAlias(normalized);
+        }
+      }
+
+      return normalized;
+    });
+
+    return normalizedRecords;
+  }
+
   private loadState(): void {
     try {
       const row = this.persistenceDb
@@ -3720,13 +3865,12 @@ export class MemoryStore {
 
     const agents = this.persistenceDb.prepare(
       `
-        SELECT id, name, display_name, ide, model, description, is_online, last_heartbeat,
+        SELECT id, name, display_name, alias_source, ide, model, description, is_online, last_heartbeat,
                last_activity, last_activity_time, capabilities, skills, token, emoji
         FROM agents
       `
     ).all() as Array<Record<string, unknown>>;
-    for (const row of agents) {
-      const agent = this.rowToAgentRecord(row);
+    for (const agent of this.normalizeAgentRecords(agents.map((row) => this.rowToAgentRecord(row)), { persist: true })) {
       this.agents.set(agent.id, agent);
     }
 
@@ -4047,12 +4191,13 @@ export class MemoryStore {
     this.persistenceDb.prepare(
       `
         INSERT INTO agents (
-          id, name, display_name, ide, model, description, is_online, last_heartbeat,
+          id, name, display_name, alias_source, ide, model, description, is_online, last_heartbeat,
           last_activity, last_activity_time, capabilities, skills, token, emoji
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           name = excluded.name,
           display_name = excluded.display_name,
+          alias_source = excluded.alias_source,
           ide = excluded.ide,
           model = excluded.model,
           description = excluded.description,
@@ -4069,6 +4214,7 @@ export class MemoryStore {
       agent.id,
       agent.name,
       agent.display_name || null,
+      agent.alias_source || null,
       agent.ide || null,
       agent.model || null,
       agent.description || null,

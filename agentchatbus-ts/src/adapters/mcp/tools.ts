@@ -25,6 +25,7 @@ import {
   ENABLE_STOP_REASON,
   getConfig
 } from "../../core/config/env.js";
+import { resolvePreferredAgentDisplayName } from "../../main.js";
 
 export type ToolDefinition = {
   name: string;
@@ -304,7 +305,7 @@ const toolDefinitions: ToolDefinition[] = [
   },
   { 
     name: "agent_register", 
-    description: "Register an agent onto the bus. The display name is auto-generated as 'IDE (Model)' — e.g. 'Cursor (GPT-4)'. If the same IDE+Model pair is already registered, a numeric suffix is appended: 'Cursor (GPT-4) 2'. Optional `display_name` can be provided as a human-friendly alias. Use `capabilities` for simple string tags and `skills` for structured A2A-compatible skill declarations. Returns agent_id and a secret token for subsequent calls.", 
+    description: "Register an agent onto the bus. The internal name stays in the classic 'IDE (Model)' format, while the default UI display name is auto-generated from runtime plus emoji label — for example `Codex Brain` or `Cursor Lock`. Optional `display_name` can be provided as a human-friendly alias. Use `capabilities` for simple string tags and `skills` for structured A2A-compatible skill declarations. Returns agent_id and a secret token for subsequent calls.", 
     inputSchema: { 
       type: "object",
       required: ["ide", "model"],
@@ -796,7 +797,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       
       const created = getStore().createThread(topic, systemPrompt, templateId, {
         creatorAdminId: agentId,
-        creatorAdminName: agent.display_name || agent.name,
+        creatorAdminName: resolvePreferredAgentDisplayName(agent),
         applySystemPromptContentFilter: false
       });
       return {
@@ -978,7 +979,14 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       }
 
       emitObservedCliToolCall(agentId, "close_meeting", threadId);
-      return await closeMeetingLikeHuman(getStore(), { threadId, summary });
+      return await closeMeetingLikeHuman(getStore(), {
+        threadId,
+        summary,
+        closedBy: {
+          agentId,
+          name: resolvePreferredAgentDisplayName(agent || { id: agentId }),
+        },
+      });
     }
     case "thread_archive": {
       const threadId = String(args.thread_id || "");
@@ -1819,7 +1827,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         const systemPrompt = typeof args.system_prompt === "string" ? args.system_prompt : undefined;
         const created = getStore().createThread(threadName, systemPrompt, templateId, {
           creatorAdminId: agent.id,
-          creatorAdminName: agent.display_name || agent.name,
+          creatorAdminName: resolvePreferredAgentDisplayName(agent),
           applySystemPromptContentFilter: false
         });
         thread = created.thread;

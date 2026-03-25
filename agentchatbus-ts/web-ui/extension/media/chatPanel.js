@@ -1142,7 +1142,7 @@
   function showMentionMenu(query, rect) {
     const needle = String(query || '').toLowerCase();
     state.mentionCandidates = state.agents.filter((agent) => {
-      const haystack = `${agent.display_name || ''} ${agent.name || ''} ${agent.id || ''}`.toLowerCase();
+      const haystack = `${agent.preferred_display_name || ''} ${agent.display_name || ''} ${agent.name || ''} ${agent.id || ''}`.toLowerCase();
       return haystack.includes(needle);
     }).slice(0, 8);
 
@@ -1161,7 +1161,7 @@
         button.type = 'button';
         button.className = 'menu-item';
         if (index === 0) button.classList.add('active');
-        button.innerHTML = `<div class="menu-item-title">${escapeHtml(agent.emoji || '')} ${escapeHtml(agent.display_name || agent.name || agent.id)}</div><div class="menu-item-meta">${escapeHtml(agent.id || '')}</div>`;
+        button.innerHTML = `<div class="menu-item-title">${escapeHtml(agent.emoji || '')} ${escapeHtml(agent.preferred_display_name || agent.display_name || agent.name || agent.id)}</div><div class="menu-item-meta">${escapeHtml(agent.id || '')}</div>`;
         button.addEventListener('click', () => chooseMention(index));
         refs.mentionMenu.appendChild(button);
       });
@@ -1233,8 +1233,8 @@
     pill.className = 'mention-pill';
     pill.contentEditable = 'false';
     pill.setAttribute('data-mention-id', agent.id || '');
-    pill.setAttribute('data-mention-label', agent.display_name || agent.name || agent.id || 'agent');
-    pill.textContent = `@${agent.display_name || agent.name || agent.id}`;
+    pill.setAttribute('data-mention-label', agent.preferred_display_name || agent.display_name || agent.name || agent.id || 'agent');
+    pill.textContent = `@${agent.preferred_display_name || agent.display_name || agent.name || agent.id}`;
 
     const spacer = document.createTextNode(' ');
     range.insertNode(spacer);
@@ -1604,13 +1604,13 @@
   }
 
   function isOwnMessage(message) {
-    const author = String(message.author || message.author_name || '').trim().toLowerCase();
+    const author = String(message.author_name || message.author || '').trim().toLowerCase();
     const localAuthor = String(state.authorName || '').trim().toLowerCase();
     return author === localAuthor || (author === 'system (human)' && (localAuthor === 'human' || localAuthor === 'system (human)'));
   }
 
   function getAuthorLabel(message) {
-    return message.author || message.author_name || message.author_id || 'system';
+    return message.author_name || message.author || message.author_id || 'system';
   }
 
   function showToast(text) {

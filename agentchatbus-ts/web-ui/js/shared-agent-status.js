@@ -40,7 +40,7 @@
     if (sessionName) {
       return sessionName;
     }
-    const agentName = String(agent?.display_name ?? agent?.name ?? "").trim();
+    const agentName = String(agent?.preferred_display_name ?? agent?.display_name ?? agent?.name ?? "").trim();
     if (agentName) {
       return agentName;
     }
