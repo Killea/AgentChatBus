@@ -15,7 +15,7 @@ function send(message) {
 function normalizeCols(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) {
-    return 140;
+    return 160;
   }
   return Math.min(Math.max(Math.floor(numeric), 40), 320);
 }
@@ -23,7 +23,7 @@ function normalizeCols(value) {
 function normalizeRows(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) {
-    return 40;
+    return 48;
   }
   return Math.min(Math.max(Math.floor(numeric), 10), 120);
 }

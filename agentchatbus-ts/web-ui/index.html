@@ -377,6 +377,19 @@
       if (window.AcbSearch) window.AcbSearch.init();
       await syncShowAdPolicy();
       await refreshThreadSidebarData();
+      const storedActiveThread = loadStoredActiveThread();
+      if (storedActiveThread?.id) {
+        try {
+          await selectThread(
+            storedActiveThread.id,
+            storedActiveThread.topic || storedActiveThread.id,
+            storedActiveThread.status || 'discuss',
+          );
+        } catch {
+          clearStoredActiveThread();
+          resetThreadSelection();
+        }
+      }
       updateOnlinePresence();
       startSSE();
       setInterval(refreshThreadSidebarData, 10000);
@@ -1117,6 +1130,10 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     async function selectThread(id, topic, status, initialSyncContext = null) {
       // Close mobile sidebar when selecting thread
       closeMobileSidebar();
+      saveStoredActiveThread({ id, topic, status });
+      if (window.AcbCliSessions) {
+        window.AcbCliSessions.restoreThreadFromCache?.(id);
+      }
       
       return window.AcbChat.selectThread({
         id, topic, status,
@@ -1329,6 +1346,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       if (activeThreadId) {
         threadSyncContexts.delete(activeThreadId);
       }
+      clearStoredActiveThread();
       activeThreadId = null;
       activeThreadStatus = 'discuss';
       window.__acbActiveThreadStatus = activeThreadStatus;
@@ -2027,6 +2045,47 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     // ==============================================================================================
     // Utilities
     // ==============================================================================================
+    const ACTIVE_THREAD_STORAGE_KEY = 'acb.activeThread.v1';
+
+    function loadStoredActiveThread() {
+      try {
+        const raw = window.localStorage?.getItem(ACTIVE_THREAD_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : null;
+        if (!parsed || typeof parsed !== 'object') return null;
+        const id = String(parsed.id || '').trim();
+        if (!id) return null;
+        return {
+          id,
+          topic: String(parsed.topic || '').trim(),
+          status: String(parsed.status || 'discuss').trim() || 'discuss',
+        };
+      } catch {
+        return null;
+      }
+    }
+
+    function saveStoredActiveThread(thread) {
+      try {
+        const id = String(thread?.id || '').trim();
+        if (!id) return;
+        window.localStorage?.setItem(ACTIVE_THREAD_STORAGE_KEY, JSON.stringify({
+          id,
+          topic: String(thread?.topic || '').trim(),
+          status: String(thread?.status || 'discuss').trim() || 'discuss',
+        }));
+      } catch {
+        // Ignore storage failures and keep UI functional.
+      }
+    }
+
+    function clearStoredActiveThread() {
+      try {
+        window.localStorage?.removeItem(ACTIVE_THREAD_STORAGE_KEY);
+      } catch {
+        // Ignore storage failures and keep UI functional.
+      }
+    }
+
     function esc(s) {
       return window.AcbUtils.esc(s);
     }

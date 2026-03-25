@@ -1014,10 +1014,11 @@ body[data-theme="light"] .thread-item .ti-pin-btn {
 .cli-session-card {
   display: flex;
   flex-direction: column;
+  flex: 0 0 auto;
   gap: 10px;
-  min-height: 0;
+  min-height: 680px;
   min-width: 0;
-  height: clamp(720px, 82vh, 960px);
+  height: auto;
   width: 100%;
   padding: 12px;
   border-radius: 16px;
@@ -1158,11 +1159,10 @@ body[data-theme="light"] .thread-item .ti-pin-btn {
 }
 
 .cli-session-card__body {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
+  display: block;
+  flex: 0 0 auto;
   gap: 10px;
-  min-height: 0;
+  min-height: auto;
   min-width: 0;
 }
 
@@ -1178,12 +1178,13 @@ body[data-theme="light"] .thread-item .ti-pin-btn {
 }
 
 .cli-session-log-panel--activity {
-  flex: 0 0 auto;
-  max-height: 160px;
+  max-height: 220px;
+  margin-bottom: 10px;
 }
 
 .cli-session-log-panel--terminal {
-  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
 }
 
@@ -1195,6 +1196,12 @@ body[data-theme="light"] .thread-item .ti-pin-btn {
   padding: 8px 10px;
   border-bottom: 1px solid rgba(148, 163, 184, .14);
   background: rgba(2, 6, 23, .16);
+}
+
+.cli-session-log-panel__controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .cli-session-log-panel__title {
@@ -1216,6 +1223,14 @@ body[data-theme="light"] .thread-item .ti-pin-btn {
 
 .cli-session-log-panel__autoscroll input {
   margin: 0;
+}
+
+.cli-session-log-panel__toggle {
+  min-width: 84px;
+}
+
+.cli-session-log-panel--activity[data-collapsed="true"] {
+  max-height: none;
 }
 
 .cli-session-log__body {
@@ -1278,8 +1293,8 @@ body[data-theme="light"] .thread-item .ti-pin-btn {
 .cli-session-terminal__shell {
   position: relative;
   min-height: 0;
-  height: 100%;
-  flex: 1;
+  height: auto;
+  flex: 0 0 auto;
   border-radius: 0;
   background:
     radial-gradient(circle at top, rgba(14, 165, 233, .08), transparent 40%),
@@ -1290,26 +1305,27 @@ body[data-theme="light"] .thread-item .ti-pin-btn {
 .cli-session-terminal__shell--card {
   border: none;
   width: 100%;
-  min-height: 600px;
+  height: 460px;
+  min-height: 460px;
 }
 
 .cli-session-terminal {
   width: 100%;
-  height: 100%;
+  height: 460px;
   padding: 10px 12px;
   box-sizing: border-box;
-  min-height: 560px;
+  min-height: 460px;
 }
 
 .cli-session-terminal--card {
-  padding: 8px 10px;
+  padding: 6px 8px;
 }
 
 .cli-session-terminal__transcript {
   width: 100%;
   height: 100%;
   margin: 0;
-  overflow: auto;
+  overflow: hidden;
   padding: 12px 14px;
   box-sizing: border-box;
   white-space: pre-wrap;
@@ -1327,10 +1343,21 @@ body[data-theme="light"] .thread-item .ti-pin-btn {
 
 .cli-session-terminal .xterm {
   height: 100%;
+  font-variant-ligatures: none;
 }
 
 .cli-session-terminal .xterm-viewport {
   border-radius: 10px;
+  overflow: hidden !important;
+  scrollbar-width: none;
+}
+
+.cli-session-terminal .xterm-screen canvas {
+  image-rendering: crisp-edges;
+}
+
+.cli-session-terminal .xterm-viewport::-webkit-scrollbar {
+  display: none;
 }
 
 .cli-session-terminal__fallback,

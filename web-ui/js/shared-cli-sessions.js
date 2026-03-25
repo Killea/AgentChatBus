@@ -1,6 +1,7 @@
 (function () {
-  const MIN_TERMINAL_COLS = 140;
-  const MIN_TERMINAL_ROWS = 40;
+  const MIN_TERMINAL_COLS = 160;
+  const MIN_TERMINAL_ROWS = 48;
+  const CLI_SESSION_CACHE_KEY = "acb.cliSessions.v1";
   const sessionsByThread = new Map();
   const activeSessionIdByThread = new Map();
   const terminalVisibilityByThread = new Map();
@@ -8,6 +9,7 @@
   const headlessOutputStateBySession = new Map();
   const threadAgentsByThread = new Map();
   const autoScrollPreferencesBySession = new Map();
+  const collapsedPanelsBySession = new Map();
   const ACTIVE_SESSION_STATES = new Set(["created", "starting", "running"]);
   const DELIVERY_BUSY_REPLY_STATES = new Set(["waiting_for_reply", "working", "streaming"]);
   const DELIVERY_BUSY_AUTOMATION_STATES = new Set([
@@ -76,6 +78,69 @@
     return sessionMap;
   }
 
+  function loadCachedCliSessionState() {
+    try {
+      const raw = window.localStorage?.getItem(CLI_SESSION_CACHE_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      return parsed && typeof parsed === "object" ? parsed : { threads: {}, agents: {} };
+    } catch {
+      return { threads: {}, agents: {} };
+    }
+  }
+
+  function saveCachedCliSessionState(state) {
+    try {
+      window.localStorage?.setItem(CLI_SESSION_CACHE_KEY, JSON.stringify(state));
+    } catch {
+      // Ignore storage failures and keep UI functional.
+    }
+  }
+
+  function persistThreadCache(threadId) {
+    const resolvedThreadId = String(threadId || "").trim();
+    if (!resolvedThreadId) {
+      return;
+    }
+    const state = loadCachedCliSessionState();
+    state.threads = state.threads || {};
+    state.agents = state.agents || {};
+    state.threads[resolvedThreadId] = getSessionsForThread(resolvedThreadId);
+    state.agents[resolvedThreadId] = Array.from((threadAgentsByThread.get(resolvedThreadId) || new Map()).values());
+    saveCachedCliSessionState(state);
+  }
+
+  function clearThreadCache(threadId) {
+    const resolvedThreadId = String(threadId || "").trim();
+    if (!resolvedThreadId) {
+      return;
+    }
+    const state = loadCachedCliSessionState();
+    if (state.threads && typeof state.threads === "object") {
+      delete state.threads[resolvedThreadId];
+    }
+    if (state.agents && typeof state.agents === "object") {
+      delete state.agents[resolvedThreadId];
+    }
+    saveCachedCliSessionState(state);
+  }
+
+  function restoreThreadFromCache(threadId) {
+    const resolvedThreadId = String(threadId || "").trim();
+    if (!resolvedThreadId) {
+      return false;
+    }
+    const state = loadCachedCliSessionState();
+    const cachedSessions = Array.isArray(state?.threads?.[resolvedThreadId]) ? state.threads[resolvedThreadId] : [];
+    const cachedAgents = Array.isArray(state?.agents?.[resolvedThreadId]) ? state.agents[resolvedThreadId] : [];
+    if (!cachedSessions.length) {
+      return false;
+    }
+    replaceThreadAgents(resolvedThreadId, cachedAgents);
+    replaceSessionsForThread(resolvedThreadId, cachedSessions);
+    renderThread(resolvedThreadId);
+    return true;
+  }
+
   function clearThreadSessions(threadId) {
     const sessionMap = sessionsByThread.get(threadId);
     sessionsByThread.delete(threadId);
@@ -92,6 +157,7 @@
         teardownTerminalInstance(sessionId);
       }
     }
+    clearThreadCache(threadId);
   }
 
   function sessionDisplayName(session) {
@@ -421,6 +487,7 @@
 
     sessionsByThread.set(threadId, nextMap);
     ensureSelectedSession(threadId);
+    persistThreadCache(threadId);
   }
 
   function upsertSession(session) {
@@ -430,6 +497,7 @@
     const sessionMap = getOrCreateSessionMap(session.thread_id);
     sessionMap.set(session.id, session);
     ensureSelectedSession(session.thread_id);
+    persistThreadCache(session.thread_id);
     if (session.thread_id === getActiveThreadId()) {
       renderThread(session.thread_id);
       if (window.AcbAgents?.rerenderStatusBar) {
@@ -485,6 +553,18 @@
     autoScrollPreferencesBySession.delete(sessionId);
   }
 
+  function isActivityCollapsed(sessionId) {
+    return collapsedPanelsBySession.get(sessionId) === true;
+  }
+
+  function setActivityCollapsed(sessionId, collapsed) {
+    collapsedPanelsBySession.set(sessionId, collapsed === true);
+  }
+
+  function toggleActivityCollapsed(sessionId) {
+    setActivityCollapsed(sessionId, !isActivityCollapsed(sessionId));
+  }
+
   function teardownAllTerminals() {
     for (const sessionId of Array.from(terminalInstances.keys())) {
       teardownTerminalInstance(sessionId);
@@ -525,8 +605,10 @@
       return;
     }
 
-    runtime.terminal.resize(nextCols, nextRows);
     runtime.fitAddon.fit();
+    if (runtime.terminal.cols !== nextCols || runtime.terminal.rows !== nextRows) {
+      runtime.terminal.resize(nextCols, nextRows);
+    }
     runtime.lastResizeCols = nextCols;
     runtime.lastResizeRows = nextRows;
 
@@ -651,10 +733,12 @@
       cursorBlink: true,
       convertEol: false,
       disableStdin: true,
+      cursorStyle: "block",
+      smoothScrollDuration: 0,
       fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-      fontSize: 10,
-      lineHeight: 1.2,
-      scrollback: 5000,
+      fontSize: 9,
+      lineHeight: 1.1,
+      scrollback: 8000,
       theme: {
         background: "#08111f",
         foreground: "#dbeafe",
@@ -1067,6 +1151,7 @@
       });
     }
     threadAgentsByThread.set(threadId, nextMap);
+    persistThreadCache(threadId);
   }
 
   function getParticipantAgent(session) {
@@ -1138,20 +1223,19 @@
         <section class="cli-session-log-panel cli-session-log-panel--activity">
           <div class="cli-session-log-panel__header">
             <div class="cli-session-log-panel__title">Activity Log</div>
-            <label class="cli-session-log-panel__autoscroll">
-              <input type="checkbox" data-role="activity-autoscroll" checked />
-              <span>Auto-scroll</span>
-            </label>
+            <div class="cli-session-log-panel__controls">
+              <label class="cli-session-log-panel__autoscroll">
+                <input type="checkbox" data-role="activity-autoscroll" checked />
+                <span>Auto-scroll</span>
+              </label>
+              <button type="button" class="btn-secondary btn-compact cli-session-log-panel__toggle" data-role="activity-toggle"></button>
+            </div>
           </div>
           <div class="cli-session-card__activity cli-session-log__body" data-role="activity"></div>
         </section>
         <section class="cli-session-log-panel cli-session-log-panel--terminal">
           <div class="cli-session-log-panel__header">
             <div class="cli-session-log-panel__title" data-role="terminal-title">${panelTitleForSession(session)}</div>
-            <label class="cli-session-log-panel__autoscroll">
-              <input type="checkbox" data-role="terminal-autoscroll" checked />
-              <span>Auto-scroll</span>
-            </label>
           </div>
           <div class="cli-session-terminal__shell cli-session-terminal__shell--card" data-role="terminal-shell">
             <div class="cli-session-terminal cli-session-terminal--card" data-role="terminal"></div>
@@ -1161,7 +1245,7 @@
     `;
 
     const activityAutoscrollEl = card.querySelector('[data-role="activity-autoscroll"]');
-    const terminalAutoscrollEl = card.querySelector('[data-role="terminal-autoscroll"]');
+    const activityToggleBtn = card.querySelector('[data-role="activity-toggle"]');
     if (activityAutoscrollEl) {
       activityAutoscrollEl.checked = getAutoScrollPreference(session.id, "activity");
       activityAutoscrollEl.addEventListener("change", () => {
@@ -1170,12 +1254,14 @@
         scrollLogBodyToBottom(activityEl, session.id, "activity");
       });
     }
-    if (terminalAutoscrollEl) {
-      terminalAutoscrollEl.checked = getAutoScrollPreference(session.id, "terminal");
-      terminalAutoscrollEl.addEventListener("change", () => {
-        setAutoScrollPreference(session.id, "terminal", terminalAutoscrollEl.checked);
-        const terminalEl = card.querySelector('[data-role="terminal"]');
-        scrollLogBodyToBottom(terminalEl, session.id, "terminal");
+    if (activityToggleBtn) {
+      activityToggleBtn.addEventListener("click", () => {
+        const currentSessionId = String(card.dataset.sessionId || session.id || "");
+        toggleActivityCollapsed(currentSessionId);
+        const currentSession = getSessionsForThread(getActiveThreadId()).find((item) => item.id === currentSessionId);
+        if (currentSession) {
+          updateSessionCardElement(card, currentSession);
+        }
       });
     }
 
@@ -1230,13 +1316,10 @@
     const primaryActionBtn = card.querySelector('[data-role="primary-action"]');
     const secondaryActionBtn = card.querySelector('[data-role="secondary-action"]');
     const activityAutoscrollEl = card.querySelector('[data-role="activity-autoscroll"]');
-    const terminalAutoscrollEl = card.querySelector('[data-role="terminal-autoscroll"]');
+    const activityToggleBtn = card.querySelector('[data-role="activity-toggle"]');
 
     if (activityAutoscrollEl) {
       activityAutoscrollEl.checked = getAutoScrollPreference(session.id, "activity");
-    }
-    if (terminalAutoscrollEl) {
-      terminalAutoscrollEl.checked = getAutoScrollPreference(session.id, "terminal");
     }
 
     if (avatarEl) {
@@ -1293,6 +1376,18 @@
       activityEl.innerHTML = buildActivityLogHtml(session);
       activityEl.title = `${timingSummary}\n${toolSummary}\n${streamSummary}`;
       scrollLogBodyToBottom(activityEl, session.id, "activity");
+    }
+    const activityPanelEl = activityEl ? activityEl.closest(".cli-session-log-panel--activity") : null;
+    const collapsed = isActivityCollapsed(session.id);
+    if (activityPanelEl) {
+      activityPanelEl.dataset.collapsed = collapsed ? "true" : "false";
+    }
+    if (activityEl) {
+      activityEl.hidden = collapsed;
+    }
+    if (activityToggleBtn) {
+      activityToggleBtn.textContent = collapsed ? "Expand" : "Collapse";
+      activityToggleBtn.title = collapsed ? "Show the activity log" : "Hide the activity log";
     }
 
     const isRunning = String(session?.state || "").trim().toLowerCase() === "running";
@@ -1683,6 +1778,7 @@
   window.AcbCliSessions = {
     refreshThread,
     renderThread,
+    restoreThreadFromCache,
     handleSseEvent,
     getDeliverySummaryForSeq,
     getSessionForAgent,
