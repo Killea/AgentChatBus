@@ -1077,6 +1077,10 @@
     ].join("");
   }
 
+  function shouldShowActivityLog(session) {
+    return !isInteractiveSession(session);
+  }
+
   function renderTimingSummary(session) {
     const parts = [];
     parts.push(`Requested ${formatToolEventTime(session?.created_at)}`);
@@ -1222,6 +1226,7 @@
     const card = document.createElement("section");
     card.className = "cli-session-card";
     card.dataset.sessionId = String(session.id || "");
+    const showActivityLog = shouldShowActivityLog(session);
     card.innerHTML = `
       <div class="cli-session-card__header">
         <div class="cli-session-card__identity">
@@ -1243,6 +1248,7 @@
         </div>
       </div>
       <div class="cli-session-card__body">
+        ${showActivityLog ? `
         <section class="cli-session-log-panel cli-session-log-panel--activity">
           <div class="cli-session-log-panel__header">
             <div class="cli-session-log-panel__title">Activity Log</div>
@@ -1255,7 +1261,7 @@
             </div>
           </div>
           <div class="cli-session-card__activity cli-session-log__body" data-role="activity"></div>
-        </section>
+        </section>` : ""}
         <section class="cli-session-log-panel cli-session-log-panel--terminal">
           <div class="cli-session-log-panel__header">
             <div class="cli-session-log-panel__title" data-role="terminal-title">${panelTitleForSession(session)}</div>
@@ -1392,7 +1398,7 @@
     if (terminalTitleEl) {
       terminalTitleEl.textContent = panelTitleForSession(session);
     }
-    if (activityEl) {
+    if (shouldShowActivityLog(session) && activityEl) {
       const timingSummary = renderTimingSummary(session);
       const toolSummary = renderToolEventSummary(session);
       const streamSummary = renderStreamEventSummary(session);
@@ -1402,13 +1408,13 @@
     }
     const activityPanelEl = activityEl ? activityEl.closest(".cli-session-log-panel--activity") : null;
     const collapsed = isActivityCollapsed(session.id);
-    if (activityPanelEl) {
+    if (shouldShowActivityLog(session) && activityPanelEl) {
       activityPanelEl.dataset.collapsed = collapsed ? "true" : "false";
     }
-    if (activityEl) {
+    if (shouldShowActivityLog(session) && activityEl) {
       activityEl.hidden = collapsed;
     }
-    if (activityToggleBtn) {
+    if (shouldShowActivityLog(session) && activityToggleBtn) {
       activityToggleBtn.textContent = collapsed ? "Expand" : "Collapse";
       activityToggleBtn.title = collapsed ? "Show the activity log" : "Hide the activity log";
     }

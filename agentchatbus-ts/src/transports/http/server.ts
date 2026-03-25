@@ -1378,15 +1378,7 @@ export function createHttpServer() {
     const params = request.params as { threadId: string };
     const body = (request.body || {}) as JsonBody;
     const summary = typeof body.summary === "string" ? body.summary : undefined;
-    const sessions = cliSessionManager.listSessionsForThread(params.threadId);
-    await Promise.allSettled(
-      sessions
-        .filter((session) => {
-          const state = String(session.state || "").trim().toLowerCase();
-          return state === "created" || state === "starting" || state === "running";
-        })
-        .map((session) => cliSessionManager.stopSession(session.id)),
-    );
+    await cliSessionManager.clearSessionsForThread(params.threadId);
     const ok = store.closeThread(params.threadId, summary);
     if (!ok) {
       reply.code(404);
@@ -1400,6 +1392,7 @@ export function createHttpServer() {
   });
   fastify.delete("/api/threads/:threadId", async (request, reply) => {
     const params = request.params as { threadId: string };
+    await cliSessionManager.clearSessionsForThread(params.threadId);
     const ok = store.deleteThread(params.threadId);
     if (!ok) {
       reply.code(404);

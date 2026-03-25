@@ -152,15 +152,6 @@
 
                     <div id="thread-agent-config" class="meeting-modal-section meeting-modal-section--compact">
                       <div class="meeting-modal-section__title">Agents To Start</div>
-                      <div class="settings-field thread-launch-shared-instruction">
-                        <label for="thread-launch-global-instruction">Shared Instruction</label>
-                        <textarea
-                          id="thread-launch-global-instruction"
-                          placeholder="Shared instruction for all agents"
-                          rows="5"
-                        ></textarea>
-                        <div class="settings-field-description">Applies to every agent by default. Leave an individual agent override blank to use this shared instruction.</div>
-                      </div>
                       <div class="thread-launch-toolbar">
                         <div class="thread-launch-toolbar__meta">
                           <span class="thread-launch-toolbar__count-label">Count</span>
@@ -192,6 +183,15 @@
                       <div id="thread-launch-model-summary" class="thread-launch-model-summary"></div>
                       <div id="thread-launch-agents-list" class="thread-launch-agents-list" data-agent-count="1"></div>
                       <div class="meeting-modal-hint">Agents launch sequentially. The first active agent becomes the administrator, and later agents join as participants.</div>
+                      <div class="settings-field thread-launch-shared-instruction">
+                        <label for="thread-launch-global-instruction">Shared Instruction</label>
+                        <textarea
+                          id="thread-launch-global-instruction"
+                          placeholder="Shared instruction for all agents"
+                          rows="5"
+                        ></textarea>
+                        <div class="settings-field-description">Applies to every agent by default. Leave an individual agent override blank to use this shared instruction.</div>
+                      </div>
                     </div>
 
                     <details id="thread-agent-side" class="meeting-modal-preview meeting-modal-preview--collapsible">

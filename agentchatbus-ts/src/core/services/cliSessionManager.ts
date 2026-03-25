@@ -1764,6 +1764,58 @@ export class CliSessionManager {
     return this.cloneSnapshot(runtime.snapshot);
   }
 
+  async removeSession(sessionId: string): Promise<CliSessionSnapshot | null> {
+    const runtime = this.runtimes.get(sessionId);
+    if (!runtime) {
+      return null;
+    }
+
+    await this.stopSession(sessionId);
+    const latestRuntime = this.runtimes.get(sessionId);
+    if (!latestRuntime) {
+      return null;
+    }
+
+    const snapshot = this.cloneSnapshot(latestRuntime.snapshot);
+    this.disposeInteractiveRuntimeState(latestRuntime);
+    latestRuntime.output = [];
+    latestRuntime.outputParseBuffer = "";
+    latestRuntime.controls = null;
+    latestRuntime.abortController = null;
+    latestRuntime.runPromise = null;
+    this.runtimes.delete(sessionId);
+    eventBus.emit({
+      type: "cli.session.removed",
+      payload: {
+        thread_id: snapshot.thread_id,
+        session_id: snapshot.id,
+        session: snapshot,
+      },
+    });
+    return snapshot;
+  }
+
+  async clearSessionsForThread(threadId: string): Promise<CliSessionSnapshot[]> {
+    const resolvedThreadId = String(threadId || "").trim();
+    if (!resolvedThreadId) {
+      return [];
+    }
+    const sessionIds = Array.from(this.runtimes.values())
+      .filter((runtime) => runtime.snapshot.thread_id === resolvedThreadId)
+      .map((runtime) => runtime.snapshot.id);
+    if (!sessionIds.length) {
+      return [];
+    }
+    const cleared: CliSessionSnapshot[] = [];
+    for (const sessionId of sessionIds) {
+      const removed = await this.removeSession(sessionId);
+      if (removed) {
+        cleared.push(removed);
+      }
+    }
+    return cleared;
+  }
+
   async sendInput(sessionId: string, text: string): Promise<{ ok: boolean; error?: string } | null> {
     const runtime = this.runtimes.get(sessionId);
     if (!runtime) {

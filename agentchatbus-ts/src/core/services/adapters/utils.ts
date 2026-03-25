@@ -6,6 +6,15 @@ import { resolve } from "node:path";
 import { getConfig } from "../../config/registry.js";
 import { DEFAULT_TERMINAL_COLS, DEFAULT_TERMINAL_ROWS } from "./constants.js";
 
+export type CliWorkspaceResolutionSource = "configured" | "process_cwd" | "user_home";
+
+export type CliWorkspaceResolution = {
+  workspace: string;
+  source: CliWorkspaceResolutionSource;
+  configuredWorkspace: string | null;
+  candidates: string[];
+};
+
 function normalizePathCandidate(value: string | null | undefined): string | undefined {
   const raw = String(value || "").trim();
   if (!raw) {
@@ -39,10 +48,54 @@ export function getDefaultWorkspacePathCandidates(): string[] {
   return candidates;
 }
 
+export function resolveDefaultWorkspacePath(): CliWorkspaceResolution {
+  const config = getConfig();
+  const configuredWorkspace = normalizePathCandidate(config.cliWorkspace) || null;
+  const processWorkspace = normalizePathCandidate(process.cwd());
+  const userHomeWorkspace = normalizePathCandidate(homedir());
+  const candidates = [
+    configuredWorkspace,
+    processWorkspace,
+    userHomeWorkspace,
+  ].filter((value, index, list): value is string => Boolean(value) && list.indexOf(value) === index);
+
+  if (configuredWorkspace && isUsableWorkspacePath(configuredWorkspace)) {
+    return {
+      workspace: configuredWorkspace,
+      source: "configured",
+      configuredWorkspace,
+      candidates,
+    };
+  }
+
+  if (processWorkspace && isUsableWorkspacePath(processWorkspace)) {
+    return {
+      workspace: processWorkspace,
+      source: "process_cwd",
+      configuredWorkspace,
+      candidates,
+    };
+  }
+
+  if (userHomeWorkspace && isUsableWorkspacePath(userHomeWorkspace)) {
+    return {
+      workspace: userHomeWorkspace,
+      source: "user_home",
+      configuredWorkspace,
+      candidates,
+    };
+  }
+
+  return {
+    workspace: userHomeWorkspace || processWorkspace || process.cwd(),
+    source: userHomeWorkspace ? "user_home" : "process_cwd",
+    configuredWorkspace,
+    candidates,
+  };
+}
+
 export function getDefaultWorkspacePath(): string {
-  const candidates = getDefaultWorkspacePathCandidates();
-  const resolved = candidates.find((candidate) => isUsableWorkspacePath(candidate));
-  return resolved || normalizePathCandidate(homedir()) || process.cwd();
+  return resolveDefaultWorkspacePath().workspace;
 }
 
 export function normalizeWorkspacePath(explicitPath?: string): string {
