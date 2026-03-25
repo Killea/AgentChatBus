@@ -487,6 +487,11 @@ export class MemoryStore {
       version: BUS_VERSION,
       runtime: `node ${process.version}`,
       transport: "http+sse",
+      pty: {
+        mode: cfg.ptyUseConpty ? "conpty" : "winpty",
+        conpty_enabled: Boolean(cfg.ptyUseConpty),
+        platform: process.platform,
+      },
       startup_mode: startupMode,
       // TS-only diagnostics enhancement.
       // Python backend may not include this object; UI must handle absence.

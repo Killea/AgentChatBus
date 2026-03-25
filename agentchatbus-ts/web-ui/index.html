@@ -552,6 +552,28 @@
         } catch { return iso; }
       }
 
+      function _ptyModeMeta(diagnostics) {
+        const mode = String(diagnostics?.pty?.mode || '').trim().toLowerCase();
+        const platform = String(diagnostics?.pty?.platform || '').trim().toLowerCase();
+        const conptyEnabled = diagnostics?.pty?.conpty_enabled === true;
+        if (mode === 'conpty' || conptyEnabled) {
+          return {
+            label: 'ConPTY',
+            detail: platform ? `${platform} native backend` : 'native backend',
+          };
+        }
+        if (mode === 'winpty') {
+          return {
+            label: 'WinPTY fallback',
+            detail: platform ? `${platform} compatibility backend` : 'compatibility backend',
+          };
+        }
+        return {
+          label: '—',
+          detail: platform || 'unknown',
+        };
+      }
+
       function _buildHtml(m, connected) {
         const dot = connected ? '<span class="srv-tip-dot srv-tip-dot--on"></span>' : '<span class="srv-tip-dot srv-tip-dot--off"></span>';
         const stateLabel = connected ? 'Connected' : 'Reconnecting…';
@@ -568,6 +590,7 @@
         const runtime = m?.runtime || '—';
         const version = m?.version || '—';
         const transport = m?.transport || '—';
+        const ptyMode = _ptyModeMeta(m);
         const managedBy = _managedByText(m);
         const ownershipAssignable = m?.management?.ownership_assignable;
         const ownerId = m?.management?.owner_instance_id || '—';
@@ -608,6 +631,10 @@
             <div class="srv-tip-row srv-tip-row--sub">
               <span class="srv-tip-key">Transport</span>
               <span class="srv-tip-val">${transport}</span>
+            </div>
+            <div class="srv-tip-row srv-tip-row--sub">
+              <span class="srv-tip-key">PTY Mode</span>
+              <span class="srv-tip-val">${ptyMode.label} (${ptyMode.detail})</span>
             </div>
             <div class="srv-tip-row">
               <span class="srv-tip-key">Startup Mode</span>

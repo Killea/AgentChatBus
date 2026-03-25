@@ -309,6 +309,11 @@ export function createHttpServer() {
       version: BUS_VERSION,
       runtime: `node ${process.version}`,
       transport: "http+sse",
+      pty: {
+        mode: cfg.ptyUseConpty ? "conpty" : "winpty",
+        conpty_enabled: Boolean(cfg.ptyUseConpty),
+        platform: process.platform,
+      },
       startup_mode: startupMode,
       // TS-only diagnostics enhancement:
       // Python backend may omit this shape. Web clients should treat it as optional.
