@@ -866,10 +866,11 @@ body[data-theme="light"] .thread-item .ti-pin-btn {
 }
 
 #cli-session-strip {
-  flex: 0 0 clamp(420px, 36vw, 620px);
+  flex: 0 0 auto;
   min-width: 0;
-  width: clamp(420px, 36vw, 620px);
-  max-width: clamp(420px, 36vw, 620px);
+  width: max-content;
+  min-width: 0;
+  max-width: none;
   min-height: 0;
   padding: 12px 14px 14px;
   border-left: 1px solid var(--border);
@@ -879,7 +880,8 @@ body[data-theme="light"] .thread-item .ti-pin-btn {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  overflow: hidden;
+  overflow-y: hidden;
+  overflow-x: visible;
 }
 
 #cli-session-strip[hidden] {
@@ -1001,7 +1003,8 @@ body[data-theme="light"] .thread-item .ti-pin-btn {
 .cli-session-detail {
   min-height: 0;
   flex: 1;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: auto;
   padding-right: 2px;
 }
 
@@ -1009,6 +1012,8 @@ body[data-theme="light"] .thread-item .ti-pin-btn {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  width: max-content;
+  min-width: 100%;
 }
 
 .cli-session-card {
@@ -1019,7 +1024,8 @@ body[data-theme="light"] .thread-item .ti-pin-btn {
   min-height: 680px;
   min-width: 0;
   height: auto;
-  width: 100%;
+  width: max-content;
+  max-width: none;
   padding: 12px;
   border-radius: 16px;
   border: 1px solid rgba(125, 211, 252, .16);
@@ -1502,14 +1508,15 @@ body[data-theme="light"] .cli-session-detail__empty {
   min-height: 0;
   display: flex;
   flex-direction: row;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   position: relative;
   gap: 0;
 }
 
 #chat-main-column {
-  flex: 1 1 60%;
-  min-width: 0;
+  flex: 1 0 640px;
+  min-width: 640px;
   min-height: 0;
   display: flex;
   position: relative;

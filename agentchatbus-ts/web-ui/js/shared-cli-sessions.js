@@ -594,23 +594,18 @@
       return;
     }
 
-    const dims = runtime.fitAddon.proposeDimensions();
-    if (!dims || !Number.isFinite(dims.cols) || !Number.isFinite(dims.rows)) {
-      return;
-    }
-
-    const nextCols = Math.max(MIN_TERMINAL_COLS, Math.floor(dims.cols));
-    const nextRows = Math.max(MIN_TERMINAL_ROWS, Math.floor(dims.rows));
+    const nextCols = MIN_TERMINAL_COLS;
+    const nextRows = MIN_TERMINAL_ROWS;
     if (runtime.lastResizeCols === nextCols && runtime.lastResizeRows === nextRows) {
       return;
     }
 
-    runtime.fitAddon.fit();
     if (runtime.terminal.cols !== nextCols || runtime.terminal.rows !== nextRows) {
       runtime.terminal.resize(nextCols, nextRows);
     }
     runtime.lastResizeCols = nextCols;
     runtime.lastResizeRows = nextRows;
+    applyTerminalPreferredWidth(sessionId, nextCols);
 
     const uiAgent = await getUiAgent();
     if (!uiAgent) {
@@ -658,6 +653,41 @@
         writeTerminalNotice(sessionId, error instanceof Error ? error.message : String(error));
       });
     }, 80);
+  }
+
+  function applyTerminalPreferredWidth(sessionId, cols = null) {
+    const runtime = getTerminalInstance(sessionId);
+    if (!runtime?.terminal || !runtime.hostEl) {
+      return;
+    }
+
+    const terminalCols = Number.isFinite(Number(cols)) ? Number(cols) : Number(runtime.terminal.cols || 0);
+    if (!terminalCols) {
+      return;
+    }
+
+    const cssDimensions = runtime.terminal?._core?._renderService?.dimensions?.css;
+    const cellWidth = Number(cssDimensions?.cell?.width || 0);
+    if (!Number.isFinite(cellWidth) || cellWidth <= 0) {
+      return;
+    }
+
+    const shellEl = runtime.hostEl.closest('[data-role="terminal-shell"]');
+    const cardEl = runtime.hostEl.closest(".cli-session-card");
+    const headerEl = cardEl?.querySelector(".cli-session-card__header");
+    const shellPaddingPx = 24;
+    const cardPaddingPx = 24;
+    const shellWidth = Math.ceil((terminalCols * cellWidth) + shellPaddingPx);
+    const headerWidth = headerEl ? Math.ceil(headerEl.scrollWidth + cardPaddingPx) : 0;
+    const cardWidth = Math.max(shellWidth + cardPaddingPx, headerWidth);
+
+    if (shellEl) {
+      shellEl.style.width = `${shellWidth}px`;
+    }
+    runtime.hostEl.style.width = `${shellWidth}px`;
+    if (cardEl) {
+      cardEl.style.width = `${cardWidth}px`;
+    }
   }
 
   function appendTerminalOutput(sessionId, entry) {
@@ -768,14 +798,7 @@
     };
     terminalInstances.set(session.id, runtime);
     terminal.resize(MIN_TERMINAL_COLS, MIN_TERMINAL_ROWS);
-
-    if (typeof ResizeObserver === "function") {
-      runtime.resizeObserver = new ResizeObserver(() => {
-        scheduleTerminalResize(session.id);
-      });
-      runtime.resizeObserver.observe(hostEl);
-    }
-
+    applyTerminalPreferredWidth(session.id, MIN_TERMINAL_COLS);
     scheduleTerminalResize(session.id);
 
     try {
