@@ -69,7 +69,10 @@ function decorateAgentsForPresentation<T extends Record<string, any>>(agents: T[
       ...agent,
       configured_display_name: configuredDisplayName || undefined,
       preferred_display_name: preferredDisplayName || legacyFallback,
-      display_name: preferredDisplayName || legacyFallback,
+      // Keep API compatibility: `display_name` should represent the configured/user-facing
+      // name (or legacy fallback), while `preferred_display_name` provides the runtime
+      // auto-resolved presentation alias.
+      display_name: configuredDisplayName || legacyFallback,
     };
   });
 }

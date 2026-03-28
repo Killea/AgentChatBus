@@ -64,7 +64,7 @@ describe("msg_wait abort integration", () => {
               after_seq: connected.current_seq,
               agent_id: agentId,
               token,
-              timeout_ms: 30_000,
+              timeout_ms: 10_000,
               return_format: "json",
             },
           },
@@ -89,5 +89,5 @@ describe("msg_wait abort integration", () => {
     } finally {
       await server.close();
     }
-  });
+  }, 15_000);
 });

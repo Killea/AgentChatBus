@@ -74,6 +74,24 @@ function makeHeadlessSession(
   };
 }
 
+function postWithSync(
+  store: MemoryStore,
+  threadId: string,
+  author: string,
+  content: string,
+  role: "user" | "assistant" | "system" = "user",
+): void {
+  const sync = store.issueSyncContext(threadId, role === "assistant" ? author : undefined);
+  store.postMessage({
+    threadId,
+    author,
+    content,
+    role,
+    expectedLastSeq: sync.current_seq,
+    replyToken: sync.reply_token,
+  });
+}
+
 class FakeCliSessionManager {
   readonly wakeCalls: Array<{ sessionId: string; prompt: string }> = [];
   readonly restartCalls: string[] = [];
@@ -158,6 +176,7 @@ describe("CliMeetingOrchestrator agent_mcp wake handling", () => {
       makeInteractiveSession({
         id: "session-a",
         thread_id: thread.id,
+        adapter: "cursor",
         participant_agent_id: agentA.id,
         participant_display_name: agentA.display_name,
         participant_role: "administrator",
@@ -367,10 +386,10 @@ describe("CliMeetingOrchestrator agent_mcp wake handling", () => {
 
     expect(fakeManager.wakeCalls).toHaveLength(0);
 
-    await vi.advanceTimersByTimeAsync(29_000);
+    await vi.advanceTimersByTimeAsync(3_000);
     expect(fakeManager.wakeCalls).toHaveLength(0);
 
-    await vi.advanceTimersByTimeAsync(1_100);
+    await vi.advanceTimersByTimeAsync(1_200);
     expect(fakeManager.wakeCalls).toHaveLength(1);
     expect(fakeManager.wakeCalls[0]?.prompt).toContain("prefer to use msg_post");
 
@@ -414,19 +433,8 @@ describe("CliMeetingOrchestrator agent_mcp wake handling", () => {
       fakeManager as unknown as CliSessionManager,
     );
 
-    store.postMessage({
-      threadId: thread.id,
-      author: "Hank",
-      content: "Please answer.",
-      role: "user",
-    });
-
-    store.postMessage({
-      threadId: thread.id,
-      author: agentA.id,
-      content: "I can take this one.",
-      role: "assistant",
-    });
+    postWithSync(store, thread.id, "Hank", "Please answer.", "user");
+    postWithSync(store, thread.id, agentA.id, "I can take this one.", "assistant");
 
     await Promise.resolve();
 
@@ -510,12 +518,7 @@ describe("CliMeetingOrchestrator agent_mcp wake handling", () => {
       fakeManager as unknown as CliSessionManager,
     );
 
-    store.postMessage({
-      threadId: thread.id,
-      author: "Hank",
-      content: "Please pick this up in MCP mode.",
-      role: "user",
-    });
+    postWithSync(store, thread.id, "Hank", "Please pick this up in MCP mode.", "user");
 
     await Promise.resolve();
 

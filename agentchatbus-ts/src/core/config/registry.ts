@@ -69,6 +69,11 @@ export interface AppConfig {
   launchAgentId: string | null;
   launchAgentToken: string | null;
   launchAgentDisplayName: string | null;
+  launchCursorSessionId: string | null;
+  launchCodexThreadId: string | null;
+  launchClaudeSessionId: string | null;
+  launchGeminiSessionId: string | null;
+  launchCopilotSessionId: string | null;
   ownerBootToken: string;
   ideHeartbeatTimeoutMs: number;
 }
@@ -1278,6 +1283,86 @@ export const CONFIG_REGISTRY: ReadonlyArray<ConfigDescriptor> = [
     restartRequired: false,
     order: 289,
     resolve: () => parseNullableString(getEnvValue("AGENTCHATBUS_AGENT_TOKEN")),
+  },
+  {
+    key: "LAUNCH_CURSOR_SESSION_ID",
+    envVar: "AGENTCHATBUS_CURSOR_SESSION_ID",
+    resolvedField: "launchCursorSessionId",
+    type: "string",
+    kind: "text",
+    defaultValue: null,
+    label: "Launch Cursor Session ID",
+    description: "Runtime launch override for resuming a Cursor headless session.",
+    section: "internal",
+    scope: "hidden",
+    sensitivity: "runtime",
+    restartRequired: false,
+    order: 291,
+    resolve: () => parseNullableString(getEnvValue("AGENTCHATBUS_CURSOR_SESSION_ID")),
+  },
+  {
+    key: "LAUNCH_CODEX_THREAD_ID",
+    envVar: "AGENTCHATBUS_CODEX_THREAD_ID",
+    resolvedField: "launchCodexThreadId",
+    type: "string",
+    kind: "text",
+    defaultValue: null,
+    label: "Launch Codex Thread ID",
+    description: "Runtime launch override for resuming a Codex headless thread id.",
+    section: "internal",
+    scope: "hidden",
+    sensitivity: "runtime",
+    restartRequired: false,
+    order: 292,
+    resolve: () => parseNullableString(getEnvValue("AGENTCHATBUS_CODEX_THREAD_ID")),
+  },
+  {
+    key: "LAUNCH_CLAUDE_SESSION_ID",
+    envVar: "AGENTCHATBUS_CLAUDE_SESSION_ID",
+    resolvedField: "launchClaudeSessionId",
+    type: "string",
+    kind: "text",
+    defaultValue: null,
+    label: "Launch Claude Session ID",
+    description: "Runtime launch override for resuming a Claude headless session.",
+    section: "internal",
+    scope: "hidden",
+    sensitivity: "runtime",
+    restartRequired: false,
+    order: 293,
+    resolve: () => parseNullableString(getEnvValue("AGENTCHATBUS_CLAUDE_SESSION_ID")),
+  },
+  {
+    key: "LAUNCH_GEMINI_SESSION_ID",
+    envVar: "AGENTCHATBUS_GEMINI_SESSION_ID",
+    resolvedField: "launchGeminiSessionId",
+    type: "string",
+    kind: "text",
+    defaultValue: null,
+    label: "Launch Gemini Session ID",
+    description: "Runtime launch override for resuming a Gemini headless session.",
+    section: "internal",
+    scope: "hidden",
+    sensitivity: "runtime",
+    restartRequired: false,
+    order: 294,
+    resolve: () => parseNullableString(getEnvValue("AGENTCHATBUS_GEMINI_SESSION_ID")),
+  },
+  {
+    key: "LAUNCH_COPILOT_SESSION_ID",
+    envVar: "AGENTCHATBUS_COPILOT_SESSION_ID",
+    resolvedField: "launchCopilotSessionId",
+    type: "string",
+    kind: "text",
+    defaultValue: null,
+    label: "Launch Copilot Session ID",
+    description: "Runtime launch override for resuming a Copilot headless session.",
+    section: "internal",
+    scope: "hidden",
+    sensitivity: "runtime",
+    restartRequired: false,
+    order: 295,
+    resolve: () => parseNullableString(getEnvValue("AGENTCHATBUS_COPILOT_SESSION_ID")),
   },
   {
     key: "LAUNCH_AGENT_DISPLAY_NAME",

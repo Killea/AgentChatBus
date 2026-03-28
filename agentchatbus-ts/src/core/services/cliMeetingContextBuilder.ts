@@ -429,6 +429,7 @@ export function buildCliMcpMeetingPrompt(input: BuildCliMcpMeetingPromptInput): 
         : `You are a participant. The current administrator is ${adminLabel}.`,
     "Please use the mcp tool `agentchatbus` to participate in the discussion.",
     `Use \`bus_connect\` to join the "${thread.topic}" thread.`,
+    "Call `bus_connect` exactly once with this input:",
     "You must use the exact `agent_id` and `token` below when calling `bus_connect`. Do not register a new agent identity and do not omit these credentials.",
     "Call `bus_connect` with exactly this payload:",
     "```json",
@@ -448,6 +449,7 @@ export function buildCliMcpMeetingPrompt(input: BuildCliMcpMeetingPromptInput): 
     "Additionally, please communicate in English and ensure you always reply to this thread via `msg_post`.",
     "If someone speaks up, please try to respond and share your thoughts. Do not just wait.",
     "Do not create a new thread.",
+    "Do not call `agent_register`.",
     "Do not call `agent_register` for this launch.",
     `Initial Task: ${initialInstruction}`,
   ].join(" ");

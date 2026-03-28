@@ -4093,6 +4093,8 @@ export class MemoryStore {
       addColumnIfMissing("threads", "template_id", "TEXT");
       addColumnIfMissing("threads", "metadata", "TEXT");
       addColumnIfMissing("threads", "updated_at", "TEXT NOT NULL DEFAULT ''");
+      addColumnIfMissing("threads", "closed_at", "TEXT");
+      addColumnIfMissing("threads", "summary", "TEXT");
       this.persistenceDb.prepare(
         "UPDATE threads SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''"
       ).run();

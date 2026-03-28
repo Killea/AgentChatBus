@@ -113,7 +113,7 @@ describe('Export Markdown', () => {
     
     const md = store.exportThreadMarkdown(thread.id);
     // Should use agent name as author_name in export
-    expect(md).toContain('### VS Code (GPT-4)');
+    expect(md).toContain(`### ${agent.display_name || agent.name}`);
   });
 
   it('export format includes proper separators', () => {

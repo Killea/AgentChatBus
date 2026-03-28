@@ -54,10 +54,12 @@ describe("close_meeting MCP integration", () => {
       metadata: {
         event: "meeting_closed",
         closed_by_agent_id: admin.id,
-        closed_by_name: admin.name,
+        closed_by_name: admin.display_name || admin.name,
       },
     });
-    expect(String(messages.at(-1)?.content || "")).toContain(`administrator ${admin.name}`);
+    expect(String(messages.at(-1)?.content || "")).toContain(
+      `administrator ${admin.display_name || admin.name}`,
+    );
   });
 
   it("rejects participants who are not thread administrators", async () => {

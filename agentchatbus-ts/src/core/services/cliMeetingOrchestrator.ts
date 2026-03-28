@@ -940,6 +940,7 @@ export class CliMeetingOrchestrator {
     }
     const deliveredSeq = getObservedDeliveredSeq(session);
     const acknowledgedSeq = Number(session.last_acknowledged_seq) || 0;
+    const effectiveAcknowledgedSeq = Math.max(acknowledgedSeq, deliveredSeq);
     const pendingSeq = this.pendingDeliverySeqBySession.get(session.id) || 0;
     const latestSeq = Number.isFinite(Number(requestedTargetSeq))
       ? Number(requestedTargetSeq)
@@ -958,8 +959,8 @@ export class CliMeetingOrchestrator {
       );
       return;
     }
-    if (targetSeq <= acknowledgedSeq) {
-      if (pendingSeq > 0 && pendingSeq <= acknowledgedSeq) {
+    if (targetSeq <= effectiveAcknowledgedSeq) {
+      if (pendingSeq > 0 && pendingSeq <= effectiveAcknowledgedSeq) {
         this.pendingDeliverySeqBySession.delete(session.id);
         this.clearWakeRetry(session.id);
       }
