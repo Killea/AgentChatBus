@@ -552,6 +552,28 @@
         } catch { return iso; }
       }
 
+      function _ptyModeMeta(diagnostics) {
+        const mode = String(diagnostics?.pty?.mode || '').trim().toLowerCase();
+        const platform = String(diagnostics?.pty?.platform || '').trim().toLowerCase();
+        const conptyEnabled = diagnostics?.pty?.conpty_enabled === true;
+        if (mode === 'conpty' || conptyEnabled) {
+          return {
+            label: 'ConPTY',
+            detail: platform ? `${platform} native backend` : 'native backend',
+          };
+        }
+        if (mode === 'winpty') {
+          return {
+            label: 'WinPTY fallback',
+            detail: platform ? `${platform} compatibility backend` : 'compatibility backend',
+          };
+        }
+        return {
+          label: '—',
+          detail: platform || 'unknown',
+        };
+      }
+
       function _buildHtml(m, connected) {
         const dot = connected ? '<span class="srv-tip-dot srv-tip-dot--on"></span>' : '<span class="srv-tip-dot srv-tip-dot--off"></span>';
         const stateLabel = connected ? 'Connected' : 'Reconnecting…';
@@ -568,6 +590,7 @@
         const runtime = m?.runtime || '—';
         const version = m?.version || '—';
         const transport = m?.transport || '—';
+        const ptyMode = _ptyModeMeta(m);
         const managedBy = _managedByText(m);
         const ownershipAssignable = m?.management?.ownership_assignable;
         const ownerId = m?.management?.owner_instance_id || '—';
@@ -608,6 +631,10 @@
             <div class="srv-tip-row srv-tip-row--sub">
               <span class="srv-tip-key">Transport</span>
               <span class="srv-tip-val">${transport}</span>
+            </div>
+            <div class="srv-tip-row srv-tip-row--sub">
+              <span class="srv-tip-key">PTY Mode</span>
+              <span class="srv-tip-val">${ptyMode.label} (${ptyMode.detail})</span>
             </div>
             <div class="srv-tip-row">
               <span class="srv-tip-key">Startup Mode</span>
@@ -838,7 +865,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     function showAgentTooltip(anchorEl, agent) {
       if (!anchorEl || !agent) return;
       clearAgentTooltipHideTimer();
-      const alias = String(agent.preferred_display_name ?? agent.display_name ?? agent.name ?? 'Unknown').trim() || 'Unknown';
+      const alias = String(agent.display_name ?? agent.name ?? 'Unknown').trim() || 'Unknown';
       const agentId = String(agent.id ?? agent.agent_id ?? '').trim();
       const ide = String(agent.ide ?? 'Unknown').trim() || 'Unknown';
       const model = String(agent.model ?? 'Unknown').trim() || 'Unknown';
@@ -1699,15 +1726,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         role: m.role,
         content_preview: m.content?.slice(0, 50)
       });
-      const currentAuthorAgent = currentAgents?.find((a) => a.id === String(m.author_id ?? '')) || null;
-      const authorLabel = String(
-        currentAuthorAgent?.preferred_display_name
-        ?? currentAuthorAgent?.display_name
-        ?? currentAuthorAgent?.name
-        ?? m.author_name
-        ?? m.author
-        ?? ''
-      ).trim() || 'unknown';
+      const authorLabel = String(m.author_name ?? m.author ?? '').trim() || 'unknown';
       const isSystem = String(m.role ?? '').toLowerCase() === 'system' || authorLabel.toLowerCase() === 'system';
       const isHuman = !m.author_id && (
         authorLabel.toLowerCase() === 'human'
@@ -1716,7 +1735,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       const authorKey = isHuman ? 'human' : (isSystem ? 'system' : String(m.author_id ?? authorLabel));
       const color = authorColor(authorKey);
       const avatarEmoji = String(m.author_emoji || '').trim()
-        || String(currentAuthorAgent?.emoji || '').trim()
+        || String(currentAgents?.find((a) => a.id === String(m.author_id ?? ''))?.emoji || '').trim()
         || (isHuman ? '👤' : (isSystem ? '⚙️' : '🤖'));
       
       const analysis = window.AcbUtils.getEmojiAnalysis(avatarEmoji);
@@ -1860,11 +1879,10 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
           avatarEl.classList.add('msg-avatar-interactive');
           // Get full agent details from current agents list
           const authorId = String(m.author_id ?? authorLabel);
-          const agentData = currentAuthorAgent || currentAgents?.find(a => a.id === authorId) || {
+          const agentData = currentAgents?.find(a => a.id === authorId) || {
             id: authorId,
             agent_id: authorId,
             name: authorLabel,
-            preferred_display_name: authorLabel,
             display_name: authorLabel,
             ide: 'Unknown',
             model: 'Unknown',

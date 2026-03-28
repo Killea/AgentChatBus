@@ -98,7 +98,7 @@
         <div class="ti-waiting-agents" aria-label="${esc(`${waitingAgents.length} waiting agents`)}">
           ${visibleAgents
             .map((agent, index) => {
-              const label = esc(String(agent.preferred_display_name || agent.display_name || agent.id || "Unknown"));
+              const label = esc(String(agent.display_name || agent.id || "Unknown"));
               return `<span class="ti-waiting-agent" title="${label}" aria-label="${label}">${index + 1}</span>`;
             })
             .join("")}

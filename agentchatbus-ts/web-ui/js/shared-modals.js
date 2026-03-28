@@ -1409,13 +1409,13 @@
                          config.adapter === "gemini" ? "Gemini" :
                          config.adapter === "copilot" ? "Copilot" : "Codex";
     const modeLabel = config.mode === "headless" ? "Headless CLI" : "Interactive PTY";
-    const customDisplayName = String(config.displayName || "").trim();
+    const displayName = buildDefaultParticipantName(config);
     const result = await api("/api/agents/register", {
       method: "POST",
       body: JSON.stringify({
         ide: adapterLabel,
         model: String(config.model || "").trim() || modeLabel,
-        display_name: customDisplayName || undefined,
+        display_name: displayName,
         emoji: String(config.emoji || "").trim() || undefined,
       }),
     });
@@ -1575,6 +1575,16 @@
     });
     if (t) {
       const followupLaunchConfigs = shouldLaunchFirstAgent ? launchAgentConfigs.slice(1) : [];
+      if (shouldLaunchFirstAgent && participantAgent && firstAgentConfig) {
+        await createParticipantSession(api, {
+          threadId: t.id,
+          threadTopic: topic,
+          uiAgent,
+          participantAgent,
+          config: firstAgentConfig,
+          isFirstAgent: true,
+        });
+      }
       const syncContext =
         typeof t.current_seq === "number" && t.reply_token
           ? {
@@ -1583,62 +1593,42 @@
               reply_window: t.reply_window || null,
             }
           : null;
-      void selectThread(t.id, t.topic, t.status, syncContext).catch((error) => {
-        console.error("[Thread Create] Failed to open created thread", error);
-      });
-      void refreshThreads().catch((error) => {
-        console.error("[Thread Create] Failed to refresh thread list", error);
-      });
+      await refreshThreads();
+      selectThread(t.id, t.topic, t.status, syncContext);
+      if (window.AcbChat && typeof window.AcbChat.refreshThreadAdmin === "function") {
+        await window.AcbChat.refreshThreadAdmin(t.id, api);
+      }
+      if (window.AcbCliSessions && typeof window.AcbCliSessions.refreshThread === "function") {
+        await window.AcbCliSessions.refreshThread(t.id, api);
+      }
       if (shouldLaunchFirstAgent && window.AcbCliSessions?.setTerminalVisibility) {
         window.AcbCliSessions.setTerminalVisibility(t.id, true);
       }
-      void (async () => {
-        let shouldRefreshCliSessions = false;
-        if (shouldLaunchFirstAgent && participantAgent && firstAgentConfig) {
-          const firstSession = await createParticipantSession(api, {
-            threadId: t.id,
-            threadTopic: topic,
-            uiAgent,
-            participantAgent,
-            config: firstAgentConfig,
-            isFirstAgent: true,
-          });
-          if (!firstSession) {
-            console.error("[Thread Create] Failed to create target agent CLI session 1");
-          } else {
-            shouldRefreshCliSessions = true;
-          }
+      for (let index = 0; index < followupLaunchConfigs.length; index += 1) {
+        const config = followupLaunchConfigs[index];
+        if (launchIntervalMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, launchIntervalMs));
         }
-        for (let index = 0; index < followupLaunchConfigs.length; index += 1) {
-          const config = followupLaunchConfigs[index];
-          if (launchIntervalMs > 0) {
-            await new Promise((resolve) => setTimeout(resolve, launchIntervalMs));
-          }
-          const nextParticipantAgent = await registerParticipantAgent(api, config);
-          if (!nextParticipantAgent) {
-            console.error(`[Thread Create] Could not register target agent ${index + 2}`);
-            continue;
-          }
-          const session = await createParticipantSession(api, {
-            threadId: t.id,
-            threadTopic: topic,
-            uiAgent,
-            participantAgent: nextParticipantAgent,
-            config,
-            isFirstAgent: false,
-          });
-          if (!session) {
-            console.error(`[Thread Create] Failed to create target agent CLI session ${index + 2}`);
-            continue;
-          }
-          shouldRefreshCliSessions = true;
+        const nextParticipantAgent = await registerParticipantAgent(api, config);
+        if (!nextParticipantAgent) {
+          console.error(`[Thread Create] Could not register target agent ${index + 2}`);
+          continue;
         }
-        if (shouldRefreshCliSessions && window.AcbCliSessions && typeof window.AcbCliSessions.refreshThread === "function") {
-          await window.AcbCliSessions.refreshThread(t.id, api);
+        const session = await createParticipantSession(api, {
+          threadId: t.id,
+          threadTopic: topic,
+          uiAgent,
+          participantAgent: nextParticipantAgent,
+          config,
+          isFirstAgent: false,
+        });
+        if (!session) {
+          console.error(`[Thread Create] Failed to create target agent CLI session ${index + 2}`);
         }
-      })().catch((error) => {
-        console.error("[Thread Create] Background CLI launch failed", error);
-      });
+      }
+      if (followupLaunchConfigs.length > 0 && window.AcbCliSessions && typeof window.AcbCliSessions.refreshThread === "function") {
+        await window.AcbCliSessions.refreshThread(t.id, api);
+      }
     }
   }
 

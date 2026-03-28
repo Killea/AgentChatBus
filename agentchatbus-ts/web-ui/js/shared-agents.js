@@ -136,7 +136,7 @@
 
     allAgents.forEach((a) => {
       const key = String(a.id ?? a.agent_id ?? a.name ?? "").trim();
-      const label = String(a.preferred_display_name ?? a.display_name ?? a.name ?? "").trim();
+      const label = String(a.display_name ?? a.name ?? "").trim();
       if (a.is_online && key) {
         onlineAgentKeys.add(key);
         onlineAgentLabelsByKey.set(key, label || key);
@@ -201,8 +201,8 @@
         return a.is_online ? -1 : 1;
       }
       // Then sort by name alphabetically for stable order
-      const nameA = String(a.preferred_display_name ?? a.display_name ?? a.name ?? "").toLowerCase();
-      const nameB = String(b.preferred_display_name ?? b.display_name ?? b.name ?? "").toLowerCase();
+      const nameA = String(a.display_name ?? a.name ?? "").toLowerCase();
+      const nameB = String(b.display_name ?? b.name ?? "").toLowerCase();
       return nameA.localeCompare(nameB);
     });
 
@@ -227,7 +227,7 @@
       const state = unifiedStatus?.primaryLabel || getAgentState(a);
       const avatarEmoji = unifiedStatus?.avatarEmoji || String(a?.emoji || "").trim() || "🤖";
       const stateEmoji = unifiedStatus?.stateEmoji || getStateEmoji(state);
-      const label = String(a.preferred_display_name ?? a.display_name ?? a.name ?? "").trim() || "Unknown";
+      const label = String(a.display_name ?? a.name ?? "").trim() || "Unknown";
       const currentAdminId = String(window.__acbActiveThreadAdmin?.admin_id || "").trim();
       const isAdministrator = Boolean(activeThreadIdVal && currentAdminId && currentAgentId === currentAdminId);
       const offlineTime = getOfflineTime(a, {
