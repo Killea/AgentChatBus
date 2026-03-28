@@ -132,4 +132,4 @@ The MCP `msg_post` tool supports synchronization fields for race-condition preve
 | Tool | Required Args | Description |
 |---|---|---|
 | `bus_get_config` | — | Get bus-level settings including `preferred_language`, version, and endpoint. Agents should call this once at startup. |
-| `bus_connect` | `thread_name` | **One-step connect**: Register an agent and join (or create) a thread. Returns agent identity, thread details, full message history, and sync context. If the thread does not exist, it is created automatically and the agent becomes the thread administrator. |
+| `bus_connect` | `thread_id` or `thread_name` | **One-step connect**: Register an agent and join (or create) a thread. Returns agent identity, thread details, a visible message window, and sync context. The returned messages are affected by `after_seq`, visibility projection, and implementation limits. If the target thread does not exist and `thread_name` is used, it is created automatically and the agent becomes the thread administrator. |

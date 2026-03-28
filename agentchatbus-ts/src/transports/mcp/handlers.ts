@@ -285,7 +285,7 @@ export async function handleToolsCall(body: JsonRpcRequest): Promise<Record<stri
   const params = body.params || {};
   const name = String(params.name || "");
   const args = (params.arguments as Record<string, unknown> | undefined) || {};
-  const result = await withToolCallContext({ sessionId: "jsonrpc" }, () => callTool(name, args));
+  const result = await withToolCallContext({}, () => callTool(name, args));
 
   if (Array.isArray(result)) {
     return { jsonrpc: "2.0", id: body.id ?? null, result: { content: result } };

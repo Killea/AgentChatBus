@@ -92,16 +92,20 @@ describe("error contract parity", () => {
   });
 
   it("msg_edit requires authenticated agent connection", async () => {
+    const authorSessionId = "edit-auth-contract-author";
+    const unauthSessionId = "edit-auth-contract-unauth";
     const server = createHttpServer();
     const connect = await server.inject({
       method: "POST",
       url: "/api/mcp/tool/bus_connect",
+      headers: { "mcp-session-id": authorSessionId },
       payload: { thread_name: "edit-auth-contract", ide: "VSCode", model: "Test" }
     });
     const connected = parseToolPayload(connect);
     const post = await server.inject({
       method: "POST",
       url: "/api/mcp/tool/msg_post",
+      headers: { "mcp-session-id": authorSessionId },
       payload: {
         thread_id: connected.thread.thread_id,
         author: connected.agent.agent_id,
@@ -116,6 +120,7 @@ describe("error contract parity", () => {
     const edit = await server.inject({
       method: "POST",
       url: "/api/mcp/tool/msg_edit",
+      headers: { "mcp-session-id": unauthSessionId },
       payload: { message_id: posted.msg_id, new_content: "tampered" }
     });
     const payload = parseToolPayload(edit);

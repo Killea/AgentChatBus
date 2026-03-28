@@ -1766,6 +1766,10 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
     case "bus_connect": {
       const threadName = String(args.thread_name || "");
       const threadIdArg = String(args.thread_id || "");
+      if (!threadIdArg && !threadName) {
+        return [{ type: "text", text: JSON.stringify({ error: "thread_id or thread_name is required" }) }];
+      }
+
       // Phase 1: Agent Identity (Register or Resume)
       let agent;
       const agentIdArg = typeof args.agent_id === "string" ? args.agent_id : undefined;
@@ -1810,10 +1814,6 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         });
       }
       setConnectionAgent(agent.id, agent.token as string);
-
-      if (!threadIdArg && !threadName) {
-        return [{ type: "text", text: JSON.stringify({ error: "thread_id or thread_name is required" }) }];
-      }
 
       // Phase 2: Find or Create Thread
       let thread = threadIdArg ? getStore().getThread(threadIdArg) : getStore().getThreadByTopic(threadName);
@@ -1970,10 +1970,15 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         return { error: "message_id and new_content are required" };
       }
 
-      // Python parity: requires authenticated agent context.
-      // In TS tool adapter, explicit credentials are accepted for parity with strict auth.
-      const agentId = typeof args.agent_id === "string" ? args.agent_id : "";
-      const token = typeof args.token === "string" ? args.token : "";
+      // Auth semantics: explicit credentials override the current connection
+      // context; otherwise we fall back to the authenticated session agent.
+      const explicitAgentId = typeof args.agent_id === "string" ? args.agent_id : undefined;
+      const explicitToken = typeof args.token === "string" ? args.token : undefined;
+      const explicitCredsSupplied = explicitAgentId !== undefined || explicitToken !== undefined;
+      const { agentId: connectionAgentId, token: connectionToken } = getConnectionAgent();
+      const agentId = explicitCredsSupplied ? explicitAgentId || "" : connectionAgentId || "";
+      const token = explicitCredsSupplied ? explicitToken || "" : connectionToken || "";
+
       if (!agentId || !token) {
         return {
           error: "AUTHENTICATION_REQUIRED",
@@ -1987,6 +1992,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
           detail: "msg_edit requires an authenticated agent connection.",
         };
       }
+      setConnectionAgent(agentId, token);
       const editedBy = agentId;
       
       let result;

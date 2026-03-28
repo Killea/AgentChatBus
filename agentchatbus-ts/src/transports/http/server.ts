@@ -633,7 +633,7 @@ export function createHttpServer() {
       const sessionId =
         typeof request.headers["mcp-session-id"] === "string"
           ? request.headers["mcp-session-id"]
-          : "api-mcp-tool";
+          : undefined;
       const result = await withToolCallContext({ sessionId, abortSignal: abortContext.signal }, () =>
         callTool(params.toolName, body || {})
       );

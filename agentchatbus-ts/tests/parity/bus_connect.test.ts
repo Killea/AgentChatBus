@@ -6,7 +6,7 @@ import { createHttpServer, memoryStoreInstance } from '../../src/transports/http
 let BASE_URL = '';
 
 // Helper function to call MCP tools
-async function callMcpTool(toolName: string, params: Record<string, any>) {
+async function callMcpTool(toolName: string, params: Record<string, any>, sessionId?: string) {
     // Auto-add return_format: "json" for tools that support it (match Python tests pattern)
     if (toolName === 'msg_wait' || toolName === 'msg_list') {
         params = { ...params, return_format: 'json' };
@@ -14,7 +14,10 @@ async function callMcpTool(toolName: string, params: Record<string, any>) {
     
     const res = await fetch(`${BASE_URL}/api/mcp/tool/${toolName}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            ...(sessionId ? { 'mcp-session-id': sessionId } : {})
+        },
         body: JSON.stringify(params)
     });
     const data = await res.json();
@@ -1083,11 +1086,13 @@ describe('Bus Connect Parity Tests', () => {
 
     it('msg_edit requires authenticated agent connection', async () => {
         // 对应 Python: L534-561
+        const authorSession = "edit-author-" + randomUUID().slice(0, 8);
+        const unauthSession = "edit-unauth-" + randomUUID().slice(0, 8);
         const threadResult = await callMcpTool('bus_connect', {
             thread_name: "Edit Auth Required",
             ide: "VS Code",
             model: "GPT-5.3-Codex"
-        });
+        }, authorSession);
         
         const threadId = threadResult.thread.thread_id;
         const agentId = threadResult.agent.agent_id;
@@ -1100,23 +1105,41 @@ describe('Bus Connect Parity Tests', () => {
             expected_last_seq: threadResult.current_seq,
             reply_token: threadResult.reply_token,
             role: "assistant"
-        });
-
-        // 尝试在新的连接中编辑（没有认证上下文）
-        // 使用不同的 agent 尝试编辑
-        const otherResult = await callMcpTool('bus_connect', {
-            thread_name: "Edit Auth Required",
-            ide: "Other",
-            model: "Other"
-        });
+        }, authorSession);
 
         const editResult = await callMcpTool('msg_edit', {
             message_id: postResult.msg_id,
             new_content: "tampered"
-        });
+        }, unauthSession);
 
         expect(editResult.error).toBe("AUTHENTICATION_REQUIRED");
         expect(String(editResult.detail)).toContain("authenticated agent connection");
+    }, 10000);
+
+    it('msg_edit can use the current authenticated connection context', async () => {
+        const sessionId = "edit-context-" + randomUUID().slice(0, 8);
+        const connected = await callMcpTool('bus_connect', {
+            thread_name: "Edit Uses Connection Context",
+            ide: "VS Code",
+            model: "GPT-5.3-Codex"
+        }, sessionId);
+
+        const posted = await callMcpTool('msg_post', {
+            thread_id: connected.thread.thread_id,
+            author: connected.agent.agent_id,
+            content: "editable through session context",
+            expected_last_seq: connected.current_seq,
+            reply_token: connected.reply_token,
+            role: "assistant"
+        }, sessionId);
+
+        const edited = await callMcpTool('msg_edit', {
+            message_id: posted.msg_id,
+            new_content: "edited through session context"
+        }, sessionId);
+
+        expect(edited.msg_id).toBe(posted.msg_id);
+        expect(edited.version).toBe(1);
     }, 10000);
 
     it('bus_connect matches Python token formats and blank ide/model fallback', async () => {
