@@ -2,6 +2,42 @@ export type CliSessionAdapterId = "cursor" | "codex" | "claude" | "gemini" | "co
 export type CliSessionMode = "headless" | "interactive" | "direct";
 export type CliSessionStream = "stdout" | "stderr";
 export type CliMeetingTransport = "pty_relay" | "agent_mcp";
+export type CliSessionActivityStatus = "in_progress" | "completed" | "failed" | "declined";
+export type CliSessionActivityKind =
+  | "thinking"
+  | "plan"
+  | "mcp_tool_call"
+  | "dynamic_tool_call"
+  | "command_execution"
+  | "file_change";
+
+export type CliSessionActivityFile = {
+  path: string;
+  change_type?: "add" | "delete" | "update";
+  move_path?: string | null;
+};
+
+export type CliSessionActivityPlanStep = {
+  step: string;
+  status: "pending" | "inProgress" | "completed";
+};
+
+export type CliAdapterActivityEvent = {
+  at: string;
+  turn_id?: string;
+  item_id: string;
+  kind: CliSessionActivityKind;
+  status: CliSessionActivityStatus;
+  label: string;
+  summary?: string;
+  server?: string;
+  tool?: string;
+  command?: string;
+  cwd?: string;
+  files?: CliSessionActivityFile[];
+  diff?: string;
+  plan_steps?: CliSessionActivityPlanStep[];
+};
 
 export type CliAdapterRunInput = {
   prompt: string;
@@ -21,6 +57,7 @@ export type CliSessionControls = {
 export type CliAdapterRunHooks = {
   signal: AbortSignal;
   onOutput: (stream: CliSessionStream, text: string) => void;
+  onActivity?: (activity: CliAdapterActivityEvent) => void;
   onProcessStart: (pid: number) => void;
   onControls: (controls: CliSessionControls) => void;
 };

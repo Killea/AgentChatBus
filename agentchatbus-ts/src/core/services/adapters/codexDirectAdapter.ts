@@ -3,7 +3,15 @@ import { dirname } from "node:path";
 import { existsSync } from "node:fs";
 import spawn from "cross-spawn";
 import { BUS_VERSION } from "../../config/env.js";
-import type { CliSessionAdapter, CliAdapterRunInput, CliAdapterRunHooks, CliAdapterRunResult } from "./types.js";
+import type {
+  CliAdapterActivityEvent,
+  CliSessionActivityFile,
+  CliSessionActivityPlanStep,
+  CliSessionAdapter,
+  CliAdapterRunInput,
+  CliAdapterRunHooks,
+  CliAdapterRunResult,
+} from "./types.js";
 import { WINDOWS_POWERSHELL } from "./constants.js";
 import { normalizeWorkspacePath, terminateChildProcessTree } from "./utils.js";
 import { CODEX_THREAD_ID_ENV_VAR, resolveCodexHeadlessCommand } from "./codexHeadlessAdapter.js";
@@ -117,6 +125,251 @@ function extractItemId(value: unknown): string | undefined {
     return undefined;
   }
   return value.id.trim();
+}
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function clipActivityText(value: unknown, maxLength = 260): string | undefined {
+  const normalized = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+function appendActivityDelta(previous: string | undefined, delta: string | undefined, maxLength = 260): string | undefined {
+  const addition = clipActivityText(delta, maxLength);
+  if (!addition) {
+    return previous;
+  }
+  const current = clipActivityText(previous, maxLength);
+  if (!current) {
+    return addition;
+  }
+  if (current.includes(addition)) {
+    return current;
+  }
+  return clipActivityText(`${current} ${addition}`, maxLength);
+}
+
+function normalizeActivityStatus(value: unknown): CliAdapterActivityEvent["status"] {
+  switch (String(value || "").trim()) {
+    case "completed":
+      return "completed";
+    case "failed":
+      return "failed";
+    case "declined":
+      return "declined";
+    default:
+      return "in_progress";
+  }
+}
+
+function normalizePlanStepStatus(value: unknown): CliSessionActivityPlanStep["status"] {
+  switch (String(value || "").trim()) {
+    case "completed":
+      return "completed";
+    case "pending":
+      return "pending";
+    default:
+      return "inProgress";
+  }
+}
+
+function extractPatchChangeType(value: unknown): CliSessionActivityFile["change_type"] | undefined {
+  if (!isObjectRecord(value)) {
+    return undefined;
+  }
+  const nextType = String(value.type || "").trim();
+  if (nextType === "add" || nextType === "delete" || nextType === "update") {
+    return nextType;
+  }
+  return undefined;
+}
+
+function extractActivityFiles(value: unknown): CliSessionActivityFile[] | undefined {
+  if (!isObjectRecord(value) || !Array.isArray(value.changes)) {
+    return undefined;
+  }
+  const files: CliSessionActivityFile[] = [];
+  for (const entry of value.changes) {
+    if (!isObjectRecord(entry) || typeof entry.path !== "string" || !entry.path.trim()) {
+      continue;
+    }
+    const changeKind = isObjectRecord(entry.kind) ? entry.kind : null;
+    files.push({
+      path: entry.path.trim(),
+      change_type: extractPatchChangeType(changeKind),
+      move_path: changeKind && typeof changeKind.move_path === "string"
+        ? changeKind.move_path.trim() || null
+        : undefined,
+    });
+  }
+  return files.length ? files : undefined;
+}
+
+function extractPlanSteps(value: unknown): CliSessionActivityPlanStep[] | undefined {
+  if (!isObjectRecord(value) || !Array.isArray(value.plan)) {
+    return undefined;
+  }
+  const steps = value.plan
+    .map((entry) => {
+      if (!isObjectRecord(entry) || typeof entry.step !== "string" || !entry.step.trim()) {
+        return null;
+      }
+      return {
+        step: entry.step.trim(),
+        status: normalizePlanStepStatus(entry.status),
+      } satisfies CliSessionActivityPlanStep;
+    })
+    .filter((entry): entry is CliSessionActivityPlanStep => Boolean(entry));
+  return steps.length ? steps : undefined;
+}
+
+function summarizePlanSteps(steps: CliSessionActivityPlanStep[] | undefined): string | undefined {
+  if (!Array.isArray(steps) || !steps.length) {
+    return undefined;
+  }
+  const inProgress = steps.find((entry) => entry.status === "inProgress");
+  if (inProgress) {
+    return clipActivityText(inProgress.step, 220);
+  }
+  const completedCount = steps.filter((entry) => entry.status === "completed").length;
+  return clipActivityText(`${completedCount}/${steps.length} plan step(s) completed`, 220);
+}
+
+function extractReasoningSummary(value: unknown): string | undefined {
+  if (!isObjectRecord(value)) {
+    return undefined;
+  }
+  if (Array.isArray(value.summary)) {
+    const summary = value.summary
+      .map((entry) => String(entry || "").trim())
+      .filter(Boolean)
+      .join(" ");
+    if (summary) {
+      return clipActivityText(summary, 260);
+    }
+  }
+  if (Array.isArray(value.content)) {
+    const fallback = value.content
+      .map((entry) => String(entry || "").trim())
+      .filter(Boolean)
+      .join(" ");
+    if (fallback) {
+      return clipActivityText(fallback, 260);
+    }
+  }
+  return undefined;
+}
+
+export function buildCodexDirectActivityFromItem(
+  item: unknown,
+  fallbackTurnId?: string,
+): CliAdapterActivityEvent | null {
+  if (!isObjectRecord(item)) {
+    return null;
+  }
+  const itemId = extractItemId(item);
+  if (!itemId) {
+    return null;
+  }
+  const turnId = fallbackTurnId;
+  const type = String(item.type || "").trim();
+  if (type === "reasoning") {
+    return {
+      at: nowIso(),
+      turn_id: turnId,
+      item_id: itemId,
+      kind: "thinking",
+      status: "in_progress",
+      label: "Thinking",
+      summary: extractReasoningSummary(item) || "Working through the next steps",
+    };
+  }
+  if (type === "plan") {
+    const planSummary = clipActivityText(item.text, 220);
+    return {
+      at: nowIso(),
+      turn_id: turnId,
+      item_id: itemId,
+      kind: "plan",
+      status: "in_progress",
+      label: "Thinking",
+      summary: planSummary || "Updating plan",
+    };
+  }
+  if (type === "mcpToolCall") {
+    return {
+      at: nowIso(),
+      turn_id: turnId,
+      item_id: itemId,
+      kind: "mcp_tool_call",
+      status: normalizeActivityStatus(item.status),
+      label: "Using tool",
+      server: typeof item.server === "string" ? item.server.trim() || undefined : undefined,
+      tool: typeof item.tool === "string" ? item.tool.trim() || undefined : undefined,
+      summary: clipActivityText(
+        isObjectRecord(item.error) ? item.error.message : undefined,
+        260,
+      ),
+    };
+  }
+  if (type === "dynamicToolCall") {
+    return {
+      at: nowIso(),
+      turn_id: turnId,
+      item_id: itemId,
+      kind: "dynamic_tool_call",
+      status: normalizeActivityStatus(item.status),
+      label: "Using tool",
+      tool: typeof item.tool === "string" ? item.tool.trim() || undefined : undefined,
+      summary: clipActivityText(item.success === false ? "Tool call failed" : undefined, 220),
+    };
+  }
+  if (type === "commandExecution") {
+    return {
+      at: nowIso(),
+      turn_id: turnId,
+      item_id: itemId,
+      kind: "command_execution",
+      status: normalizeActivityStatus(item.status),
+      label: "Running command",
+      command: typeof item.command === "string" ? item.command.trim() || undefined : undefined,
+      cwd: typeof item.cwd === "string" ? item.cwd.trim() || undefined : undefined,
+      summary: clipActivityText(item.aggregatedOutput, 260),
+    };
+  }
+  if (type === "fileChange") {
+    const files = extractActivityFiles(item);
+    const firstChange = Array.isArray(item.changes) && isObjectRecord(item.changes[0])
+      ? item.changes[0]
+      : null;
+    return {
+      at: nowIso(),
+      turn_id: turnId,
+      item_id: itemId,
+      kind: "file_change",
+      status: normalizeActivityStatus(item.status),
+      label: "Editing files",
+      files,
+      diff: files?.[0]?.path ? clipActivityText(firstChange?.diff, 600) : undefined,
+      summary: clipActivityText(
+        files?.length
+          ? files.slice(0, 3).map((entry) => entry.path).join(", ")
+          : "Updating files",
+        220,
+      ),
+    };
+  }
+  return null;
 }
 
 function normalizeRpcError(error: unknown, fallbackMethod?: string): Error {
@@ -600,6 +853,8 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
       let shutdownTimer: NodeJS.Timeout | null = null;
       let postTurnSilenceTimer: NodeJS.Timeout | null = null;
       const streamedAgentMessageItemIds = new Set<string>();
+      const activityByItemId = new Map<string, CliAdapterActivityEvent>();
+      const fileChangeActivityIdsByTurn = new Map<string, Set<string>>();
       const pendingRequests = new Map<
         string,
         {
@@ -609,6 +864,54 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
           timer: NodeJS.Timeout;
         }
       >();
+
+      const recordFileChangeActivity = (activity: CliAdapterActivityEvent): void => {
+        if (activity.kind !== "file_change" || !activity.turn_id) {
+          return;
+        }
+        const existing = fileChangeActivityIdsByTurn.get(activity.turn_id) || new Set<string>();
+        existing.add(activity.item_id);
+        fileChangeActivityIdsByTurn.set(activity.turn_id, existing);
+      };
+
+      const emitActivity = (activity: CliAdapterActivityEvent): void => {
+        recordFileChangeActivity(activity);
+        activityByItemId.set(activity.item_id, activity);
+        hooks.onActivity?.(activity);
+      };
+
+      const upsertActivity = (next: Partial<CliAdapterActivityEvent> & { item_id: string }): void => {
+        const previous = activityByItemId.get(next.item_id);
+        const activity: CliAdapterActivityEvent = {
+          at: next.at || nowIso(),
+          turn_id: next.turn_id || previous?.turn_id || activeTurnId,
+          item_id: next.item_id,
+          kind: next.kind || previous?.kind || "thinking",
+          status: next.status || previous?.status || "in_progress",
+          label: next.label || previous?.label || "Thinking",
+          summary: next.summary !== undefined ? next.summary : previous?.summary,
+          server: next.server !== undefined ? next.server : previous?.server,
+          tool: next.tool !== undefined ? next.tool : previous?.tool,
+          command: next.command !== undefined ? next.command : previous?.command,
+          cwd: next.cwd !== undefined ? next.cwd : previous?.cwd,
+          files: next.files !== undefined ? next.files : previous?.files,
+          diff: next.diff !== undefined ? next.diff : previous?.diff,
+          plan_steps: next.plan_steps !== undefined ? next.plan_steps : previous?.plan_steps,
+        };
+        emitActivity(activity);
+      };
+
+      const emitItemActivity = (item: unknown, options?: { status?: CliAdapterActivityEvent["status"] }): void => {
+        const baseActivity = buildCodexDirectActivityFromItem(item, activeTurnId);
+        if (!baseActivity) {
+          return;
+        }
+        upsertActivity({
+          ...baseActivity,
+          status: options?.status || baseActivity.status,
+          at: nowIso(),
+        });
+      };
 
       const clearPendingRequests = (error?: unknown) => {
         const pendingError = error ?? new Error(
@@ -835,6 +1138,11 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
           return;
         }
 
+        if (method === "item/started" && isObjectRecord(params.item)) {
+          emitItemActivity(params.item);
+          return;
+        }
+
         if (method === "turn/completed") {
           const nextThreadId = extractThreadIdFromPayload(params);
           if (nextThreadId) {
@@ -863,6 +1171,59 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
           return;
         }
 
+        if (method === "turn/plan/updated") {
+          const nextTurnId = extractTurnIdFromPayload(params);
+          if (nextTurnId) {
+            activeTurnId = nextTurnId;
+          }
+          const planSteps = extractPlanSteps(params);
+          upsertActivity({
+            at: nowIso(),
+            turn_id: nextTurnId || activeTurnId,
+            item_id: `turn-plan:${nextTurnId || activeTurnId || "unknown"}`,
+            kind: "plan",
+            status: "in_progress",
+            label: "Thinking",
+            summary: clipActivityText(params.explanation, 220) || summarizePlanSteps(planSteps) || "Updating plan",
+            plan_steps: planSteps,
+          });
+          return;
+        }
+
+        if (method === "turn/diff/updated") {
+          const nextTurnId = extractTurnIdFromPayload(params);
+          if (nextTurnId) {
+            activeTurnId = nextTurnId;
+          }
+          const diff = clipActivityText(params.diff, 800);
+          const relatedIds = fileChangeActivityIdsByTurn.get(nextTurnId || activeTurnId || "");
+          if (relatedIds?.size) {
+            for (const itemId of relatedIds) {
+              upsertActivity({
+                at: nowIso(),
+                turn_id: nextTurnId || activeTurnId,
+                item_id: itemId,
+                diff,
+                kind: "file_change",
+                label: "Editing files",
+                status: "in_progress",
+              });
+            }
+            return;
+          }
+          upsertActivity({
+            at: nowIso(),
+            turn_id: nextTurnId || activeTurnId,
+            item_id: `turn-file-change:${nextTurnId || activeTurnId || "unknown"}`,
+            kind: "file_change",
+            status: "in_progress",
+            label: "Editing files",
+            summary: diff ? "Updating files" : "Editing files",
+            diff,
+          });
+          return;
+        }
+
         if (method === "error" && params.error !== undefined && params.error !== null) {
           emitStderr(`${formatCodexErrorSummary(params.error)}\n`);
           return;
@@ -878,12 +1239,116 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
         }
 
         if (method === "item/commandExecution/outputDelta" && typeof params.delta === "string") {
+          const itemId = typeof params.itemId === "string" ? params.itemId.trim() : "";
+          if (itemId) {
+            upsertActivity({
+              at: nowIso(),
+              turn_id: extractTurnIdFromPayload(params) || activeTurnId,
+              item_id: itemId,
+              kind: "command_execution",
+              status: "in_progress",
+              label: "Running command",
+              summary: appendActivityDelta(activityByItemId.get(itemId)?.summary, params.delta, 260),
+            });
+          }
           hooks.onOutput("stdout", params.delta);
           return;
         }
 
         if (method === "item/fileChange/outputDelta" && typeof params.delta === "string") {
+          const itemId = typeof params.itemId === "string" ? params.itemId.trim() : "";
+          if (itemId) {
+            upsertActivity({
+              at: nowIso(),
+              turn_id: extractTurnIdFromPayload(params) || activeTurnId,
+              item_id: itemId,
+              kind: "file_change",
+              status: "in_progress",
+              label: "Editing files",
+              summary: appendActivityDelta(activityByItemId.get(itemId)?.summary, params.delta, 220),
+            });
+          }
           hooks.onOutput("stdout", params.delta);
+          return;
+        }
+
+        if (method === "item/commandExecution/terminalInteraction") {
+          const itemId = typeof params.itemId === "string" ? params.itemId.trim() : "";
+          if (itemId) {
+            upsertActivity({
+              at: nowIso(),
+              turn_id: extractTurnIdFromPayload(params) || activeTurnId,
+              item_id: itemId,
+              kind: "command_execution",
+              status: "in_progress",
+              label: "Running command",
+              summary: clipActivityText(`Sent input: ${String(params.stdin || "").trim()}`, 220),
+            });
+          }
+          return;
+        }
+
+        if (method === "item/mcpToolCall/progress") {
+          const itemId = typeof params.itemId === "string" ? params.itemId.trim() : "";
+          if (itemId) {
+            upsertActivity({
+              at: nowIso(),
+              turn_id: extractTurnIdFromPayload(params) || activeTurnId,
+              item_id: itemId,
+              kind: "mcp_tool_call",
+              status: "in_progress",
+              label: "Using tool",
+              summary: clipActivityText(params.message, 260),
+            });
+          }
+          return;
+        }
+
+        if (method === "item/plan/delta" && typeof params.delta === "string") {
+          const itemId = typeof params.itemId === "string" ? params.itemId.trim() : "";
+          if (itemId) {
+            upsertActivity({
+              at: nowIso(),
+              turn_id: extractTurnIdFromPayload(params) || activeTurnId,
+              item_id: itemId,
+              kind: "plan",
+              status: "in_progress",
+              label: "Thinking",
+              summary: appendActivityDelta(activityByItemId.get(itemId)?.summary, params.delta, 220),
+            });
+          }
+          return;
+        }
+
+        if (method === "item/reasoning/summaryPartAdded") {
+          const itemId = typeof params.itemId === "string" ? params.itemId.trim() : "";
+          if (itemId) {
+            upsertActivity({
+              at: nowIso(),
+              turn_id: extractTurnIdFromPayload(params) || activeTurnId,
+              item_id: itemId,
+              kind: "thinking",
+              status: "in_progress",
+              label: "Thinking",
+              summary: activityByItemId.get(itemId)?.summary || "Thinking through the next steps",
+            });
+          }
+          return;
+        }
+
+        if (method === "item/reasoning/summaryTextDelta" && typeof params.delta === "string") {
+          const itemId = typeof params.itemId === "string" ? params.itemId.trim() : "";
+          if (itemId) {
+            upsertActivity({
+              at: nowIso(),
+              turn_id: extractTurnIdFromPayload(params) || activeTurnId,
+              item_id: itemId,
+              kind: "thinking",
+              status: "in_progress",
+              label: "Thinking",
+              summary: appendActivityDelta(activityByItemId.get(itemId)?.summary, params.delta, 260),
+            });
+          }
           return;
         }
 
@@ -899,6 +1364,9 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
         }
 
         if (method === "item/completed" && isObjectRecord(params.item)) {
+          emitItemActivity(params.item, {
+            status: normalizeActivityStatus(params.item.status),
+          });
           const itemId = extractItemId(params.item);
           const itemText = extractItemText(params.item);
           if (

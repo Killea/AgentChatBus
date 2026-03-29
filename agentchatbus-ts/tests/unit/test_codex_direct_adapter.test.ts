@@ -1,10 +1,57 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCodexDirectElicitationResponse,
+  buildCodexDirectActivityFromItem,
   parseCodexDirectAppServerResult,
 } from "../../src/core/services/adapters/codexDirectAdapter.js";
 
 describe("parseCodexDirectAppServerResult", () => {
+  it("normalizes structured MCP and file-change items into chat activity events", () => {
+    const toolActivity = buildCodexDirectActivityFromItem({
+      id: "tool-1",
+      type: "mcpToolCall",
+      status: "inProgress",
+      server: "agentchatbus",
+      tool: "bus_connect",
+    }, "turn-1");
+    const fileActivity = buildCodexDirectActivityFromItem({
+      id: "patch-1",
+      type: "fileChange",
+      status: "completed",
+      changes: [
+        {
+          path: "src/app.ts",
+          diff: "@@ -1 +1 @@",
+          kind: { type: "update" },
+        },
+      ],
+    }, "turn-1");
+
+    expect(toolActivity).toMatchObject({
+      turn_id: "turn-1",
+      item_id: "tool-1",
+      kind: "mcp_tool_call",
+      status: "in_progress",
+      label: "Using tool",
+      server: "agentchatbus",
+      tool: "bus_connect",
+    });
+    expect(fileActivity).toMatchObject({
+      turn_id: "turn-1",
+      item_id: "patch-1",
+      kind: "file_change",
+      status: "completed",
+      label: "Editing files",
+      files: [
+        {
+          path: "src/app.ts",
+          change_type: "update",
+        },
+      ],
+    });
+    expect(fileActivity?.diff).toContain("@@ -1 +1 @@");
+  });
+
   it("extracts thread and turn ids while aggregating streamed agent message deltas", () => {
     const result = parseCodexDirectAppServerResult([
       "{\"id\":\"1\",\"result\":{\"threadId\":\"thread-42\"}}",

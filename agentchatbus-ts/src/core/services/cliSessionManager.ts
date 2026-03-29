@@ -100,6 +100,7 @@ export interface CliSessionSnapshot {
     at: string;
     stream: CliSessionStream;
   }>;
+  recent_activity_events?: CliAdapterActivityEvent[];
 }
 
 export interface CliSessionOutputEntry {
@@ -228,6 +229,7 @@ type CliSessionReplyCaptureRuntime = {
 };
 
 import type {
+  CliAdapterActivityEvent,
   CliMeetingTransport,
   CliSessionAdapter,
   CliAdapterRunInput,
@@ -1552,6 +1554,7 @@ export class CliSessionManager {
       cols,
       rows,
       shell: adapter.shell,
+      recent_activity_events: [],
       context_delivery_mode: contextDeliveryMode,
       last_delivered_seq: lastDeliveredSeq,
       last_acknowledged_seq: lastDeliveredSeq,
@@ -2076,6 +2079,7 @@ export class CliSessionManager {
     runtime.snapshot.last_tool_call_at = undefined;
     runtime.snapshot.recent_tool_events = [];
     runtime.snapshot.recent_stream_events = [];
+    runtime.snapshot.recent_activity_events = [];
     runtime.snapshot.updated_at = nowIso();
     this.emitSessionEvent("cli.session.started", runtime);
 
@@ -2105,6 +2109,7 @@ export class CliSessionManager {
         {
           signal: runtime.abortController.signal,
           onOutput: (stream, text) => this.appendOutput(runtime, stream, text),
+          onActivity: (activity) => this.appendActivity(runtime, activity),
           onProcessStart: (pid) => {
             runtime.snapshot.pid = pid;
             runtime.snapshot.process_started_at = nowIso();
@@ -2371,6 +2376,92 @@ export class CliSessionManager {
       : [];
     entries.push({ at, stream });
     runtime.snapshot.recent_stream_events = entries.slice(-80);
+  }
+
+  private appendActivity(runtime: CliSessionRuntime, activity: CliAdapterActivityEvent): void {
+    const normalized = this.normalizeActivityEvent(activity);
+    if (!normalized) {
+      return;
+    }
+
+    const entries = Array.isArray(runtime.snapshot.recent_activity_events)
+      ? [...runtime.snapshot.recent_activity_events]
+      : [];
+    const latest = entries[entries.length - 1];
+    if (
+      latest
+      && latest.item_id === normalized.item_id
+      && latest.kind === normalized.kind
+      && latest.status === normalized.status
+      && latest.summary === normalized.summary
+      && latest.diff === normalized.diff
+      && latest.command === normalized.command
+      && latest.cwd === normalized.cwd
+      && latest.server === normalized.server
+      && latest.tool === normalized.tool
+      && JSON.stringify(latest.files || []) === JSON.stringify(normalized.files || [])
+      && JSON.stringify(latest.plan_steps || []) === JSON.stringify(normalized.plan_steps || [])
+    ) {
+      return;
+    }
+
+    entries.push(normalized);
+    runtime.snapshot.recent_activity_events = entries.slice(-120);
+    runtime.snapshot.updated_at = nowIso();
+    eventBus.emit({
+      type: "cli.session.activity",
+      payload: {
+        thread_id: runtime.snapshot.thread_id,
+        session_id: runtime.snapshot.id,
+        activity: { ...normalized },
+        session: this.cloneSnapshot(runtime.snapshot),
+      },
+    });
+    this.emitSessionEvent("cli.session.state", runtime);
+  }
+
+  private normalizeActivityEvent(activity: CliAdapterActivityEvent): CliAdapterActivityEvent | null {
+    if (!activity || typeof activity !== "object") {
+      return null;
+    }
+    const itemId = String(activity.item_id || "").trim();
+    const kind = String(activity.kind || "").trim() as CliAdapterActivityEvent["kind"];
+    const status = String(activity.status || "").trim() as CliAdapterActivityEvent["status"];
+    const label = String(activity.label || "").trim();
+    if (!itemId || !kind || !status || !label) {
+      return null;
+    }
+    return {
+      at: String(activity.at || "").trim() || nowIso(),
+      turn_id: String(activity.turn_id || "").trim() || undefined,
+      item_id: itemId,
+      kind,
+      status,
+      label,
+      summary: String(activity.summary || "").trim() || undefined,
+      server: String(activity.server || "").trim() || undefined,
+      tool: String(activity.tool || "").trim() || undefined,
+      command: String(activity.command || "").trim() || undefined,
+      cwd: String(activity.cwd || "").trim() || undefined,
+      files: Array.isArray(activity.files)
+        ? activity.files
+          .map((entry) => ({
+            path: String(entry?.path || "").trim(),
+            change_type: entry?.change_type,
+            move_path: entry?.move_path ? String(entry.move_path).trim() : entry?.move_path ?? undefined,
+          }))
+          .filter((entry) => entry.path)
+        : undefined,
+      diff: String(activity.diff || "").trim() || undefined,
+      plan_steps: Array.isArray(activity.plan_steps)
+        ? activity.plan_steps
+          .map((entry) => ({
+            step: String(entry?.step || "").trim(),
+            status: entry?.status,
+          }))
+          .filter((entry) => entry.step && entry.status)
+        : undefined,
+    };
   }
 
   private recordObservedToolCall(
@@ -4179,6 +4270,15 @@ export class CliSessionManager {
       recent_stream_events: Array.isArray(snapshot.recent_stream_events)
         ? snapshot.recent_stream_events.map((entry) => ({ ...entry }))
         : snapshot.recent_stream_events,
+      recent_activity_events: Array.isArray(snapshot.recent_activity_events)
+        ? snapshot.recent_activity_events.map((entry) => ({
+          ...entry,
+          files: Array.isArray(entry.files) ? entry.files.map((file) => ({ ...file })) : entry.files,
+          plan_steps: Array.isArray(entry.plan_steps)
+            ? entry.plan_steps.map((step) => ({ ...step }))
+            : entry.plan_steps,
+        }))
+        : snapshot.recent_activity_events,
     };
   }
 

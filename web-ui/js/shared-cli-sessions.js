@@ -1128,9 +1128,24 @@
   function buildActivityLogHtml(session) {
     const toolEntries = Array.isArray(session?.recent_tool_events) ? session.recent_tool_events : [];
     const streamEntries = Array.isArray(session?.recent_stream_events) ? session.recent_stream_events : [];
+    const activityEntries = Array.isArray(session?.recent_activity_events) ? session.recent_activity_events : [];
     return [
       buildActivitySectionHtml("Lifecycle", buildLifecycleLines(session)),
       buildActivitySectionHtml("Sync", buildSyncLines(session)),
+      buildActivitySectionHtml(
+        "Structured Activity",
+        buildEventTimelineLines(
+          activityEntries,
+          "No structured activity recorded yet.",
+          (entry) => {
+            const at = formatToolEventTime(entry?.at);
+            const label = String(entry?.label || entry?.kind || "activity").trim();
+            const status = String(entry?.status || "unknown").trim();
+            const summary = String(entry?.summary || "").trim();
+            return [at, label, status, summary].filter(Boolean).join(" · ");
+          },
+        ),
+      ),
       buildActivitySectionHtml(
         "Tool Timeline",
         buildEventTimelineLines(
@@ -1649,6 +1664,9 @@
     const sessions = Array.isArray(result?.sessions) ? result.sessions : [];
     replaceThreadAgents(threadId, Array.isArray(threadAgents) ? threadAgents : []);
     replaceSessionsForThread(threadId, sessions);
+    if (window.AcbChat?.syncThreadCliSessions) {
+      window.AcbChat.syncThreadCliSessions(threadId, sessions);
+    }
     renderThread(threadId);
     if (window.AcbAgents?.rerenderStatusBar) {
       await window.AcbAgents.rerenderStatusBar();
