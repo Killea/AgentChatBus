@@ -834,7 +834,7 @@ export class CliMeetingOrchestrator {
     if (session.mode === "interactive" && session.state === "running") {
       return "idle";
     }
-    if (session.mode === "headless") {
+    if (session.mode === "headless" || session.mode === "direct") {
       return "busy";
     }
     return "unavailable";
@@ -935,9 +935,6 @@ export class CliMeetingOrchestrator {
     if (!session.participant_agent_id) {
       return;
     }
-    if (session.mode !== "interactive" && usesLegacyPtyRelay(session)) {
-      return;
-    }
     const deliveredSeq = getObservedDeliveredSeq(session);
     const acknowledgedSeq = Number(session.last_acknowledged_seq) || 0;
     const effectiveAcknowledgedSeq = Math.max(acknowledgedSeq, deliveredSeq);
@@ -967,7 +964,9 @@ export class CliMeetingOrchestrator {
       return;
     }
 
-    if (!usesLegacyPtyRelay(session) && this.shouldTrustParticipantWaitState(session)) {
+    const isAgentMcpSession = !usesLegacyPtyRelay(session);
+
+    if (isAgentMcpSession && this.shouldTrustParticipantWaitState(session)) {
       // Keep a pending watermark even while msg_wait is active.
       // Some weaker CLI agents can let msg_wait return and then drop the delivered context
       // before they visibly advance to the new seq. Retaining the pending target allows
@@ -985,7 +984,7 @@ export class CliMeetingOrchestrator {
     }
 
     const workState = this.getSessionWorkState(session);
-    if (!usesLegacyPtyRelay(session) && workState === "unavailable") {
+    if (isAgentMcpSession && workState === "unavailable") {
       if (
         RESTARTABLE_SESSION_STATES.has(String(session.state || ""))
         && session.supports_restart
@@ -1018,12 +1017,30 @@ export class CliMeetingOrchestrator {
       );
       return;
     }
+
+    if (session.mode !== "interactive") {
+      if (isAgentMcpSession) {
+        this.pendingDeliverySeqBySession.set(
+          session.id,
+          targetSeq,
+        );
+        if (workState === "busy") {
+          this.scheduleWakeRetry(
+            session.id,
+            targetSeq,
+            getPendingDeliveryRetryDelayMs(session),
+          );
+        }
+      }
+      return;
+    }
+
     if (workState !== "idle") {
       this.pendingDeliverySeqBySession.set(
         session.id,
         targetSeq,
       );
-      if (!usesLegacyPtyRelay(session) && workState === "busy") {
+      if (isAgentMcpSession && workState === "busy") {
         this.scheduleWakeRetry(
           session.id,
           targetSeq,
@@ -1033,7 +1050,7 @@ export class CliMeetingOrchestrator {
       return;
     }
 
-    if (!usesLegacyPtyRelay(session)) {
+    if (isAgentMcpSession) {
       const latestSession = this.cliSessionManager.getSession(session.id) || session;
       if (this.shouldTrustParticipantWaitState(latestSession)) {
         this.pendingDeliverySeqBySession.set(
@@ -1269,7 +1286,7 @@ export class CliMeetingOrchestrator {
       const shouldBlockFirstRelayAsStale =
         deliveredSeq !== undefined
         && latestSeq > deliveredSeq
-        && (session.mode === "headless" || !isInteractivePlaceholderContent(desiredContent));
+        && (session.mode !== "interactive" || !isInteractivePlaceholderContent(desiredContent));
       if (shouldBlockFirstRelayAsStale) {
         this.cliSessionManager.updateMeetingState(session.id, {
           meeting_post_state: "stale",

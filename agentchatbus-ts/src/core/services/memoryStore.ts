@@ -1802,6 +1802,14 @@ export class MemoryStore {
       throw new BusError("THREAD_NOT_FOUND");
     }
 
+    const isInternalSystemMessage = input.role === "system" && input.author === "system";
+    if (thread.status === "closed" && !isInternalSystemMessage) {
+      throw new BusError("THREAD_CLOSED", {
+        error: "THREAD_CLOSED",
+        detail: `Thread '${input.threadId}' is closed and does not accept new messages.`
+      });
+    }
+
     // Validate priority (UP-16) - match Python crud.py L1166, L1191-1192
     const validPriorities = new Set(["normal", "urgent", "system"]);
     const priority = input.priority || "normal";
@@ -1868,7 +1876,6 @@ export class MemoryStore {
       }
     }
 
-    const isInternalSystemMessage = input.role === "system" && input.author === "system";
     if (!isInternalSystemMessage) {
       const missingFields: string[] = [];
       if (input.expectedLastSeq === undefined) {

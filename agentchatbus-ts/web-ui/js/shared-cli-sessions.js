@@ -166,6 +166,9 @@
 
   function sessionLabel(session) {
     const participantLabel = String(session?.participant_display_name || "").trim();
+    if (session?.adapter === "codex" && session?.mode === "direct") {
+      return participantLabel ? `${participantLabel} · Codex Direct` : "Codex Direct";
+    }
     if (session?.adapter === "codex" && session?.mode === "interactive") {
       return participantLabel ? `${participantLabel} · Codex PTY` : "Codex PTY";
     }
@@ -529,6 +532,11 @@
 
   function isInteractiveSession(session) {
     return String(session?.mode || "").trim().toLowerCase() === "interactive";
+  }
+
+  function isDirectSession(session) {
+    return String(session?.adapter || "").trim().toLowerCase() === "codex"
+      && String(session?.mode || "").trim().toLowerCase() === "direct";
   }
 
   function teardownTerminalInstance(sessionId) {
@@ -896,9 +904,9 @@
       return combined;
     }
     if (String(session?.state || "") === "failed") {
-      return "This headless session failed before any terminal output was captured.";
+      return "This non-interactive session failed before any CLI output was captured.";
     }
-    return "Headless session output will appear here when logs or results become available.";
+    return "CLI output will appear here when logs or results become available.";
   }
 
   function buildHeadlessSessionOutputText(session, entries) {
@@ -1069,11 +1077,76 @@
       .join(" · ");
   }
 
-  function buildActivityLogHtml(session) {
+  function buildActivitySectionHtml(title, lines) {
+    const normalizedLines = Array.isArray(lines)
+      ? lines.map((line) => String(line || "").trim()).filter(Boolean)
+      : [];
+    if (!normalizedLines.length) {
+      return "";
+    }
+    return `
+      <section class="cli-session-log__section">
+        <div class="cli-session-log__section-title">${escapeHtml(title)}</div>
+        ${normalizedLines.map((line) => `<div class="cli-session-log__line">${formatLogHtml(line)}</div>`).join("")}
+      </section>
+    `;
+  }
+
+  function buildLifecycleLines(session) {
     return [
-      `<div class="cli-session-log__line">${formatLogHtml(renderTimingSummary(session))}</div>`,
-      `<div class="cli-session-log__line">${formatLogHtml(renderToolEventSummary(session))}</div>`,
-      `<div class="cli-session-log__line">${formatLogHtml(renderStreamEventSummary(session))}</div>`,
+      renderTimingSummary(session),
+      `State ${getSessionStatusText(session)} · ${String(session?.adapter || "cli")} ${String(session?.mode || "session")}`,
+      session?.automation_state ? `Automation ${String(session.automation_state)}` : "",
+      session?.reply_capture_state ? `Reply capture ${String(session.reply_capture_state)}` : "",
+      session?.meeting_post_state ? `Meeting post ${String(session.meeting_post_state)}` : "",
+      session?.context_delivery_mode ? `Delivery ${String(session.context_delivery_mode)}` : "",
+      Number(session?.output_cursor) > 0 ? `Captured ${Number(session.output_cursor)} output event(s)` : "No output events captured yet.",
+    ];
+  }
+
+  function buildSyncLines(session) {
+    const rawResult = session?.raw_result && typeof session.raw_result === "object" ? session.raw_result : {};
+    return [
+      Number.isFinite(Number(session?.last_delivered_seq)) ? `Delivered seq ${Number(session.last_delivered_seq)}` : "",
+      Number.isFinite(Number(session?.last_acknowledged_seq)) ? `Acknowledged seq ${Number(session.last_acknowledged_seq)}` : "",
+      Number.isFinite(Number(session?.last_posted_seq)) ? `Posted seq ${Number(session.last_posted_seq)}` : "",
+      session?.external_session_id ? `External thread ${String(session.external_session_id)}` : "",
+      session?.external_request_id ? `External request ${String(session.external_request_id)}` : "",
+      rawResult?.turn_status ? `Turn status ${String(rawResult.turn_status)}` : "",
+      rawResult?.last_error ? `Last error ${String(rawResult.last_error)}` : "",
+      Number.isFinite(Number(rawResult?.error_count)) ? `Error count ${Number(rawResult.error_count)}` : "",
+    ];
+  }
+
+  function buildEventTimelineLines(entries, emptyLine, formatter) {
+    if (!Array.isArray(entries) || !entries.length) {
+      return [emptyLine];
+    }
+    return entries.map((entry) => formatter(entry));
+  }
+
+  function buildActivityLogHtml(session) {
+    const toolEntries = Array.isArray(session?.recent_tool_events) ? session.recent_tool_events : [];
+    const streamEntries = Array.isArray(session?.recent_stream_events) ? session.recent_stream_events : [];
+    return [
+      buildActivitySectionHtml("Lifecycle", buildLifecycleLines(session)),
+      buildActivitySectionHtml("Sync", buildSyncLines(session)),
+      buildActivitySectionHtml(
+        "Tool Timeline",
+        buildEventTimelineLines(
+          toolEntries,
+          "No MCP tool calls recorded yet.",
+          (entry) => `${formatToolEventTime(entry?.at)} ${String(entry?.tool_name || "").trim() || "unknown_tool"}`,
+        ),
+      ),
+      buildActivitySectionHtml(
+        "Stream Timeline",
+        buildEventTimelineLines(
+          streamEntries,
+          "No stream input received yet.",
+          (entry) => `${formatToolEventTime(entry?.at)} received ${String(entry?.stream || "stream").trim()}`,
+        ),
+      ),
     ].join("");
   }
 
@@ -1330,6 +1403,9 @@
   function updateSessionCardElement(card, session) {
     card.dataset.sessionId = String(session.id || "");
     card.dataset.sessionState = String(session.state || "");
+    card.classList.toggle("cli-session-card--interactive", isInteractiveSession(session));
+    card.classList.toggle("cli-session-card--noninteractive", !isInteractiveSession(session));
+    card.classList.toggle("cli-session-card--direct", isDirectSession(session));
 
     const avatarEl = card.querySelector('[data-role="avatar"]');
     const nameEl = card.querySelector('[data-role="name"]');
@@ -1399,11 +1475,12 @@
       terminalTitleEl.textContent = panelTitleForSession(session);
     }
     if (shouldShowActivityLog(session) && activityEl) {
-      const timingSummary = renderTimingSummary(session);
-      const toolSummary = renderToolEventSummary(session);
-      const streamSummary = renderStreamEventSummary(session);
       activityEl.innerHTML = buildActivityLogHtml(session);
-      activityEl.title = `${timingSummary}\n${toolSummary}\n${streamSummary}`;
+      activityEl.title = [
+        renderTimingSummary(session),
+        renderToolEventSummary(session),
+        renderStreamEventSummary(session),
+      ].join("\n");
       scrollLogBodyToBottom(activityEl, session.id, "activity");
     }
     const activityPanelEl = activityEl ? activityEl.closest(".cli-session-log-panel--activity") : null;

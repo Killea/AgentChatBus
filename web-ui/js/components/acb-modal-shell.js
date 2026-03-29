@@ -279,6 +279,7 @@
                     <div class="settings-field">
                       <label for="agent-modal-mode">Mode</label>
                       <select id="agent-modal-mode">
+                        <option value="direct">Codex Direct (App Server)</option>
                         <option value="interactive">Interactive PTY</option>
                         <option value="headless">Headless JSON Resume</option>
                       </select>

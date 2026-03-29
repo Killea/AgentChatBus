@@ -866,11 +866,10 @@ body[data-theme="light"] .thread-item .ti-pin-btn {
 }
 
 #cli-session-strip {
-  flex: 0 0 auto;
-  min-width: 0;
-  width: max-content;
-  min-width: 0;
-  max-width: none;
+  flex: 0 0 clamp(360px, 34vw, 560px);
+  width: clamp(360px, 34vw, 560px);
+  min-width: 320px;
+  max-width: min(560px, 42vw);
   min-height: 0;
   padding: 12px 14px 14px;
   border-left: 1px solid var(--border);
@@ -1021,11 +1020,11 @@ body[data-theme="light"] .thread-item .ti-pin-btn {
   flex-direction: column;
   flex: 0 0 auto;
   gap: 10px;
-  min-height: 680px;
+  min-height: 0;
   min-width: 0;
   height: auto;
-  width: max-content;
-  max-width: none;
+  width: 100%;
+  max-width: 100%;
   padding: 12px;
   border-radius: 16px;
   border: 1px solid rgba(125, 211, 252, .16);
@@ -1165,7 +1164,8 @@ body[data-theme="light"] .thread-item .ti-pin-btn {
 }
 
 .cli-session-card__body {
-  display: block;
+  display: flex;
+  flex-direction: column;
   flex: 0 0 auto;
   gap: 10px;
   min-height: auto;
@@ -1242,9 +1242,31 @@ body[data-theme="light"] .thread-item .ti-pin-btn {
 .cli-session-log__body {
   overflow: auto;
   min-height: 0;
+  width: 100%;
+  max-width: 100%;
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
   line-height: 1.55;
+}
+
+.cli-session-log__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cli-session-log__section + .cli-session-log__section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(148, 163, 184, .12);
+}
+
+.cli-session-log__section-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--text-3);
 }
 
 .cli-session-log__line + .cli-session-log__line {
@@ -1262,6 +1284,9 @@ body[data-theme="light"] .thread-item .ti-pin-btn {
 
 .cli-session-card__activity {
   max-height: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
   padding: 10px 12px;
   border-radius: 0;
   background: transparent;
@@ -1311,6 +1336,7 @@ body[data-theme="light"] .thread-item .ti-pin-btn {
 .cli-session-terminal__shell--card {
   border: none;
   width: 100%;
+  max-width: 100%;
   height: 460px;
   min-height: 460px;
 }
@@ -1325,6 +1351,20 @@ body[data-theme="light"] .thread-item .ti-pin-btn {
 
 .cli-session-terminal--card {
   padding: 6px 8px;
+}
+
+.cli-session-card--noninteractive .cli-session-log-panel--activity {
+  max-height: 320px;
+}
+
+.cli-session-card--noninteractive .cli-session-terminal__shell--card {
+  height: clamp(220px, 30vh, 320px);
+  min-height: 220px;
+}
+
+.cli-session-card--noninteractive .cli-session-terminal {
+  height: 100%;
+  min-height: 0;
 }
 
 .cli-session-terminal__transcript {
@@ -1426,6 +1466,10 @@ body[data-theme="light"] .cli-session-log-panel {
 body[data-theme="light"] .cli-session-log-panel__header {
   background: rgba(226, 232, 240, .42);
   border-bottom-color: rgba(148, 163, 184, .2);
+}
+
+body[data-theme="light"] .cli-session-log__section + .cli-session-log__section {
+  border-top-color: rgba(148, 163, 184, .18);
 }
 
 body[data-theme="light"] .cli-session-log__tool {
@@ -4543,6 +4587,8 @@ body[data-theme="light"] #topbar-note-pypi {
     border-left: none;
     border-top: 1px solid var(--border);
     min-height: 280px;
+    width: 100%;
+    max-width: none;
   }
 
   /* Thread header */

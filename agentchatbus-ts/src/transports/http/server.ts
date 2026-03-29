@@ -856,6 +856,7 @@ export function createHttpServer() {
           initialInstruction: promptSeed,
           serverUrl,
           adapter: String(body.adapter || "cursor").trim(),
+          mode: typeof body.mode === "string" ? body.mode.trim() : undefined,
         }).prompt;
         launchEnv = buildCliMcpLaunchEnv({
           threadId: params.threadId,
@@ -869,7 +870,7 @@ export function createHttpServer() {
         threadId: params.threadId,
         adapter: String(body.adapter || "cursor").trim() as "cursor" | "codex" | "claude" | "gemini" | "copilot",
         mode: typeof body.mode === "string"
-          ? body.mode.trim() as "headless" | "interactive"
+          ? body.mode.trim() as "headless" | "interactive" | "direct"
           : "interactive",
         model: typeof body.model === "string" ? body.model.trim() : undefined,
         prompt: finalPrompt,

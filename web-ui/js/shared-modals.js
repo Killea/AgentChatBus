@@ -618,7 +618,7 @@
     const adapter = String(document.getElementById(`${prefix}-adapter`)?.value || "codex").trim();
     const defaultMode = getThreadLaunchModeForAdapter(adapter);
     const requestedMode = String(document.getElementById(`${prefix}-mode`)?.value || defaultMode).trim();
-    const mode = requestedMode === "headless" ? "headless" : defaultMode;
+    const mode = normalizeThreadLaunchMode(adapter, requestedMode || defaultMode);
     const model = getRequiredThreadLaunchModel(
       adapter,
       String(document.getElementById(`${prefix}-model`)?.value || "").trim(),
@@ -651,12 +651,18 @@
     const adapterEl = document.getElementById(`${prefix}-adapter`);
     const modelEl = document.getElementById(`${prefix}-model`);
     const suggestionEl = document.getElementById(`${prefix}-model-suggestion`);
+    const modeEl = document.getElementById(`${prefix}-mode`);
     const emojiEl = document.getElementById(`${prefix}-emoji`);
     const emojiPreviewEl = document.getElementById(`${prefix}-emoji-preview`);
     if (!adapterEl) {
       return;
     }
     const adapter = String(adapterEl.value || "claude").trim() || "claude";
+    if (modeEl) {
+      const currentMode = String(modeEl.value || getThreadLaunchModeForAdapter(adapter)).trim();
+      modeEl.innerHTML = buildThreadLaunchModeOptionsHtml(adapter, currentMode);
+      modeEl.value = normalizeThreadLaunchMode(adapter, currentMode);
+    }
     if (modelEl) {
       modelEl.value = getRequiredThreadLaunchModel(adapter, modelEl.value);
       modelEl.required = !(adapter === "cursor" || adapter === "gemini");
@@ -683,20 +689,46 @@
   }
 
   function getThreadLaunchModeForAdapter(adapter) {
-    void adapter;
+    const normalizedAdapter = String(adapter || "").trim().toLowerCase();
+    if (normalizedAdapter === "codex") {
+      return "direct";
+    }
     return "interactive";
   }
 
+  function normalizeThreadLaunchMode(adapter, currentMode) {
+    const normalizedAdapter = String(adapter || "").trim().toLowerCase();
+    const requested = String(currentMode || "").trim().toLowerCase();
+    if (normalizedAdapter === "codex") {
+      if (requested === "headless" || requested === "interactive" || requested === "direct") {
+        return requested;
+      }
+      return "direct";
+    }
+    return requested === "headless" ? "headless" : "interactive";
+  }
+
   function getThreadLaunchModeLabel(mode) {
+    if (mode === "direct") {
+      return "Codex Direct (App Server)";
+    }
     return mode === "headless" ? "Headless JSON Resume" : "Interactive PTY";
   }
 
-  function buildThreadLaunchModeOptionsHtml(currentMode = "interactive") {
-    const normalized = currentMode === "headless" ? "headless" : "interactive";
-    return [
+  function buildThreadLaunchModeOptionsHtml(adapter, currentMode = "") {
+    const normalizedAdapter = String(adapter || "").trim().toLowerCase();
+    const normalized = normalizeThreadLaunchMode(adapter, currentMode);
+    const options = [];
+    if (normalizedAdapter === "codex") {
+      options.push(
+        `<option value="direct" ${normalized === "direct" ? "selected" : ""}>Codex Direct (App Server)</option>`,
+      );
+    }
+    options.push(
       `<option value="interactive" ${normalized === "interactive" ? "selected" : ""}>Interactive PTY</option>`,
       `<option value="headless" ${normalized === "headless" ? "selected" : ""}>Headless JSON Resume</option>`,
-    ].join("");
+    );
+    return options.join("");
   }
 
   function getThreadLaunchUsedEmojis(excludeAgentId = "") {
@@ -775,8 +807,11 @@
       adapter: agent.adapter || "claude",
       model: String(agent.model || "").trim(),
       emoji: String(agent.emoji || "").trim() || pickRandomThreadLaunchEmoji(agent.id),
-      mode: String(agent.mode || getThreadLaunchModeForAdapter(agent.adapter || "claude")).trim()
-        || getThreadLaunchModeForAdapter(agent.adapter || "claude"),
+      mode: normalizeThreadLaunchMode(
+        agent.adapter || "claude",
+        String(agent.mode || getThreadLaunchModeForAdapter(agent.adapter || "claude")).trim()
+          || getThreadLaunchModeForAdapter(agent.adapter || "claude"),
+      ),
       meetingTransport: agent.meetingTransport || "agent_mcp",
       displayName: "",
       initialInstruction: String(agent.initialInstruction || "").trim(),
@@ -818,7 +853,7 @@
     return [
       `You are joining the AgentChatBus thread "${topic}".`,
       "After joining, check the returned bus_connect role metadata, introduce yourself briefly, explain what you can help with, and wait for further instructions.",
-      config.mode === "headless"
+      config.mode !== "interactive"
         ? "Respond in plain text."
         : "",
     ].filter(Boolean).join(" ");
@@ -1152,7 +1187,7 @@
                 onpointerdown="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
                 onchange="window.AcbModals && window.AcbModals.updateThreadLaunchAgentField(this)"
               >
-                ${buildThreadLaunchModeOptionsHtml(agent.mode)}
+                ${buildThreadLaunchModeOptionsHtml(agent.adapter, agent.mode)}
               </select>
               <div class="thread-launch-model-meta">${_escapeHtml(getThreadLaunchModeLabel(agent.mode))}</div>
             </div>
@@ -1272,7 +1307,7 @@
       return;
     }
     if (field === "mode") {
-      agent.mode = String(element.value || "").trim() === "headless" ? "headless" : "interactive";
+      agent.mode = normalizeThreadLaunchMode(agent.adapter, element.value);
       if (_threadLaunchAgents[0]?.id === agentId) {
         syncThreadLaunchGlobalInstructionField();
       }
@@ -1408,7 +1443,11 @@
                          config.adapter === "claude" ? "Claude" :
                          config.adapter === "gemini" ? "Gemini" :
                          config.adapter === "copilot" ? "Copilot" : "Codex";
-    const modeLabel = config.mode === "headless" ? "Headless CLI" : "Interactive PTY";
+    const modeLabel = config.mode === "direct"
+      ? "Direct App Server"
+      : config.mode === "headless"
+        ? "Headless CLI"
+        : "Interactive PTY";
     const displayName = buildDefaultParticipantName(config);
     const result = await api("/api/agents/register", {
       method: "POST",

@@ -1133,7 +1133,7 @@ export const CONFIG_REGISTRY: ReadonlyArray<ConfigDescriptor> = [
     kind: "text",
     defaultValue: null,
     label: "Codex Command",
-    description: "Optional override for the Codex CLI command used by the headless JSON adapter.",
+    description: "Optional override for the Codex CLI command used by the direct app-server and headless JSON adapters.",
     section: "internal",
     scope: "hidden",
     sensitivity: "runtime",

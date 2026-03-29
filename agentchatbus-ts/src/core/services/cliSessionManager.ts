@@ -5,6 +5,7 @@ import { eventBus } from "../../shared/eventBus.js";
 import { logError, logInfo } from "../../shared/logger.js";
 import { CursorInteractiveAdapter } from "./adapters/cursorInteractiveAdapter.js";
 import { CodexInteractiveAdapter } from "./adapters/codexInteractiveAdapter.js";
+import { CodexDirectAdapter } from "./adapters/codexDirectAdapter.js";
 import { ClaudeInteractiveAdapter } from "./adapters/claudeInteractiveAdapter.js";
 import { GeminiInteractiveAdapter } from "./adapters/geminiInteractiveAdapter.js";
 import { CopilotInteractiveAdapter } from "./adapters/copilotInteractiveAdapter.js";
@@ -19,7 +20,7 @@ type HeadlessTerminalInstance = import("@xterm/headless").Terminal;
 const { Terminal: HeadlessTerminal } = xtermHeadless;
 
 export type CliSessionAdapterId = "cursor" | "codex" | "claude" | "gemini" | "copilot";
-export type CliSessionMode = "headless" | "interactive";
+export type CliSessionMode = "headless" | "interactive" | "direct";
 export type CliSessionState =
   | "created"
   | "starting"
@@ -1462,6 +1463,7 @@ export class CliSessionManager {
     new CursorHeadlessAdapter(),
     new CodexInteractiveAdapter(),
     new CodexHeadlessAdapter(),
+    new CodexDirectAdapter(),
     new CopilotInteractiveAdapter(),
     new CopilotHeadlessAdapter(),
     new ClaudeInteractiveAdapter(),
@@ -1491,7 +1493,11 @@ export class CliSessionManager {
     const prompt = String(input.prompt || "");
     const adapterId = String(input.adapter || "").trim() as CliSessionAdapterId;
     const requestedMode = (String(input.mode || "interactive").trim() || "interactive") as CliSessionMode;
-    const mode = requestedMode === "headless" ? "headless" : "interactive";
+    const mode = requestedMode === "headless"
+      ? "headless"
+      : requestedMode === "direct"
+        ? "direct"
+        : "interactive";
     const adapter = this.adapters.get(this.adapterKey(adapterId, mode));
     if (!adapter) {
       throw new Error(`Unsupported CLI adapter '${adapterId}' in mode '${mode}'`);
@@ -2156,7 +2162,7 @@ export class CliSessionManager {
       runtime.snapshot.updated_at = nowIso();
       if (
         runtime.snapshot.adapter === "codex"
-        && runtime.snapshot.mode === "headless"
+        && (runtime.snapshot.mode === "headless" || runtime.snapshot.mode === "direct")
         && result.externalSessionId
       ) {
         runtime.launchEnv = {
@@ -2204,7 +2210,7 @@ export class CliSessionManager {
       if (runtime.stopRequested) {
         runtime.snapshot.state = "stopped";
         this.emitSessionEvent("cli.session.stopped", runtime);
-      } else if ((result.exitCode ?? 0) === 0) {
+      } else if (result.exitCode === 0) {
         runtime.snapshot.state = "completed";
         this.emitSessionEvent("cli.session.completed", runtime);
       } else {
