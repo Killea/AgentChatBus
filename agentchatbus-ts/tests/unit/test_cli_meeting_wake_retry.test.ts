@@ -55,6 +55,16 @@ function makeInteractiveSession(
     meeting_post_state: overrides.meeting_post_state || "pending",
     meeting_post_error: overrides.meeting_post_error,
     last_posted_message_id: overrides.last_posted_message_id,
+    launch_started_at: overrides.launch_started_at,
+    process_started_at: overrides.process_started_at,
+    first_output_at: overrides.first_output_at,
+    last_output_at: overrides.last_output_at,
+    connected_at: overrides.connected_at,
+    last_tool_call_at: overrides.last_tool_call_at,
+    recent_tool_events: overrides.recent_tool_events,
+    recent_stream_events: overrides.recent_stream_events,
+    recent_activity_events: overrides.recent_activity_events,
+    native_activity_card: overrides.native_activity_card,
   };
 }
 
@@ -71,6 +81,17 @@ function makeHeadlessSession(
     rows: undefined,
     screen_excerpt: overrides.screen_excerpt,
     shell: overrides.shell,
+  };
+}
+
+function makeDirectSession(
+  overrides: Partial<CliSessionSnapshot>,
+): CliSessionSnapshot {
+  return {
+    ...makeHeadlessSession(overrides),
+    mode: "direct",
+    supports_restart: overrides.supports_restart ?? true,
+    supports_input: overrides.supports_input ?? false,
   };
 }
 
@@ -95,6 +116,7 @@ function postWithSync(
 class FakeCliSessionManager {
   readonly wakeCalls: Array<{ sessionId: string; prompt: string }> = [];
   readonly restartCalls: string[] = [];
+  readonly stopCalls: string[] = [];
   private readonly sessions = new Map<string, CliSessionSnapshot>();
 
   constructor(initialSessions: CliSessionSnapshot[]) {
@@ -129,6 +151,22 @@ class FakeCliSessionManager {
       state: "running",
       run_count: (session.run_count || 0) + 1,
       updated_at: "2026-03-23T12:00:01.000Z",
+    } as CliSessionSnapshot;
+    this.sessions.set(sessionId, next);
+    return { ...next };
+  }
+
+  async stopSession(sessionId: string): Promise<CliSessionSnapshot | null> {
+    this.stopCalls.push(sessionId);
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return null;
+    }
+    const next = {
+      ...session,
+      state: "stopped",
+      pid: undefined,
+      updated_at: "2026-03-23T12:00:00.500Z",
     } as CliSessionSnapshot;
     this.sessions.set(sessionId, next);
     return { ...next };
@@ -522,6 +560,93 @@ describe("CliMeetingOrchestrator agent_mcp wake handling", () => {
 
     await Promise.resolve();
 
+    expect(fakeManager.restartCalls).toEqual(["session-a"]);
+    expect(fakeManager.wakeCalls).toHaveLength(0);
+    expect(fakeManager.getSession("session-a")?.state).toBe("running");
+
+    orchestrator.close();
+  });
+
+  it("does not restart a direct codex agent_mcp session while it still shows recent activity", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-23T12:00:00.000Z"));
+
+    const store = new MemoryStore(":memory:");
+    const agentA = store.registerAgent({ ide: "Codex", model: "Direct CLI", display_name: "Codex A" });
+    const { thread } = store.createThread("codex-direct-recent-activity", undefined, undefined, {
+      creatorAdminId: agentA.id,
+      creatorAdminName: agentA.display_name,
+    });
+
+    const fakeManager = new FakeCliSessionManager([
+      makeDirectSession({
+        id: "session-a",
+        thread_id: thread.id,
+        participant_agent_id: agentA.id,
+        participant_display_name: agentA.display_name,
+        participant_role: "administrator",
+        state: "running",
+        last_delivered_seq: 0,
+        last_acknowledged_seq: 0,
+        updated_at: "2026-03-23T12:00:00.000Z",
+        last_output_at: "2026-03-23T12:00:00.000Z",
+      }),
+    ]);
+
+    const orchestrator = new CliMeetingOrchestrator(
+      store,
+      fakeManager as unknown as CliSessionManager,
+    );
+
+    await (orchestrator as any).maybeDeliverIncrementalContext(
+      fakeManager.getSession("session-a"),
+      1,
+    );
+
+    expect(fakeManager.stopCalls).toHaveLength(0);
+    expect(fakeManager.restartCalls).toHaveLength(0);
+    expect((orchestrator as any).pendingDeliverySeqBySession.get("session-a")).toBe(1);
+
+    orchestrator.close();
+  });
+
+  it("stops and restarts a stale direct codex agent_mcp session when a new thread message arrives", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-23T12:00:20.000Z"));
+
+    const store = new MemoryStore(":memory:");
+    const agentA = store.registerAgent({ ide: "Codex", model: "Direct CLI", display_name: "Codex A" });
+    const { thread } = store.createThread("codex-direct-stale-restart", undefined, undefined, {
+      creatorAdminId: agentA.id,
+      creatorAdminName: agentA.display_name,
+    });
+
+    const fakeManager = new FakeCliSessionManager([
+      makeDirectSession({
+        id: "session-a",
+        thread_id: thread.id,
+        participant_agent_id: agentA.id,
+        participant_display_name: agentA.display_name,
+        participant_role: "administrator",
+        state: "running",
+        last_delivered_seq: 0,
+        last_acknowledged_seq: 0,
+        updated_at: "2026-03-23T12:00:00.000Z",
+        last_output_at: "2026-03-23T12:00:00.000Z",
+        external_session_id: "019d1d3a-611f-7e91-b1f1-b5a9d8079942",
+      }),
+    ]);
+
+    const orchestrator = new CliMeetingOrchestrator(
+      store,
+      fakeManager as unknown as CliSessionManager,
+    );
+
+    postWithSync(store, thread.id, "Hank", "Please resume this thread now.", "user");
+
+    await Promise.resolve();
+
+    expect(fakeManager.stopCalls).toEqual(["session-a"]);
     expect(fakeManager.restartCalls).toEqual(["session-a"]);
     expect(fakeManager.wakeCalls).toHaveLength(0);
     expect(fakeManager.getSession("session-a")?.state).toBe("running");

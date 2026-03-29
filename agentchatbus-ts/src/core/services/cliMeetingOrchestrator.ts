@@ -26,6 +26,8 @@ const MCP_MESSAGE_EXIT_BUSY_GRACE_MS = 4_000;
 const MCP_PENDING_DELIVERY_RETRY_MS = 4_000;
 const MCP_COPILOT_MESSAGE_EXIT_BUSY_GRACE_MS = 2_500;
 const MCP_COPILOT_PENDING_DELIVERY_RETRY_MS = 1_250;
+const DIRECT_MCP_RECOVERY_STALE_MS = 8_000;
+const DIRECT_MCP_RECOVERY_COOLDOWN_MS = 15_000;
 const ONLINE_SESSION_STATES = new Set(["created", "starting", "running"]);
 const RESTARTABLE_SESSION_STATES = new Set(["completed", "failed", "stopped"]);
 const RELAY_BLOCKED_STATES = new Set(["stale", "error"]);
@@ -132,6 +134,48 @@ function getMessageExitBusyGraceMs(session: CliSessionSnapshot): number {
   return session.adapter === "copilot"
     ? MCP_COPILOT_MESSAGE_EXIT_BUSY_GRACE_MS
     : MCP_MESSAGE_EXIT_BUSY_GRACE_MS;
+}
+
+function parseTimestampMs(value: string | undefined): number | null {
+  const parsed = Date.parse(String(value || "").trim());
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getLatestSessionActivityMs(session: CliSessionSnapshot): number | null {
+  const timestamps: number[] = [
+    parseTimestampMs(session.launch_started_at),
+    parseTimestampMs(session.process_started_at),
+    parseTimestampMs(session.first_output_at),
+    parseTimestampMs(session.last_output_at),
+    parseTimestampMs(session.connected_at),
+    parseTimestampMs(session.last_tool_call_at),
+    parseTimestampMs(session.updated_at),
+  ].filter((value): value is number => value !== null);
+
+  const recentStreamEvents = Array.isArray(session.recent_stream_events)
+    ? session.recent_stream_events
+    : [];
+  for (const entry of recentStreamEvents) {
+    const parsed = parseTimestampMs(entry?.at);
+    if (parsed !== null) {
+      timestamps.push(parsed);
+    }
+  }
+
+  const recentActivityEvents = Array.isArray(session.recent_activity_events)
+    ? session.recent_activity_events
+    : [];
+  for (const entry of recentActivityEvents) {
+    const parsed = parseTimestampMs(entry?.at);
+    if (parsed !== null) {
+      timestamps.push(parsed);
+    }
+  }
+
+  if (!timestamps.length) {
+    return null;
+  }
+  return Math.max(...timestamps);
 }
 
 function isInteractivePlaceholderContent(content: string | undefined): boolean {
@@ -408,6 +452,8 @@ export class CliMeetingOrchestrator {
   private readonly pendingRelayResyncs = new Set<string>();
   private readonly pendingDeliverySeqBySession = new Map<string, number>();
   private readonly lastWakePromptBySession = new Map<string, WakePromptRecord>();
+  private readonly lastDirectRecoveryAtBySession = new Map<string, number>();
+  private readonly directRecoveryInFlight = new Set<string>();
   private readonly participantRoutingStates = new Map<string, MeetingRoutingState>();
   private readonly heartbeatTimers = new Map<string, NodeJS.Timeout>();
   private readonly wakeRetryTimers = new Map<string, NodeJS.Timeout>();
@@ -435,6 +481,8 @@ export class CliMeetingOrchestrator {
       clearTimeout(timer);
     }
     this.wakeRetryTimers.clear();
+    this.lastDirectRecoveryAtBySession.clear();
+    this.directRecoveryInFlight.clear();
   }
 
   private isThreadClosedForCoordination(threadId: string): boolean {
@@ -448,6 +496,8 @@ export class CliMeetingOrchestrator {
     for (const session of sessions) {
       this.pendingDeliverySeqBySession.delete(session.id);
       this.lastWakePromptBySession.delete(session.id);
+      this.lastDirectRecoveryAtBySession.delete(session.id);
+      this.directRecoveryInFlight.delete(session.id);
       this.clearWakeRetry(session.id);
       this.cliSessionManager.clearWakePromptState(session.id);
     }
@@ -840,6 +890,92 @@ export class CliMeetingOrchestrator {
     return "unavailable";
   }
 
+  private shouldRecoverDirectSession(
+    session: CliSessionSnapshot,
+    targetSeq: number,
+    effectiveAcknowledgedSeq: number,
+  ): boolean {
+    if (
+      usesLegacyPtyRelay(session)
+      || session.mode !== "direct"
+      || session.supports_input
+      || !session.supports_restart
+      || !ONLINE_SESSION_STATES.has(session.state)
+    ) {
+      return false;
+    }
+    if (targetSeq <= effectiveAcknowledgedSeq) {
+      return false;
+    }
+    if (this.shouldTrustParticipantWaitState(session)) {
+      return false;
+    }
+
+    const waitStatus = this.getParticipantWaitStatus(session);
+    if (waitStatus.last_exit_reason === "message" && waitStatus.last_exited_at) {
+      const exitedAtMs = parseTimestampMs(waitStatus.last_exited_at);
+      if (
+        exitedAtMs !== null
+        && Date.now() - exitedAtMs < getMessageExitBusyGraceMs(session)
+      ) {
+        return false;
+      }
+    }
+
+    const lastRecoveryAt = this.lastDirectRecoveryAtBySession.get(session.id) || 0;
+    if (Date.now() - lastRecoveryAt < DIRECT_MCP_RECOVERY_COOLDOWN_MS) {
+      return false;
+    }
+
+    const latestActivityMs = getLatestSessionActivityMs(session);
+    if (latestActivityMs !== null && Date.now() - latestActivityMs < DIRECT_MCP_RECOVERY_STALE_MS) {
+      return false;
+    }
+
+    return true;
+  }
+
+  private async recoverDirectSession(session: CliSessionSnapshot): Promise<boolean> {
+    if (this.directRecoveryInFlight.has(session.id)) {
+      return false;
+    }
+
+    this.directRecoveryInFlight.add(session.id);
+    this.lastDirectRecoveryAtBySession.set(session.id, Date.now());
+    try {
+      let latestSession = this.cliSessionManager.getSession(session.id) || session;
+      if (this.shouldTrustParticipantWaitState(latestSession)) {
+        return false;
+      }
+
+      if (ONLINE_SESSION_STATES.has(latestSession.state)) {
+        const stopped = await this.cliSessionManager.stopSession(session.id);
+        latestSession = stopped || this.cliSessionManager.getSession(session.id) || latestSession;
+      }
+
+      if (!RESTARTABLE_SESSION_STATES.has(String(latestSession.state || ""))) {
+        logInfo(
+          `[cli-meeting] direct session ${session.id} was not restart-ready after stop attempt (state ${latestSession.state})`,
+        );
+        return false;
+      }
+
+      const restarted = await this.cliSessionManager.restartSession(session.id);
+      if (!restarted) {
+        return false;
+      }
+
+      this.pendingDeliverySeqBySession.delete(session.id);
+      this.clearWakeRetry(session.id);
+      logInfo(
+        `[cli-meeting] restarted stale direct agent_mcp session ${session.id} for thread ${session.thread_id}`,
+      );
+      return true;
+    } finally {
+      this.directRecoveryInFlight.delete(session.id);
+    }
+  }
+
   private isMultiParticipantThread(threadId: string): boolean {
     const participantIds = new Set(
       this.cliSessionManager
@@ -1024,6 +1160,19 @@ export class CliMeetingOrchestrator {
           session.id,
           targetSeq,
         );
+        if (this.shouldRecoverDirectSession(session, targetSeq, effectiveAcknowledgedSeq)) {
+          try {
+            const recovered = await this.recoverDirectSession(session);
+            if (recovered) {
+              return;
+            }
+          } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error);
+            logInfo(
+              `[cli-meeting] failed to recover stale direct session ${session.id}: ${detail}`,
+            );
+          }
+        }
         if (workState === "busy") {
           this.scheduleWakeRetry(
             session.id,

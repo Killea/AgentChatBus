@@ -208,6 +208,27 @@
     };
   }
 
+  function getNativeCardAction(session) {
+    const runtime = session?.native_turn_runtime;
+    const phase = String(runtime?.phase || "").trim();
+    const flags = Array.isArray(runtime?.thread_active_flags) ? runtime.thread_active_flags : [];
+    const active = phase === "starting" || phase === "running" || phase === "interrupting";
+    const detail = flags.includes("waitingOnApproval")
+      ? "Waiting on approval"
+      : flags.includes("waitingOnUserInput")
+        ? "Waiting on input"
+        : phase === "interrupting"
+          ? "Interrupting"
+          : active
+            ? "Running"
+            : "Idle";
+    return {
+      label: active ? "Stop" : "Send",
+      tone: active ? "stop" : "send",
+      detail,
+    };
+  }
+
   function buildSectionItemsHtml(section) {
     const items = Array.isArray(section?.items) ? section.items : [];
     if (!items.length) {
@@ -263,7 +284,7 @@
     `;
   }
 
-  function buildNativeCardHtml(model) {
+  function buildNativeCardHtml(model, actionState) {
     return `
       <div class="msg-native-card__header">
         <span class="msg-native-card__status">${escapeHtml(model.shell_status_text || "Connected")}</span>
@@ -271,6 +292,18 @@
       </div>
       <div class="msg-native-card__body">
         ${model.content_sections.map((section) => buildSectionHtml(section)).join("")}
+      </div>
+      <div class="msg-native-card__footer">
+        <span class="msg-native-card__footer-note">${escapeHtml(actionState?.detail || "Idle")}</span>
+        <button
+          type="button"
+          class="msg-native-card__action"
+          data-tone="${escapeHtml(actionState?.tone || "send")}"
+          disabled
+          aria-disabled="true"
+          tabindex="-1"
+          title="Read-only status copied from Codex runtime"
+        >${escapeHtml(actionState?.label || "Send")}</button>
       </div>
     `;
   }
@@ -400,6 +433,7 @@
     if (!model) {
       return;
     }
+    const actionState = getNativeCardAction(session);
 
     const identity = resolveActivityIdentity(session);
     const row = resolveAnchorRow(session, identity, model);
@@ -413,7 +447,7 @@
     cardEl.dataset.threadId = threadId;
     cardEl.dataset.authorId = String(identity.authorId || session?.participant_agent_id || session?.id || "").trim();
     cardEl.dataset.shellStatus = String(model.shell_status || "connected");
-    cardEl.innerHTML = buildNativeCardHtml(model);
+    cardEl.innerHTML = buildNativeCardHtml(model, actionState);
     attachCardToRow(row, cardEl);
     cliActivityCards.set(String(session.id), cardEl);
 

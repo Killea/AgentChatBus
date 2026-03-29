@@ -5,6 +5,7 @@ import spawn from "cross-spawn";
 import { BUS_VERSION } from "../../config/env.js";
 import type {
   CliAdapterActivityEvent,
+  CliAdapterNativeRuntimeEvent,
   CliSessionActivityFile,
   CliSessionActivityPlanStep,
   CliSessionAdapter,
@@ -190,6 +191,58 @@ function extractPatchChangeType(value: unknown): CliSessionActivityFile["change_
   const nextType = String(value.type || "").trim();
   if (nextType === "add" || nextType === "delete" || nextType === "update") {
     return nextType;
+  }
+  return undefined;
+}
+
+function extractThreadStatusFromPayload(value: unknown): Pick<
+  CliAdapterNativeRuntimeEvent,
+  "thread_status_type" | "thread_active_flags"
+> {
+  const status = isObjectRecord(value)
+    ? (
+      isObjectRecord(value.status)
+        ? value.status
+        : (isObjectRecord(value.thread) && isObjectRecord(value.thread.status) ? value.thread.status : null)
+    )
+    : null;
+  if (!status || typeof status.type !== "string") {
+    return {};
+  }
+  const threadStatusType = ["notLoaded", "idle", "systemError", "active"].includes(status.type)
+    ? status.type as CliAdapterNativeRuntimeEvent["thread_status_type"]
+    : undefined;
+  const threadActiveFlags = Array.isArray(status.activeFlags)
+    ? status.activeFlags
+      .map((entry) => String(entry || "").trim())
+      .filter((entry): entry is NonNullable<CliAdapterNativeRuntimeEvent["thread_active_flags"]>[number] =>
+        entry === "waitingOnApproval" || entry === "waitingOnUserInput")
+    : undefined;
+  return {
+    thread_status_type: threadStatusType,
+    thread_active_flags: threadActiveFlags,
+  };
+}
+
+function normalizeTurnStatus(value: unknown): CliAdapterNativeRuntimeEvent["turn_status"] {
+  const normalized = String(value || "").trim();
+  if (
+    normalized === "completed"
+    || normalized === "interrupted"
+    || normalized === "failed"
+    || normalized === "inProgress"
+  ) {
+    return normalized;
+  }
+  return undefined;
+}
+
+function phaseFromTurnStatus(value: CliAdapterNativeRuntimeEvent["turn_status"]): CliAdapterNativeRuntimeEvent["phase"] {
+  if (value === "completed" || value === "interrupted" || value === "failed") {
+    return value;
+  }
+  if (value === "inProgress") {
+    return "running";
   }
   return undefined;
 }
@@ -880,6 +933,13 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
         hooks.onActivity?.(activity);
       };
 
+      const emitNativeRuntime = (event: CliAdapterNativeRuntimeEvent): void => {
+        hooks.onNativeRuntime?.({
+          ...event,
+          at: event.at || nowIso(),
+        });
+      };
+
       const upsertActivity = (next: Partial<CliAdapterActivityEvent> & { item_id: string }): void => {
         const previous = activityByItemId.get(next.item_id);
         const activity: CliAdapterActivityEvent = {
@@ -1045,6 +1105,12 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
           return;
         }
         if (activeThreadId && activeTurnId) {
+          emitNativeRuntime({
+            thread_id: activeThreadId,
+            active_turn_id: activeTurnId,
+            last_turn_id: activeTurnId,
+            phase: "interrupting",
+          });
           try {
             await sendRequest(
               "turn/interrupt",
@@ -1123,6 +1189,22 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
           if (nextThreadId) {
             activeThreadId = nextThreadId;
           }
+          emitNativeRuntime({
+            thread_id: activeThreadId,
+            ...extractThreadStatusFromPayload(params),
+          });
+          return;
+        }
+
+        if (method === "thread/status/changed") {
+          const nextThreadId = extractThreadIdFromPayload(params);
+          if (nextThreadId) {
+            activeThreadId = nextThreadId;
+          }
+          emitNativeRuntime({
+            thread_id: activeThreadId,
+            ...extractThreadStatusFromPayload(params),
+          });
           return;
         }
 
@@ -1135,6 +1217,14 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
           if (nextTurnId) {
             activeTurnId = nextTurnId;
           }
+          const nextTurnStatus = normalizeTurnStatus(isObjectRecord(params.turn) ? params.turn.status : undefined);
+          emitNativeRuntime({
+            thread_id: activeThreadId,
+            active_turn_id: activeTurnId,
+            last_turn_id: activeTurnId,
+            turn_status: nextTurnStatus || "inProgress",
+            phase: phaseFromTurnStatus(nextTurnStatus || "inProgress") || "running",
+          });
           return;
         }
 
@@ -1158,6 +1248,16 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
           turnCompleted = true;
           completedTurnStatus = turnStatus || undefined;
           successfulTurn = turnStatus === "completed";
+          emitNativeRuntime({
+            thread_id: activeThreadId,
+            active_turn_id: null,
+            last_turn_id: nextTurnId || activeTurnId || null,
+            turn_status: normalizeTurnStatus(turnStatus) || null,
+            phase: phaseFromTurnStatus(normalizeTurnStatus(turnStatus) || undefined) || "completed",
+            last_error: isObjectRecord(params.turn) && params.turn.error !== undefined && params.turn.error !== null
+              ? formatCodexErrorSummary(params.turn.error)
+              : null,
+          });
           if (
             isObjectRecord(params.turn)
             && params.turn.error !== undefined
@@ -1428,6 +1528,10 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
       };
 
       const bootstrap = async () => {
+        emitNativeRuntime({
+          thread_id: activeThreadId || null,
+          phase: "starting",
+        });
         startupLog("initialize -> start");
         try {
           await sendRequest(
@@ -1508,6 +1612,10 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
           throw new Error(detail);
         }
         activeThreadId = nextThreadId;
+        emitNativeRuntime({
+          thread_id: activeThreadId,
+          ...extractThreadStatusFromPayload(threadResult),
+        });
         startupLog(
           resumedThread
             ? `thread/start -> ok (resumed thread ${activeThreadId})`
@@ -1546,6 +1654,13 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
         }
         activeTurnId = nextTurnId;
         startupCompleted = true;
+        emitNativeRuntime({
+          thread_id: activeThreadId,
+          active_turn_id: activeTurnId,
+          last_turn_id: activeTurnId,
+          turn_status: "inProgress",
+          phase: "running",
+        });
         startupLog(`turn/start -> ok (thread ${activeThreadId}, turn ${activeTurnId})`);
         resetPostTurnSilenceTimer();
       };

@@ -358,6 +358,49 @@
     return choosePreferredSession(candidates) || candidates[0] || null;
   }
 
+  function getNativeTurnRuntime(session) {
+    const runtime = session?.native_turn_runtime;
+    return runtime && typeof runtime === "object" ? runtime : null;
+  }
+
+  function hasActiveNativeTurn(session) {
+    if (!session || !isActiveSession(session)) {
+      return false;
+    }
+    const runtime = getNativeTurnRuntime(session);
+    if (!runtime) {
+      return false;
+    }
+    const phase = String(runtime.phase || "").trim();
+    return phase === "starting" || phase === "running" || phase === "interrupting";
+  }
+
+  function getPrimaryComposerAction(threadId = getActiveThreadId()) {
+    const session = getSelectedSession(threadId);
+    if (session && hasActiveNativeTurn(session)) {
+      const runtime = getNativeTurnRuntime(session);
+      const phase = String(runtime?.phase || "").trim().toLowerCase();
+      const threadFlags = Array.isArray(runtime?.thread_active_flags) ? runtime.thread_active_flags : [];
+      const statusText = threadFlags.includes("waitingOnApproval")
+        ? "Waiting on approval"
+        : threadFlags.includes("waitingOnUserInput")
+          ? "Waiting on input"
+          : phase === "interrupting"
+            ? "Interrupting"
+            : "Running";
+      return {
+        action: "stop",
+        sessionId: session.id,
+        statusText,
+      };
+    }
+    return {
+      action: "send",
+      sessionId: null,
+      statusText: "Ready",
+    };
+  }
+
   function isSessionDeliveryBusy(session) {
     if (!session || !isActiveSession(session)) {
       return false;
@@ -518,6 +561,7 @@
       return null;
     }
     activeSessionIdByThread.set(threadId, sessionId);
+    window.AcbComposeShell?.refreshPrimaryAction?.();
     return sessionMap.get(sessionId) || null;
   }
 
@@ -1664,6 +1708,7 @@
     const sessions = Array.isArray(result?.sessions) ? result.sessions : [];
     replaceThreadAgents(threadId, Array.isArray(threadAgents) ? threadAgents : []);
     replaceSessionsForThread(threadId, sessions);
+    window.AcbComposeShell?.refreshPrimaryAction?.();
     if (window.AcbChat?.syncThreadCliSessions) {
       window.AcbChat.syncThreadCliSessions(threadId, sessions);
     }
@@ -1704,6 +1749,7 @@
     if (result?.session) {
       upsertSession(result.session);
       selectSession(result.session.id, threadId);
+      window.AcbComposeShell?.refreshPrimaryAction?.();
       return result.session;
     }
 
@@ -1735,6 +1781,7 @@
     if (result?.session) {
       upsertSession(result.session);
       selectSession(result.session.id, threadId);
+      window.AcbComposeShell?.refreshPrimaryAction?.();
       return result.session;
     }
 
@@ -1766,6 +1813,7 @@
     if (result?.session) {
       upsertSession(result.session);
       selectSession(result.session.id, threadId);
+      window.AcbComposeShell?.refreshPrimaryAction?.();
       return result.session;
     }
 
@@ -1896,6 +1944,7 @@
     const session = event?.payload?.session;
     if (session?.thread_id) {
       upsertSession(session);
+      window.AcbComposeShell?.refreshPrimaryAction?.();
     }
   }
 
@@ -1906,6 +1955,7 @@
     handleSseEvent,
     getDeliverySummaryForSeq,
     getSessionForAgent,
+    getPrimaryComposerAction,
     selectSession,
     selectSessionFromElement,
     toggleTerminalVisibility,

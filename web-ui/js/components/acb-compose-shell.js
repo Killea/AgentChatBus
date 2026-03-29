@@ -24,7 +24,7 @@
             <div id="image-preview" style="display:none; padding: 8px; background: rgba(100,150,200,.08); border-radius: 4px; margin-bottom: 5px; gap:8px; flex-wrap:wrap;"></div>
             <div id="compose-input" contenteditable="true" style="overflow-y: auto; word-break: break-word;" placeholder="Send a message... Click an agent's row below to mention them!" onkeydown="handleKey(event)"></div>
           </div>
-          <button id="btn-send" onclick="sendMessage()" title="Send">➤</button>
+          <button id="btn-send" title="Send" aria-label="Send">↑</button>
         </div>`;
 
       // Fix 2 — Persistance du nom via localStorage
@@ -55,6 +55,15 @@
         input.addEventListener('paste', (e) => this.handlePaste(e));
         input.addEventListener('drop', (e) => this.handleDrop(e));
         input.addEventListener('dragover', (e) => e.preventDefault());
+      }
+
+      const sendButton = this.querySelector('#btn-send');
+      if (sendButton) {
+        sendButton.addEventListener('click', async () => {
+          if (typeof window.sendMessage === 'function') {
+            await window.sendMessage();
+          }
+        });
       }
     }
 

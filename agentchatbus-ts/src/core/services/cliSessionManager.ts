@@ -71,6 +71,30 @@ export interface CliNativeActivityCard {
   content_sections: CliNativeActivityCardSection[];
 }
 
+export type CliNativeThreadStatusType = "notLoaded" | "idle" | "systemError" | "active";
+export type CliNativeThreadActiveFlag = "waitingOnApproval" | "waitingOnUserInput";
+export type CliNativeTurnStatus = "completed" | "interrupted" | "failed" | "inProgress";
+export type CliNativeTurnPhase =
+  | "idle"
+  | "starting"
+  | "running"
+  | "interrupting"
+  | "completed"
+  | "interrupted"
+  | "failed";
+
+export interface CliNativeTurnRuntime {
+  updated_at: string;
+  thread_id?: string;
+  thread_status_type?: CliNativeThreadStatusType;
+  thread_active_flags?: CliNativeThreadActiveFlag[];
+  active_turn_id?: string;
+  last_turn_id?: string;
+  turn_status?: CliNativeTurnStatus;
+  phase: CliNativeTurnPhase;
+  last_error?: string;
+}
+
 export interface CliSessionSnapshot {
   id: string;
   thread_id: string;
@@ -142,6 +166,7 @@ export interface CliSessionSnapshot {
     stream: CliSessionStream;
   }>;
   recent_activity_events?: CliAdapterActivityEvent[];
+  native_turn_runtime?: CliNativeTurnRuntime;
   native_activity_card?: CliNativeActivityCard;
 }
 
@@ -272,6 +297,7 @@ type CliSessionReplyCaptureRuntime = {
 
 import type {
   CliAdapterActivityEvent,
+  CliAdapterNativeRuntimeEvent,
   CliMeetingTransport,
   CliSessionAdapter,
   CliAdapterRunInput,
@@ -338,6 +364,117 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+const VALID_NATIVE_THREAD_STATUS_TYPES = new Set<CliNativeThreadStatusType>([
+  "notLoaded",
+  "idle",
+  "systemError",
+  "active",
+]);
+const VALID_NATIVE_THREAD_ACTIVE_FLAGS = new Set<CliNativeThreadActiveFlag>([
+  "waitingOnApproval",
+  "waitingOnUserInput",
+]);
+const VALID_NATIVE_TURN_STATUSES = new Set<CliNativeTurnStatus>([
+  "completed",
+  "interrupted",
+  "failed",
+  "inProgress",
+]);
+const VALID_NATIVE_TURN_PHASES = new Set<CliNativeTurnPhase>([
+  "idle",
+  "starting",
+  "running",
+  "interrupting",
+  "completed",
+  "interrupted",
+  "failed",
+]);
+
+function normalizeOptionalString(value: unknown): string | undefined {
+  const normalized = String(value || "").trim();
+  return normalized || undefined;
+}
+
+function normalizeNativeThreadStatusType(value: unknown): CliNativeThreadStatusType | undefined {
+  const normalized = String(value || "").trim() as CliNativeThreadStatusType;
+  return VALID_NATIVE_THREAD_STATUS_TYPES.has(normalized) ? normalized : undefined;
+}
+
+function normalizeNativeThreadActiveFlags(value: unknown): CliNativeThreadActiveFlag[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const flags = value
+    .map((entry) => String(entry || "").trim() as CliNativeThreadActiveFlag)
+    .filter((entry) => VALID_NATIVE_THREAD_ACTIVE_FLAGS.has(entry));
+  return flags.length ? [...new Set(flags)] : [];
+}
+
+function normalizeNativeTurnStatus(value: unknown): CliNativeTurnStatus | undefined {
+  const normalized = String(value || "").trim() as CliNativeTurnStatus;
+  return VALID_NATIVE_TURN_STATUSES.has(normalized) ? normalized : undefined;
+}
+
+function normalizeNativeTurnPhase(value: unknown): CliNativeTurnPhase | undefined {
+  const normalized = String(value || "").trim() as CliNativeTurnPhase;
+  return VALID_NATIVE_TURN_PHASES.has(normalized) ? normalized : undefined;
+}
+
+function cloneNativeTurnRuntime(runtime: CliNativeTurnRuntime | undefined): CliNativeTurnRuntime | undefined {
+  if (!runtime) {
+    return undefined;
+  }
+  return {
+    ...runtime,
+    thread_active_flags: Array.isArray(runtime.thread_active_flags)
+      ? [...runtime.thread_active_flags]
+      : runtime.thread_active_flags,
+  };
+}
+
+function mergeNativeTurnRuntime(
+  current: CliNativeTurnRuntime | undefined,
+  event: CliAdapterNativeRuntimeEvent,
+): CliNativeTurnRuntime {
+  const next: CliNativeTurnRuntime = cloneNativeTurnRuntime(current) || {
+    updated_at: nowIso(),
+    phase: "idle",
+  };
+
+  next.updated_at = normalizeOptionalString(event.at) || nowIso();
+
+  if (Object.prototype.hasOwnProperty.call(event, "thread_id")) {
+    next.thread_id = normalizeOptionalString(event.thread_id);
+  }
+  if (Object.prototype.hasOwnProperty.call(event, "thread_status_type")) {
+    next.thread_status_type = normalizeNativeThreadStatusType(event.thread_status_type);
+  }
+  if (Object.prototype.hasOwnProperty.call(event, "thread_active_flags")) {
+    next.thread_active_flags = normalizeNativeThreadActiveFlags(event.thread_active_flags);
+  }
+  if (Object.prototype.hasOwnProperty.call(event, "active_turn_id")) {
+    next.active_turn_id = normalizeOptionalString(event.active_turn_id);
+  }
+  if (Object.prototype.hasOwnProperty.call(event, "last_turn_id")) {
+    next.last_turn_id = normalizeOptionalString(event.last_turn_id);
+  }
+  if (Object.prototype.hasOwnProperty.call(event, "turn_status")) {
+    next.turn_status = normalizeNativeTurnStatus(event.turn_status);
+  }
+  if (Object.prototype.hasOwnProperty.call(event, "phase")) {
+    next.phase = normalizeNativeTurnPhase(event.phase) || next.phase || "idle";
+  }
+  if (Object.prototype.hasOwnProperty.call(event, "last_error")) {
+    next.last_error = normalizeOptionalString(event.last_error);
+  }
+
+  if (!next.phase) {
+    next.phase = next.active_turn_id ? "running" : "idle";
+  }
+
+  return next;
+}
+
 function clipNativeCardText(value: unknown, maxLength = 240): string {
   const normalized = String(value || "")
     .replace(/\s+/g, " ")
@@ -398,6 +535,7 @@ function summarizeShellStatus(snapshot: CliSessionSnapshot): {
   text: string;
 } {
   const state = String(snapshot.state || "").trim().toLowerCase();
+  const runtime = snapshot.native_turn_runtime;
   if (state === "failed") {
     return { status: "failed", text: "Failed" };
   }
@@ -409,6 +547,24 @@ function summarizeShellStatus(snapshot: CliSessionSnapshot): {
   }
   if (state === "starting" || state === "created") {
     return { status: "starting", text: "Starting Codex" };
+  }
+  if (runtime?.thread_active_flags?.includes("waitingOnApproval")) {
+    return { status: "running", text: "Waiting on approval" };
+  }
+  if (runtime?.thread_active_flags?.includes("waitingOnUserInput")) {
+    return { status: "running", text: "Waiting on input" };
+  }
+  if (runtime?.phase === "interrupting") {
+    return { status: "running", text: "Interrupting" };
+  }
+  if (runtime?.phase === "running" || runtime?.phase === "starting") {
+    return { status: "running", text: "Running" };
+  }
+  if (runtime?.phase === "interrupted") {
+    return { status: "completed", text: "Interrupted" };
+  }
+  if (runtime?.phase === "completed") {
+    return { status: "completed", text: "Completed" };
   }
   if (snapshot.connected_at) {
     return { status: "connected", text: "Connected" };
@@ -1826,6 +1982,10 @@ export class CliSessionManager {
       rows,
       shell: adapter.shell,
       recent_activity_events: [],
+      native_turn_runtime: {
+        updated_at: nowIso(),
+        phase: "idle",
+      },
       context_delivery_mode: contextDeliveryMode,
       last_delivered_seq: lastDeliveredSeq,
       last_acknowledged_seq: lastDeliveredSeq,
@@ -2010,6 +2170,11 @@ export class CliSessionManager {
     runtime.snapshot.meeting_post_state = runtime.snapshot.participant_agent_id ? "pending" : undefined;
     runtime.snapshot.meeting_post_error = undefined;
     runtime.snapshot.last_posted_message_id = undefined;
+    runtime.snapshot.native_turn_runtime = {
+      updated_at: nowIso(),
+      phase: "idle",
+      thread_id: normalizeOptionalString(runtime.launchEnv?.[CODEX_THREAD_ID_ENV_VAR]),
+    };
     runtime.snapshot.updated_at = nowIso();
     this.disposeInteractiveRuntimeState(runtime);
     this.emitSessionEvent("cli.session.restarting", runtime);
@@ -2351,6 +2516,11 @@ export class CliSessionManager {
     runtime.snapshot.recent_tool_events = [];
     runtime.snapshot.recent_stream_events = [];
     runtime.snapshot.recent_activity_events = [];
+    runtime.snapshot.native_turn_runtime = {
+      updated_at: nowIso(),
+      phase: "idle",
+      thread_id: normalizeOptionalString(runtime.launchEnv?.[CODEX_THREAD_ID_ENV_VAR]),
+    };
     runtime.snapshot.updated_at = nowIso();
     this.emitSessionEvent("cli.session.started", runtime);
 
@@ -2381,6 +2551,7 @@ export class CliSessionManager {
           signal: runtime.abortController.signal,
           onOutput: (stream, text) => this.appendOutput(runtime, stream, text),
           onActivity: (activity) => this.appendActivity(runtime, activity),
+          onNativeRuntime: (event) => this.applyNativeRuntimeEvent(runtime, event),
           onProcessStart: (pid) => {
             runtime.snapshot.pid = pid;
             runtime.snapshot.process_started_at = nowIso();
@@ -2647,6 +2818,21 @@ export class CliSessionManager {
       : [];
     entries.push({ at, stream });
     runtime.snapshot.recent_stream_events = entries.slice(-80);
+  }
+
+  private applyNativeRuntimeEvent(runtime: CliSessionRuntime, event: CliAdapterNativeRuntimeEvent): void {
+    if (!event || typeof event !== "object") {
+      return;
+    }
+    const next = mergeNativeTurnRuntime(runtime.snapshot.native_turn_runtime, event);
+    const previousSerialized = JSON.stringify(runtime.snapshot.native_turn_runtime || null);
+    const nextSerialized = JSON.stringify(next);
+    if (previousSerialized === nextSerialized) {
+      return;
+    }
+    runtime.snapshot.native_turn_runtime = next;
+    runtime.snapshot.updated_at = nowIso();
+    this.emitSessionEvent("cli.session.state", runtime);
   }
 
   private appendActivity(runtime: CliSessionRuntime, activity: CliAdapterActivityEvent): void {
@@ -4560,6 +4746,7 @@ export class CliSessionManager {
             : entry.plan_steps,
         }))
         : snapshot.recent_activity_events,
+      native_turn_runtime: cloneNativeTurnRuntime(snapshot.native_turn_runtime),
       native_activity_card: buildNativeActivityCard(snapshot),
     };
   }

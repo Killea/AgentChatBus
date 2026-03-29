@@ -2673,6 +2673,51 @@ body[data-theme="light"] .msg-sys-admin-human-note-icon {
   padding-right: 2px;
 }
 
+.msg-native-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(148, 163, 184, .12);
+}
+
+.msg-native-card__footer-note {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.msg-native-card__action {
+  appearance: none;
+  border: 1px solid rgba(148, 163, 184, .18);
+  border-radius: 4px;
+  min-width: 72px;
+  height: 30px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  background: rgba(148, 163, 184, .1);
+  color: var(--text-2);
+  opacity: .9;
+  cursor: default;
+  pointer-events: none;
+}
+
+.msg-native-card__action[data-tone="stop"] {
+  border-color: rgba(248, 113, 113, .25);
+  background: rgba(248, 113, 113, .12);
+  color: #fca5a5;
+}
+
+.msg-native-card__action[data-tone="send"] {
+  border-color: rgba(59, 130, 246, .25);
+  background: rgba(59, 130, 246, .12);
+  color: #93c5fd;
+}
+
 .msg-native-card__section {
   display: flex;
   flex-direction: column;
@@ -2841,6 +2886,14 @@ body[data-theme="light"] .msg-native-card__chip[data-kind="update"] {
 
 body[data-theme="light"] .msg-native-card__diff {
   background: rgba(248, 250, 252, .94);
+}
+
+body[data-theme="light"] .msg-native-card__action[data-tone="stop"] {
+  color: #b91c1c;
+}
+
+body[data-theme="light"] .msg-native-card__action[data-tone="send"] {
+  color: #1d4ed8;
 }
 
 @keyframes bouncing {

@@ -3,6 +3,17 @@ export type CliSessionMode = "headless" | "interactive" | "direct";
 export type CliSessionStream = "stdout" | "stderr";
 export type CliMeetingTransport = "pty_relay" | "agent_mcp";
 export type CliSessionActivityStatus = "in_progress" | "completed" | "failed" | "declined";
+export type CliNativeThreadStatusType = "notLoaded" | "idle" | "systemError" | "active";
+export type CliNativeThreadActiveFlag = "waitingOnApproval" | "waitingOnUserInput";
+export type CliNativeTurnStatus = "completed" | "interrupted" | "failed" | "inProgress";
+export type CliNativeTurnPhase =
+  | "idle"
+  | "starting"
+  | "running"
+  | "interrupting"
+  | "completed"
+  | "interrupted"
+  | "failed";
 export type CliSessionActivityKind =
   | "thinking"
   | "plan"
@@ -39,6 +50,18 @@ export type CliAdapterActivityEvent = {
   plan_steps?: CliSessionActivityPlanStep[];
 };
 
+export type CliAdapterNativeRuntimeEvent = {
+  at?: string;
+  thread_id?: string | null;
+  thread_status_type?: CliNativeThreadStatusType | null;
+  thread_active_flags?: CliNativeThreadActiveFlag[] | null;
+  active_turn_id?: string | null;
+  last_turn_id?: string | null;
+  turn_status?: CliNativeTurnStatus | null;
+  phase?: CliNativeTurnPhase | null;
+  last_error?: string | null;
+};
+
 export type CliAdapterRunInput = {
   prompt: string;
   workspace: string;
@@ -58,6 +81,7 @@ export type CliAdapterRunHooks = {
   signal: AbortSignal;
   onOutput: (stream: CliSessionStream, text: string) => void;
   onActivity?: (activity: CliAdapterActivityEvent) => void;
+  onNativeRuntime?: (event: CliAdapterNativeRuntimeEvent) => void;
   onProcessStart: (pid: number) => void;
   onControls: (controls: CliSessionControls) => void;
 };
