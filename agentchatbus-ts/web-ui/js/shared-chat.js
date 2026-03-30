@@ -195,6 +195,7 @@
     }
     return {
       ...card,
+      session,
       shell_status_text: String(card.shell_status_text || normalizeShellStatusText(session)).trim(),
       updated_at: String(
         card.updated_at
@@ -223,10 +224,21 @@
             ? "Running"
             : "Idle";
     return {
-      label: active ? "Stop" : "Send",
-      tone: active ? "stop" : "send",
+      state: active ? "running" : "idle",
       detail,
+      ariaLabel: active ? `Codex active: ${detail}` : `Codex idle: ${detail}`,
     };
+  }
+
+  function buildNativeCardActionGlyph(actionState) {
+    return `
+      <span class="msg-native-card__action-glyph" aria-hidden="true">
+        <svg class="msg-native-card__action-icon" viewBox="0 0 28 18" focusable="false">
+          <rect class="msg-native-card__action-cell msg-native-card__action-cell--left" x="3" y="4" width="8" height="10" rx="2"></rect>
+          <rect class="msg-native-card__action-cell msg-native-card__action-cell--right" x="17" y="4" width="8" height="10" rx="2"></rect>
+        </svg>
+      </span>
+    `;
   }
 
   function buildSectionItemsHtml(section) {
@@ -284,6 +296,54 @@
     `;
   }
 
+  function getReentryPromptState(session) {
+    const state = session?.reentry_prompt;
+    return state && typeof state === "object" ? state : null;
+  }
+
+  function buildNativePromptBlockHtml(title, prompt, meta = "") {
+    const normalizedPrompt = String(prompt || "").trim();
+    if (!normalizedPrompt) {
+      return "";
+    }
+    const normalizedMeta = String(meta || "").trim();
+    return `
+      <section class="msg-native-card__prompt">
+        <div class="msg-native-card__prompt-title">${escapeHtml(title)}</div>
+        ${normalizedMeta ? `<div class="msg-native-card__prompt-meta">${escapeHtml(normalizedMeta)}</div>` : ""}
+        <pre class="msg-native-card__prompt-body">${escapeHtml(normalizedPrompt)}</pre>
+      </section>
+    `;
+  }
+
+  function buildNativePromptPanelsHtml(session) {
+    const reentry = getReentryPromptState(session);
+    if (!reentry) {
+      return "";
+    }
+    const resolvedPrompt = String(reentry.resolved_prompt || "").trim();
+    const lastSentPrompt = String(reentry.last_sent_prompt || "").trim();
+    const resolvedMeta = reentry.resolved_at
+      ? `Resolved ${formatActivityTime(reentry.resolved_at)}`
+      : "Resolved";
+    const lastSentMeta = reentry.last_sent_at
+      ? `Sent ${formatActivityTime(reentry.last_sent_at)}`
+      : "Last sent";
+    const blocks = [
+      buildNativePromptBlockHtml("Resolved Re-entry Prompt", resolvedPrompt, resolvedMeta),
+    ];
+    if (lastSentPrompt && lastSentPrompt !== resolvedPrompt) {
+      blocks.push(buildNativePromptBlockHtml("Last Sent Re-entry Prompt", lastSentPrompt, lastSentMeta));
+    } else if (lastSentPrompt) {
+      blocks.push(buildNativePromptBlockHtml("Last Sent Re-entry Prompt", lastSentPrompt, `${lastSentMeta} · matches resolved`));
+    }
+    const html = blocks.filter(Boolean).join("");
+    if (!html) {
+      return "";
+    }
+    return `<div class="msg-native-card__prompts">${html}</div>`;
+  }
+
   function buildNativeCardHtml(model, actionState) {
     return `
       <div class="msg-native-card__header">
@@ -293,17 +353,19 @@
       <div class="msg-native-card__body">
         ${model.content_sections.map((section) => buildSectionHtml(section)).join("")}
       </div>
+      ${buildNativePromptPanelsHtml(model.session)}
       <div class="msg-native-card__footer">
         <span class="msg-native-card__footer-note">${escapeHtml(actionState?.detail || "Idle")}</span>
         <button
           type="button"
           class="msg-native-card__action"
-          data-tone="${escapeHtml(actionState?.tone || "send")}"
+          data-state="${escapeHtml(actionState?.state || "idle")}"
           disabled
           aria-disabled="true"
+          aria-label="${escapeHtml(actionState?.ariaLabel || "Codex idle")}"
           tabindex="-1"
-          title="Read-only status copied from Codex runtime"
-        >${escapeHtml(actionState?.label || "Send")}</button>
+          title="${escapeHtml(actionState?.ariaLabel || "Codex idle")}"
+        >${buildNativeCardActionGlyph(actionState)}</button>
       </div>
     `;
   }

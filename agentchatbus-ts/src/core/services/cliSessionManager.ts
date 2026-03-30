@@ -15,6 +15,7 @@ import { COPILOT_SESSION_ID_ENV_VAR, CopilotHeadlessAdapter } from "./adapters/c
 import { CLAUDE_SESSION_ID_ENV_VAR, ClaudeHeadlessAdapter } from "./adapters/claudeHeadlessAdapter.js";
 import { GEMINI_SESSION_ID_ENV_VAR, GeminiHeadlessAdapter } from "./adapters/geminiHeadlessAdapter.js";
 import { isCodexWorkingLine, looksLikeConversationalWorkingScreen } from "./cliInteractiveHeuristics.js";
+import { buildCliMeetingWakePrompt } from "./cliMeetingContextBuilder.js";
 
 type HeadlessTerminalInstance = import("@xterm/headless").Terminal;
 const { Terminal: HeadlessTerminal } = xtermHeadless;
@@ -98,6 +99,7 @@ export interface CliNativeTurnRuntime {
 export interface CliSessionSnapshot {
   id: string;
   thread_id: string;
+  thread_display_name?: string;
   adapter: CliSessionAdapterId;
   mode: CliSessionMode;
   model?: string;
@@ -165,6 +167,13 @@ export interface CliSessionSnapshot {
     at: string;
     stream: CliSessionStream;
   }>;
+  reentry_prompt?: {
+    resolved_kind: "wake";
+    resolved_prompt: string;
+    resolved_at: string;
+    last_sent_prompt?: string;
+    last_sent_at?: string;
+  };
   recent_activity_events?: CliAdapterActivityEvent[];
   native_turn_runtime?: CliNativeTurnRuntime;
   native_activity_card?: CliNativeActivityCard;
@@ -179,6 +188,7 @@ export interface CliSessionOutputEntry {
 
 export interface CreateCliSessionInput {
   threadId: string;
+  threadDisplayName?: string;
   adapter: CliSessionAdapterId;
   mode?: CliSessionMode;
   model?: string;
@@ -587,6 +597,22 @@ function pickNativeCardUpdatedAt(snapshot: CliSessionSnapshot, sections: CliNati
     || snapshot.created_at
     || nowIso(),
   ).trim() || nowIso();
+}
+
+function buildSessionReentryPrompt(snapshot: CliSessionSnapshot): CliSessionSnapshot["reentry_prompt"] {
+  const threadLabel = String(snapshot.thread_display_name || snapshot.thread_id || "").trim() || "current thread";
+  const resolvedPrompt = buildCliMeetingWakePrompt(threadLabel);
+  const promptHistory = Array.isArray(snapshot.prompt_history) ? snapshot.prompt_history : [];
+  const latestWakeEntry = [...promptHistory]
+    .reverse()
+    .find((entry) => String(entry?.kind || "").trim().toLowerCase() === "wake");
+  return {
+    resolved_kind: "wake",
+    resolved_prompt: resolvedPrompt,
+    resolved_at: String(snapshot.updated_at || snapshot.created_at || nowIso()).trim() || nowIso(),
+    last_sent_prompt: String(latestWakeEntry?.prompt || "").trim() || undefined,
+    last_sent_at: String(latestWakeEntry?.at || "").trim() || undefined,
+  };
 }
 
 function buildNativeActivityCard(snapshot: CliSessionSnapshot): CliNativeActivityCard {
@@ -1951,6 +1977,7 @@ export class CliSessionManager {
     const snapshot: CliSessionSnapshot = {
       id: randomUUID(),
       thread_id: input.threadId,
+      thread_display_name: String(input.threadDisplayName || "").trim() || undefined,
       adapter: adapterId,
       mode,
       model,
@@ -2043,6 +2070,21 @@ export class CliSessionManager {
       return null;
     }
     runtime.launchEnv = { ...launchEnv };
+    runtime.snapshot.updated_at = nowIso();
+    this.emitSessionEvent("cli.session.state", runtime);
+    return this.cloneSnapshot(runtime.snapshot);
+  }
+
+  updateSessionThreadDisplayName(sessionId: string, threadDisplayName: string): CliSessionSnapshot | null {
+    const runtime = this.runtimes.get(sessionId);
+    if (!runtime) {
+      return null;
+    }
+    const nextThreadDisplayName = String(threadDisplayName || "").trim() || undefined;
+    if (runtime.snapshot.thread_display_name === nextThreadDisplayName) {
+      return this.cloneSnapshot(runtime.snapshot);
+    }
+    runtime.snapshot.thread_display_name = nextThreadDisplayName;
     runtime.snapshot.updated_at = nowIso();
     this.emitSessionEvent("cli.session.state", runtime);
     return this.cloneSnapshot(runtime.snapshot);
@@ -4737,6 +4779,9 @@ export class CliSessionManager {
       recent_stream_events: Array.isArray(snapshot.recent_stream_events)
         ? snapshot.recent_stream_events.map((entry) => ({ ...entry }))
         : snapshot.recent_stream_events,
+      reentry_prompt: snapshot.reentry_prompt
+        ? { ...snapshot.reentry_prompt }
+        : buildSessionReentryPrompt(snapshot),
       recent_activity_events: Array.isArray(snapshot.recent_activity_events)
         ? snapshot.recent_activity_events.map((entry) => ({
           ...entry,

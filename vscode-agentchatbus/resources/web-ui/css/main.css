@@ -1239,6 +1239,48 @@ body[data-theme="light"] .thread-item .ti-pin-btn {
   max-height: none;
 }
 
+.cli-session-prompt-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+}
+
+.cli-session-prompt-panel__block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cli-session-prompt-panel__block-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.cli-session-prompt-panel__block-meta {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.cli-session-prompt-panel__block-body {
+  margin: 0;
+  max-height: 148px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, .16);
+  background: rgba(8, 17, 31, .42);
+  color: var(--text-2);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
 .cli-session-log__body {
   overflow: auto;
   min-height: 0;
@@ -1466,6 +1508,11 @@ body[data-theme="light"] .cli-session-log-panel {
 body[data-theme="light"] .cli-session-log-panel__header {
   background: rgba(226, 232, 240, .42);
   border-bottom-color: rgba(148, 163, 184, .2);
+}
+
+body[data-theme="light"] .cli-session-prompt-panel__block-body {
+  background: rgba(248, 250, 252, .96);
+  border-color: rgba(148, 163, 184, .22);
 }
 
 body[data-theme="light"] .cli-session-log__section + .cli-session-log__section {
@@ -2692,30 +2739,90 @@ body[data-theme="light"] .msg-sys-admin-human-note-icon {
   appearance: none;
   border: 1px solid rgba(148, 163, 184, .18);
   border-radius: 4px;
-  min-width: 72px;
+  width: 46px;
   height: 30px;
-  padding: 0 12px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: .04em;
-  text-transform: uppercase;
+  padding: 0;
   background: rgba(148, 163, 184, .1);
   color: var(--text-2);
   opacity: .9;
   cursor: default;
   pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.msg-native-card__action[data-tone="stop"] {
+.msg-native-card__action-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.msg-native-card__action-icon {
+  width: 22px;
+  height: 14px;
+  overflow: visible;
+}
+
+.msg-native-card__action-cell {
+  fill: currentColor;
+  opacity: .42;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.msg-native-card__action[data-state="running"] {
   border-color: rgba(248, 113, 113, .25);
   background: rgba(248, 113, 113, .12);
   color: #fca5a5;
 }
 
-.msg-native-card__action[data-tone="send"] {
+.msg-native-card__action[data-state="idle"] {
   border-color: rgba(59, 130, 246, .25);
   background: rgba(59, 130, 246, .12);
   color: #93c5fd;
+}
+
+.msg-native-card__action[data-state="idle"] .msg-native-card__action-cell--left {
+  opacity: .92;
+}
+
+.msg-native-card__action[data-state="idle"] .msg-native-card__action-cell--right {
+  opacity: .3;
+}
+
+.msg-native-card__action[data-state="running"] .msg-native-card__action-cell--left {
+  animation: native-card-work-left .9s steps(2, end) infinite;
+}
+
+.msg-native-card__action[data-state="running"] .msg-native-card__action-cell--right {
+  animation: native-card-work-right .9s steps(2, end) infinite;
+}
+
+@keyframes native-card-work-left {
+  0%,
+  49.999% {
+    opacity: .95;
+    transform: translateY(0);
+  }
+  50%,
+  100% {
+    opacity: .24;
+    transform: translateY(-1px);
+  }
+}
+
+@keyframes native-card-work-right {
+  0%,
+  49.999% {
+    opacity: .24;
+    transform: translateY(-1px);
+  }
+  50%,
+  100% {
+    opacity: .95;
+    transform: translateY(0);
+  }
 }
 
 .msg-native-card__section {
@@ -2860,6 +2967,50 @@ body[data-theme="light"] .msg-sys-admin-human-note-icon {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
+.msg-native-card__prompts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(148, 163, 184, .12);
+}
+
+.msg-native-card__prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.msg-native-card__prompt-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.msg-native-card__prompt-meta {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.msg-native-card__prompt-body {
+  margin: 0;
+  max-height: 132px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border-light);
+  background: rgba(15, 23, 42, .22);
+  color: var(--text-2);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
 .msg-native-card__section[data-kind="placeholder"] .msg-native-card__section-summary {
   color: var(--text-2);
 }
@@ -2888,11 +3039,15 @@ body[data-theme="light"] .msg-native-card__diff {
   background: rgba(248, 250, 252, .94);
 }
 
-body[data-theme="light"] .msg-native-card__action[data-tone="stop"] {
+body[data-theme="light"] .msg-native-card__prompt-body {
+  background: rgba(248, 250, 252, .94);
+}
+
+body[data-theme="light"] .msg-native-card__action[data-state="running"] {
   color: #b91c1c;
 }
 
-body[data-theme="light"] .msg-native-card__action[data-tone="send"] {
+body[data-theme="light"] .msg-native-card__action[data-state="idle"] {
   color: #1d4ed8;
 }
 

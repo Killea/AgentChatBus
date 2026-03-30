@@ -17,7 +17,10 @@ import {
   saveConfigDict,
 } from "../../core/config/env.js";
 import { resolvePreferredAgentDisplayName } from "../../main.js";
-import { buildCliMcpMeetingPrompt } from "../../core/services/cliMeetingContextBuilder.js";
+import {
+  buildCliMcpMeetingPrompt,
+  buildCliMcpMeetingPromptPreview,
+} from "../../core/services/cliMeetingContextBuilder.js";
 import {
   closeMeetingLikeHuman,
   registerThreadSessionClearer,
@@ -799,6 +802,63 @@ export function createHttpServer() {
     };
   });
 
+  fastify.post("/api/cli/meeting-prompt-preview", async (request, reply) => {
+    const body = request.body as JsonBody;
+    const threadId = typeof body.thread_id === "string" ? body.thread_id.trim() : "";
+    const topic = typeof body.topic === "string" ? body.topic.trim() : "";
+    if (!threadId && !topic) {
+      reply.code(400);
+      return { detail: "thread_id or topic is required" };
+    }
+    if (threadId && !store.getThread(threadId)) {
+      reply.code(404);
+      return { detail: "Thread not found" };
+    }
+
+    const participantRole = String(body.participant_role || "").trim() === "administrator"
+      ? "administrator"
+      : "participant";
+
+    try {
+      const envelope = buildCliMcpMeetingPromptPreview({
+        store,
+        threadId: threadId || undefined,
+        topic: topic || undefined,
+        participantRole,
+        participantDisplayName: typeof body.participant_display_name === "string"
+          ? body.participant_display_name.trim()
+          : undefined,
+        participantAgentId: typeof body.participant_agent_id === "string"
+          ? body.participant_agent_id.trim()
+          : undefined,
+        participantToken: typeof body.participant_token === "string"
+          ? body.participant_token.trim()
+          : undefined,
+        administratorName: typeof body.administrator_name === "string"
+          ? body.administrator_name.trim()
+          : undefined,
+        administratorAgentId: typeof body.administrator_agent_id === "string"
+          ? body.administrator_agent_id.trim()
+          : undefined,
+        initialInstruction: typeof body.initial_instruction === "string"
+          ? body.initial_instruction
+          : undefined,
+        adapter: typeof body.adapter === "string" ? body.adapter.trim() : undefined,
+        mode: typeof body.mode === "string" ? body.mode.trim() : undefined,
+      });
+      return {
+        prompt: envelope.prompt,
+        delivered_seq: envelope.deliveredSeq,
+        participant_role: participantRole,
+        administrator: envelope.administrator,
+        resolution: envelope.resolution,
+      };
+    } catch (error) {
+      reply.code(400);
+      return { detail: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
   fastify.post("/api/threads/:threadId/cli-sessions", async (request, reply) => {
     const params = request.params as { threadId: string };
     const body = request.body as JsonBody;
@@ -868,6 +928,7 @@ export function createHttpServer() {
 
       const session = cliSessionManager.createSession({
         threadId: params.threadId,
+        threadDisplayName: thread.topic,
         adapter: String(body.adapter || "cursor").trim() as "cursor" | "codex" | "claude" | "gemini" | "copilot",
         mode: typeof body.mode === "string"
           ? body.mode.trim() as "headless" | "interactive" | "direct"
@@ -1127,6 +1188,10 @@ export function createHttpServer() {
             participantAgentId: existingSession.participant_agent_id,
             participantDisplayName: existingSession.participant_display_name,
           }),
+        );
+        cliSessionManager.updateSessionThreadDisplayName(
+          params.sessionId,
+          store.getThread(existingSession.thread_id)?.topic || existingSession.thread_id,
         );
         cliSessionManager.updateSessionPrompt(params.sessionId, {
           prompt: nextPrompt,

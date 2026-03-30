@@ -287,6 +287,50 @@
     return count > 1 ? `Prompt ${count}` : "Prompt";
   }
 
+  function getReentryPromptState(session) {
+    const state = session?.reentry_prompt;
+    return state && typeof state === "object" ? state : null;
+  }
+
+  function buildSessionPromptPanelBlock(title, prompt, meta = "") {
+    const normalizedPrompt = String(prompt || "").trim();
+    if (!normalizedPrompt) {
+      return "";
+    }
+    const normalizedMeta = String(meta || "").trim();
+    return `
+      <section class="cli-session-prompt-panel__block">
+        <div class="cli-session-prompt-panel__block-title">${escapeHtml(title)}</div>
+        ${normalizedMeta ? `<div class="cli-session-prompt-panel__block-meta">${escapeHtml(normalizedMeta)}</div>` : ""}
+        <pre class="cli-session-prompt-panel__block-body">${escapeHtml(normalizedPrompt)}</pre>
+      </section>
+    `;
+  }
+
+  function buildSessionPromptPanelHtml(session) {
+    const reentry = getReentryPromptState(session);
+    if (!reentry) {
+      return "";
+    }
+    const resolvedPrompt = String(reentry.resolved_prompt || "").trim();
+    const lastSentPrompt = String(reentry.last_sent_prompt || "").trim();
+    const resolvedMeta = reentry.resolved_at
+      ? `Resolved ${formatToolEventTime(reentry.resolved_at)}`
+      : "Resolved";
+    const lastSentMeta = reentry.last_sent_at
+      ? `Sent ${formatToolEventTime(reentry.last_sent_at)}`
+      : "Last sent";
+    const blocks = [
+      buildSessionPromptPanelBlock("Resolved Re-entry Prompt", resolvedPrompt, resolvedMeta),
+    ];
+    if (lastSentPrompt && lastSentPrompt !== resolvedPrompt) {
+      blocks.push(buildSessionPromptPanelBlock("Last Sent Re-entry Prompt", lastSentPrompt, lastSentMeta));
+    } else if (lastSentPrompt) {
+      blocks.push(buildSessionPromptPanelBlock("Last Sent Re-entry Prompt", lastSentPrompt, `${lastSentMeta} · matches resolved`));
+    }
+    return blocks.filter(Boolean).join("");
+  }
+
   function isActiveSession(session) {
     return ACTIVE_SESSION_STATES.has(String(session?.state || ""));
   }
@@ -1292,6 +1336,12 @@
         </div>
       </div>
       <div class="cli-session-card__body">
+        <section class="cli-session-log-panel cli-session-log-panel--prompts" data-role="reentry-panel" hidden>
+          <div class="cli-session-log-panel__header">
+            <div class="cli-session-log-panel__title">Re-entry Prompt</div>
+          </div>
+          <div class="cli-session-prompt-panel" data-role="reentry-prompts"></div>
+        </section>
         ${showActivityLog ? `
         <section class="cli-session-log-panel cli-session-log-panel--activity">
           <div class="cli-session-log-panel__header">
@@ -1382,6 +1432,8 @@
     const metaEl = card.querySelector('[data-role="meta"]');
     const externalIdEl = card.querySelector('[data-role="external-id"]');
     const statusEl = card.querySelector('[data-role="status"]');
+    const reentryPanelEl = card.querySelector('[data-role="reentry-panel"]');
+    const reentryPromptsEl = card.querySelector('[data-role="reentry-prompts"]');
     const activityEl = card.querySelector('[data-role="activity"]');
     const terminalEl = card.querySelector('[data-role="terminal"]');
     const terminalShellEl = card.querySelector('[data-role="terminal-shell"]');
@@ -1438,6 +1490,11 @@
       const statusInfo = getSessionStatusInfo(session);
       statusEl.textContent = `${statusInfo.statusText} · ${statusInfo.detail}`;
       statusEl.dataset.tone = statusInfo.tone;
+    }
+    if (reentryPanelEl && reentryPromptsEl) {
+      const promptHtml = buildSessionPromptPanelHtml(session);
+      reentryPanelEl.hidden = !promptHtml;
+      reentryPromptsEl.innerHTML = promptHtml;
     }
     if (terminalTitleEl) {
       terminalTitleEl.textContent = panelTitleForSession(session);

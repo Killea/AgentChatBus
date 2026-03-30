@@ -2,6 +2,7 @@ import { eventBus } from "../../shared/eventBus.js";
 import { logError, logInfo } from "../../shared/logger.js";
 import {
   buildCliIncrementalPrompt,
+  buildCliMeetingWakePrompt,
   buildCliMeetingPrompt,
   getThreadAdministratorInfo,
   type CliMeetingDeliveryMode,
@@ -433,13 +434,6 @@ function parseMeetingControlDirective(rawReply: string): {
 
 function routingKey(threadId: string, participantAgentId: string): string {
   return `${threadId}::${participantAgentId}`;
-}
-
-function buildMsgWaitWakePrompt(threadName: string): string {
-  return [
-    `Please use msg_wait to process messages in "${threadName}".`,
-    "When you are ready to contribute, please prefer to use msg_post to share your opinion in the thread.",
-  ].join(" ");
 }
 
 interface WakePromptRecord {
@@ -1236,7 +1230,7 @@ export class CliMeetingOrchestrator {
       const threadName = String(thread?.topic || session.thread_id).trim() || session.thread_id;
       const result = await this.cliSessionManager.deliverWakePrompt(
         session.id,
-        buildMsgWaitWakePrompt(threadName),
+        buildCliMeetingWakePrompt(threadName),
       );
       if (!result?.ok) {
         this.pendingDeliverySeqBySession.set(session.id, latestSeq);

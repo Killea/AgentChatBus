@@ -48,6 +48,40 @@ export interface BuildCliMcpMeetingPromptInput {
   mode?: string;
 }
 
+export interface BuildCliMcpMeetingPromptPreviewInput {
+  store: MemoryStore;
+  threadId?: string;
+  topic?: string;
+  participantRole: CliMeetingParticipantRole;
+  participantDisplayName?: string;
+  participantAgentId?: string;
+  participantToken?: string;
+  administratorName?: string;
+  administratorAgentId?: string;
+  initialInstruction?: string;
+  adapter?: string;
+  mode?: string;
+}
+
+export interface CliMeetingPromptPreviewResolution {
+  threadIdResolved: boolean;
+  participantIdentityResolved: boolean;
+  administratorResolved: boolean;
+  exactLaunchPrompt: boolean;
+}
+
+export interface CliMeetingPromptPreviewEnvelope extends CliMeetingPromptEnvelope {
+  resolution: CliMeetingPromptPreviewResolution;
+}
+
+export function buildCliMeetingWakePrompt(threadName: string): string {
+  const normalizedThreadName = String(threadName || "").trim() || "current thread";
+  return [
+    `Please use msg_wait to process messages in "${normalizedThreadName}".`,
+    "When you are ready to contribute, please prefer to use msg_post to share your opinion in the thread.",
+  ].join(" ");
+}
+
 function buildMeetingControlInstructions(input: {
   participantAgentId: string;
   participantName: string;
@@ -111,6 +145,71 @@ function buildDefaultMcpInstruction(input: {
     ? "Review the current thread context, introduce yourself briefly if helpful, and continue with the next useful step."
     : "Introduce yourself briefly, explain how you can help, and wait for further instructions.";
   return `${input.participantName}, ${action}`;
+}
+
+function renderCliMcpMeetingPrompt(input: {
+  threadId: string;
+  threadTopic: string;
+  participantAgentId: string;
+  participantToken: string;
+  participantName: string;
+  participantRole: CliMeetingParticipantRole;
+  administrator: ThreadAdministratorInfo;
+  initialInstruction: string;
+  adapter?: string;
+  mode?: string;
+}): string {
+  const roleLabel = input.participantRole === "administrator" ? "administrator" : "participant";
+  const adminLabel = input.administrator.name || input.administrator.agentId || "Unassigned";
+  const isCodexDirect = input.adapter === "codex" && input.mode === "direct";
+  const busConnectPayload = JSON.stringify({
+    thread_id: input.threadId,
+    agent_id: input.participantAgentId,
+    token: input.participantToken,
+  }, null, 2);
+  return [
+    `You are launching as this exact AgentChatBus identity: ${input.participantName} (${input.participantAgentId}).`,
+    `The current thread "${input.threadTopic}" is newly created for this launch.`,
+    `Your assigned role for this thread is: ${roleLabel}.`,
+    input.participantRole === "administrator"
+      ? "You are the administrator for this thread. Other launched agents are participants."
+      : input.administrator.agentId
+        ? `You are a participant. The administrator is ${adminLabel} (${input.administrator.agentId}).`
+        : `You are a participant. The current administrator is ${adminLabel}.`,
+    "Please use the mcp tool `agentchatbus` to participate in the discussion.",
+    `Use \`bus_connect\` to join the "${input.threadTopic}" thread.`,
+    "Call `bus_connect` exactly once with this input:",
+    "You must use the exact `agent_id` and `token` below when calling `bus_connect`. Do not register a new agent identity and do not omit these credentials.",
+    "Call `bus_connect` with exactly this payload:",
+    "```json",
+    busConnectPayload,
+    "```",
+    isCodexDirect
+      ? "For this Codex direct session, do not narrate plans before calling tools. Call `bus_connect` immediately."
+      : null,
+    isCodexDirect
+      ? "After `bus_connect`, post a short introduction with `msg_post` right away. Keep it to one or two sentences."
+      : null,
+    `If a tool asks you to identify the thread again, use thread_name "${input.threadTopic}" or thread_id "${input.threadId}".`,
+    "Please follow the system prompts within the thread.",
+    "All agents should maintain a cooperative attitude.",
+    "If you need to modify any files, you must obtain consent from the other agents, as you are all accessing the same code repository.",
+    "Everyone can view the source code.",
+    "Please remain courteous and avoid causing code conflicts.",
+    "Human programmers may also participate in the discussion and assist the agents, but the focus is on collaboration among the agents.",
+    "Administrators are responsible for coordinating the work.",
+    "After entering the thread, please introduce yourself.",
+    "You must adhere to the following rules:",
+    isCodexDirect
+      ? '"After the initial task is completed, stay connected with `msg_wait`, but do not narrate that you are entering or resuming `msg_wait`. When a human posts a visible message, respond directly and promptly with `msg_post` instead of explaining your waiting state first."'
+      : '"After the initial task is completed, all agents should continue working actively--whether analyzing, modifying code, or reviewing. If you believe you need to wait, use `msg_wait` to wait for 10 minutes. Do not exit the agent process unless notified to do so. `msg_wait` consumes no resources; please use it to maintain the connection."',
+    "Additionally, please communicate in English and ensure you always reply to this thread via `msg_post`.",
+    "If someone speaks up, please try to respond and share your thoughts. Do not just wait.",
+    "Do not create a new thread.",
+    "Do not call `agent_register`.",
+    "Do not call `agent_register` for this launch.",
+    `Initial Task: ${input.initialInstruction}`,
+  ].filter((entry): entry is string => typeof entry === "string" && entry.length > 0).join(" ");
 }
 
 function buildCodingAutonomyInstructions(input: {
@@ -412,62 +511,82 @@ export function buildCliMcpMeetingPrompt(input: BuildCliMcpMeetingPromptInput): 
     participantName,
     hasHistory: deliveredSeq > 0,
   });
-  const roleLabel = input.participantRole === "administrator" ? "administrator" : "participant";
-  const adminLabel = administrator.name || administrator.agentId || "Unassigned";
-  const isCodexDirect = input.adapter === "codex" && input.mode === "direct";
-  const busConnectPayload = JSON.stringify({
-    thread_id: thread.id,
-    agent_id: input.participantAgentId,
-    token: participantToken,
-  }, null, 2);
-  const prompt = [
-    `You are launching as this exact AgentChatBus identity: ${participantName} (${input.participantAgentId}).`,
-    `The current thread "${thread.topic}" is newly created for this launch.`,
-    `Your assigned role for this thread is: ${roleLabel}.`,
-    input.participantRole === "administrator"
-      ? "You are the administrator for this thread. Other launched agents are participants."
-      : administrator.agentId
-        ? `You are a participant. The administrator is ${adminLabel} (${administrator.agentId}).`
-        : `You are a participant. The current administrator is ${adminLabel}.`,
-    "Please use the mcp tool `agentchatbus` to participate in the discussion.",
-    `Use \`bus_connect\` to join the "${thread.topic}" thread.`,
-    "Call `bus_connect` exactly once with this input:",
-    "You must use the exact `agent_id` and `token` below when calling `bus_connect`. Do not register a new agent identity and do not omit these credentials.",
-    "Call `bus_connect` with exactly this payload:",
-    "```json",
-    busConnectPayload,
-    "```",
-    isCodexDirect
-      ? "For this Codex direct session, do not narrate plans before calling tools. Call `bus_connect` immediately."
-      : null,
-    isCodexDirect
-      ? "After `bus_connect`, post a short introduction with `msg_post` right away. Keep it to one or two sentences."
-      : null,
-    `If a tool asks you to identify the thread again, use thread_name "${thread.topic}" or thread_id "${thread.id}".`,
-    "Please follow the system prompts within the thread.",
-    "All agents should maintain a cooperative attitude.",
-    "If you need to modify any files, you must obtain consent from the other agents, as you are all accessing the same code repository.",
-    "Everyone can view the source code.",
-    "Please remain courteous and avoid causing code conflicts.",
-    "Human programmers may also participate in the discussion and assist the agents, but the focus is on collaboration among the agents.",
-    "Administrators are responsible for coordinating the work.",
-    "After entering the thread, please introduce yourself.",
-    "You must adhere to the following rules:",
-    isCodexDirect
-      ? '"After the initial task is completed, stay connected with `msg_wait`, but do not narrate that you are entering or resuming `msg_wait`. When a human posts a visible message, respond directly and promptly with `msg_post` instead of explaining your waiting state first."'
-      : '"After the initial task is completed, all agents should continue working actively--whether analyzing, modifying code, or reviewing. If you believe you need to wait, use `msg_wait` to wait for 10 minutes. Do not exit the agent process unless notified to do so. `msg_wait` consumes no resources; please use it to maintain the connection."',
-    "Additionally, please communicate in English and ensure you always reply to this thread via `msg_post`.",
-    "If someone speaks up, please try to respond and share your thoughts. Do not just wait.",
-    "Do not create a new thread.",
-    "Do not call `agent_register`.",
-    "Do not call `agent_register` for this launch.",
-    `Initial Task: ${initialInstruction}`,
-  ].filter((entry): entry is string => typeof entry === "string" && entry.length > 0).join(" ");
+  const prompt = renderCliMcpMeetingPrompt({
+    threadId: thread.id,
+    threadTopic: thread.topic,
+    participantAgentId: input.participantAgentId,
+    participantToken,
+    participantName,
+    participantRole: input.participantRole,
+    administrator,
+    initialInstruction,
+    adapter: input.adapter,
+    mode: input.mode,
+  });
 
   return {
     prompt,
     deliveredSeq,
     deliveryMode: "join",
     administrator,
+  };
+}
+
+export function buildCliMcpMeetingPromptPreview(
+  input: BuildCliMcpMeetingPromptPreviewInput,
+): CliMeetingPromptPreviewEnvelope {
+  const thread = input.threadId ? input.store.getThread(input.threadId) : undefined;
+  const threadIdResolved = Boolean(thread?.id || input.threadId);
+  const participantAgentId = String(input.participantAgentId || "").trim();
+  const participantToken = String(input.participantToken || "").trim();
+  const threadId = String(
+    thread?.id
+    || input.threadId
+    || "<thread_id will be created at launch>",
+  ).trim() || "<thread_id will be created at launch>";
+  const threadTopic = String(
+    thread?.topic
+    || input.topic
+    || "current thread",
+  ).trim() || "current thread";
+  const participantName = String(input.participantDisplayName || "Agent").trim() || "Agent";
+  const deliveredSeq = thread ? input.store.getThreadCurrentSeq(thread.id) : 0;
+  const administrator = thread
+    ? getThreadAdministratorInfo(input.store, thread.id)
+    : {
+        agentId: String(input.administratorAgentId || "").trim() || undefined,
+        name: String(input.administratorName || "").trim() || undefined,
+      };
+  const initialInstruction = String(input.initialInstruction || "").trim() || buildDefaultMcpInstruction({
+    participantName,
+    hasHistory: deliveredSeq > 0,
+  });
+  const prompt = renderCliMcpMeetingPrompt({
+    threadId,
+    threadTopic,
+    participantAgentId: participantAgentId
+      || "<agent_id will be registered at launch>",
+    participantToken: participantToken
+      || "<token will be issued at launch>",
+    participantName,
+    participantRole: input.participantRole,
+    administrator,
+    initialInstruction,
+    adapter: input.adapter,
+    mode: input.mode,
+  });
+  const participantIdentityResolved = Boolean(participantAgentId && participantToken);
+  const administratorResolved = Boolean(administrator.agentId || administrator.name);
+  return {
+    prompt,
+    deliveredSeq,
+    deliveryMode: "join",
+    administrator,
+    resolution: {
+      threadIdResolved,
+      participantIdentityResolved,
+      administratorResolved,
+      exactLaunchPrompt: threadIdResolved && participantIdentityResolved,
+    },
   };
 }

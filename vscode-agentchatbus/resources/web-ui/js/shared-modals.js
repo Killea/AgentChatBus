@@ -121,6 +121,9 @@
   let _selectedThreadLaunchAgentId = "";
   let _cliModelDiscovery = null;
   let _cliModelDiscoveryLoading = false;
+  let _threadLaunchPromptPreviewRequestId = 0;
+  let _manualLaunchPromptPreviewRequestId = 0;
+  const SERVER_PROMPT_PREVIEW_PENDING_TEXT = "Resolving launch prompt from server...";
 
   function createEmptyCliModelDiscovery() {
     return {
@@ -907,7 +910,49 @@
     ].join("\n");
   }
 
-  function syncThreadLaunchPromptPreview() {
+  async function resolveLaunchPromptPreviewFromServer(options = {}) {
+    const api = window.AcbApi?.api;
+    if (typeof api !== "function") {
+      return null;
+    }
+    const payload = {
+      thread_id: options.threadId || undefined,
+      topic: options.topic || undefined,
+      participant_role: options.isFirstAgent ? "administrator" : "participant",
+      participant_display_name: buildDefaultParticipantName(options.config || {}),
+      administrator_name: options.administratorName || undefined,
+      administrator_agent_id: options.administratorAgentId || undefined,
+      initial_instruction: options.initialInstruction || "",
+      adapter: options.config?.adapter || undefined,
+      mode: options.config?.mode || undefined,
+    };
+    return await api("/api/cli/meeting-prompt-preview", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  function buildResolvedPromptMetaSuffix(resolved) {
+    const resolution = resolved && typeof resolved === "object" ? resolved.resolution : null;
+    if (!resolution || typeof resolution !== "object") {
+      return "server-resolved";
+    }
+    if (resolution.exactLaunchPrompt === true) {
+      return "server-resolved · exact launch prompt";
+    }
+    const pending = [];
+    if (resolution.threadIdResolved !== true) {
+      pending.push("thread id pending");
+    }
+    if (resolution.participantIdentityResolved !== true) {
+      pending.push("launch credentials pending");
+    }
+    return pending.length > 0
+      ? `server-resolved · ${pending.join(" · ")}`
+      : "server-resolved";
+  }
+
+  async function syncThreadLaunchPromptPreview() {
     const previewEl = document.getElementById("thread-agent-prompt-preview");
     const metaEl = document.getElementById("thread-agent-prompt-meta");
     const detailsEl = document.getElementById("thread-agent-side");
@@ -933,20 +978,48 @@
     const index = Math.max(0, _threadLaunchAgents.findIndex((agent) => agent.id === selectedAgent.id));
     const isFirstAgent = index === 0;
     const roleLabel = isFirstAgent ? "Administrator" : "Participant";
-    previewEl.textContent = buildLaunchPromptPreview({
+    const fallbackPrompt = buildLaunchPromptPreview({
       topic,
       threadId: "",
       config: selectedAgent,
       isFirstAgent,
     });
+    const previewRequestId = ++_threadLaunchPromptPreviewRequestId;
+    previewEl.textContent = SERVER_PROMPT_PREVIEW_PENDING_TEXT;
     if (summaryEl) {
       summaryEl.textContent = `Resolved Launch Prompt · ${roleLabel}`;
     }
     if (metaEl) {
-      metaEl.textContent = `Previewing Agent ${index + 1} · ${roleLabel} · ${buildDefaultParticipantName(selectedAgent)}`;
+      metaEl.textContent = `Previewing Agent ${index + 1} · ${roleLabel} · ${buildDefaultParticipantName(selectedAgent)} · resolving`;
     }
     if (detailsEl) {
       detailsEl.classList.remove("meeting-modal-hidden");
+    }
+    try {
+      const firstAgent = _threadLaunchAgents[0] || selectedAgent;
+      const resolved = await resolveLaunchPromptPreviewFromServer({
+        topic,
+        config: selectedAgent,
+        isFirstAgent,
+        initialInstruction: getResolvedThreadLaunchInstruction({ topic, config: selectedAgent, isFirstAgent }),
+        administratorName: isFirstAgent ? undefined : buildDefaultParticipantName(firstAgent),
+        administratorAgentId: isFirstAgent ? undefined : "<agent_id will be assigned at launch>",
+      });
+      if (previewRequestId !== _threadLaunchPromptPreviewRequestId) {
+        return;
+      }
+      previewEl.textContent = String(resolved?.prompt || "").trim() || fallbackPrompt;
+      if (metaEl) {
+        metaEl.textContent = `Previewing Agent ${index + 1} · ${roleLabel} · ${buildDefaultParticipantName(selectedAgent)} · ${buildResolvedPromptMetaSuffix(resolved)}`;
+      }
+    } catch {
+      if (previewRequestId !== _threadLaunchPromptPreviewRequestId) {
+        return;
+      }
+      previewEl.textContent = fallbackPrompt;
+      if (metaEl) {
+        metaEl.textContent = `Previewing Agent ${index + 1} · ${roleLabel} · ${buildDefaultParticipantName(selectedAgent)} · local fallback`;
+      }
     }
   }
 
@@ -1299,19 +1372,45 @@
     }
   }
 
-  function syncLaunchPromptPreview(prefix, options = {}) {
+  async function syncLaunchPromptPreview(prefix, options = {}) {
     const previewEl = document.getElementById(`${prefix}-prompt-preview`);
     if (!previewEl) {
       return;
     }
     const topic = String(options.topic || "").trim() || "current thread";
     const config = readAgentLaunchConfig(prefix);
-    previewEl.textContent = buildLaunchPromptPreview({
+    const fallbackPrompt = buildLaunchPromptPreview({
       topic,
       threadId: options.threadId,
       config,
       isFirstAgent: Boolean(options.isFirstAgent),
     });
+    const previewRequestId = prefix === "agent-modal"
+      ? ++_manualLaunchPromptPreviewRequestId
+      : 0;
+    previewEl.textContent = SERVER_PROMPT_PREVIEW_PENDING_TEXT;
+    try {
+      const resolved = await resolveLaunchPromptPreviewFromServer({
+        threadId: options.threadId,
+        topic,
+        config,
+        isFirstAgent: Boolean(options.isFirstAgent),
+        initialInstruction: getResolvedThreadLaunchInstruction({
+          topic,
+          config,
+          isFirstAgent: Boolean(options.isFirstAgent),
+        }),
+      });
+      if (prefix === "agent-modal" && previewRequestId !== _manualLaunchPromptPreviewRequestId) {
+        return;
+      }
+      previewEl.textContent = String(resolved?.prompt || "").trim() || fallbackPrompt;
+    } catch {
+      if (prefix === "agent-modal" && previewRequestId !== _manualLaunchPromptPreviewRequestId) {
+        return;
+      }
+      previewEl.textContent = fallbackPrompt;
+    }
   }
 
   function syncDefaultInstructionField(prefix, options = {}) {
