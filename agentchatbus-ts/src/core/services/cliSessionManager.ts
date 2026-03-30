@@ -100,6 +100,7 @@ export interface CliSessionSnapshot {
   id: string;
   thread_id: string;
   thread_display_name?: string;
+  reentry_prompt_override?: string;
   adapter: CliSessionAdapterId;
   mode: CliSessionMode;
   model?: string;
@@ -189,6 +190,7 @@ export interface CliSessionOutputEntry {
 export interface CreateCliSessionInput {
   threadId: string;
   threadDisplayName?: string;
+  reentryPromptOverride?: string;
   adapter: CliSessionAdapterId;
   mode?: CliSessionMode;
   model?: string;
@@ -601,7 +603,7 @@ function pickNativeCardUpdatedAt(snapshot: CliSessionSnapshot, sections: CliNati
 
 function buildSessionReentryPrompt(snapshot: CliSessionSnapshot): CliSessionSnapshot["reentry_prompt"] {
   const threadLabel = String(snapshot.thread_display_name || snapshot.thread_id || "").trim() || "current thread";
-  const resolvedPrompt = buildCliMeetingWakePrompt(threadLabel);
+  const resolvedPrompt = String(snapshot.reentry_prompt_override || "").trim() || buildCliMeetingWakePrompt(threadLabel);
   const promptHistory = Array.isArray(snapshot.prompt_history) ? snapshot.prompt_history : [];
   const latestWakeEntry = [...promptHistory]
     .reverse()
@@ -1978,6 +1980,7 @@ export class CliSessionManager {
       id: randomUUID(),
       thread_id: input.threadId,
       thread_display_name: String(input.threadDisplayName || "").trim() || undefined,
+      reentry_prompt_override: String(input.reentryPromptOverride || "").trim() || undefined,
       adapter: adapterId,
       mode,
       model,

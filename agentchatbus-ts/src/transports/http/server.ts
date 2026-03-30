@@ -18,6 +18,7 @@ import {
 } from "../../core/config/env.js";
 import { resolvePreferredAgentDisplayName } from "../../main.js";
 import {
+  buildCliMeetingWakePrompt,
   buildCliMcpMeetingPrompt,
   buildCliMcpMeetingPromptPreview,
 } from "../../core/services/cliMeetingContextBuilder.js";
@@ -806,11 +807,12 @@ export function createHttpServer() {
     const body = request.body as JsonBody;
     const threadId = typeof body.thread_id === "string" ? body.thread_id.trim() : "";
     const topic = typeof body.topic === "string" ? body.topic.trim() : "";
+    const existingThread = threadId ? store.getThread(threadId) : undefined;
     if (!threadId && !topic) {
       reply.code(400);
       return { detail: "thread_id or topic is required" };
     }
-    if (threadId && !store.getThread(threadId)) {
+    if (threadId && !existingThread) {
       reply.code(404);
       return { detail: "Thread not found" };
     }
@@ -848,6 +850,8 @@ export function createHttpServer() {
       });
       return {
         prompt: envelope.prompt,
+        reentry_prompt: String(body.reentry_prompt_override || "").trim()
+          || buildCliMeetingWakePrompt(existingThread?.topic || topic || threadId || "current thread"),
         delivered_seq: envelope.deliveredSeq,
         participant_role: participantRole,
         administrator: envelope.administrator,
@@ -887,6 +891,9 @@ export function createHttpServer() {
     const promptSeed = typeof body.initial_instruction === "string"
       ? body.initial_instruction
       : String(body.prompt || "");
+    const reentryPromptOverride = typeof body.reentry_prompt_override === "string"
+      ? body.reentry_prompt_override.trim()
+      : "";
     try {
       let finalPrompt = promptSeed;
       let participantRole: "administrator" | "participant" | undefined;
@@ -929,6 +936,7 @@ export function createHttpServer() {
       const session = cliSessionManager.createSession({
         threadId: params.threadId,
         threadDisplayName: thread.topic,
+        reentryPromptOverride: reentryPromptOverride || undefined,
         adapter: String(body.adapter || "cursor").trim() as "cursor" | "codex" | "claude" | "gemini" | "copilot",
         mode: typeof body.mode === "string"
           ? body.mode.trim() as "headless" | "interactive" | "direct"

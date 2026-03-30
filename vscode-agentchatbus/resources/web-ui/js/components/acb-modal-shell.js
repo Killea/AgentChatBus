@@ -192,12 +192,26 @@
                         ></textarea>
                         <div class="settings-field-description">Applies to every agent by default. Leave an individual agent override blank to use this shared instruction.</div>
                       </div>
+                      <div class="settings-field thread-launch-shared-instruction">
+                        <label for="thread-launch-global-reentry-prompt">Shared Re-entry Prompt</label>
+                        <textarea
+                          id="thread-launch-global-reentry-prompt"
+                          placeholder="Shared prompt used to wake or resume agents later"
+                          rows="4"
+                        ></textarea>
+                        <div class="settings-field-description">Used when the system needs to wake an agent back into the thread. Edit this here before launch if you want a custom recovery prompt.</div>
+                      </div>
                     </div>
 
-                    <details id="thread-agent-side" class="meeting-modal-preview meeting-modal-preview--collapsible">
+                    <details id="thread-agent-side" class="meeting-modal-preview meeting-modal-preview--collapsible" open>
                       <summary id="thread-agent-prompt-summary" class="meeting-modal-preview__summary">Resolved Launch Prompt</summary>
                       <div id="thread-agent-prompt-meta" class="meeting-modal-preview__meta"></div>
                       <pre id="thread-agent-prompt-preview" class="meeting-modal-preview__body meeting-modal-preview__body--compact"></pre>
+                    </details>
+                    <details id="thread-agent-reentry-side" class="meeting-modal-preview meeting-modal-preview--collapsible" open>
+                      <summary class="meeting-modal-preview__summary">Resolved Re-entry Prompt</summary>
+                      <div id="thread-agent-reentry-meta" class="meeting-modal-preview__meta"></div>
+                      <pre id="thread-agent-reentry-preview" class="meeting-modal-preview__body meeting-modal-preview__body--compact"></pre>
                     </details>
                   </div>
                 </div>
@@ -279,6 +293,7 @@
                     <div class="settings-field">
                       <label for="agent-modal-mode">Mode</label>
                       <select id="agent-modal-mode">
+                        <option value="direct">Codex Direct (App Server)</option>
                         <option value="interactive">Interactive PTY</option>
                         <option value="headless">Headless JSON Resume</option>
                       </select>
