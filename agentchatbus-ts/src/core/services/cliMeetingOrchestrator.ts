@@ -753,7 +753,46 @@ export class CliMeetingOrchestrator {
   }
 
   private shouldTrustParticipantWaitState(session: CliSessionSnapshot): boolean {
+    if (session.mode === "direct") {
+      return false;
+    }
     return this.getParticipantWaitStatus(session).is_waiting;
+  }
+
+  private hasActiveNativeTurn(session: CliSessionSnapshot): boolean {
+    const runtime = session.native_turn_runtime;
+    if (!runtime) {
+      return false;
+    }
+    if (
+      Array.isArray(runtime.thread_active_flags)
+      && runtime.thread_active_flags.some((flag) =>
+        flag === "waitingOnApproval" || flag === "waitingOnUserInput")
+    ) {
+      return true;
+    }
+    const phase = String(runtime.phase || "").trim();
+    return phase === "starting" || phase === "running" || phase === "interrupting";
+  }
+
+  private getDirectSessionWorkState(session: CliSessionSnapshot): "busy" | "idle" | "unavailable" {
+    if (!ONLINE_SESSION_STATES.has(session.state)) {
+      return "unavailable";
+    }
+    if (this.hasActiveNativeTurn(session)) {
+      return "busy";
+    }
+    if (String(session.meeting_post_state || "") === "posting") {
+      return "busy";
+    }
+    if (DELIVERY_BUSY_REPLY_STATES.has(String(session.reply_capture_state || ""))) {
+      return "busy";
+    }
+    const latestActivityMs = getLatestSessionActivityMs(session);
+    if (latestActivityMs !== null && Date.now() - latestActivityMs < DIRECT_MCP_RECOVERY_STALE_MS) {
+      return "busy";
+    }
+    return "idle";
   }
 
   private scheduleWakeRetry(sessionId: string, targetSeq: number, delayMs: number): void {
@@ -784,6 +823,10 @@ export class CliMeetingOrchestrator {
   private getSessionWorkState(session: CliSessionSnapshot): "busy" | "idle" | "unavailable" {
     if (!ONLINE_SESSION_STATES.has(session.state)) {
       return "unavailable";
+    }
+
+    if (session.mode === "direct") {
+      return this.getDirectSessionWorkState(session);
     }
 
     const isAgentMcpSession = !usesLegacyPtyRelay(session);
@@ -878,7 +921,7 @@ export class CliMeetingOrchestrator {
     if (session.mode === "interactive" && session.state === "running") {
       return "idle";
     }
-    if (session.mode === "headless" || session.mode === "direct") {
+    if (session.mode === "headless") {
       return "busy";
     }
     return "unavailable";
@@ -901,19 +944,8 @@ export class CliMeetingOrchestrator {
     if (targetSeq <= effectiveAcknowledgedSeq) {
       return false;
     }
-    if (this.shouldTrustParticipantWaitState(session)) {
+    if (this.getSessionWorkState(session) !== "idle") {
       return false;
-    }
-
-    const waitStatus = this.getParticipantWaitStatus(session);
-    if (waitStatus.last_exit_reason === "message" && waitStatus.last_exited_at) {
-      const exitedAtMs = parseTimestampMs(waitStatus.last_exited_at);
-      if (
-        exitedAtMs !== null
-        && Date.now() - exitedAtMs < getMessageExitBusyGraceMs(session)
-      ) {
-        return false;
-      }
     }
 
     const lastRecoveryAt = this.lastDirectRecoveryAtBySession.get(session.id) || 0;
@@ -938,7 +970,7 @@ export class CliMeetingOrchestrator {
     this.lastDirectRecoveryAtBySession.set(session.id, Date.now());
     try {
       let latestSession = this.cliSessionManager.getSession(session.id) || session;
-      if (this.shouldTrustParticipantWaitState(latestSession)) {
+      if (this.getSessionWorkState(latestSession) !== "idle") {
         return false;
       }
 
@@ -1185,7 +1217,7 @@ export class CliMeetingOrchestrator {
             );
           }
         }
-        if (workState === "busy") {
+        if (session.mode === "direct" || workState === "busy") {
           this.scheduleWakeRetry(
             session.id,
             targetSeq,
