@@ -4048,6 +4048,51 @@ body[data-theme="light"] .meeting-modal-preview--collapsible {
   color: var(--text-3);
 }
 
+.thread-launch-model-meta__source {
+  color: var(--text-3);
+}
+
+.thread-launch-model-selected {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--surface-2) 82%, transparent);
+}
+
+.thread-launch-model-selected__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-1);
+  line-height: 1.35;
+}
+
+.thread-launch-model-selected__description {
+  margin-top: 6px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.thread-launch-model-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.thread-launch-model-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--accent-color) 40%, var(--border-color));
+  background: color-mix(in srgb, var(--accent-color) 10%, var(--surface-1));
+  color: var(--text-1);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
 .thread-launch-model-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 160px;

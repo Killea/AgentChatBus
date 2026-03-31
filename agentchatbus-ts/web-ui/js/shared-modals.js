@@ -238,6 +238,46 @@
     return normalized;
   }
 
+  function formatThreadLaunchModelDisplayName(label) {
+    const value = String(label || "").trim();
+    if (!value) {
+      return "";
+    }
+    if (!value.toLowerCase().startsWith("gpt")) {
+      return value;
+    }
+    return value
+      .split(/(\s+)/)
+      .map((token) => {
+        if (!token.trim()) {
+          return token;
+        }
+        return token
+          .split("-")
+          .map((segment, index) => {
+            if (segment.toLowerCase() === "gpt") {
+              return "GPT";
+            }
+            if (index > 0 && segment.length > 0) {
+              return `${segment.charAt(0).toUpperCase()}${segment.slice(1)}`;
+            }
+            return segment;
+          })
+          .join("-");
+      })
+      .join("");
+  }
+
+  function formatReasoningEffortLabel(effort) {
+    const normalized = String(effort || "").trim().toLowerCase();
+    if (normalized === "minimal") return "Minimal";
+    if (normalized === "low") return "Low";
+    if (normalized === "medium") return "Medium";
+    if (normalized === "high") return "High";
+    if (normalized === "xhigh") return "Extra High";
+    return normalized ? normalized : "";
+  }
+
   function getThreadLaunchSelectedModelEntry(agent) {
     const entry = getModelDiscoveryEntry(String(agent?.adapter || "codex").trim() || "codex");
     const models = Array.isArray(entry?.models) ? entry.models : [];
@@ -251,7 +291,7 @@
   function buildThreadLaunchModelOptionsHtml(agent) {
     const options = getThreadLaunchAgentModelOptions(agent);
     return options.map((model) => (
-      `<option value="${_escapeHtml(model.id)}">${_escapeHtml(model.label || model.id)}</option>`
+      `<option value="${_escapeHtml(model.id)}">${_escapeHtml(formatThreadLaunchModelDisplayName(model.label || model.id))}</option>`
     )).join("");
   }
 
@@ -521,6 +561,31 @@
     ];
   }
 
+  function syncThreadLaunchAgentReasoningForModel(agent) {
+    if (!agent || String(agent.adapter || "").trim().toLowerCase() !== "codex") {
+      if (agent) {
+        agent.reasoningEffort = "";
+      }
+      return;
+    }
+    const selectedModel = getThreadLaunchSelectedModelEntry(agent);
+    const availableIds = getThreadLaunchAgentReasoningOptions(agent)
+      .map((option) => normalizeThreadLaunchReasoningEffort(agent.adapter, option.id))
+      .filter(Boolean);
+    const current = normalizeThreadLaunchReasoningEffort(agent.adapter, agent.reasoningEffort);
+    if (current && availableIds.includes(current)) {
+      agent.reasoningEffort = current;
+      return;
+    }
+    const defaultReasoning = normalizeThreadLaunchReasoningEffort(
+      agent.adapter,
+      selectedModel?.default_reasoning_effort,
+    );
+    agent.reasoningEffort = defaultReasoning && availableIds.includes(defaultReasoning)
+      ? defaultReasoning
+      : "";
+  }
+
   function buildThreadLaunchReasoningOptionsHtml(agent) {
     if (String(agent?.adapter || "").trim().toLowerCase() !== "codex") {
       return '<option value="">Not supported for this adapter</option>';
@@ -533,12 +598,12 @@
     );
     const options = getThreadLaunchAgentReasoningOptions(agent);
     const defaultLabel = defaultReasoning
-      ? `Use Codex default (${defaultReasoning})`
+      ? `Use Codex default (${formatReasoningEffortLabel(defaultReasoning)})`
       : "Use Codex default";
     return [
       `<option value="" ${!normalized ? "selected" : ""}>${_escapeHtml(defaultLabel)}</option>`,
       ...options.map((option) => (
-        `<option value="${_escapeHtml(option.id)}" ${normalized === option.id ? "selected" : ""}>${_escapeHtml(option.label || option.id)}</option>`
+        `<option value="${_escapeHtml(option.id)}" ${normalized === option.id ? "selected" : ""}>${_escapeHtml(formatReasoningEffortLabel(option.id) || option.label || option.id)}</option>`
       )),
     ].join("");
   }
@@ -555,10 +620,48 @@
     );
     const optionCount = getThreadLaunchAgentReasoningOptions(agent).length;
     return normalized
-      ? `Codex reasoning override: ${normalized}`
+      ? `Codex reasoning override: ${formatReasoningEffortLabel(normalized)}`
       : (defaultReasoning
-        ? `Using ${selectedModel?.label || selectedModel?.id || "Codex"} default: ${defaultReasoning} · ${optionCount} supported`
+        ? `Using ${formatThreadLaunchModelDisplayName(selectedModel?.label || selectedModel?.id || "Codex")} default: ${formatReasoningEffortLabel(defaultReasoning)} · ${optionCount} supported`
         : "Use Codex default reasoning from CLI/app-server configuration.");
+  }
+
+  function buildThreadLaunchModelMetaHtml(agent) {
+    const entry = getModelDiscoveryEntry(agent.adapter);
+    const selectedModel = getThreadLaunchSelectedModelEntry(agent);
+    const source = String(entry?.source_label || "Static fallback").trim();
+    const count = Array.isArray(entry?.models) ? entry.models.length : 0;
+    const when = formatDiscoveryTime(entry?.fetched_at || getCliModelDiscovery()?.fetched_at || "");
+    const error = entry?.error ? ` · ${String(entry.error)}` : "";
+    const sourceLine = `${source} · ${count} suggestions${when ? ` · ${when}` : ""}${error}`;
+    const title = formatThreadLaunchModelDisplayName(
+      selectedModel?.label || selectedModel?.id || getRequiredThreadLaunchModel(agent.adapter, agent.model),
+    );
+    const description = String(selectedModel?.description || "").trim();
+    const badges = [];
+    if (selectedModel?.is_default) {
+      badges.push('<span class="thread-launch-model-badge">Default</span>');
+    }
+    const defaultReasoning = normalizeThreadLaunchReasoningEffort(
+      agent.adapter,
+      selectedModel?.default_reasoning_effort,
+    );
+    if (defaultReasoning) {
+      badges.push(`<span class="thread-launch-model-badge">Reasoning ${_escapeHtml(formatReasoningEffortLabel(defaultReasoning))}</span>`);
+    }
+    const detailLine = selectedModel
+      ? `
+        <div class="thread-launch-model-selected">
+          <div class="thread-launch-model-selected__title">${_escapeHtml(title)}</div>
+          ${badges.length ? `<div class="thread-launch-model-badges">${badges.join("")}</div>` : ""}
+          ${description ? `<div class="thread-launch-model-selected__description">${_escapeHtml(description)}</div>` : ""}
+        </div>
+      `
+      : "";
+    return `
+      <div class="thread-launch-model-meta__source">${_escapeHtml(sourceLine)}</div>
+      ${detailLine}
+    `;
   }
 
   async function _loadTemplates(api) {
@@ -1467,17 +1570,7 @@
                   ${buildThreadLaunchModelOptionsHtml(agent)}
                 </select>
               </div>
-              <div class="thread-launch-model-meta">${_escapeHtml((() => {
-                const entry = getModelDiscoveryEntry(agent.adapter);
-                if (!entry) {
-                  return "Type any model manually, or run Detect Models once and reuse the cache across agents.";
-                }
-                const count = Array.isArray(entry.models) ? entry.models.length : 0;
-                const when = formatDiscoveryTime(entry.fetched_at || getCliModelDiscovery()?.fetched_at || "");
-                const source = String(entry.source_label || "Static fallback").trim();
-                const error = entry.error ? ` · ${entry.error}` : "";
-                return `${source} · ${count} suggestions${when ? ` · ${when}` : ""}${error}`;
-              })())}</div>
+              <div class="thread-launch-model-meta">${buildThreadLaunchModelMetaHtml(agent)}</div>
             </div>
             <div class="settings-field thread-launch-agent-field">
               <label>Reasoning Level</label>
@@ -1600,7 +1693,6 @@
       agent.adapter = String(element.value || "claude").trim() || "claude";
       agent.mode = getThreadLaunchModeForAdapter(agent.adapter);
       agent.meetingTransport = "agent_mcp";
-      agent.reasoningEffort = normalizeThreadLaunchReasoningEffort(agent.adapter, agent.reasoningEffort);
       if (agent.adapter === "cursor" || agent.adapter === "gemini") {
         agent.model = getRequiredThreadLaunchModel(agent.adapter, agent.model);
       } else if (previousAdapter === "cursor" && String(agent.model || "").trim() === "auto") {
@@ -1608,6 +1700,7 @@
       } else if (previousAdapter === "gemini" && !String(agent.model || "").trim()) {
         agent.model = "";
       }
+      syncThreadLaunchAgentReasoningForModel(agent);
       if (_threadLaunchAgents[0]?.id === agentId) {
         syncThreadLaunchGlobalInstructionField();
       }
@@ -1634,7 +1727,9 @@
     }
     if (field === "model") {
       agent.model = getRequiredThreadLaunchModel(agent.adapter, element.value);
+      syncThreadLaunchAgentReasoningForModel(agent);
       syncThreadLaunchPromptPreview();
+      renderThreadLaunchAgents();
       return;
     }
     if (field === "modelSuggestion") {
@@ -1642,6 +1737,7 @@
       if (suggestedModel) {
         agent.model = getRequiredThreadLaunchModel(agent.adapter, suggestedModel);
       }
+      syncThreadLaunchAgentReasoningForModel(agent);
       renderThreadLaunchAgents();
       return;
     }
