@@ -986,7 +986,15 @@ export function parseCodexDirectAppServerResult(stdout: string): CodexDirectResu
           turnId = nextTurnId;
         }
         if (codexEventMethod === "task_complete") {
-          turnStatus = "completed";
+          const taskStatus = extractCodexEventActivityStatus(params, "completed");
+          if (taskStatus === "failed") {
+            turnStatus = "failed";
+            const errorSummary = extractCodexEventError(params, method);
+            if (errorSummary) {
+              errors.push(errorSummary);
+              lastErrorSummary = errorSummary;
+            }
+          }
         } else if (codexEventMethod === "turn_aborted") {
           turnStatus = "interrupted";
         }
@@ -1518,10 +1526,10 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
             });
             emitNativeRuntime({
               thread_id: activeThreadId,
-              active_turn_id: null,
+              active_turn_id: taskStatus === "failed" ? null : activeTurnId || null,
               last_turn_id: activeTurnId || null,
-              turn_status: taskStatus === "failed" ? "failed" : "completed",
-              phase: taskStatus === "failed" ? "failed" : "completed",
+              turn_status: taskStatus === "failed" ? "failed" : "inProgress",
+              phase: taskStatus === "failed" ? "failed" : "running",
               thread_active_flags: [],
               last_error: taskError || null,
             });

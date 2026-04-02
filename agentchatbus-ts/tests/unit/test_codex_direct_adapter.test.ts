@@ -107,9 +107,44 @@ describe("parseCodexDirectAppServerResult", () => {
     expect(result.rawResult).toMatchObject({
       thread_id: "thread-200",
       turn_id: "turn-4",
-      turn_status: "completed",
+      turn_status: null,
       last_agent_message: "Nativecard",
       errors: [],
+    });
+  });
+
+  it("does not treat codex/event/task_complete as the authoritative completed signal", () => {
+    const result = parseCodexDirectAppServerResult([
+      "{\"method\":\"codex/event/task_started\",\"params\":{\"conversationId\":\"thread-201\",\"turnId\":\"turn-5\"}}",
+      "{\"method\":\"codex/event/agent_message_delta\",\"params\":{\"conversationId\":\"thread-201\",\"turnId\":\"turn-5\",\"delta\":\"Still\"}}",
+      "{\"method\":\"codex/event/task_complete\",\"params\":{\"conversationId\":\"thread-201\",\"turnId\":\"turn-5\",\"summary\":\"Task stage finished\"}}",
+    ].join("\n"));
+
+    expect(result.threadId).toBe("thread-201");
+    expect(result.turnId).toBe("turn-5");
+    expect(result.resultText).toBe("Still");
+    expect(result.rawResult).toMatchObject({
+      thread_id: "thread-201",
+      turn_id: "turn-5",
+      turn_status: null,
+      last_agent_message: "Still",
+      errors: [],
+    });
+  });
+
+  it("still captures an explicit task_complete failure without waiting for turn/completed", () => {
+    const result = parseCodexDirectAppServerResult([
+      "{\"method\":\"codex/event/task_started\",\"params\":{\"conversationId\":\"thread-202\",\"turnId\":\"turn-6\"}}",
+      "{\"method\":\"codex/event/task_complete\",\"params\":{\"conversationId\":\"thread-202\",\"turnId\":\"turn-6\",\"success\":false,\"error\":{\"message\":\"approval denied\"}}}",
+    ].join("\n"));
+
+    expect(result.threadId).toBe("thread-202");
+    expect(result.turnId).toBe("turn-6");
+    expect(result.rawResult).toMatchObject({
+      thread_id: "thread-202",
+      turn_id: "turn-6",
+      turn_status: "failed",
+      last_error: "approval denied",
     });
   });
 
