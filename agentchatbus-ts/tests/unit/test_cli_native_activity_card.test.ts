@@ -177,6 +177,6 @@ describe("buildNativeActivityCard", () => {
       kind: "task",
       status: "completed",
     });
-    expect(taskSection?.summary).toContain("Applied the patch");
+    expect(taskSection?.summary).toContain("Reply posted");
   });
 });

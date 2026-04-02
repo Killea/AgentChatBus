@@ -498,7 +498,8 @@ describe("CliMeetingOrchestrator agent_mcp wake handling", () => {
     postWithSync(store, thread.id, "Hank", "Please answer.", "user");
     postWithSync(store, thread.id, agentA.id, "I can take this one.", "assistant");
 
-    await Promise.resolve();
+    // Wait for event handlers to process
+    await new Promise(resolve => setTimeout(resolve, 10));
 
     const updatedAuthorSession = fakeManager.getSession("session-a");
     const untouchedPeerSession = fakeManager.getSession("session-b");
@@ -584,7 +585,8 @@ describe("CliMeetingOrchestrator agent_mcp wake handling", () => {
 
     postWithSync(store, thread.id, "Hank", "Please pick this up in MCP mode.", "user");
 
-    await Promise.resolve();
+    // Wait for event handlers to process
+    await new Promise(resolve => setTimeout(resolve, 10));
 
     expect(fakeManager.restartCalls).toEqual(["session-a"]);
     expect(fakeManager.restartRequests[0]?.prompt).toBe(
@@ -677,7 +679,8 @@ describe("CliMeetingOrchestrator agent_mcp wake handling", () => {
 
     postWithSync(store, thread.id, "Hank", "Please resume this thread now.", "user");
 
-    await Promise.resolve();
+    // Advance fake timers to allow event handlers to process
+    await vi.advanceTimersByTimeAsync(100);
 
     expect(fakeManager.stopCalls).toEqual(["session-a"]);
     expect(fakeManager.restartCalls).toEqual(["session-a"]);

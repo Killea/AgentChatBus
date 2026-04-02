@@ -22,7 +22,8 @@ describe("msg_wait lifecycle tracking", () => {
       agentToken: agent.token,
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    // Wait for waitForMessages to enter waiting state
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     const active = store.getAgentWaitStatus(thread.id, agent.id);
     expect(active.is_waiting).toBe(true);

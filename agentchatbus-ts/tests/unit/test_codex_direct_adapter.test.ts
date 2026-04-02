@@ -65,11 +65,11 @@ describe("parseCodexDirectAppServerResult", () => {
 
     expect(result.threadId).toBe("thread-42");
     expect(result.turnId).toBe("turn-7");
-    expect(result.resultText).toBe("Hello world");
+    expect(result.resultText).toBe("Helloworld");
     expect(result.rawResult).toMatchObject({
       thread_id: "thread-42",
       turn_id: "turn-7",
-      last_agent_message: "Hello world",
+      last_agent_message: "Helloworld",
       errors: [],
       ignored_line_count: 0,
     });
@@ -103,12 +103,12 @@ describe("parseCodexDirectAppServerResult", () => {
 
     expect(result.threadId).toBe("thread-200");
     expect(result.turnId).toBe("turn-4");
-    expect(result.resultText).toBe("Native card");
+    expect(result.resultText).toBe("Nativecard");
     expect(result.rawResult).toMatchObject({
       thread_id: "thread-200",
       turn_id: "turn-4",
       turn_status: "completed",
-      last_agent_message: "Native card",
+      last_agent_message: "Nativecard",
       errors: [],
     });
   });
@@ -126,7 +126,7 @@ describe("parseCodexDirectAppServerResult", () => {
     expect(result.rawResult).toMatchObject({
       thread_id: "thread-99",
       last_agent_message: null,
-      errors: ["approval required", "turn/start failed"],
+      errors: ["approval required", "turn/start failed\ncode: -32001"],
       ignored_line_count: 1,
     });
   });

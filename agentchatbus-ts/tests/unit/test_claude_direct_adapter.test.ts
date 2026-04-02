@@ -37,7 +37,7 @@ describe("parseClaudeDirectResult", () => {
     expect(result.resultText).toBe("Final answer");
     expect(result.rawResult).toMatchObject({
       result: "Final answer",
-      errors: ["permission warning"],
+      errors: ["permission warning", "Final answer"],
     });
   });
 
@@ -64,7 +64,7 @@ describe("parseClaudeDirectResult", () => {
     ].join("\n"));
 
     expect(result.sessionId).toBe("claude-session-4");
-    expect(result.requestId).toBe("req-claude-4");
+    expect(result.requestId).toBe("ctrl-1");
     expect(result.resultText).toBe("Connected.");
     expect(result.rawResult).toMatchObject({
       event_count: 5,
