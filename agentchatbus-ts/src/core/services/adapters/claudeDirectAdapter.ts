@@ -5,6 +5,7 @@ import type { Writable } from "node:stream";
 import type {
   CliAdapterActivityEvent,
   CliAdapterNativeRuntimeEvent,
+  CliSessionActivityFile,
   CliSessionAdapter,
   CliAdapterRunHooks,
   CliAdapterRunInput,
@@ -43,6 +44,8 @@ type ClaudeContentBlockState = {
   text?: string;
   thinking?: string;
   partialJson?: string;
+  input?: Record<string, unknown>;
+  toolUseId?: string;
 };
 
 type ClaudeSdkMessageContentBlock = {
@@ -52,6 +55,38 @@ type ClaudeSdkMessageContentBlock = {
   name?: unknown;
   id?: unknown;
   input?: unknown;
+  tool_use_id?: unknown;
+  is_error?: unknown;
+  content?: unknown;
+  summary?: unknown;
+  message?: unknown;
+};
+
+type ClaudeToolState = {
+  id: string;
+  type: string;
+  name?: string;
+  input?: Record<string, unknown>;
+  partialJson?: string;
+  toolUseId?: string;
+  resolved?: boolean;
+};
+
+type ClaudeToolActivityInfo = {
+  kind: CliAdapterActivityEvent["kind"];
+  label: string;
+  summary?: string;
+  server?: string;
+  tool?: string;
+  command?: string;
+  cwd?: string;
+  files?: CliSessionActivityFile[];
+};
+
+export type ClaudeDirectCollectedStream = {
+  envelope: ClaudeDirectResultEnvelope;
+  activities: CliAdapterActivityEvent[];
+  runtimeEvents: CliAdapterNativeRuntimeEvent[];
 };
 
 interface ClaudeDirectCommandExecutor {
@@ -149,6 +184,201 @@ function classifyToolActivityKind(toolName: string | undefined): CliAdapterActiv
     return "mcp_tool_call";
   }
   return "dynamic_tool_call";
+}
+
+function normalizeToolName(toolName: string | undefined): string {
+  return String(toolName || "").trim() || "Tool";
+}
+
+function isToolUseBlockType(type: string | undefined): boolean {
+  const normalized = String(type || "").trim().toLowerCase();
+  return normalized === "tool_use" || normalized.endsWith("_tool_use");
+}
+
+function isToolResultBlockType(type: string | undefined): boolean {
+  const normalized = String(type || "").trim().toLowerCase();
+  return normalized === "tool_result" || normalized.endsWith("_tool_result");
+}
+
+function safeParseJsonRecord(value: string | undefined): Record<string, unknown> | undefined {
+  const normalized = String(value || "").trim();
+  if (!normalized) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(normalized);
+    return isRecord(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function pickFirstString(
+  value: Record<string, unknown> | undefined,
+  keys: string[],
+): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  for (const key of keys) {
+    const candidate = value[key];
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+  return undefined;
+}
+
+function flattenStringValues(value: unknown, depth = 0): string[] {
+  if (depth > 4 || value === null || value === undefined) {
+    return [];
+  }
+  if (typeof value === "string") {
+    const normalized = value.replace(/\s+/g, " ").trim();
+    return normalized ? [normalized] : [];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => flattenStringValues(entry, depth + 1));
+  }
+  if (!isRecord(value)) {
+    return [];
+  }
+  const preferredKeys = ["text", "summary", "message", "detail", "error", "output", "content"];
+  const collected: string[] = [];
+  for (const key of preferredKeys) {
+    if (key in value) {
+      collected.push(...flattenStringValues(value[key], depth + 1));
+    }
+  }
+  return collected;
+}
+
+function extractToolResultSummary(result: unknown): string | undefined {
+  const fragments = flattenStringValues(result);
+  if (!fragments.length) {
+    if (isRecord(result)) {
+      return clipText(JSON.stringify(result), 280);
+    }
+    return clipText(result, 280);
+  }
+  return clipText(fragments.join(" "), 280);
+}
+
+function extractFilesFromInput(input: Record<string, unknown> | undefined): CliSessionActivityFile[] | undefined {
+  if (!input) {
+    return undefined;
+  }
+  const candidates = new Set<string>();
+  const directKeys = ["file_path", "filePath", "path", "filename", "notebook_path", "notebookPath"];
+  for (const key of directKeys) {
+    const value = input[key];
+    if (typeof value === "string" && value.trim()) {
+      candidates.add(value.trim());
+    }
+  }
+
+  const listKeys = ["paths", "file_paths", "filePaths", "files"];
+  for (const key of listKeys) {
+    const value = input[key];
+    if (!Array.isArray(value)) {
+      continue;
+    }
+    for (const entry of value) {
+      if (typeof entry === "string" && entry.trim()) {
+        candidates.add(entry.trim());
+        continue;
+      }
+      if (isRecord(entry)) {
+        const path = pickFirstString(entry, ["path", "file_path", "filePath", "filename"]);
+        if (path) {
+          candidates.add(path);
+        }
+      }
+    }
+  }
+
+  if (!candidates.size) {
+    return undefined;
+  }
+  return [...candidates].slice(0, 8).map((path) => ({ path, change_type: "update" }));
+}
+
+const CLAUDE_TOOL_VERBS: Record<string, string> = {
+  read: "Reading",
+  filereadtool: "Reading",
+  write: "Writing",
+  filewritetool: "Writing",
+  edit: "Editing",
+  multiedit: "Editing",
+  fileedittool: "Editing",
+  notebookedittool: "Editing notebook",
+  bash: "Running",
+  bashtool: "Running",
+  terminal: "Running",
+  grep: "Searching",
+  greptool: "Searching",
+  glob: "Searching",
+  globtool: "Searching",
+  websearch: "Searching",
+  webfetch: "Fetching",
+  task: "Running task",
+};
+
+function buildClaudeToolActivityInfo(
+  toolName: string | undefined,
+  input: Record<string, unknown> | undefined,
+  fallbackSummary?: string,
+): ClaudeToolActivityInfo {
+  const label = normalizeToolName(toolName);
+  const normalizedLabel = label.toLowerCase();
+  const mcpMatch = /^mcp__([^_]+(?:_[^_]+)*)__([^_].+)$/.exec(label);
+  const server = mcpMatch?.[1]?.replace(/_/g, "-");
+  const tool = mcpMatch?.[2]?.replace(/_/g, " ");
+  const command = pickFirstString(input, ["command", "cmd", "shell_command", "shellCommand"]);
+  const cwd = pickFirstString(input, ["cwd", "working_directory", "workingDirectory", "dir", "directory"]);
+  const files = extractFilesFromInput(input);
+  const searchTarget = pickFirstString(input, [
+    "query",
+    "pattern",
+    "url",
+    "description",
+    "prompt",
+  ]);
+  const normalizedKey = normalizedLabel.replace(/[^a-z0-9]/g, "");
+  const verb = CLAUDE_TOOL_VERBS[normalizedKey] || CLAUDE_TOOL_VERBS[normalizedLabel] || label;
+  const target = command
+    ? clipText(command, 140)
+    : files?.[0]?.path
+      ? `${files[0].path}${files.length > 1 ? ` (+${files.length - 1} more)` : ""}`
+      : searchTarget;
+  const summary = clipText(
+    target
+      ? `${verb} ${target}`
+      : fallbackSummary
+        || [server, tool].filter(Boolean).join(" / ")
+        || label,
+    280,
+  );
+
+  let kind = classifyToolActivityKind(label);
+  if (command) {
+    kind = "command_execution";
+  } else if (files?.length) {
+    kind = "file_change";
+  } else if (server || normalizedLabel.startsWith("mcp__")) {
+    kind = "mcp_tool_call";
+  }
+
+  return {
+    kind,
+    label,
+    summary,
+    server,
+    tool: tool || (kind === "mcp_tool_call" ? label : undefined),
+    command,
+    cwd,
+    files,
+  };
 }
 
 function buildDefaultSchemaValue(schema: unknown): unknown {
@@ -283,6 +513,7 @@ function buildClaudeControlResponse(
 
 class ClaudeDirectStreamParser {
   private readonly blocks = new Map<number, ClaudeContentBlockState>();
+  private readonly toolStates = new Map<string, ClaudeToolState>();
   private lineBuffer = "";
   private sessionId?: string;
   private requestId?: string;
@@ -385,6 +616,11 @@ class ClaudeDirectStreamParser {
       return;
     }
 
+    if (type === "user") {
+      this.handleUserMessage(event);
+      return;
+    }
+
     if (type === "system") {
       this.handleSystemMessage(event);
       return;
@@ -421,22 +657,24 @@ class ClaudeDirectStreamParser {
     }
 
     if (type === "tool_use_summary") {
+      const summary = extractString(event, ["summary"]) || "Claude finished a batch of tool work.";
+      const precedingIds = Array.isArray(event.preceding_tool_use_ids)
+        ? event.preceding_tool_use_ids
+        : [];
+      for (const entry of precedingIds) {
+        if (typeof entry === "string" && entry.trim()) {
+          this.resolveToolState(entry.trim(), "completed", summary);
+        }
+      }
       this.emitTask(
         "completed",
         "Tool summary",
-        extractString(event, ["summary"]) || "Claude finished a batch of tool work.",
+        summary,
       );
       return;
     }
 
     if (type === "message_stop") {
-      this.hooks.onNativeRuntime?.({
-        at: nowIso(),
-        active_turn_id: this.requestId,
-        last_turn_id: this.requestId,
-        turn_status: "completed",
-        phase: "completed",
-      });
       return;
     }
 
@@ -448,6 +686,7 @@ class ClaudeDirectStreamParser {
         this.resultText = resultText;
       }
       if (subtype === "success") {
+        this.resolveOutstandingTools("completed", resultText || "Tool completed.");
         this.emitTask("completed", "Completed", resultText || this.partialAssistantText || "Claude completed the task.");
       } else {
         const errorSummary = clipText(
@@ -458,6 +697,7 @@ class ClaudeDirectStreamParser {
           360,
         ) || "Claude direct session failed.";
         this.errorMessages.push(errorSummary);
+        this.resolveOutstandingTools("failed", errorSummary);
         this.emitTask("failed", "Error", errorSummary);
       }
       this.hooks.onNativeRuntime?.({
@@ -465,7 +705,9 @@ class ClaudeDirectStreamParser {
         active_turn_id: this.requestId,
         last_turn_id: this.requestId,
         turn_status: subtype === "success" ? "completed" : "failed",
-        phase: subtype === "success" ? "completed" : "failed",
+        phase: subtype === "success"
+          ? (this.lastSessionState === "idle" ? "completed" : "running")
+          : "failed",
         last_error: subtype === "success" ? undefined : this.errorMessages[this.errorMessages.length - 1],
       });
       return;
@@ -474,6 +716,7 @@ class ClaudeDirectStreamParser {
     if (type === "error") {
       const message = extractString(event, ["message", "error", "detail"]) || "Claude direct session failed.";
       this.errorMessages.push(message);
+      this.resolveOutstandingTools("failed", message);
       this.emitTask("failed", "Error", message);
       this.hooks.onNativeRuntime?.({
         at: nowIso(),
@@ -534,19 +777,12 @@ class ClaudeDirectStreamParser {
         this.emitThinking("in_progress", thinking);
         continue;
       }
-      if (blockType === "tool_use") {
-        const id = extractString(block, ["id"]) || `tool:${this.eventCount}`;
-        const name = extractString(block, ["name"]) || "Tool";
-        const summary = clipText(JSON.stringify(block.input || {}), 280) || name;
-        this.emitTool(
-          {
-            id,
-            type: blockType,
-            name,
-          },
-          "in_progress",
-          summary,
-        );
+      if (isToolUseBlockType(blockType)) {
+        this.trackToolFromBlock(block, "in_progress");
+        continue;
+      }
+      if (isToolResultBlockType(blockType)) {
+        this.resolveToolFromBlock(block);
       }
     }
     if (sawText) {
@@ -558,6 +794,31 @@ class ClaudeDirectStreamParser {
         thread_active_flags: [],
         phase: "running",
       });
+    }
+  }
+
+  private handleUserMessage(event: Record<string, unknown>): void {
+    const message = isRecord(event.message) ? event.message : null;
+    const content = Array.isArray(message?.content) ? message.content : [];
+    let sawToolResult = false;
+    for (const block of content) {
+      if (!isRecord(block)) {
+        continue;
+      }
+      const blockType = String(block.type || "").trim().toLowerCase();
+      if (!isToolResultBlockType(blockType)) {
+        continue;
+      }
+      sawToolResult = true;
+      this.resolveToolFromBlock(block);
+    }
+
+    if (!sawToolResult) {
+      const parentToolUseId = extractString(event, ["parent_tool_use_id", "parentToolUseId"]);
+      if (parentToolUseId && Object.prototype.hasOwnProperty.call(event, "tool_use_result")) {
+        const resultSummary = extractToolResultSummary(event.tool_use_result);
+        this.resolveToolState(parentToolUseId, "completed", resultSummary);
+      }
     }
   }
 
@@ -601,6 +862,7 @@ class ClaudeDirectStreamParser {
         });
         return;
       }
+      this.resolveOutstandingTools("completed");
       this.hooks.onNativeRuntime?.({
         at: nowIso(),
         active_turn_id: this.requestId,
@@ -633,6 +895,14 @@ class ClaudeDirectStreamParser {
       return;
     }
     if (subtype === "task_started") {
+      const toolUseId = extractString(event, ["tool_use_id", "toolUseID"]);
+      if (toolUseId) {
+        this.startToolState({
+          id: toolUseId,
+          type: "task",
+          name: "Task",
+        }, extractString(event, ["description", "prompt"]) || "Claude started a task.");
+      }
       this.emitTask(
         "in_progress",
         "Task started",
@@ -641,6 +911,14 @@ class ClaudeDirectStreamParser {
       return;
     }
     if (subtype === "task_progress") {
+      const toolUseId = extractString(event, ["tool_use_id", "toolUseID"]);
+      if (toolUseId) {
+        this.startToolState({
+          id: toolUseId,
+          type: "task",
+          name: extractString(event, ["last_tool_name"]) || "Task",
+        }, extractString(event, ["summary", "description"]) || "Claude updated task progress.");
+      }
       this.emitTask(
         "in_progress",
         "Task progress",
@@ -650,6 +928,14 @@ class ClaudeDirectStreamParser {
     }
     if (subtype === "task_notification") {
       const status = String(event.status || "").trim().toLowerCase();
+      const toolUseId = extractString(event, ["tool_use_id", "toolUseID"]);
+      if (toolUseId) {
+        this.resolveToolState(
+          toolUseId,
+          status === "failed" ? "failed" : "completed",
+          extractString(event, ["summary"]) || "Claude finished a task.",
+        );
+      }
       this.emitTask(
         status === "failed" ? "failed" : "completed",
         status === "failed" ? "Task failed" : "Task completed",
@@ -713,13 +999,13 @@ class ClaudeDirectStreamParser {
     const subtype = String(request?.subtype || "").trim().toLowerCase();
     if (subtype === "can_use_tool") {
       const toolName = extractString(request || {}, ["tool_name", "toolName"]) || "Tool";
-      this.emitTool(
+      this.startToolState(
         {
-          id: extractString(request || {}, ["tool_use_id"]) || `tool:${this.eventCount}`,
+          id: extractString(request || {}, ["tool_use_id", "toolUseID"]) || `tool:${this.eventCount}`,
           type: "tool_use",
           name: toolName,
+          input: isRecord(request?.input) ? request.input : undefined,
         },
-        "in_progress",
         clipText(JSON.stringify(request?.input || {}), 280) || toolName,
       );
       return;
@@ -742,18 +1028,17 @@ class ClaudeDirectStreamParser {
   private handleToolProgress(event: Record<string, unknown>): void {
     const toolName = extractString(event, ["tool_name", "toolName"]) || "Tool";
     const elapsedSeconds = Number(event.elapsed_time_seconds);
-    this.hooks.onActivity?.({
-      at: nowIso(),
-      turn_id: this.requestId,
-      item_id: `tool-progress:${extractString(event, ["tool_use_id"]) || this.eventCount}`,
-      kind: classifyToolActivityKind(toolName),
-      status: "in_progress",
-      label: toolName,
-      tool: toolName,
-      summary: Number.isFinite(elapsedSeconds)
+    const toolUseId = extractString(event, ["tool_use_id", "toolUseID"]) || `${this.eventCount}`;
+    this.startToolState(
+      {
+        id: toolUseId,
+        type: "tool_use",
+        name: toolName,
+      },
+      Number.isFinite(elapsedSeconds)
         ? `${toolName} running for ${Math.round(elapsedSeconds)}s`
         : `${toolName} is running`,
-    });
+    );
   }
 
   private handleContentBlockStart(event: Record<string, unknown>): void {
@@ -762,15 +1047,30 @@ class ClaudeDirectStreamParser {
     const type = String(block.type || "").trim().toLowerCase() || "unknown";
     const id = extractString(block, ["id"]) || `${type}:${Number.isFinite(index) ? index : this.blocks.size}`;
     const name = extractString(block, ["name", "tool_name", "toolName"]);
-    const state: ClaudeContentBlockState = { id, type, name };
+    const toolUseId = extractString(block, ["tool_use_id", "toolUseID"]);
+    const input = isRecord(block.input) ? block.input : undefined;
+    const state: ClaudeContentBlockState = { id, type, name, toolUseId, input };
     this.blocks.set(Number.isFinite(index) ? index : this.blocks.size, state);
 
     if (type === "thinking") {
       this.emitThinking("in_progress", "Thinking...");
       return;
     }
-    if (type === "tool_use" || type === "server_tool_use" || type === "mcp_tool_use") {
-      this.emitTool(state, "in_progress", name || "Using tool");
+    if (isToolUseBlockType(type)) {
+      this.startToolState(
+        {
+          id,
+          type,
+          name,
+          input,
+          toolUseId,
+        },
+        name || "Using tool",
+      );
+      return;
+    }
+    if (isToolResultBlockType(type) && toolUseId) {
+      this.resolveToolState(toolUseId, Boolean(block.is_error) ? "failed" : "completed");
     }
   }
 
@@ -802,7 +1102,17 @@ class ClaudeDirectStreamParser {
         state.partialJson,
         extractRawString(delta, ["partial_json", "partialJson"]),
       );
-      this.emitTool(state, "in_progress", state.partialJson || state.name || "Using tool");
+      this.startToolState(
+        {
+          id: state.id,
+          type: state.type,
+          name: state.name,
+          input: state.input,
+          partialJson: state.partialJson,
+          toolUseId: state.toolUseId,
+        },
+        state.partialJson || state.name || "Using tool",
+      );
       return;
     }
   }
@@ -817,8 +1127,18 @@ class ClaudeDirectStreamParser {
       this.emitThinking("completed", state.thinking || "Thinking");
       return;
     }
-    if (state.type === "tool_use" || state.type === "server_tool_use" || state.type === "mcp_tool_use") {
-      this.emitTool(state, "completed", state.partialJson || state.name || "Tool completed");
+    if (isToolUseBlockType(state.type)) {
+      this.startToolState(
+        {
+          id: state.id,
+          type: state.type,
+          name: state.name,
+          input: state.input,
+          partialJson: state.partialJson,
+          toolUseId: state.toolUseId,
+        },
+        state.partialJson || state.name || "Using tool",
+      );
       return;
     }
     if (state.type === "text") {
@@ -850,21 +1170,125 @@ class ClaudeDirectStreamParser {
     });
   }
 
+  private startToolState(state: ClaudeToolState, summary?: string): void {
+    const next = this.upsertToolState(state);
+    this.emitTool(next, "in_progress", summary);
+  }
+
+  private upsertToolState(state: ClaudeToolState): ClaudeToolState {
+    const existing = this.toolStates.get(state.id);
+    const next: ClaudeToolState = {
+      ...(existing || {}),
+      ...state,
+      name: state.name || existing?.name,
+      input: state.input || existing?.input || safeParseJsonRecord(state.partialJson) || safeParseJsonRecord(existing?.partialJson),
+      partialJson: state.partialJson ?? existing?.partialJson,
+      toolUseId: state.toolUseId || existing?.toolUseId,
+      resolved: state.resolved ?? existing?.resolved ?? false,
+    };
+    this.toolStates.set(next.id, next);
+    if (next.toolUseId && next.toolUseId !== next.id) {
+      this.toolStates.set(next.toolUseId, next);
+    }
+    return next;
+  }
+
+  private resolveToolState(
+    toolId: string,
+    status: Extract<CliAdapterActivityEvent["status"], "completed" | "failed">,
+    summary?: string,
+  ): void {
+    const key = String(toolId || "").trim();
+    if (!key) {
+      return;
+    }
+    const existing = this.toolStates.get(key) || {
+      id: key,
+      type: "tool_use",
+    };
+    const resolved = this.upsertToolState({
+      ...existing,
+      id: key,
+      resolved: true,
+    });
+    this.emitTool(resolved, status, summary);
+  }
+
+  private resolveOutstandingTools(
+    status: Extract<CliAdapterActivityEvent["status"], "completed" | "failed">,
+    summary?: string,
+  ): void {
+    const seen = new Set<string>();
+    for (const state of this.toolStates.values()) {
+      if (!state || state.resolved) {
+        continue;
+      }
+      if (seen.has(state.id)) {
+        continue;
+      }
+      seen.add(state.id);
+      this.resolveToolState(state.id, status, summary);
+    }
+  }
+
+  private trackToolFromBlock(
+    block: Record<string, unknown>,
+    status: Extract<CliAdapterActivityEvent["status"], "in_progress" | "completed" | "failed">,
+  ): void {
+    const blockType = String(block.type || "").trim().toLowerCase() || "tool_use";
+    const toolId = extractString(block, ["id", "tool_use_id", "toolUseID"]) || `tool:${this.eventCount}`;
+    const state = this.upsertToolState({
+      id: toolId,
+      type: blockType,
+      name: extractString(block, ["name", "tool_name", "toolName"]),
+      input: isRecord(block.input) ? block.input : undefined,
+      toolUseId: extractString(block, ["tool_use_id", "toolUseID"]),
+      resolved: status !== "in_progress",
+    });
+    this.emitTool(
+      state,
+      status,
+      extractToolResultSummary(block.content)
+        || extractToolResultSummary(block.input)
+        || extractString(block, ["summary", "message"]),
+    );
+  }
+
+  private resolveToolFromBlock(block: Record<string, unknown>): void {
+    const toolUseId = extractString(block, ["tool_use_id", "toolUseID", "id"]);
+    if (!toolUseId) {
+      return;
+    }
+    const summary = extractToolResultSummary(block.content)
+      || extractToolResultSummary(block.message)
+      || extractString(block, ["summary", "message", "error"]);
+    this.resolveToolState(
+      toolUseId,
+      Boolean(block.is_error) ? "failed" : "completed",
+      summary,
+    );
+  }
+
   private emitTool(
-    state: ClaudeContentBlockState,
+    state: ClaudeToolState,
     status: CliAdapterActivityEvent["status"],
     summary?: string,
   ): void {
-    const kind = classifyToolActivityKind(state.name);
+    const input = state.input || safeParseJsonRecord(state.partialJson);
+    const info = buildClaudeToolActivityInfo(state.name, input, summary || state.partialJson || state.name);
     this.hooks.onActivity?.({
       at: nowIso(),
       turn_id: this.requestId,
       item_id: `tool:${state.id}`,
-      kind,
+      kind: info.kind,
       status,
-      label: state.name || "Tool",
-      tool: state.name,
-      summary: clipText(summary || state.name || "Using tool", 280),
+      label: info.label,
+      summary: clipText(summary || info.summary || state.name || "Using tool", 280),
+      server: info.server,
+      tool: info.tool || state.name,
+      command: info.command,
+      cwd: info.cwd,
+      files: info.files,
     });
   }
 }
@@ -1123,21 +1547,37 @@ class ClaudeDirectExecutor implements ClaudeDirectCommandExecutor {
   }
 }
 
-export function parseClaudeDirectResult(stdout: string): ClaudeDirectResultEnvelope {
+export function collectClaudeDirectStream(stdout: string): ClaudeDirectCollectedStream {
   const lines = String(stdout || "")
     .split(/\r?\n/g)
     .map((line) => line.trim())
     .filter(Boolean);
+  const activities: CliAdapterActivityEvent[] = [];
+  const runtimeEvents: CliAdapterNativeRuntimeEvent[] = [];
   const parser = new ClaudeDirectStreamParser({
     signal: new AbortController().signal,
     onOutput: () => {},
+    onActivity: (activity) => {
+      activities.push({ ...activity });
+    },
+    onNativeRuntime: (event) => {
+      runtimeEvents.push({ ...event });
+    },
     onProcessStart: () => {},
     onControls: () => {},
   });
   for (const line of lines) {
     parser.push(`${line}\n`);
   }
-  return parser.finalize();
+  return {
+    envelope: parser.finalize(),
+    activities,
+    runtimeEvents,
+  };
+}
+
+export function parseClaudeDirectResult(stdout: string): ClaudeDirectResultEnvelope {
+  return collectClaudeDirectStream(stdout).envelope;
 }
 
 export class ClaudeDirectAdapter implements CliSessionAdapter {

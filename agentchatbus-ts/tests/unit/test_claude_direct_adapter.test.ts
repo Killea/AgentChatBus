@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  collectClaudeDirectStream,
   parseClaudeDirectResult,
 } from "../../src/core/services/adapters/claudeDirectAdapter.js";
 
@@ -94,5 +95,40 @@ describe("parseClaudeDirectResult", () => {
 
     expect(result.sessionId).toBe("claude-session-6");
     expect(result.resultText).toBe("Hello from stream events");
+  });
+
+  it("keeps a tool active until its tool_result arrives on the same tool_use_id", () => {
+    const collected = collectClaudeDirectStream([
+      "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"claude-session-7\",\"uuid\":\"sys-7\"}",
+      "{\"type\":\"stream_event\",\"session_id\":\"claude-session-7\",\"uuid\":\"evt-1\",\"event\":{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"tool-1\",\"name\":\"Bash\"}}}",
+      "{\"type\":\"stream_event\",\"session_id\":\"claude-session-7\",\"uuid\":\"evt-2\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"command\\\":\\\"npm test\\\",\\\"cwd\\\":\\\"C:/repo\\\"}\"}}}",
+      "{\"type\":\"stream_event\",\"session_id\":\"claude-session-7\",\"uuid\":\"evt-3\",\"event\":{\"type\":\"content_block_stop\",\"index\":0}}",
+      "{\"type\":\"tool_progress\",\"session_id\":\"claude-session-7\",\"uuid\":\"tool-progress-1\",\"tool_use_id\":\"tool-1\",\"tool_name\":\"Bash\",\"parent_tool_use_id\":null,\"elapsed_time_seconds\":3}",
+      "{\"type\":\"user\",\"session_id\":\"claude-session-7\",\"uuid\":\"user-1\",\"parent_tool_use_id\":null,\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"tool-1\",\"is_error\":false,\"content\":\"Command completed successfully\"}]}}",
+    ].join("\n"));
+
+    const toolEvents = collected.activities.filter((event) => event.item_id === "tool:tool-1");
+    expect(toolEvents.length).toBeGreaterThanOrEqual(2);
+    expect(toolEvents.slice(0, -1).every((event) => event.status === "in_progress")).toBe(true);
+    expect(toolEvents.at(-1)).toMatchObject({
+      status: "completed",
+      kind: "command_execution",
+      command: "npm test",
+      cwd: "C:/repo",
+    });
+  });
+
+  it("does not treat message_stop as the authoritative completed signal", () => {
+    const collected = collectClaudeDirectStream([
+      "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"claude-session-8\",\"uuid\":\"sys-8\"}",
+      "{\"type\":\"message_start\",\"message\":{\"id\":\"msg-8\"}}",
+      "{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\"}}",
+      "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Working\"}}",
+      "{\"type\":\"message_stop\"}",
+    ].join("\n"));
+
+    const completedRuntime = collected.runtimeEvents.find((event) => event.phase === "completed");
+    expect(completedRuntime).toBeUndefined();
+    expect(collected.envelope.resultText).toBe("Working");
   });
 });
