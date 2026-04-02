@@ -1,6 +1,5 @@
 import { dirname } from "node:path";
 import { existsSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 import spawn from "cross-spawn";
 import type { CliSessionAdapter, CliAdapterRunInput, CliAdapterRunHooks, CliAdapterRunResult } from "./types.js";
 import { normalizeWorkspacePath, terminateChildProcessTree } from "./utils.js";
@@ -126,29 +125,6 @@ export function resolveGeminiHeadlessCommand(): string {
   const configured = String(getConfig().geminiCommand || "").trim();
   if (configured) {
     return configured;
-  }
-  if (process.platform === "win32") {
-    try {
-      const output = execFileSync("where.exe", ["gemini"], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-      });
-      const matches = String(output || "")
-        .split(/\r?\n/)
-        .map((value) => value.trim())
-        .filter(Boolean);
-      const candidates = [
-        ...matches.map((match) => match.replace(/\.cmd$/i, ".exe")),
-        ...matches.map((match) => match.replace(/\.exe$/i, ".cmd")),
-        ...matches,
-      ];
-      const existing = candidates.find((candidate) => existsSync(candidate));
-      if (existing) {
-        return existing;
-      }
-    } catch {
-      // Fall back to PATH lookup below.
-    }
   }
   return "gemini";
 }

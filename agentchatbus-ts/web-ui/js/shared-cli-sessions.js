@@ -172,6 +172,12 @@
     if (session?.adapter === "claude" && session?.mode === "direct") {
       return participantLabel ? `${participantLabel} · Claude Direct` : "Claude Direct";
     }
+    if (session?.adapter === "cursor" && session?.mode === "direct") {
+      return participantLabel ? `${participantLabel} · Cursor Direct` : "Cursor Direct";
+    }
+    if (session?.adapter === "copilot" && session?.mode === "direct") {
+      return participantLabel ? `${participantLabel} · Copilot Direct` : "Copilot Direct";
+    }
     if (session?.adapter === "codex" && session?.mode === "interactive") {
       return participantLabel ? `${participantLabel} · Codex PTY` : "Codex PTY";
     }
@@ -593,6 +599,34 @@
     persistThreadCache(session.thread_id);
     if (session.thread_id === getActiveThreadId()) {
       renderThread(session.thread_id);
+      if (window.AcbAgents?.rerenderStatusBar) {
+        void window.AcbAgents.rerenderStatusBar();
+      }
+    }
+  }
+
+  function removeSessionFromThread(threadId, sessionId) {
+    const resolvedThreadId = String(threadId || "").trim();
+    const resolvedSessionId = String(sessionId || "").trim();
+    if (!resolvedThreadId || !resolvedSessionId) {
+      return;
+    }
+    const sessionMap = sessionsByThread.get(resolvedThreadId);
+    if (!(sessionMap instanceof Map) || !sessionMap.has(resolvedSessionId)) {
+      return;
+    }
+    sessionMap.delete(resolvedSessionId);
+    teardownHeadlessOutputState(resolvedSessionId);
+    teardownTerminalInstance(resolvedSessionId);
+    if (!sessionMap.size) {
+      clearThreadSessions(resolvedThreadId);
+      return;
+    }
+    sessionsByThread.set(resolvedThreadId, sessionMap);
+    ensureSelectedSession(resolvedThreadId);
+    persistThreadCache(resolvedThreadId);
+    if (resolvedThreadId === getActiveThreadId()) {
+      renderThread(resolvedThreadId);
       if (window.AcbAgents?.rerenderStatusBar) {
         void window.AcbAgents.rerenderStatusBar();
       }
@@ -2009,6 +2043,19 @@
       const entry = event?.payload?.entry;
       if (sessionId) {
         appendTerminalOutput(sessionId, entry);
+      }
+      return;
+    }
+
+    if (type === "cli.session.removed") {
+      const threadId = String(event?.payload?.thread_id || event?.payload?.session?.thread_id || "").trim();
+      const sessionId = String(event?.payload?.session_id || event?.payload?.session?.id || "").trim();
+      if (threadId && sessionId) {
+        removeSessionFromThread(threadId, sessionId);
+        if (window.AcbChat?.syncThreadCliSessions) {
+          window.AcbChat.syncThreadCliSessions(threadId, getSessionsForThread(threadId));
+        }
+        window.AcbComposeShell?.refreshPrimaryAction?.();
       }
       return;
     }

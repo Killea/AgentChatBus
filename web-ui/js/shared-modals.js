@@ -930,7 +930,12 @@
 
   function getThreadLaunchModeForAdapter(adapter) {
     const normalizedAdapter = String(adapter || "").trim().toLowerCase();
-    if (normalizedAdapter === "codex" || normalizedAdapter === "claude") {
+    if (
+      normalizedAdapter === "codex"
+      || normalizedAdapter === "claude"
+      || normalizedAdapter === "copilot"
+      || normalizedAdapter === "cursor"
+    ) {
       return "direct";
     }
     return "interactive";
@@ -939,7 +944,12 @@
   function normalizeThreadLaunchMode(adapter, currentMode) {
     const normalizedAdapter = String(adapter || "").trim().toLowerCase();
     const requested = String(currentMode || "").trim().toLowerCase();
-    if (normalizedAdapter === "codex" || normalizedAdapter === "claude") {
+    if (
+      normalizedAdapter === "codex"
+      || normalizedAdapter === "claude"
+      || normalizedAdapter === "copilot"
+      || normalizedAdapter === "cursor"
+    ) {
       if (requested === "headless" || requested === "interactive" || requested === "direct") {
         return requested;
       }
@@ -963,9 +973,17 @@
       options.push(
         `<option value="direct" ${normalized === "direct" ? "selected" : ""}>Codex Direct (App Server)</option>`,
       );
+    } else if (normalizedAdapter === "cursor") {
+      options.push(
+        `<option value="direct" ${normalized === "direct" ? "selected" : ""}>Cursor Direct (ACP)</option>`,
+      );
     } else if (normalizedAdapter === "claude") {
       options.push(
         `<option value="direct" ${normalized === "direct" ? "selected" : ""}>Claude Direct (stream-json)</option>`,
+      );
+    } else if (normalizedAdapter === "copilot") {
+      options.push(
+        `<option value="direct" ${normalized === "direct" ? "selected" : ""}>Copilot Direct (ACP)</option>`,
       );
     }
     options.push(

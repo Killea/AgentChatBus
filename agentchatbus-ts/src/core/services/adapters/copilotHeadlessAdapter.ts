@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 import spawn from "cross-spawn";
@@ -131,29 +130,6 @@ export function resolveCopilotHeadlessCommand(): string {
   const configured = String(getConfig().copilotCommand || "").trim();
   if (configured) {
     return configured;
-  }
-  if (process.platform === "win32") {
-    try {
-      const output = execFileSync("where.exe", ["copilot"], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-      });
-      const matches = String(output || "")
-        .split(/\r?\n/)
-        .map((value) => value.trim())
-        .filter(Boolean);
-      const candidates = [
-        ...matches.map((match) => match.replace(/\.cmd$/i, ".exe")),
-        ...matches.map((match) => match.replace(/\.exe$/i, ".cmd")),
-        ...matches,
-      ];
-      const existing = candidates.find((candidate) => existsSync(candidate));
-      if (existing) {
-        return existing;
-      }
-    } catch {
-      // Fall back to PATH lookup below.
-    }
   }
   return "copilot";
 }

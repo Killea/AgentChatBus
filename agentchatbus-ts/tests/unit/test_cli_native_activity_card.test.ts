@@ -271,4 +271,129 @@ describe("buildNativeActivityCard", () => {
     });
     expect(taskSection?.summary).toContain("Reply posted");
   });
+
+  it("lists explicit command and file activity rows like a native run card", () => {
+    const card = buildNativeActivityCard(makeDirectSession({
+      native_turn_runtime: {
+        updated_at: "2026-03-30T12:00:05.000Z",
+        thread_id: "thread-1",
+        active_turn_id: "turn-1",
+        last_turn_id: "turn-1",
+        turn_status: "inProgress",
+        phase: "running",
+        thread_active_flags: [],
+      },
+      recent_activity_events: [
+        makeActivity({
+          at: "2026-03-30T12:00:02.000Z",
+          item_id: "reason-1",
+          kind: "thinking",
+          status: "in_progress",
+          label: "Thinking",
+          summary: "Checking the chat renderer before editing.",
+        }),
+        makeActivity({
+          at: "2026-03-30T12:00:03.000Z",
+          item_id: "cmd-1",
+          kind: "command_execution",
+          status: "completed",
+          label: "Running command",
+          command: "node --check web-ui/js/shared-chat.js",
+          cwd: "C:\\workspace",
+          summary: "Command finished cleanly.",
+        }),
+        makeActivity({
+          at: "2026-03-30T12:00:04.000Z",
+          item_id: "files-1",
+          kind: "file_change",
+          status: "in_progress",
+          label: "Editing files",
+          summary: "Updating the native activity rows.",
+          files: [
+            { path: "web-ui/js/shared-chat.js", change_type: "update" },
+            { path: "web-ui/css/main.css", change_type: "update" },
+          ],
+        }),
+      ],
+    }));
+
+    const commandSection = card.content_sections.find((section) => section.kind === "command");
+    const filesSection = card.content_sections.find((section) => section.kind === "files");
+
+    expect(commandSection?.summary).toContain("Ran node --check web-ui/js/shared-chat.js");
+    expect(commandSection?.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        label: "Ran",
+        value: "node --check web-ui/js/shared-chat.js",
+      }),
+      expect.objectContaining({
+        label: "Directory",
+        value: "C:\\workspace",
+      }),
+    ]));
+    expect(filesSection?.summary).toContain("Edited 2 files");
+    expect(filesSection?.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        label: "Edited file",
+        value: "web-ui/js/shared-chat.js",
+      }),
+      expect.objectContaining({
+        label: "Edited file",
+        value: "web-ui/css/main.css",
+      }),
+    ]));
+  });
+
+  it("surfaces recent thinking snippets as explicit thought rows", () => {
+    const card = buildNativeActivityCard(makeDirectSession({
+      native_turn_runtime: {
+        updated_at: "2026-03-30T12:00:05.000Z",
+        thread_id: "thread-1",
+        active_turn_id: "turn-1",
+        last_turn_id: "turn-1",
+        turn_status: "inProgress",
+        phase: "running",
+        thread_active_flags: [],
+      },
+      recent_activity_events: [
+        makeActivity({
+          at: "2026-03-30T12:00:02.000Z",
+          item_id: "plan-1",
+          kind: "plan",
+          status: "completed",
+          label: "Thinking",
+          summary: "Check the current native card render path first.",
+        }),
+        makeActivity({
+          at: "2026-03-30T12:00:03.000Z",
+          item_id: "task-1",
+          kind: "task",
+          status: "in_progress",
+          label: "Task",
+          summary: "Preparing the card update.",
+        }),
+        makeActivity({
+          at: "2026-03-30T12:00:04.000Z",
+          item_id: "reason-1",
+          kind: "thinking",
+          status: "in_progress",
+          label: "Thinking",
+          summary: "Render explicit command and file rows in the card.",
+        }),
+      ],
+    }));
+
+    const thinkingSection = card.content_sections.find((section) => section.kind === "thinking");
+    expect(thinkingSection?.summary).toContain("Render explicit command and file rows in the card.");
+    expect(thinkingSection?.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        label: "Task note",
+        value: "Preparing the card update.",
+      }),
+      expect.objectContaining({
+        label: "Plan note",
+        value: "Check the current native card render path first.",
+      }),
+    ]));
+  });
 });

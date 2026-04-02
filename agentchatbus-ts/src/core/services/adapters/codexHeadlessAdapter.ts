@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { dirname } from "node:path";
 import { existsSync } from "node:fs";
@@ -48,104 +47,13 @@ interface CodexCommandExecutor {
 }
 
 export function resolveCodexHeadlessCommand(): string {
-  const configured = String(getConfig().codexCommand || "").trim();
-  if (configured) {
-    return configured;
-  }
-  if (process.platform === "win32") {
-    try {
-      const output = execFileSync("where.exe", ["codex"], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-      });
-      const matches = String(output || "")
-        .split(/\r?\n/)
-        .map((value) => value.trim())
-        .filter(Boolean);
-      const executableCandidates: string[] = [];
-      const scriptCandidates: string[] = [];
-      const fallbackCandidates: string[] = [];
-      for (const match of matches) {
-        if (/\.exe$/i.test(match)) {
-          executableCandidates.push(match);
-          continue;
-        }
-        if (/\.cmd$/i.test(match)) {
-          scriptCandidates.push(match);
-          continue;
-        }
-        if (/\.ps1$/i.test(match)) {
-          fallbackCandidates.push(match);
-          continue;
-        }
-        executableCandidates.push(`${match}.exe`);
-        scriptCandidates.push(`${match}.cmd`);
-        fallbackCandidates.push(`${match}.ps1`);
-      }
-      const candidates = [
-        ...executableCandidates,
-        ...scriptCandidates,
-        ...fallbackCandidates,
-      ];
-      const existing = candidates.find((candidate) => existsSync(candidate));
-      if (existing) {
-        return existing;
-      }
-    } catch {
-      // Fall back to the shared resolver result below.
-    }
-  }
-  const resolved = resolveCodexCommand();
-  if (/\.ps1$/i.test(resolved)) {
-    const exeVariant = resolved.replace(/\.ps1$/i, ".exe");
-    if (existsSync(exeVariant)) {
-      return exeVariant;
-    }
-    const cmdVariant = resolved.replace(/\.ps1$/i, ".cmd");
-    if (existsSync(cmdVariant)) {
-      return cmdVariant;
-    }
-  }
-  if (/\.cmd$/i.test(resolved)) {
-    const exeVariant = resolved.replace(/\.cmd$/i, ".exe");
-    if (existsSync(exeVariant)) {
-      return exeVariant;
-    }
-  }
-  return resolved;
+  return resolveCodexCommand();
 }
 
 export function resolveCodexCommand(): string {
   const configured = String(getConfig().codexCommand || "").trim();
   if (configured) {
     return configured;
-  }
-  if (process.platform === "win32") {
-    try {
-      const output = execFileSync("where.exe", ["codex"], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-      });
-      const matches = String(output || "")
-        .split(/\r?\n/)
-        .map((value) => value.trim())
-        .filter(Boolean);
-      for (const match of matches) {
-        const candidates = /\.ps1$/i.test(match)
-          ? [match, match.replace(/\.ps1$/i, ".exe"), match.replace(/\.ps1$/i, ".cmd")]
-          : /\.cmd$/i.test(match)
-            ? [match.replace(/\.cmd$/i, ".exe"), match, match.replace(/\.cmd$/i, ".ps1")]
-            : /\.exe$/i.test(match)
-              ? [match, match.replace(/\.exe$/i, ".cmd"), match.replace(/\.exe$/i, ".ps1")]
-              : [`${match}.exe`, `${match}.cmd`, `${match}.ps1`, match];
-        const existing = candidates.find((candidate) => existsSync(candidate));
-        if (existing) {
-          return existing;
-        }
-      }
-    } catch {
-      // Fall back to PATH lookup below.
-    }
   }
   return "codex";
 }

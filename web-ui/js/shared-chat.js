@@ -57,6 +57,34 @@
     return null;
   }
 
+  function removeCliActivitySession(sessionId, threadId = null) {
+    const normalizedSessionId = String(sessionId || "").trim();
+    if (!normalizedSessionId) {
+      return;
+    }
+    const normalizedThreadId = String(threadId || "").trim();
+    const card = cliActivityCards.get(normalizedSessionId);
+    if (card) {
+      const cardThreadId = String(card.dataset.threadId || "").trim();
+      if (!normalizedThreadId || !cardThreadId || cardThreadId === normalizedThreadId) {
+        card.remove();
+      }
+      cliActivityCards.delete(normalizedSessionId);
+    }
+    const row = cliActivityPendingRows.get(normalizedSessionId);
+    if (row) {
+      const rowThreadId = String(row.dataset.threadId || "").trim();
+      if (!normalizedThreadId || !rowThreadId || rowThreadId === normalizedThreadId) {
+        row.remove();
+      }
+      cliActivityPendingRows.delete(normalizedSessionId);
+    }
+    if (normalizedThreadId) {
+      const cache = getThreadActivityCache(normalizedThreadId);
+      cache?.delete(normalizedSessionId);
+    }
+  }
+
   function clearCliActivityRows(threadId = null, clearCache = true) {
     const normalizedThreadId = String(threadId || "").trim();
     for (const [sessionId, card] of cliActivityCards.entries()) {
@@ -129,6 +157,15 @@
     });
   }
 
+  function getSessionAdapterLabel(session) {
+    const normalized = String(session?.adapter || "codex").trim().toLowerCase();
+    if (normalized === "claude") return "Claude";
+    if (normalized === "cursor") return "Cursor";
+    if (normalized === "gemini") return "Gemini";
+    if (normalized === "copilot") return "Copilot";
+    return "Codex";
+  }
+
   function normalizeShellStatusText(session) {
     const card = session?.native_activity_card;
     if (card?.shell_status_text) {
@@ -138,7 +175,7 @@
     const flags = Array.isArray(runtime?.thread_active_flags) ? runtime.thread_active_flags : [];
     const phase = String(runtime?.phase || "").trim();
     const state = String(session?.state || "").trim().toLowerCase();
-    const adapterLabel = String(session?.adapter || "codex").trim().toLowerCase() === "claude" ? "Claude" : "Codex";
+    const adapterLabel = getSessionAdapterLabel(session);
     if (state === "failed") return "Failed";
     if (state === "stopped") return "Stopped";
     if (state === "completed") return "Completed";
@@ -154,7 +191,7 @@
   }
 
   function buildFallbackNativeCard(session) {
-    const adapterLabel = String(session?.adapter || "codex").trim().toLowerCase() === "claude" ? "Claude" : "Codex";
+    const adapterLabel = getSessionAdapterLabel(session);
     const shellStatusText = normalizeShellStatusText(session);
     const runtime = session?.native_turn_runtime;
     const flags = Array.isArray(runtime?.thread_active_flags) ? runtime.thread_active_flags : [];
@@ -260,7 +297,9 @@
     return {
       state: active ? "running" : "idle",
       detail,
-      ariaLabel: active ? `Codex active: ${detail}` : `Codex idle: ${detail}`,
+      ariaLabel: active
+        ? `${getSessionAdapterLabel(session)} active: ${detail}`
+        : `${getSessionAdapterLabel(session)} idle: ${detail}`,
     };
   }
 
@@ -275,19 +314,24 @@
     `;
   }
 
+  function getItemStatusLabel(item) {
+    const status = String(item?.status || "").trim();
+    if (status === "in_progress") {
+      return "Running";
+    }
+    if (status === "completed") {
+      return "Done";
+    }
+    if (status === "failed" || status === "declined") {
+      return "Failed";
+    }
+    return "";
+  }
+
   function buildSectionItemsHtml(section) {
     const items = Array.isArray(section?.items) ? section.items : [];
     if (!items.length) {
       return "";
-    }
-    if (section.kind === "files") {
-      return `
-        <div class="msg-native-card__chips">
-          ${items.map((item) => `
-            <span class="msg-native-card__chip" data-kind="${escapeHtml(item.kind || "update")}">${escapeHtml(item.label || "")}</span>
-          `).join("")}
-        </div>
-      `;
     }
     if (section.kind === "plan") {
       return `
@@ -304,9 +348,12 @@
     return `
       <div class="msg-native-card__items">
         ${items.map((item) => `
-          <div class="msg-native-card__item">
-            <span class="msg-native-card__item-label">${escapeHtml(item.label || "")}</span>
-            ${item.value ? `<span class="msg-native-card__item-value">${escapeHtml(item.value)}</span>` : ""}
+          <div class="msg-native-card__item" data-kind="${escapeHtml(item.kind || "")}" data-status="${escapeHtml(item.status || "")}">
+            <div class="msg-native-card__item-main">
+              <span class="msg-native-card__item-label">${escapeHtml(item.label || "")}</span>
+              ${item.value ? `<span class="msg-native-card__item-value ${(section.kind === "command" || section.kind === "files" || item.kind === "cwd") ? "msg-native-card__item-value--mono" : ""}">${escapeHtml(item.value)}</span>` : ""}
+            </div>
+            ${getItemStatusLabel(item) ? `<span class="msg-native-card__item-badge" data-status="${escapeHtml(item.status || "")}">${escapeHtml(getItemStatusLabel(item))}</span>` : ""}
           </div>
         `).join("")}
       </div>
@@ -343,7 +390,7 @@
           <div class="msg-native-card__section-title">${escapeHtml(section.title || "Activity")}</div>
           ${statusLabel ? `<span class="msg-native-card__section-badge" data-status="${escapeHtml(section.status || "placeholder")}">${escapeHtml(statusLabel)}</span>` : ""}
         </div>
-        <div class="msg-native-card__section-summary">${escapeHtml(summary || "No active Codex activity to display.")}</div>
+        <div class="msg-native-card__section-summary">${escapeHtml(summary || "No active agent activity to display.")}</div>
         ${meta ? `<div class="msg-native-card__section-meta">${escapeHtml(meta)}</div>` : ""}
         ${section.kind === "diff" ? `<pre class="msg-native-card__diff">${escapeHtml(summary || "")}</pre>` : ""}
         ${buildSectionItemsHtml(section)}
@@ -393,9 +440,9 @@
           data-state="${escapeHtml(actionState?.state || "idle")}"
           disabled
           aria-disabled="true"
-          aria-label="${escapeHtml(actionState?.ariaLabel || "Codex idle")}"
+          aria-label="${escapeHtml(actionState?.ariaLabel || "Agent idle")}"
           tabindex="-1"
-          title="${escapeHtml(actionState?.ariaLabel || "Codex idle")}"
+          title="${escapeHtml(actionState?.ariaLabel || "Agent idle")}"
         >${buildNativeCardActionGlyph(actionState)}</button>
       </div>
     `;
@@ -571,6 +618,12 @@
     const payload = event?.payload || {};
     const type = String(event?.type || "");
     if (!type.startsWith("cli.session.") || type === "cli.session.output") {
+      return;
+    }
+    if (type === "cli.session.removed") {
+      const sessionId = String(payload?.session_id || payload?.session?.id || "").trim();
+      const threadId = String(payload?.thread_id || payload?.session?.thread_id || "").trim();
+      removeCliActivitySession(sessionId, threadId);
       return;
     }
     const session = payload?.session;

@@ -131,4 +131,47 @@ describe("parseClaudeDirectResult", () => {
     expect(completedRuntime).toBeUndefined();
     expect(collected.envelope.resultText).toBe("Working");
   });
+
+  it("extracts command hints from partial input_json_delta before the JSON fully closes", () => {
+    const collected = collectClaudeDirectStream([
+      "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"claude-session-9\",\"uuid\":\"sys-9\"}",
+      "{\"type\":\"stream_event\",\"session_id\":\"claude-session-9\",\"uuid\":\"evt-1\",\"event\":{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"tool-9\",\"name\":\"Bash\"}}}",
+      "{\"type\":\"stream_event\",\"session_id\":\"claude-session-9\",\"uuid\":\"evt-2\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"command\\\":\\\"node --check web-ui/js/shared-chat.js\\\",\\\"cwd\\\":\\\"C:/repo\\\"\"}}}",
+    ].join("\n"));
+
+    const toolEvent = collected.activities.find((event) => event.item_id === "tool:tool-9");
+    expect(toolEvent).toMatchObject({
+      kind: "command_execution",
+      status: "in_progress",
+      command: "node --check web-ui/js/shared-chat.js",
+      cwd: "C:/repo",
+    });
+  });
+
+  it("captures richer Claude task progress and persisted file summaries", () => {
+    const collected = collectClaudeDirectStream([
+      "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"claude-session-10\",\"uuid\":\"sys-10\"}",
+      "{\"type\":\"system\",\"subtype\":\"task_progress\",\"session_id\":\"claude-session-10\",\"uuid\":\"task-1\",\"task_id\":\"task-10\",\"tool_use_id\":\"tool-10\",\"description\":\"Checking files\",\"summary\":\"Reviewing the updated web UI files\",\"last_tool_name\":\"FileEditTool\",\"usage\":{\"total_tokens\":1200,\"tool_uses\":3,\"duration_ms\":4200}}",
+      "{\"type\":\"system\",\"subtype\":\"files_persisted\",\"session_id\":\"claude-session-10\",\"uuid\":\"files-1\",\"files\":[{\"filename\":\"web-ui/js/shared-chat.js\",\"file_id\":\"file-1\"}],\"failed\":[{\"filename\":\"web-ui/css/main.css\",\"error\":\"permission denied\"}],\"processed_at\":\"2026-04-02T14:00:00.000Z\"}",
+    ].join("\n"));
+
+    expect(collected.activities).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "task",
+        label: "Task progress",
+        summary: expect.stringContaining("4s"),
+      }),
+      expect.objectContaining({
+        kind: "file_change",
+        label: "Files",
+        summary: expect.stringContaining("Persisted 1 file"),
+      }),
+      expect.objectContaining({
+        kind: "task",
+        status: "failed",
+        label: "File persist issue",
+        summary: expect.stringContaining("permission denied"),
+      }),
+    ]));
+  });
 });

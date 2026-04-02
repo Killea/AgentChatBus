@@ -213,6 +213,94 @@ function safeParseJsonRecord(value: string | undefined): Record<string, unknown>
   }
 }
 
+function extractQuotedJsonField(source: string, fieldNames: string[]): string | undefined {
+  const input = String(source || "");
+  if (!input) {
+    return undefined;
+  }
+  for (const fieldName of fieldNames) {
+    const escapedField = fieldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = input.match(new RegExp(`"${escapedField}"\\s*:\\s*"((?:\\\\.|[^"])*)"`, "i"));
+    if (!match?.[1]) {
+      continue;
+    }
+    try {
+      const decoded = JSON.parse(`"${match[1]}"`);
+      if (typeof decoded === "string" && decoded.trim()) {
+        return decoded.trim();
+      }
+    } catch {
+      const normalized = match[1]
+        .replace(/\\"/g, "\"")
+        .replace(/\\\\/g, "\\")
+        .trim();
+      if (normalized) {
+        return normalized;
+      }
+    }
+  }
+  return undefined;
+}
+
+function extractStringArrayJsonField(source: string, fieldNames: string[]): string[] {
+  const input = String(source || "");
+  if (!input) {
+    return [];
+  }
+  for (const fieldName of fieldNames) {
+    const escapedField = fieldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = input.match(new RegExp(`"${escapedField}"\\s*:\\s*\\[([^\\]]*)\\]`, "i"));
+    if (!match?.[1]) {
+      continue;
+    }
+    const values = Array.from(match[1].matchAll(/"((?:\\.|[^"])*)"/g))
+      .map((entry) => {
+        try {
+          return JSON.parse(`"${entry[1]}"`);
+        } catch {
+          return entry[1];
+        }
+      })
+      .map((entry) => String(entry || "").trim())
+      .filter(Boolean);
+    if (values.length) {
+      return values;
+    }
+  }
+  return [];
+}
+
+function extractToolHintsFromPartialJson(partialJson: string | undefined): {
+  command?: string;
+  cwd?: string;
+  files?: CliSessionActivityFile[];
+  searchTarget?: string;
+} {
+  const normalized = String(partialJson || "").trim();
+  if (!normalized) {
+    return {};
+  }
+  const command = extractQuotedJsonField(normalized, ["command", "cmd", "shell_command", "shellCommand"]);
+  const cwd = extractQuotedJsonField(normalized, ["cwd", "working_directory", "workingDirectory", "dir", "directory"]);
+  const directFilePath = extractQuotedJsonField(
+    normalized,
+    ["file_path", "filePath", "path", "filename", "notebook_path", "notebookPath"],
+  );
+  const listPaths = extractStringArrayJsonField(normalized, ["paths", "file_paths", "filePaths"]);
+  const query = extractQuotedJsonField(normalized, ["query", "pattern", "url", "description", "prompt"]);
+  const fileCandidates = [directFilePath, ...listPaths]
+    .map((entry) => String(entry || "").trim())
+    .filter(Boolean);
+  return {
+    command,
+    cwd,
+    files: fileCandidates.length
+      ? fileCandidates.slice(0, 8).map((path) => ({ path, change_type: "update" as const }))
+      : undefined,
+    searchTarget: query,
+  };
+}
+
 function pickFirstString(
   value: Record<string, unknown> | undefined,
   keys: string[],
@@ -303,6 +391,47 @@ function extractFilesFromInput(input: Record<string, unknown> | undefined): CliS
   return [...candidates].slice(0, 8).map((path) => ({ path, change_type: "update" }));
 }
 
+function formatDurationMs(value: unknown): string | undefined {
+  const durationMs = Number(value);
+  if (!Number.isFinite(durationMs) || durationMs < 0) {
+    return undefined;
+  }
+  if (durationMs < 1000) {
+    return `${Math.max(1, Math.round(durationMs))}ms`;
+  }
+  const seconds = durationMs / 1000;
+  if (seconds < 60) {
+    return `${Math.round(seconds)}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.round(seconds % 60);
+  return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+}
+
+function buildTaskUsageSuffix(usage: unknown): string | undefined {
+  if (!isRecord(usage)) {
+    return undefined;
+  }
+  const parts: string[] = [];
+  const duration = formatDurationMs(usage.duration_ms);
+  const toolUses = Number(usage.tool_uses);
+  if (duration) {
+    parts.push(duration);
+  }
+  if (Number.isFinite(toolUses) && toolUses >= 0) {
+    parts.push(`${toolUses} tool${toolUses === 1 ? "" : "s"}`);
+  }
+  return parts.length ? parts.join(" · ") : undefined;
+}
+
+function joinSummaryParts(parts: Array<string | undefined>, maxLength = 300): string | undefined {
+  const joined = parts
+    .map((part) => clipText(part, maxLength))
+    .filter((part): part is string => Boolean(part))
+    .join(" · ");
+  return clipText(joined, maxLength);
+}
+
 const CLAUDE_TOOL_VERBS: Record<string, string> = {
   read: "Reading",
   filereadtool: "Reading",
@@ -327,6 +456,7 @@ const CLAUDE_TOOL_VERBS: Record<string, string> = {
 function buildClaudeToolActivityInfo(
   toolName: string | undefined,
   input: Record<string, unknown> | undefined,
+  partialJson?: string,
   fallbackSummary?: string,
 ): ClaudeToolActivityInfo {
   const label = normalizeToolName(toolName);
@@ -334,16 +464,19 @@ function buildClaudeToolActivityInfo(
   const mcpMatch = /^mcp__([^_]+(?:_[^_]+)*)__([^_].+)$/.exec(label);
   const server = mcpMatch?.[1]?.replace(/_/g, "-");
   const tool = mcpMatch?.[2]?.replace(/_/g, " ");
-  const command = pickFirstString(input, ["command", "cmd", "shell_command", "shellCommand"]);
-  const cwd = pickFirstString(input, ["cwd", "working_directory", "workingDirectory", "dir", "directory"]);
-  const files = extractFilesFromInput(input);
+  const partialHints = extractToolHintsFromPartialJson(partialJson);
+  const command = pickFirstString(input, ["command", "cmd", "shell_command", "shellCommand"])
+    || partialHints.command;
+  const cwd = pickFirstString(input, ["cwd", "working_directory", "workingDirectory", "dir", "directory"])
+    || partialHints.cwd;
+  const files = extractFilesFromInput(input) || partialHints.files;
   const searchTarget = pickFirstString(input, [
     "query",
     "pattern",
     "url",
     "description",
     "prompt",
-  ]);
+  ]) || partialHints.searchTarget;
   const normalizedKey = normalizedLabel.replace(/[^a-z0-9]/g, "");
   const verb = CLAUDE_TOOL_VERBS[normalizedKey] || CLAUDE_TOOL_VERBS[normalizedLabel] || label;
   const target = command
@@ -912,43 +1045,55 @@ class ClaudeDirectStreamParser {
     }
     if (subtype === "task_progress") {
       const toolUseId = extractString(event, ["tool_use_id", "toolUseID"]);
+      const usageSuffix = buildTaskUsageSuffix(event.usage);
+      const progressSummary = joinSummaryParts([
+        extractString(event, ["summary", "description"]) || "Claude updated task progress.",
+        extractString(event, ["last_tool_name"]) ? `Last tool: ${extractString(event, ["last_tool_name"])}` : undefined,
+        usageSuffix,
+      ], 300) || "Claude updated task progress.";
       if (toolUseId) {
         this.startToolState({
           id: toolUseId,
           type: "task",
           name: extractString(event, ["last_tool_name"]) || "Task",
-        }, extractString(event, ["summary", "description"]) || "Claude updated task progress.");
+        }, progressSummary);
       }
       this.emitTask(
         "in_progress",
         "Task progress",
-        extractString(event, ["summary", "description"]) || "Claude updated task progress.",
+        progressSummary,
       );
       return;
     }
     if (subtype === "task_notification") {
       const status = String(event.status || "").trim().toLowerCase();
       const toolUseId = extractString(event, ["tool_use_id", "toolUseID"]);
+      const completionSummary = joinSummaryParts([
+        extractString(event, ["summary"]) || "Claude finished a task.",
+        buildTaskUsageSuffix(event.usage),
+      ], 320) || "Claude finished a task.";
       if (toolUseId) {
         this.resolveToolState(
           toolUseId,
           status === "failed" ? "failed" : "completed",
-          extractString(event, ["summary"]) || "Claude finished a task.",
+          completionSummary,
         );
       }
       this.emitTask(
         status === "failed" ? "failed" : "completed",
         status === "failed" ? "Task failed" : "Task completed",
-        extractString(event, ["summary"]) || "Claude finished a task.",
+        completionSummary,
       );
       return;
     }
     if (subtype === "post_turn_summary") {
       const statusCategory = String(event.status_category || "").trim().toLowerCase();
-      const summary = clipText(
-        extractString(event, ["description", "status_detail", "recent_action", "needs_action"]),
-        300,
-      ) || "Claude updated the latest turn summary.";
+      const summary = joinSummaryParts([
+        extractString(event, ["title"]),
+        extractString(event, ["description", "status_detail"]),
+        extractString(event, ["recent_action"]) ? `Recent action: ${extractString(event, ["recent_action"])}` : undefined,
+        extractString(event, ["needs_action"]) ? `Needs action: ${extractString(event, ["needs_action"])}` : undefined,
+      ], 320) || "Claude updated the latest turn summary.";
       this.emitTask(
         statusCategory === "failed" || statusCategory === "blocked" ? "failed" : "completed",
         "Turn summary",
@@ -970,6 +1115,16 @@ class ClaudeDirectStreamParser {
     }
     if (subtype === "files_persisted") {
       const files = Array.isArray(event.files) ? event.files : [];
+      const failedFiles = Array.isArray(event.failed) ? event.failed : [];
+      const persistedSummary = joinSummaryParts([
+        files.length
+          ? `Persisted ${files.length} file${files.length === 1 ? "" : "s"}`
+          : undefined,
+        failedFiles.length
+          ? `${failedFiles.length} failed`
+          : undefined,
+        extractString(event, ["processed_at"]) ? `Processed at ${extractString(event, ["processed_at"])}` : undefined,
+      ], 240) || "Files persisted.";
       this.hooks.onActivity?.({
         at: nowIso(),
         turn_id: this.requestId,
@@ -977,12 +1132,7 @@ class ClaudeDirectStreamParser {
         kind: "file_change",
         status: "completed",
         label: "Files",
-        summary: clipText(
-          files.length
-            ? `Persisted ${files.length} file${files.length === 1 ? "" : "s"}.`
-            : "Files persisted.",
-          240,
-        ),
+        summary: persistedSummary,
         files: files
           .filter(isRecord)
           .slice(0, 8)
@@ -991,6 +1141,24 @@ class ClaudeDirectStreamParser {
             change_type: "update" as const,
           })),
       });
+      if (failedFiles.length) {
+        this.emitTask(
+          "failed",
+          "File persist issue",
+          joinSummaryParts([
+            `Failed to persist ${failedFiles.length} file${failedFiles.length === 1 ? "" : "s"}`,
+            failedFiles
+              .filter(isRecord)
+              .slice(0, 3)
+              .map((file) => {
+                const filename = extractString(file, ["filename"]) || "unknown";
+                const error = extractString(file, ["error"]) || "unknown error";
+                return `${filename}: ${error}`;
+              })
+              .join(" · "),
+          ], 320) || "Claude reported file persistence failures.",
+        );
+      }
     }
   }
 
@@ -1275,7 +1443,12 @@ class ClaudeDirectStreamParser {
     summary?: string,
   ): void {
     const input = state.input || safeParseJsonRecord(state.partialJson);
-    const info = buildClaudeToolActivityInfo(state.name, input, summary || state.partialJson || state.name);
+    const info = buildClaudeToolActivityInfo(
+      state.name,
+      input,
+      state.partialJson,
+      summary || state.partialJson || state.name,
+    );
     this.hooks.onActivity?.({
       at: nowIso(),
       turn_id: this.requestId,

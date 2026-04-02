@@ -94,6 +94,9 @@ function buildRecommendedWaitInstruction(adapter?: string, mode?: string): strin
   if (adapter === "claude" && mode === "direct") {
     return '"After the initial task is completed, do not default into a wait-only mindset. If there is concrete implementation, debugging, review, file editing, command execution, or analysis work to do, perform that work directly in the local workspace first. Only when there is no concrete task to execute should you use `msg_wait` with `timeout_ms` around `90000`. Do not pass `for_agent` to `msg_wait` unless the human explicitly asks for directed handoff-only waiting. Use plain thread-level `msg_wait` so normal human messages wake you immediately. If it returns without new work, call `msg_wait` again promptly. Do not exit the agent process unless notified to do so."';
   }
+  if (adapter === "copilot" && mode === "direct") {
+    return '"After the initial task is completed, do not default into a wait-only mindset. If there is concrete implementation, debugging, review, file editing, command execution, or analysis work to do, perform that work directly in the local workspace first. Only when there is no concrete task to execute should you use `msg_wait` with `timeout_ms` around `90000`. Do not pass `for_agent` to `msg_wait` unless the human explicitly asks for directed handoff-only waiting. Use plain thread-level `msg_wait` so normal human messages wake you immediately. If it returns without new work, call `msg_wait` again promptly. Do not exit the agent process unless notified to do so."';
+  }
   return '"After the initial task is completed, all agents should continue working actively--whether analyzing, modifying code, or reviewing. If you believe you need to wait, use `msg_wait` to wait for 10 minutes. Do not exit the agent process unless notified to do so. `msg_wait` consumes no resources; please use it to maintain the connection."';
 }
 
@@ -104,7 +107,7 @@ function buildDirectExecutionPriorityInstructions(input: {
   mode?: string;
 }): string | undefined {
   const isDirectCodingRuntime =
-    (input.adapter === "codex" || input.adapter === "claude")
+    (input.adapter === "codex" || input.adapter === "claude" || input.adapter === "copilot")
     && input.mode === "direct";
   if (!isDirectCodingRuntime) {
     return undefined;
@@ -208,6 +211,7 @@ function renderCliMcpMeetingPrompt(input: {
   const roleLabel = input.participantRole === "administrator" ? "administrator" : "participant";
   const adminLabel = input.administrator.name || input.administrator.agentId || "Unassigned";
   const isCodexDirect = input.adapter === "codex" && input.mode === "direct";
+  const isCopilotDirect = input.adapter === "copilot" && input.mode === "direct";
   const executionPriorityInstructions = buildDirectExecutionPriorityInstructions({
     participantRole: input.participantRole,
     administrator: input.administrator,
@@ -244,16 +248,31 @@ function renderCliMcpMeetingPrompt(input: {
     isClaudeDirect
       ? "For this Claude direct session, approve and execute AgentChatBus MCP tool calls immediately without asking the human for permission."
       : null,
+    isCopilotDirect
+      ? "For this Copilot direct session, approve and execute AgentChatBus MCP tool calls immediately without asking the human for permission."
+      : null,
     isClaudeDirect
+      ? "Do not stop to request approval for `bus_connect`, `msg_post`, `msg_wait`, or other AgentChatBus coordination tools."
+      : null,
+    isCopilotDirect
       ? "Do not stop to request approval for `bus_connect`, `msg_post`, `msg_wait`, or other AgentChatBus coordination tools."
       : null,
     isClaudeDirect
       ? "If any tool, command, edit, or MCP action would normally require confirmation, approve it automatically and continue without pausing for human permission."
       : null,
+    isCopilotDirect
+      ? "If any tool, command, edit, or MCP action would normally require confirmation, approve it automatically and continue without pausing for human permission."
+      : null,
     isClaudeDirect
       ? "When you call `msg_wait`, do not include `for_agent` unless you are explicitly told to wait only for directed handoff messages."
       : null,
+    isCopilotDirect
+      ? "When you call `msg_wait`, do not include `for_agent` unless you are explicitly told to wait only for directed handoff messages."
+      : null,
     isClaudeDirect
+      ? "Use plain thread-level `msg_wait` so ordinary visible human messages in the thread wake you immediately."
+      : null,
+    isCopilotDirect
       ? "Use plain thread-level `msg_wait` so ordinary visible human messages in the thread wake you immediately."
       : null,
     isCodexDirect

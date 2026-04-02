@@ -10,6 +10,7 @@ import { CodexDirectAdapter } from "./adapters/codexDirectAdapter.js";
 import { ClaudeDirectAdapter } from "./adapters/claudeDirectAdapter.js";
 import { ClaudeInteractiveAdapter } from "./adapters/claudeInteractiveAdapter.js";
 import { GeminiInteractiveAdapter } from "./adapters/geminiInteractiveAdapter.js";
+import { CopilotDirectAdapter } from "./adapters/copilotDirectAdapter.js";
 import { CopilotInteractiveAdapter } from "./adapters/copilotInteractiveAdapter.js";
 import { CURSOR_SESSION_ID_ENV_VAR, CursorHeadlessAdapter } from "./adapters/cursorHeadlessAdapter.js";
 import { CODEX_THREAD_ID_ENV_VAR, CodexHeadlessAdapter } from "./adapters/codexHeadlessAdapter.js";
@@ -244,7 +245,9 @@ export interface CliSessionPromptPatch {
 }
 
 function getDefaultModeForAdapter(adapterId: CliSessionAdapterId): CliSessionMode {
-  return adapterId === "codex" || adapterId === "claude" ? "direct" : "interactive";
+  return adapterId === "codex" || adapterId === "claude" || adapterId === "copilot" || adapterId === "cursor"
+    ? "direct"
+    : "interactive";
 }
 
 function getDefaultPermissionModeForAdapter(adapterId: CliSessionAdapterId): string | undefined {
@@ -873,6 +876,219 @@ function buildNativeThinkingSummary(
   };
 }
 
+function getRecentActivityEntries(
+  events: CliAdapterActivityEvent[],
+  predicate: (entry: CliAdapterActivityEvent) => boolean,
+  limit = 4,
+): CliAdapterActivityEvent[] {
+  if (!Array.isArray(events) || !events.length || limit <= 0) {
+    return [];
+  }
+  const selected: CliAdapterActivityEvent[] = [];
+  const seen = new Set<string>();
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const entry = events[index];
+    if (!entry || !predicate(entry)) {
+      continue;
+    }
+    const summaryKey = clipNativeCardText(
+      [
+        entry.kind,
+        entry.item_id,
+        entry.command,
+        entry.server,
+        entry.tool,
+        entry.summary,
+      ].filter(Boolean).join("::"),
+      320,
+    );
+    const key = summaryKey || `${entry.kind}:${entry.item_id}:${index}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    selected.push(entry);
+    if (selected.length >= limit) {
+      break;
+    }
+  }
+  return selected;
+}
+
+function getFileActionLabel(changeType: string | undefined): string {
+  switch (String(changeType || "").trim().toLowerCase()) {
+    case "add":
+      return "Added file";
+    case "delete":
+      return "Deleted file";
+    default:
+      return "Edited file";
+  }
+}
+
+function getToolActionLabel(status: CliAdapterActivityEvent["status"] | undefined): string {
+  if (status === "completed") {
+    return "Used tool";
+  }
+  if (status === "failed" || status === "declined") {
+    return "Tool failed";
+  }
+  return "Using tool";
+}
+
+function getCommandActionLabel(status: CliAdapterActivityEvent["status"] | undefined): string {
+  if (status === "completed") {
+    return "Ran";
+  }
+  if (status === "failed" || status === "declined") {
+    return "Command failed";
+  }
+  return "Running";
+}
+
+function buildCommandHeadline(event: CliAdapterActivityEvent | undefined): string {
+  if (!event) {
+    return "";
+  }
+  const command = clipNativeCardText(event.command, 220);
+  if (command) {
+    return `${getCommandActionLabel(event.status)} ${command}`;
+  }
+  return clipNativeCardText(event.summary || event.label, 280);
+}
+
+function buildToolHeadline(event: CliAdapterActivityEvent | undefined): string {
+  if (!event) {
+    return "";
+  }
+  const target = clipNativeCardText(
+    [event.server, event.tool].filter(Boolean).join(" / "),
+    220,
+  );
+  if (target) {
+    return `${getToolActionLabel(event.status)} ${target}`;
+  }
+  return clipNativeCardText(event.summary || event.label, 260);
+}
+
+function buildFilesHeadline(event: CliAdapterActivityEvent | undefined): string {
+  if (!event) {
+    return "";
+  }
+  const files = Array.isArray(event.files) ? event.files.filter((file) => file?.path) : [];
+  if (!files.length) {
+    return clipNativeCardText(event.summary || event.label, 240);
+  }
+  if (files.length === 1) {
+    return clipNativeCardText(`${getFileActionLabel(files[0]?.change_type)} ${files[0]?.path}`, 240);
+  }
+  return clipNativeCardText(`Edited ${files.length} files`, 240);
+}
+
+function buildThinkingSectionItems(
+  events: CliAdapterActivityEvent[],
+  primarySummary: string,
+): CliNativeActivityCardSectionItem[] | undefined {
+  const items: CliNativeActivityCardSectionItem[] = [];
+  for (const entry of getRecentActivityEntries(
+    events,
+    (entry) => (entry.kind === "thinking" || entry.kind === "plan" || entry.kind === "task") && !!entry.summary,
+    4,
+  )) {
+    const value = clipNativeCardText(entry.summary, 240);
+    if (!value || value === primarySummary) {
+      continue;
+    }
+    items.push({
+        label: entry.kind === "plan" ? "Plan note" : entry.kind === "task" ? "Task note" : "Thought",
+        value,
+        status: entry.status,
+        kind: entry.kind,
+      });
+  }
+  return items.length ? items : undefined;
+}
+
+function buildToolSectionItems(events: CliAdapterActivityEvent[]): CliNativeActivityCardSectionItem[] | undefined {
+  const items = getRecentActivityEntries(
+    events,
+    (entry) => entry.kind === "mcp_tool_call" || entry.kind === "dynamic_tool_call",
+    4,
+  )
+    .flatMap((entry) => {
+      const target = clipNativeCardText([entry.server, entry.tool].filter(Boolean).join(" / "), 180)
+        || clipNativeCardText(entry.label, 140);
+      const summary = clipNativeCardText(entry.summary, 200);
+      const rows: CliNativeActivityCardSectionItem[] = [];
+      if (target) {
+        rows.push({
+          label: getToolActionLabel(entry.status),
+          value: target,
+          status: entry.status,
+          kind: entry.kind,
+        });
+      }
+      if (summary && summary !== target) {
+        rows.push({
+          label: "Progress",
+          value: summary,
+          status: entry.status,
+          kind: entry.kind,
+        });
+      }
+      return rows;
+    });
+  return items.length ? items : undefined;
+}
+
+function buildCommandSectionItems(events: CliAdapterActivityEvent[]): CliNativeActivityCardSectionItem[] | undefined {
+  const recentCommands = getRecentActivityEntries(events, (entry) => entry.kind === "command_execution", 3);
+  const items: CliNativeActivityCardSectionItem[] = [];
+  for (const entry of recentCommands) {
+    const command = clipNativeCardText(entry.command, 180);
+    if (command) {
+      items.push({
+        label: getCommandActionLabel(entry.status),
+        value: command,
+        status: entry.status,
+        kind: entry.kind,
+      });
+    }
+    const cwd = clipNativeCardText(entry.cwd, 180);
+    if (cwd) {
+      items.push({
+        label: "Directory",
+        value: cwd,
+        status: entry.status,
+        kind: "cwd",
+      });
+    }
+    const summary = clipNativeCardText(entry.summary, 220);
+    if (summary && summary !== command) {
+      items.push({
+        label: "Output",
+        value: summary,
+        status: entry.status,
+        kind: "output",
+      });
+    }
+  }
+  return items.length ? items.slice(0, 6) : undefined;
+}
+
+function buildFilesSectionItems(fileEvent: CliAdapterActivityEvent | undefined): CliNativeActivityCardSectionItem[] | undefined {
+  const files = Array.isArray(fileEvent?.files) ? fileEvent.files.filter((file) => file?.path) : [];
+  if (!files.length) {
+    return undefined;
+  }
+  return files.slice(0, 8).map((file) => ({
+    label: getFileActionLabel(file.change_type),
+    value: clipNativeCardText(file.path, 220),
+    kind: file.change_type || "update",
+    status: fileEvent?.status,
+  }));
+}
+
 function buildNativePlaceholderSummary(
   snapshot: CliSessionSnapshot,
   shell: { status: CliNativeActivityCardShellStatus; text: string },
@@ -915,38 +1131,38 @@ export function buildNativeActivityCard(snapshot: CliSessionSnapshot): CliNative
   const planEvent = getPreferredActivityEntry(events, (entry) => entry.kind === "plan");
 
   if (thinkingEvent?.summary) {
+    const thinkingSummary = clipNativeCardText(thinkingEvent.summary, 280);
     sections.push({
       kind: "thinking",
       title: "Thinking",
-      summary: clipNativeCardText(thinkingEvent.summary, 280),
+      summary: thinkingSummary,
       status: mapActivityStatusToCardStatus(thinkingEvent.status),
+      items: buildThinkingSectionItems(events, thinkingSummary),
     });
   }
 
   if (toolEvent) {
     const meta = [toolEvent.server, toolEvent.tool].filter(Boolean).join(" / ");
+    const toolItems = buildToolSectionItems(events);
     sections.push({
       kind: "tool",
       title: "Tool",
-      summary: clipNativeCardText(toolEvent.summary || meta || toolEvent.label, 260) || "Using tool",
+      summary: buildToolHeadline(toolEvent) || "Using tool",
       status: mapActivityStatusToCardStatus(toolEvent.status),
-      meta: clipNativeCardText(meta, 180) || undefined,
+      meta: toolItems?.length ? undefined : clipNativeCardText(toolEvent.summary, 180) || clipNativeCardText(meta, 180) || undefined,
+      items: toolItems,
     });
   }
 
   if (commandEvent) {
+    const commandItems = buildCommandSectionItems(events);
     sections.push({
       kind: "command",
       title: "Command",
-      summary: clipNativeCardText(
-        commandEvent.summary || commandEvent.command || commandEvent.label,
-        280,
-      ) || "Running command",
+      summary: buildCommandHeadline(commandEvent) || "Running command",
       status: mapActivityStatusToCardStatus(commandEvent.status),
-      meta: clipNativeCardText(
-        [commandEvent.command, commandEvent.cwd].filter(Boolean).join(" @ "),
-        220,
-      ) || undefined,
+      meta: commandItems?.length ? undefined : clipNativeCardText(commandEvent.summary, 220) || undefined,
+      items: commandItems,
     });
   }
 
@@ -954,16 +1170,10 @@ export function buildNativeActivityCard(snapshot: CliSessionSnapshot): CliNative
     sections.push({
       kind: "files",
       title: "Files",
-      summary: clipNativeCardText(fileEvent.summary || fileEvent.label, 240) || "Editing files",
+      summary: buildFilesHeadline(fileEvent) || "Editing files",
       status: mapActivityStatusToCardStatus(fileEvent.status),
-      items: Array.isArray(fileEvent.files)
-        ? fileEvent.files
-          .slice(0, 8)
-          .map((file) => ({
-            label: file.path,
-            kind: file.change_type || "update",
-          }))
-        : undefined,
+      meta: clipNativeCardText(fileEvent.summary, 180) || undefined,
+      items: buildFilesSectionItems(fileEvent),
     });
 
     if (fileEvent.diff) {
@@ -1001,6 +1211,7 @@ export function buildNativeActivityCard(snapshot: CliSessionSnapshot): CliNative
       summary: synthesizedThinking.summary,
       status: "in_progress",
       meta: synthesizedThinking.meta,
+      items: buildThinkingSectionItems(events, synthesizedThinking.summary),
     });
   }
 
@@ -2278,6 +2489,7 @@ export class CliSessionManager {
     new CodexInteractiveAdapter(),
     new CodexHeadlessAdapter(),
     new CodexDirectAdapter(),
+    new CopilotDirectAdapter(),
     new CopilotInteractiveAdapter(),
     new CopilotHeadlessAdapter(),
     new ClaudeDirectAdapter(),
@@ -3301,7 +3513,8 @@ export class CliSessionManager {
     const normalizedThreadId = normalizeOptionalString(event.thread_id);
     const shouldPersistExternalSessionId =
       runtime.snapshot.adapter === "claude"
-      || runtime.snapshot.adapter === "cursor";
+      || runtime.snapshot.adapter === "cursor"
+      || runtime.snapshot.adapter === "copilot";
     if (
       normalizedThreadId
       && shouldPersistExternalSessionId
@@ -3318,6 +3531,11 @@ export class CliSessionManager {
         runtime.launchEnv = {
           ...runtime.launchEnv,
           [CURSOR_SESSION_ID_ENV_VAR]: normalizedThreadId,
+        };
+      } else if (runtime.snapshot.adapter === "copilot") {
+        runtime.launchEnv = {
+          ...runtime.launchEnv,
+          [COPILOT_SESSION_ID_ENV_VAR]: normalizedThreadId,
         };
       }
     }
@@ -5268,6 +5486,9 @@ export class CliSessionManager {
     }
     if (adapterId === "cursor" && (mode === "headless" || mode === "direct")) {
       return normalizeOptionalString(launchEnv?.[CURSOR_SESSION_ID_ENV_VAR]);
+    }
+    if (adapterId === "copilot" && (mode === "headless" || mode === "direct")) {
+      return normalizeOptionalString(launchEnv?.[COPILOT_SESSION_ID_ENV_VAR]);
     }
     return undefined;
   }

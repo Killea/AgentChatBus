@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 import spawn from "cross-spawn";
@@ -137,29 +136,6 @@ export function resolveCursorAgentCommand(): string {
   const configured = String(getConfig().cursorAgentCommand || "").trim();
   if (configured) {
     return configured;
-  }
-  if (process.platform === "win32") {
-    for (const candidate of ["agent", "cursor-agent"]) {
-      try {
-        const output = execFileSync("where.exe", [candidate], {
-          encoding: "utf8",
-          stdio: ["ignore", "pipe", "ignore"],
-        });
-        const firstMatch = String(output || "")
-          .split(/\r?\n/)
-          .map((value) => value.trim())
-          .find(Boolean);
-        if (firstMatch) {
-          const ps1Match = firstMatch.replace(/\.cmd$/i, ".ps1");
-          if (ps1Match !== firstMatch && existsSync(ps1Match)) {
-            return ps1Match;
-          }
-          return firstMatch;
-        }
-      } catch {
-        // Try the next candidate on PATH.
-      }
-    }
   }
   return "agent";
 }
