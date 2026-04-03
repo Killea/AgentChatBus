@@ -149,8 +149,20 @@
     const state = normalizeLower(session?.state);
     const participantActivity = normalizeLower(agent?.last_activity);
     const threadClosed = normalizeLower(threadStatus) === "closed";
+    const lastError = String(session?.last_error || "").trim();
+    const stdoutExcerpt = String(session?.stdout_excerpt || "").trim().toLowerCase();
+    const wasConnected = Boolean(session?.connected_at) || identityResolved;
+    const sawBenignCancellation = stdoutExcerpt.includes("operation cancelled by user");
 
     if (state === "failed") {
+      if (wasConnected && sawBenignCancellation) {
+        return "CLI connected and joined the thread, but the current Copilot turn cancelled itself before settling.";
+      }
+      if (wasConnected) {
+        return lastError
+          ? `CLI connected, but the current turn failed after joining: ${lastError}`
+          : "CLI connected, but the current turn failed after joining the thread.";
+      }
       return "CLI launch failed before the agent could stay connected.";
     }
     if (state === "stopped") {

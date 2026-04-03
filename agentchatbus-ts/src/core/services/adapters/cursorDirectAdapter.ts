@@ -139,6 +139,13 @@ function extractRequestId(value: unknown): string | undefined {
   return extractString(value, ["requestId", "request_id", "turnId", "turn_id"]);
 }
 
+function extractStopReason(value: unknown): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  return extractString(value, ["stopReason", "stop_reason", "finishReason", "finish_reason"]);
+}
+
 function extractAuthMethodIds(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
@@ -1245,14 +1252,24 @@ class CursorDirectExecutor implements CursorDirectCommandExecutor {
           CURSOR_DIRECT_PROMPT_TIMEOUT_MS,
         ));
         activeRequestId = extractRequestId(promptResult) || activeRequestId;
+        const stopReason = extractStopReason(promptResult);
+        const resultText = extractAssistantText(promptResult);
+        if (resultText) {
+          hooks.onOutput("stdout", resultText);
+        }
+        emitActivity(
+          "completed",
+          stopReason ? `Cursor ACP turn completed (${stopReason}).` : "Cursor ACP turn completed",
+        );
         hooks.onNativeRuntime?.({
           at: nowIso(),
           thread_id: activeSessionId,
           active_turn_id: activeRequestId,
           last_turn_id: activeRequestId,
-          turn_status: "inProgress",
-          phase: "running",
+          turn_status: "completed",
+          phase: "completed",
         });
+        requestShutdown();
       };
 
       hooks.onControls({

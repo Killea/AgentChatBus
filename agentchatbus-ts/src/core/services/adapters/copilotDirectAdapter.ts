@@ -87,6 +87,47 @@ function extractRequestId(value: unknown): string | undefined {
   return isRecord(value) ? extractString(value, ["requestId", "request_id", "turnId", "turn_id"]) : undefined;
 }
 
+function extractStopReason(value: unknown): string | undefined {
+  return isRecord(value) ? extractString(value, ["stopReason", "stop_reason", "finishReason", "finish_reason"]) : undefined;
+}
+
+function looksLikeBenignCopilotPromptCancellation(detail: string, stdout: string): boolean {
+  const normalizedDetail = String(detail || "").trim().toLowerCase();
+  const normalizedStdout = String(stdout || "").trim().toLowerCase();
+  return normalizedDetail === "internal error"
+    && normalizedStdout.includes("operation cancelled by user");
+}
+
+async function waitForCopilotPromptCancellationMarker(
+  options: {
+    detail: string;
+    getStdout: () => string;
+    isClosed: () => boolean;
+    timeoutMs?: number;
+    pollIntervalMs?: number;
+  },
+): Promise<boolean> {
+  if (looksLikeBenignCopilotPromptCancellation(options.detail, options.getStdout())) {
+    return true;
+  }
+  const timeoutMs = Math.max(0, Number(options.timeoutMs ?? 1_500) || 1_500);
+  const pollIntervalMs = Math.max(10, Number(options.pollIntervalMs ?? 50) || 50);
+  if (timeoutMs === 0) {
+    return false;
+  }
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    if (looksLikeBenignCopilotPromptCancellation(options.detail, options.getStdout())) {
+      return true;
+    }
+    if (options.isClosed()) {
+      break;
+    }
+  }
+  return looksLikeBenignCopilotPromptCancellation(options.detail, options.getStdout());
+}
+
 function extractTextContent(value: unknown): string | undefined {
   if (typeof value === "string") {
     return value.trim() || undefined;
@@ -644,6 +685,17 @@ class DefaultCopilotDirectExecutor implements CopilotDirectExecutor {
             const errorRecord = isRecord(message.error) ? message.error : {};
             const detail = clipText(extractString(errorRecord, ["message", "detail", "error"]) || message.error, 500)
               || `Copilot ACP request '${pending.method}' failed.`;
+            if (
+              pending.method === "prompt"
+              && looksLikeBenignCopilotPromptCancellation(detail, stdout)
+            ) {
+              pending.resolve({
+                sessionId: activeSessionId,
+                requestId: activeRequestId,
+                stopReason: "cancelled",
+              });
+              return;
+            }
             pending.reject(new Error(detail));
             return;
           }
@@ -716,15 +768,44 @@ class DefaultCopilotDirectExecutor implements CopilotDirectExecutor {
           throw new Error("Copilot ACP did not return a session id from initialize/session methods.");
         }
 
-        const promptResult = await sendRequestWithFallback(["prompt", "session/prompt"], {
-          sessionId: activeSessionId,
-          prompt: [{ type: "text", text: request.prompt }],
-        }, PROMPT_TIMEOUT_MS).catch(async () => await sendRequestWithFallback(["prompt", "session/prompt"], {
-          sessionId: activeSessionId,
-          prompt: request.prompt,
-        }, PROMPT_TIMEOUT_MS));
+        let promptResult: unknown;
+        try {
+          promptResult = await sendRequestWithFallback(["prompt", "session/prompt"], {
+            sessionId: activeSessionId,
+            prompt: [{ type: "text", text: request.prompt }],
+          }, PROMPT_TIMEOUT_MS).catch(async () => await sendRequestWithFallback(["prompt", "session/prompt"], {
+            sessionId: activeSessionId,
+            prompt: request.prompt,
+          }, PROMPT_TIMEOUT_MS));
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          const cancelled = await waitForCopilotPromptCancellationMarker({
+            detail,
+            getStdout: () => stdout,
+            isClosed: () => closed,
+          });
+          if (!cancelled) {
+            throw error;
+          }
+          hooks.onOutput(
+            "stderr",
+            "[copilot-direct] Treating prompt cancellation as a benign turn completion.\n",
+          );
+          promptResult = {
+            sessionId: activeSessionId,
+            requestId: activeRequestId,
+            stopReason: "cancelled",
+          };
+        }
         activeRequestId = extractRequestId(promptResult) || activeRequestId;
-        emitRuntime("running", { turnStatus: "inProgress" });
+        const stopReason = extractStopReason(promptResult);
+        const resultText = extractAssistantText(promptResult);
+        if (resultText) {
+          hooks.onOutput("stdout", resultText);
+        }
+        emitTask("completed", stopReason ? `Copilot ACP turn completed (${stopReason}).` : "Copilot ACP turn completed.");
+        emitRuntime("completed", { turnStatus: "completed" });
+        requestShutdown();
       };
 
       hooks.onControls({ kill: requestShutdown });
