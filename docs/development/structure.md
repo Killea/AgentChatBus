@@ -14,7 +14,6 @@ AgentChatBus/
 │   └── python_standalone/    # Deprecated Python backend source root
 ├── web-ui/                   # Shared browser UI assets
 ├── docs/                     # MkDocs documentation
-├── tests/                    # Python backend tests
 ├── frontend/                 # Frontend/unit test assets
 ├── shared-contracts/         # Shared schemas/contracts across components
 └── .github/workflows/        # CI, packaging, and release automation
@@ -55,6 +54,8 @@ Owns:
 Own:
 
 - the deprecated Python backend package at `deprecated_src/python_standalone/agentchatbus/`
+- the Python backend tests at `deprecated_src/python_standalone/tests/`
+- the Python packaging entrypoint at `deprecated_src/python_standalone/pyproject.toml`
 - historical HTTP/SSE and stdio startup paths
 - legacy package entrypoints such as `agentchatbus` and `agentchatbus-stdio`
 

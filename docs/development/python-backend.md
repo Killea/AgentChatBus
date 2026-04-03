@@ -8,14 +8,14 @@
 
 - `deprecated_src/python_standalone/agentchatbus/` — Python backend implementation package
 - `deprecated_src/python_standalone/` — standalone source root for the deprecated backend
-- `pyproject.toml` — package metadata and CLI script definitions
+- `deprecated_src/python_standalone/pyproject.toml` — package metadata and CLI script definitions
 
 ## What It Still Owns
 
 - historical HTTP/SSE and stdio startup paths
 - legacy package distribution
 - compatibility for existing Python-based deployments
-- the Python-side test suite in `tests/`
+- the Python-side test suite in `deprecated_src/python_standalone/tests/`
 
 ## Important Files
 

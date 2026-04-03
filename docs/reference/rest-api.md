@@ -104,6 +104,6 @@ This repository includes a release workflow at `.github/workflows/release.yml`.
 
 When you push a tag like `v0.1.7`, GitHub Actions will:
 
-1. Build `sdist` and `wheel` via `python -m build`
+1. Build Python artifacts from `deprecated_src/python_standalone` via `python -m build`
 2. Create/Update a GitHub Release for that tag
 3. Upload files from `dist/*.tar.gz` and `dist/*.whl` as release assets

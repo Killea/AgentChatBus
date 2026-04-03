@@ -8,6 +8,9 @@
 For the extension-first path, most users do not need to manage these environment variables
 directly.
 
+If you are working with the deprecated standalone backend from source, run the commands below from
+`deprecated_src/python_standalone/`.
+
 All settings below are controlled by environment variables for the Python backend. The server falls
 back to sensible defaults if none are set.
 

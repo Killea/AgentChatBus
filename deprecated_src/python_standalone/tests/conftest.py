@@ -14,8 +14,8 @@ from pathlib import Path
 import httpx
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-PYTHON_STANDALONE_ROOT = REPO_ROOT / "deprecated_src" / "python_standalone"
+PYTHON_STANDALONE_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(PYTHON_STANDALONE_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_STANDALONE_ROOT))
 
@@ -119,7 +119,7 @@ def enforce_test_database() -> None:
     if db == ":memory:":
         return
 
-    prod_repo_db = (REPO_ROOT / "data" / "bus.db").resolve()
+    prod_repo_db = (PYTHON_STANDALONE_ROOT / "data" / "bus.db").resolve()
     prod_home_db = (Path.home() / ".agentchatbus" / "bus.db").resolve()
 
     try:

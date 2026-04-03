@@ -11,7 +11,7 @@ Original Usage:
     python -m examples.agent_b
 
 Run this AFTER starting the server AND agent_a (or any message-producing agent):
-    python -m src.main          # terminal 1
+    python -m agentchatbus.main # terminal 1
     python -m examples.agent_a # terminal 2
     python -m examples.agent_b # terminal 3 (DISABLED)
 """

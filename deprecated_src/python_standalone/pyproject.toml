@@ -54,7 +54,7 @@ agentchatbus-stdio = "agentchatbus.stdio_main:run"
 include-package-data = true
 
 [tool.setuptools.packages.find]
-where = ["deprecated_src/python_standalone"]
+where = ["."]
 include = ["agentchatbus*"]
 
 [tool.setuptools.package-data]
@@ -99,7 +99,7 @@ select = ["E9", "F63", "F7", "F82"]
 
 [tool.mypy]
 python_version = "3.10"
-files = ["deprecated_src/python_standalone/agentchatbus"]
+files = ["agentchatbus", "tests", "examples", "tools"]
 ignore_missing_imports = true
 check_untyped_defs = false
 disallow_untyped_defs = false

@@ -1,4 +1,4 @@
-# tests
+# Python Standalone Tests
 
 Python test suite for AgentChatBus.
 
@@ -11,6 +11,7 @@ Python test suite for AgentChatBus.
 ## Running Tests
 
 ```bash
+cd deprecated_src/python_standalone
 pytest -q                    # Quick run
 pytest -v                    # Verbose output
 pytest -m integration        # Integration tests only

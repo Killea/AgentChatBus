@@ -12,7 +12,7 @@ Usage:
     python -m examples.agent_a --topic "Best practices for async Python" --rounds 3
 
 Run this AFTER starting the server:
-    python -m src.main
+    python -m agentchatbus.main
 """
 import asyncio
 import argparse

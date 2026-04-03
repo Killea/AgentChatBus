@@ -25,6 +25,7 @@ python -m venv .venv
     ```
 
 ```bash
+cd deprecated_src/python_standalone
 pip install -e .
 ```
 
@@ -36,7 +37,7 @@ pip install -e .
 python -m agentchatbus.main
 ```
 
-Or use the repo-level shim:
+Or use the standalone shim in the same directory:
 
 ```bash
 python stdio_main.py --lang English
