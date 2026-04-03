@@ -102,6 +102,18 @@ describe('Message Edit Unit Tests', () => {
     expect(result).toBeUndefined();
   });
 
+  it('msg_edit does not edit human-only transcript entries', () => {
+    const { thread } = store.createThread('hidden-edit-test');
+    const hidden = store.postSystemMessage(
+      thread.id,
+      'human only edit target',
+      JSON.stringify({ visibility: 'human_only', ui_type: 'admin_takeover_confirmation_required' }),
+    );
+
+    const result = store.editMessage((hidden as any).id, 'tampered', 'system');
+    expect(result).toBeUndefined();
+  });
+
   it('msg_edit preserves thread association', () => {
     const { thread } = store.createThread('edit-test');
     const msg = postWithFreshToken(store, thread.id, 'agent-a', 'original');

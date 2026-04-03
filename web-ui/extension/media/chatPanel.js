@@ -438,18 +438,35 @@
   }
 
   function normalizeMessages(items) {
-    return Array.isArray(items) ? items.map(normalizeMessage).sort((a, b) => a.seq - b.seq) : [];
+    return Array.isArray(items) ? items.map(normalizeMessage).sort(compareMessagesForDisplay) : [];
   }
 
   function normalizeMessage(message) {
     const msg = message || {};
+    const transcriptIndex = Number(msg.transcript_index);
     return {
       ...msg,
-      seq: Number(msg.seq || 0),
+      seq: typeof msg.seq === 'number' ? msg.seq : (Number.isFinite(Number(msg.seq)) ? Number(msg.seq) : null),
+      transcript_index: Number.isFinite(transcriptIndex) ? transcriptIndex : null,
+      entry_kind: typeof msg.entry_kind === 'string' ? msg.entry_kind : 'message',
       edit_version: Number(msg.edit_version || 0),
       reactions: Array.isArray(msg.reactions) ? msg.reactions : [],
       metadata: parseMetadata(msg.metadata),
     };
+  }
+
+  function getMessageSortKey(message) {
+    if (Number.isFinite(Number(message?.transcript_index))) {
+      return Number(message.transcript_index);
+    }
+    if (Number.isFinite(Number(message?.seq))) {
+      return Number(message.seq);
+    }
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  function compareMessagesForDisplay(left, right) {
+    return getMessageSortKey(left) - getMessageSortKey(right);
   }
 
   function parseMetadata(metadata) {
@@ -465,12 +482,27 @@
   }
 
   function upsertMessage(message) {
-    const existingIndex = state.messages.findIndex((item) => item.id === message.id || item.seq === message.seq);
+    const normalized = normalizeMessage(message);
+    const existingIndex = state.messages.findIndex((item) => {
+      if (item.id && normalized.id && item.id === normalized.id) {
+        return true;
+      }
+      if (
+        Number.isFinite(Number(item.seq))
+        && Number.isFinite(Number(normalized.seq))
+        && item.entry_kind === 'message'
+        && normalized.entry_kind === 'message'
+        && Number(item.seq) === Number(normalized.seq)
+      ) {
+        return true;
+      }
+      return false;
+    });
     if (existingIndex >= 0) {
-      state.messages[existingIndex] = normalizeMessage({ ...state.messages[existingIndex], ...message });
+      state.messages[existingIndex] = normalizeMessage({ ...state.messages[existingIndex], ...normalized });
     } else {
-      state.messages.push(normalizeMessage(message));
-      state.messages.sort((a, b) => a.seq - b.seq);
+      state.messages.push(normalized);
+      state.messages.sort(compareMessagesForDisplay);
     }
   }
 
@@ -637,7 +669,9 @@
   function renderMessageRow(message, byId) {
     const row = document.createElement('article');
     row.className = 'msg-row';
-    row.dataset.seq = String(message.seq || 0);
+    if (Number.isFinite(Number(message.seq))) {
+      row.dataset.seq = String(message.seq);
+    }
     row.dataset.id = message.id || '';
 
     if (isOwnMessage(message)) {
@@ -665,7 +699,9 @@
     header.appendChild(time);
 
     const seq = document.createElement('span');
-    seq.textContent = `seq ${message.seq}`;
+    seq.textContent = Number.isFinite(Number(message.seq))
+      ? `seq ${message.seq}`
+      : (message.entry_kind === 'human_only' ? 'human-only' : 'message');
     header.appendChild(seq);
 
     if (message.edit_version > 0) {
@@ -1546,7 +1582,10 @@
       button.type = 'button';
       button.className = 'nav-entry tooltip-anchor';
       button.dataset.id = message.id;
-      button.setAttribute('data-tooltip', `${getAuthorLabel(message)} · ${shortTime(message.created_at)} · seq ${message.seq}`);
+      const seqLabel = Number.isFinite(Number(message.seq))
+        ? `seq ${message.seq}`
+        : (message.entry_kind === 'human_only' ? 'human-only' : 'message');
+      button.setAttribute('data-tooltip', `${getAuthorLabel(message)} · ${shortTime(message.created_at)} · ${seqLabel}`);
       button.innerHTML = `<span class="nav-entry-emoji">${escapeHtml(message.author_emoji || '💬')}</span><span class="nav-entry-time">${escapeHtml(shortTime(message.created_at))}</span>`;
       button.addEventListener('click', () => scrollRowIntoView(message.id));
       refs.navSidebar.appendChild(button);

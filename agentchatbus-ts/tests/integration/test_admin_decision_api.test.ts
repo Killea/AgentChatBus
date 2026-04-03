@@ -3,7 +3,7 @@
  * Ported from Python tests/test_admin_decision_api.py
  */
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createHttpServer, memoryStoreInstance } from "../../src/transports/http/server.js";
+import { createHttpServer, getMemoryStore, memoryStoreInstance } from "../../src/transports/http/server.js";
 
 describe("Admin Decision API", () => {
   beforeAll(() => {
@@ -354,6 +354,59 @@ describe("Admin Decision API", () => {
     const metadata = promptMsg.metadata || {};
     expect(metadata.decision_status).toBe("resolved");
     expect(metadata.decision_action).toBe("cancel");
+
+    await server.close();
+  });
+
+  it("supports hidden admin confirmation prompts through transcript storage", async () => {
+    const server = createHttpServer();
+    const { agentId: creatorId, token: creatorToken } = await registerAgent(server);
+    const threadId = await createThread(server, creatorId, creatorToken);
+
+    const hiddenPrompt = getMemoryStore().postSystemMessage(
+      threadId,
+      "Only the current admin is online.",
+      JSON.stringify({
+        visibility: "human_only",
+        ui_type: "admin_takeover_confirmation_required",
+        thread_id: threadId,
+        current_admin_id: creatorId,
+      }),
+    );
+    const sourceMessageId = (hiddenPrompt as any)?.id;
+    expect(sourceMessageId).toBeTruthy();
+
+    const cancelRes = await server.inject({
+      method: "POST",
+      url: `/api/threads/${threadId}/admin/decision`,
+      payload: {
+        action: "cancel",
+        source_message_id: sourceMessageId,
+      },
+    });
+    expect(cancelRes.statusCode).toBe(200);
+    expect(cancelRes.json().action).toBe("cancel");
+
+    const transcriptRes = await server.inject({
+      method: "GET",
+      url: `/api/threads/${threadId}/transcript`,
+      query: { after_seq: "0", limit: "200", include_system_prompt: "0" },
+    });
+    expect(transcriptRes.statusCode).toBe(200);
+    const transcript = transcriptRes.json();
+    const promptEntry = transcript.find((entry: { id: string }) => entry.id === sourceMessageId);
+    expect(promptEntry).toBeDefined();
+    expect(promptEntry.entry_kind).toBe("human_only");
+    expect(promptEntry.metadata.decision_status).toBe("resolved");
+    expect(promptEntry.metadata.decision_action).toBe("cancel");
+
+    const visibleMessagesRes = await server.inject({
+      method: "GET",
+      url: `/api/threads/${threadId}/messages`,
+      query: { after_seq: "0", limit: "200", include_system_prompt: "0" },
+    });
+    expect(visibleMessagesRes.statusCode).toBe(200);
+    expect(visibleMessagesRes.json().find((entry: { id: string }) => entry.id === sourceMessageId)).toBeUndefined();
 
     await server.close();
   });

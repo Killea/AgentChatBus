@@ -84,6 +84,22 @@ function decorateAgentsForPresentation<T extends Record<string, any>>(agents: T[
   });
 }
 
+function decorateMessageLikeForPresentation<T extends Record<string, any>>(
+  message: T,
+  presentedAgentsById: Map<string, Record<string, any>>,
+): T {
+  const authorId = String(message.author_id || "").trim();
+  const presentedAgent = authorId ? presentedAgentsById.get(authorId) : undefined;
+  if (!presentedAgent) {
+    return message;
+  }
+  return {
+    ...message,
+    author_name: presentedAgent.preferred_display_name || presentedAgent.display_name || message.author_name,
+    author_emoji: String(message.author_emoji || "").trim() || presentedAgent.emoji || "🤖",
+  };
+}
+
 const THREAD_CLI_WORKSPACE_METADATA_KEY = "cli_workspace";
 const THREAD_RESTART_BLUEPRINT_METADATA_KEY = "restart_blueprint";
 const RESTART_TOMBSTONE_MARKER = "[restart-tombstone]";
@@ -1264,18 +1280,43 @@ export function createHttpServer() {
     const presentedAgentsById = new Map(
       decorateAgentsForPresentation(store.listAgents()).map((agent) => [String(agent.id || "").trim(), agent]),
     );
-    return store.getMessages(params.threadId, afterSeq, includeSystemPrompt, priority).slice(0, limit).map((message) => {
-      const authorId = String(message.author_id || "").trim();
-      const presentedAgent = authorId ? presentedAgentsById.get(authorId) : undefined;
-      if (!presentedAgent) {
-        return message;
-      }
-      return {
-        ...message,
-        author_name: presentedAgent.preferred_display_name || presentedAgent.display_name || message.author_name,
-        author_emoji: String(message.author_emoji || "").trim() || presentedAgent.emoji || "🤖",
-      };
-    });
+    return store
+      .getMessages(params.threadId, afterSeq, includeSystemPrompt, priority)
+      .slice(0, limit)
+      .map((message) => decorateMessageLikeForPresentation(message, presentedAgentsById));
+  });
+
+  fastify.get("/api/threads/:threadId/transcript", async (request, reply) => {
+    const params = request.params as { threadId: string };
+    const query = request.query as {
+      after_seq?: number | string;
+      limit?: number | string;
+      include_system_prompt?: boolean | string | number;
+      priority?: string;
+    };
+    const thread = store.getThread(params.threadId);
+    if (!thread) {
+      reply.code(404);
+      return { detail: "Thread not found" };
+    }
+    const afterSeq = Number(query.after_seq || 0);
+    const limit = Math.min(Math.max(1, Number(query.limit || 400) || 400), 2000);
+    const includeSystemPrompt =
+      query.include_system_prompt === true
+      || query.include_system_prompt === 1
+      || query.include_system_prompt === "1"
+      || query.include_system_prompt === "true";
+    const priority = typeof query.priority === "string" ? query.priority : undefined;
+    if (priority && !["normal", "urgent", "system"].includes(priority)) {
+      reply.code(400);
+      return { detail: `Invalid priority filter '${priority}'` };
+    }
+    const presentedAgentsById = new Map(
+      decorateAgentsForPresentation(store.listAgents()).map((agent) => [String(agent.id || "").trim(), agent]),
+    );
+    return store
+      .getHumanTranscript(params.threadId, afterSeq, includeSystemPrompt, priority, limit)
+      .map((entry) => decorateMessageLikeForPresentation(entry, presentedAgentsById));
   });
 
   fastify.get("/api/threads/:threadId/cli-sessions", async (request, reply) => {
@@ -2581,11 +2622,12 @@ export function createHttpServer() {
 
     // Check for source_message_id and already decided
     if (body.source_message_id) {
-      const sourceMsg = store.getMessage(body.source_message_id);
-      if (!sourceMsg) {
+      const sourceEntry = store.getTranscriptMessage(body.source_message_id);
+      if (!sourceEntry) {
         reply.code(404);
         return { detail: "source_message_id not found" };
       }
+      const sourceMsg = sourceEntry.message;
       if (sourceMsg.thread_id !== params.threadId) {
         reply.code(400);
         return { detail: "source_message_id does not belong to this thread" };
@@ -2663,7 +2705,7 @@ export function createHttpServer() {
         sourceMeta.decision_status = "resolved";
         sourceMeta.decision_action = "switch";
         sourceMeta.decision_at = decidedAt;
-        store.updateMessageMetadata(body.source_message_id, sourceMeta);
+        store.updateTranscriptMessageMetadata(body.source_message_id, sourceMeta);
 
         return {
           ok: true,
@@ -2699,7 +2741,7 @@ export function createHttpServer() {
         sourceMeta.decision_status = "resolved";
         sourceMeta.decision_action = "keep";
         sourceMeta.decision_at = decidedAt;
-        store.updateMessageMetadata(body.source_message_id, sourceMeta);
+        store.updateTranscriptMessageMetadata(body.source_message_id, sourceMeta);
 
         return {
           ok: true,
@@ -2748,7 +2790,7 @@ export function createHttpServer() {
         sourceMeta.decision_status = "resolved";
         sourceMeta.decision_action = "takeover";
         sourceMeta.decision_at = decidedAt;
-        store.updateMessageMetadata(body.source_message_id, sourceMeta);
+        store.updateTranscriptMessageMetadata(body.source_message_id, sourceMeta);
 
         return {
           ok: true,
@@ -2780,7 +2822,7 @@ export function createHttpServer() {
         sourceMeta.decision_status = "resolved";
         sourceMeta.decision_action = "cancel";
         sourceMeta.decision_at = decidedAt;
-        store.updateMessageMetadata(body.source_message_id, sourceMeta);
+        store.updateTranscriptMessageMetadata(body.source_message_id, sourceMeta);
 
         return {
           ok: true,

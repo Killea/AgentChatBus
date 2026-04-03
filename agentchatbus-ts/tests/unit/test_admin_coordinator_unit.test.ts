@@ -312,6 +312,7 @@ describe('Admin Coordinator Unit Tests (Ported from Python)', () => {
       const created = store.adminCoordinatorSweep();
       const settings = store.getThreadSettings(thread.id);
       const messages = store.getMessages(thread.id, 0, false);
+      const transcript = store.getHumanTranscript(thread.id, 0, false);
 
       expect(created).toHaveLength(0);
       expect(settings?.auto_assigned_admin_id).toBeUndefined();
@@ -356,6 +357,7 @@ describe('Admin Coordinator Unit Tests (Ported from Python)', () => {
       const created = store.adminCoordinatorSweep();
       const settings = store.getThreadSettings(thread.id);
       const messages = store.getMessages(thread.id, 0, false);
+      const transcript = store.getHumanTranscript(thread.id, 0, false);
       const noticeMessages = messages.filter(
         (message) => message.metadata?.ui_type === 'admin_coordination_timeout_notice'
       );
@@ -377,7 +379,8 @@ describe('Admin Coordinator Unit Tests (Ported from Python)', () => {
       expect(waitStates[thread.id]).toBeDefined();
       expect(waitStates[thread.id][admin.id]).toBeDefined();
       expect(waitStates[thread.id][peer.id]).toBeDefined();
-      expect(messages.some((message) => message.metadata?.visibility === 'human_only')).toBe(true);
+      expect(messages.some((message) => message.metadata?.visibility === 'human_only')).toBe(false);
+      expect(transcript.some((message) => message.metadata?.visibility === 'human_only')).toBe(true);
     });
 
     it('single online current admin creates takeover confirmation instead of switch prompt', () => {
@@ -390,10 +393,11 @@ describe('Admin Coordinator Unit Tests (Ported from Python)', () => {
 
       const created = store.adminCoordinatorSweep();
       const messages = store.getMessages(thread.id, 0, false);
-      const switchMessages = messages.filter(
+      const transcript = store.getHumanTranscript(thread.id, 0, false);
+      const switchMessages = transcript.filter(
         (message) => message.metadata?.ui_type === 'admin_switch_confirmation_required'
       );
-      const takeoverMessages = messages.filter(
+      const takeoverMessages = transcript.filter(
         (message) => message.metadata?.ui_type === 'admin_takeover_confirmation_required'
       );
       const waitStates = store.getThreadWaitStatesGrouped();
@@ -405,6 +409,7 @@ describe('Admin Coordinator Unit Tests (Ported from Python)', () => {
       expect(takeoverMessages[0].metadata?.current_admin_id).toBe(admin.id);
       expect(waitStates[thread.id]).toBeDefined();
       expect(waitStates[thread.id][admin.id]).toBeDefined();
+      expect(messages.some((message) => message.metadata?.visibility === 'human_only')).toBe(false);
     });
   });
 });

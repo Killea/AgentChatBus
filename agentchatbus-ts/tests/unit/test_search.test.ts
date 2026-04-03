@@ -110,4 +110,17 @@ describe('Search Unit Tests', () => {
     const results = store.searchMessages('keyword', undefined, 3);
     expect(results.length).toBeLessThanOrEqual(3);
   });
+
+  it('searchMessages excludes human-only transcript entries', () => {
+    const thread = store.createThread('Hidden Search Thread').thread;
+    postMessage(thread.id, 'agent-a', 'visible searchable note');
+    store.postSystemMessage(
+      thread.id,
+      'hidden searchable note',
+      JSON.stringify({ visibility: 'human_only', ui_type: 'admin_switch_confirmation_required' }),
+    );
+
+    const results = store.searchMessages('searchable');
+    expect(results.map((result) => result.content)).toEqual(['visible searchable note']);
+  });
 });

@@ -1267,10 +1267,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
     }
     case "msg_get": {
       const messageId = String(args.message_id || "");
-      let message = getStore().getMessage(messageId);
-      if (message) {
-        message = getStore().projectMessagesForAgent([message])[0];
-      }
+      const message = getStore().getMessage(messageId);
       
       if (!message) {
         return { found: false, message: null };
@@ -1931,20 +1928,10 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       const threadId = typeof args.thread_id === "string" ? args.thread_id : undefined;
       const limit = Math.min(typeof args.limit === "number" ? args.limit : 50, 200);
 
-      // Helper to check if message is human_only
-      const isHumanOnly = (meta: any): boolean => {
-        if (!meta) return false;
-        const visibility = String(meta.visibility || "").toLowerCase();
-        const audience = String(meta.audience || "").toLowerCase();
-        return visibility === "human_only" || audience === "human";
-      };
-
       const results = getStore().searchMessages(query, threadId, limit);
 
       return {
         results: results.map(m => {
-          const isHidden = isHumanOnly(m.metadata);
-          const snippetSource = isHidden ? "[human-only content hidden]" : m.content;
           const thread = getStore().getThread(m.thread_id);
           return {
             message_id: m.id,
@@ -1953,9 +1940,9 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
             author: m.author,
             seq: m.seq,
             created_at: m.created_at,
-            snippet: snippetSource.length > 200
-              ? `${snippetSource.substring(0, 200)}...`
-              : snippetSource,
+            snippet: m.content.length > 200
+              ? `${m.content.substring(0, 200)}...`
+              : m.content,
           };
         }),
         total: results.length,
@@ -2027,25 +2014,14 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         return { found: false, message_id: messageId };
       }
 
-      // Project human_only content for agent view (match Python dispatch.py L449-461)
-      const isHumanOnly = (meta: any) => {
-        if (!meta) return false;
-        const visibility = String(meta.visibility || "").toLowerCase();
-        const audience = String(meta.audience || "").toLowerCase();
-        return visibility === "human_only" || audience === "human";
-      };
-
-      const isHidden = isHumanOnly(message.metadata);
-      const projectedContent = isHidden ? "[human-only content hidden]" : message.content;
-
       const edits = getStore().getMessageHistory(messageId);
       return {
         message_id: messageId,
-        current_content: projectedContent,
+        current_content: message.content,
         edit_version: message.edit_version ?? 0,
         edits: edits.map(e => ({
           version: e.version,
-          old_content: isHidden ? "[human-only content hidden]" : e.old_content,
+          old_content: e.old_content,
           edited_by: e.edited_by,
           created_at: e.created_at
         }))

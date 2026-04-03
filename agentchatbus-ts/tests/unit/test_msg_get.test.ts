@@ -118,27 +118,16 @@ describe('Message Get Tests', () => {
             expect(parentResult.reply_to_msg_id).toBeUndefined();
         }
     });
-    it('msg_get projects human-only message for agent view', async () => {
+    it('msg_get does not expose human-only messages in the visible store', async () => {
         const thread = store.createThread("visibility-test").thread;
-        const sync = store.issueSyncContext(thread.id, "system", "test");
-        const msg = store.postMessage({
-            threadId: thread.id,
-            author: "system",
-            content: "Human-only content",
-            expectedLastSeq: sync.current_seq,
-            replyToken: sync.reply_token,
-            role: "system",
-            metadata: { visibility: "human_only", ui_type: "admin_switch_confirmation_required" }
-        });
+        const msg = store.postSystemMessage(
+            thread.id,
+            "Human-only content",
+            JSON.stringify({ visibility: "human_only", ui_type: "admin_switch_confirmation_required" })
+        );
 
-        const result = store.getMessage(msg.id);
-        
-        expect(result).toBeDefined();
-        if (result) {
-            expect(result.content).toBe("Human-only content"); // Raw in store
-            
-            const projected = store.projectMessagesForAgent([result])[0];
-            expect(projected.content).toBe("[human-only content hidden]");
-        }
+        expect(msg).toBeDefined();
+        expect(store.getMessage((msg as any).id)).toBeUndefined();
+        expect(store.getHumanOnlyMessage((msg as any).id)?.content).toBe("Human-only content");
     });
 });

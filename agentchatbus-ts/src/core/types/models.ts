@@ -55,6 +55,47 @@ export interface MessageRecord {
   created_at: string;
 }
 
+export interface HumanOnlyMessageRecord {
+  id: string;
+  thread_id: string;
+  anchor_seq: number;
+  anchor_order: number;
+  priority: string;
+  author: string;
+  author_id?: string;
+  author_name?: string;
+  author_emoji?: string;
+  role: string;
+  content: string;
+  metadata: Record<string, unknown> | null;
+  edited_at?: string | null;
+  edit_version?: number;
+  created_at: string;
+}
+
+export interface TranscriptEntry {
+  entry_kind: "message" | "human_only";
+  transcript_index: number;
+  id: string;
+  thread_id: string;
+  priority: string;
+  author: string;
+  author_id?: string;
+  author_name?: string;
+  author_emoji?: string;
+  role: string;
+  content: string;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  edited_at?: string | null;
+  edit_version?: number;
+  seq?: number;
+  anchor_seq?: number;
+  anchor_order?: number;
+  reply_to_msg_id?: string;
+  reactions?: Array<{ agent_id: string; reaction: string }>;
+}
+
 export interface SyncContext {
   current_seq: number;
   reply_token: string;

@@ -97,17 +97,25 @@
 
   function parseMessagesEnvelope(envelope) {
     const messages = Array.isArray(envelope) ? envelope : (envelope.messages || []);
-    const sorted = messages.slice().sort((a, b) => Number(a.seq || 0) - Number(b.seq || 0));
-    if (sorted.length > 0) {
-      bridgeState.currentSeq = Number(sorted[sorted.length - 1].seq || 0);
-    }
+    const sorted = messages.slice().sort((a, b) => {
+      const leftIndex = Number.isFinite(Number(a?.transcript_index)) ? Number(a.transcript_index) : null;
+      const rightIndex = Number.isFinite(Number(b?.transcript_index)) ? Number(b.transcript_index) : null;
+      if (leftIndex !== null || rightIndex !== null) {
+        return (leftIndex ?? Number(a?.seq || 0)) - (rightIndex ?? Number(b?.seq || 0));
+      }
+      return Number(a?.seq || 0) - Number(b?.seq || 0);
+    });
+    bridgeState.currentSeq = sorted.reduce((maxSeq, message) => {
+      const seq = Number(message?.seq || 0);
+      return Number.isFinite(seq) ? Math.max(maxSeq, seq) : maxSeq;
+    }, 0);
     return sorted;
   }
 
   async function loadInitialMessages() {
     const threadId = await resolveThread();
     const envelope = await requestJson(
-      `${bridgeState.baseUrl}/api/threads/${encodeURIComponent(threadId)}/messages`
+      `${bridgeState.baseUrl}/api/threads/${encodeURIComponent(threadId)}/transcript?include_system_prompt=1`
     );
     const messages = parseMessagesEnvelope(envelope);
     hostToWebview({ command: "loadMessages", messages });
@@ -280,6 +288,9 @@
         const data = JSON.parse(event.data);
         if (data?.type === "msg.new" && data?.payload?.thread_id === bridgeState.threadId) {
           void loadNewMessages();
+        }
+        if (data?.type === "thread.transcript.updated" && data?.payload?.thread_id === bridgeState.threadId) {
+          void loadInitialMessages();
         }
       } catch {
         // Ignore malformed events in browser bridge mode.

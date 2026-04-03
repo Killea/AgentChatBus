@@ -2,7 +2,16 @@ import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { AgentRecord, IdeSessionState, MessageRecord, SyncContext, ThreadRecord, ThreadStatus } from "../types/models.js";
+import type {
+  AgentRecord,
+  HumanOnlyMessageRecord,
+  IdeSessionState,
+  MessageRecord,
+  SyncContext,
+  ThreadRecord,
+  ThreadStatus,
+  TranscriptEntry,
+} from "../types/models.js";
 import { 
   BusError, 
   MissingSyncFieldsError, 
@@ -273,6 +282,7 @@ type PersistedState = {
   sequence: number;
   threads: ThreadRecord[];
   threadMessages: Array<[string, MessageRecord[]]>;
+  humanOnlyMessages: Array<[string, HumanOnlyMessageRecord[]]>;
   threadParticipants: Array<[string, string[]]>;
   threadWaitStates: Array<[string, Array<[string, WaitStateRecord]>]>;
   agents: AgentRecord[];
@@ -304,6 +314,7 @@ export class MemoryStore {
   private sequence = 0;
   private readonly threads = new Map<string, ThreadRecord>();
   private readonly threadMessages = new Map<string, MessageRecord[]>();
+  private readonly humanOnlyMessages = new Map<string, HumanOnlyMessageRecord[]>();
   private readonly threadParticipants = new Map<string, Set<string>>();
   private readonly threadWaitStates = new Map<string, Map<string, WaitStateRecord>>();
   private readonly agents = new Map<string, AgentRecord>();
@@ -378,6 +389,117 @@ export class MemoryStore {
     `);
     this.initializeRelationalTables();
     this.loadState();
+  }
+
+  private isHumanOnlyMetadata(metadata: Record<string, unknown> | null | undefined): boolean {
+    if (!metadata) {
+      return false;
+    }
+    const visibility = String(metadata.visibility || "").toLowerCase();
+    const audience = String(metadata.audience || "").toLowerCase();
+    return visibility === "human_only" || audience === "human";
+  }
+
+  private sortHumanOnlyMessages(messages: HumanOnlyMessageRecord[]): HumanOnlyMessageRecord[] {
+    return messages.sort((left, right) => {
+      if (left.anchor_seq !== right.anchor_seq) {
+        return left.anchor_seq - right.anchor_seq;
+      }
+      if (left.anchor_order !== right.anchor_order) {
+        return left.anchor_order - right.anchor_order;
+      }
+      return String(left.created_at || "").localeCompare(String(right.created_at || ""));
+    });
+  }
+
+  private getNextHumanOnlyAnchorOrder(threadId: string, anchorSeq: number): number {
+    const existing = this.humanOnlyMessages.get(threadId) || [];
+    let maxOrder = -1;
+    for (const message of existing) {
+      if (message.anchor_seq === anchorSeq) {
+        maxOrder = Math.max(maxOrder, Number(message.anchor_order || 0));
+      }
+    }
+    return maxOrder + 1;
+  }
+
+  private emitTranscriptUpdated(threadId: string, entryId: string, reason: string): void {
+    eventBus.emit({
+      type: "thread.transcript.updated",
+      payload: {
+        thread_id: threadId,
+        entry_id: entryId,
+        reason,
+      },
+    });
+  }
+
+  private rowToHumanOnlyMessageRecord(row: Record<string, unknown>): HumanOnlyMessageRecord {
+    return {
+      id: String(row.id),
+      thread_id: String(row.thread_id),
+      anchor_seq: Number(row.anchor_seq || 0),
+      anchor_order: Number(row.anchor_order || 0),
+      priority: String(row.priority || "system"),
+      author: String(row.author || "system"),
+      author_id: row.author_id ? String(row.author_id) : undefined,
+      author_name: row.author_name ? String(row.author_name) : undefined,
+      author_emoji: row.author_emoji ? String(row.author_emoji) : undefined,
+      role: String(row.role || "system"),
+      content: String(row.content || ""),
+      metadata: row.metadata ? JSON.parse(String(row.metadata)) as Record<string, unknown> : null,
+      edited_at: row.edited_at ? String(row.edited_at) : null,
+      edit_version: row.edit_version ? Number(row.edit_version) : undefined,
+      created_at: String(row.created_at),
+    };
+  }
+
+  private humanOnlyToTranscriptEntry(
+    message: HumanOnlyMessageRecord,
+    transcriptIndex: number,
+  ): TranscriptEntry {
+    return {
+      entry_kind: "human_only",
+      transcript_index: transcriptIndex,
+      id: message.id,
+      thread_id: message.thread_id,
+      priority: message.priority,
+      author: message.author,
+      author_id: message.author_id,
+      author_name: message.author_name,
+      author_emoji: message.author_emoji,
+      role: message.role,
+      content: message.content,
+      metadata: message.metadata,
+      created_at: message.created_at,
+      edited_at: message.edited_at,
+      edit_version: message.edit_version,
+      anchor_seq: message.anchor_seq,
+      anchor_order: message.anchor_order,
+    };
+  }
+
+  private messageToTranscriptEntry(message: MessageRecord, transcriptIndex: number): TranscriptEntry {
+    return {
+      entry_kind: "message",
+      transcript_index: transcriptIndex,
+      id: message.id,
+      thread_id: message.thread_id,
+      priority: message.priority,
+      author: message.author,
+      author_id: message.author_id,
+      author_name: message.author_name,
+      author_emoji: message.author_emoji,
+      role: message.role,
+      content: message.content,
+      metadata: message.metadata,
+      created_at: message.created_at,
+      edited_at: message.edited_at,
+      edit_version: message.edit_version,
+      seq: message.seq,
+      reply_to_msg_id: message.reply_to_msg_id,
+      reactions: message.reactions,
+    };
   }
 
   getThreads(includeArchived: boolean): ThreadRecord[] {
@@ -539,6 +661,7 @@ export class MemoryStore {
     this.sequence = 0;
     this.threads.clear();
     this.threadMessages.clear();
+    this.humanOnlyMessages.clear();
     this.threadParticipants.clear();
     this.threadWaitStates.clear();
     this.agents.clear();
@@ -554,6 +677,7 @@ export class MemoryStore {
     this.logCursor = 0;
     this.persistenceDb.exec(`
       DELETE FROM messages;
+      DELETE FROM human_only_messages;
       DELETE FROM threads;
       DELETE FROM agents;
       DELETE FROM reply_tokens;
@@ -868,8 +992,8 @@ export class MemoryStore {
     return closedIds;
   }
 
-  adminCoordinatorSweep(now = new Date()): MessageRecord[] {
-    const createdMessages: MessageRecord[] = [];
+  adminCoordinatorSweep(now = new Date()): Array<MessageRecord | HumanOnlyMessageRecord> {
+    const createdMessages: Array<MessageRecord | HumanOnlyMessageRecord> = [];
     const allAgents = this.listAgents();
     const allAgentsById = new Map(allAgents.map((agent) => [agent.id, agent]));
     const onlineAgents = allAgents.filter((agent) => agent.is_online);
@@ -1324,6 +1448,7 @@ export class MemoryStore {
     const messageIds = (this.threadMessages.get(threadId) || []).map((message) => message.id);
     this.threads.delete(threadId);
     this.threadMessages.delete(threadId);
+    this.humanOnlyMessages.delete(threadId);
     this.threadParticipants.delete(threadId);
     this.threadWaitStates.delete(threadId);
     this._threadEvents.delete(threadId);
@@ -1347,6 +1472,7 @@ export class MemoryStore {
         "DELETE FROM reactions WHERE message_id IN (SELECT id FROM messages WHERE thread_id = ?)"
       ).run(threadId);
       this.persistenceDb.prepare("DELETE FROM messages WHERE thread_id = ?").run(threadId);
+      this.persistenceDb.prepare("DELETE FROM human_only_messages WHERE thread_id = ?").run(threadId);
       this.persistenceDb.prepare("DELETE FROM reply_tokens WHERE thread_id = ?").run(threadId);
       this.persistenceDb.prepare("DELETE FROM msg_wait_refresh_requests WHERE thread_id = ?").run(threadId);
       this.persistenceDb.prepare("DELETE FROM thread_settings WHERE thread_id = ?").run(threadId);
@@ -1422,6 +1548,84 @@ export class MemoryStore {
     }
 
     return limitedMessages;
+  }
+
+  getHumanOnlyMessages(threadId: string): HumanOnlyMessageRecord[] {
+    const messages = this.humanOnlyMessages.get(threadId) || [];
+    return messages.map((message) => ({ ...message }));
+  }
+
+  getHumanOnlyMessage(messageId: string): HumanOnlyMessageRecord | undefined {
+    const row = this.persistenceDb.prepare(
+      `
+        SELECT id, thread_id, anchor_seq, anchor_order, priority, author, author_id, author_name, author_emoji,
+               role, content, metadata, created_at, edited_at, edit_version
+        FROM human_only_messages
+        WHERE id = ?
+      `
+    ).get(messageId) as Record<string, unknown> | undefined;
+    return row ? this.rowToHumanOnlyMessageRecord(row) : undefined;
+  }
+
+  getTranscriptMessage(messageId: string):
+    | { entry_kind: "message"; message: MessageRecord }
+    | { entry_kind: "human_only"; message: HumanOnlyMessageRecord }
+    | undefined {
+    const visible = this.getMessage(messageId);
+    if (visible) {
+      return { entry_kind: "message", message: visible };
+    }
+    const hidden = this.getHumanOnlyMessage(messageId);
+    if (hidden) {
+      return { entry_kind: "human_only", message: hidden };
+    }
+    return undefined;
+  }
+
+  getHumanTranscript(
+    threadId: string,
+    afterSeq = 0,
+    includeSystemPrompt = false,
+    priority?: string,
+    limit?: number,
+  ): TranscriptEntry[] {
+    const entries: TranscriptEntry[] = [];
+    let transcriptIndex = 0;
+    const hidden = this.getHumanOnlyMessages(threadId).filter((message) =>
+      afterSeq > 0 ? message.anchor_seq > afterSeq : true,
+    );
+    const hiddenByAnchor = new Map<number, HumanOnlyMessageRecord[]>();
+    for (const message of hidden) {
+      const group = hiddenByAnchor.get(message.anchor_seq) || [];
+      group.push(message);
+      hiddenByAnchor.set(message.anchor_seq, group);
+    }
+    for (const group of hiddenByAnchor.values()) {
+      this.sortHumanOnlyMessages(group);
+    }
+
+    if (includeSystemPrompt && afterSeq === 0) {
+      const systemPrompt = this.getMessages(threadId, 0, true, priority, 1).find((message) => message.seq === 0);
+      if (systemPrompt) {
+        entries.push(this.messageToTranscriptEntry(systemPrompt, transcriptIndex++));
+      }
+    }
+
+    const prependHidden = hiddenByAnchor.get(0) || [];
+    for (const message of prependHidden) {
+      entries.push(this.humanOnlyToTranscriptEntry(message, transcriptIndex++));
+    }
+
+    const visibleMessages = this.getMessages(threadId, afterSeq, false, priority);
+    for (const message of visibleMessages) {
+      entries.push(this.messageToTranscriptEntry(message, transcriptIndex++));
+      const anchoredHidden = hiddenByAnchor.get(message.seq) || [];
+      for (const hiddenMessage of anchoredHidden) {
+        entries.push(this.humanOnlyToTranscriptEntry(hiddenMessage, transcriptIndex++));
+      }
+    }
+
+    return limit !== undefined ? entries.slice(0, limit) : entries;
   }
 
   /**
@@ -1835,6 +2039,12 @@ export class MemoryStore {
       throw new BusError("THREAD_NOT_FOUND");
     }
 
+    if (this.isHumanOnlyMetadata(input.metadata || null)) {
+      throw new Error(
+        "human_only messages are not part of the visible message stream; use postHumanOnlyMessage/postSystemMessage instead."
+      );
+    }
+
     const isInternalSystemMessage = input.role === "system" && input.author === "system";
     if (thread.status === "closed" && !isInternalSystemMessage) {
       throw new BusError("THREAD_CLOSED", {
@@ -2052,10 +2262,83 @@ export class MemoryStore {
    * Used by internal coordination logic and background tasks.
    * Ported from Python crud.py _msg_create_system.
    */
-  postSystemMessage(threadId: string, content: string, metadata?: string | null, clearAutoAdmin = false): MessageRecord | undefined {
+  postHumanOnlyMessage(
+    threadId: string,
+    content: string,
+    metadata?: Record<string, unknown> | null,
+    options?: {
+      id?: string;
+      author?: string;
+      authorId?: string;
+      authorName?: string;
+      authorEmoji?: string;
+      role?: string;
+      priority?: string;
+      anchorSeq?: number;
+      anchorOrder?: number;
+      createdAt?: string;
+      editedAt?: string | null;
+      editVersion?: number;
+      clearAutoAdmin?: boolean;
+    },
+  ): HumanOnlyMessageRecord | undefined {
     const thread = this.getThread(threadId);
     if (!thread) {
       return undefined;
+    }
+
+    const anchorSeq = options?.anchorSeq ?? this.getLatestSeq(threadId);
+    const anchorOrder = options?.anchorOrder ?? this.getNextHumanOnlyAnchorOrder(threadId, anchorSeq);
+    const createdAt = options?.createdAt || new Date().toISOString();
+    const message: HumanOnlyMessageRecord = {
+      id: options?.id || randomUUID(),
+      thread_id: threadId,
+      anchor_seq: anchorSeq,
+      anchor_order: anchorOrder,
+      priority: options?.priority || "system",
+      author: options?.author || "system",
+      author_id: options?.authorId,
+      author_name: options?.authorName || "System",
+      author_emoji: options?.authorEmoji || "⚙️",
+      role: options?.role || "system",
+      content,
+      metadata: metadata || null,
+      created_at: createdAt,
+      edited_at: options?.editedAt || null,
+      edit_version: options?.editVersion || 0,
+    };
+
+    const existing = this.humanOnlyMessages.get(threadId) || [];
+    const nextMessages = existing.filter((entry) => entry.id !== message.id);
+    nextMessages.push(message);
+    this.humanOnlyMessages.set(threadId, this.sortHumanOnlyMessages(nextMessages));
+
+    if (options?.clearAutoAdmin) {
+      this.threadSettingsUpdateActivity(threadId);
+    }
+    this.touchThreadUpdatedAt(threadId);
+    this.insertHumanOnlyMessage(message);
+    this.persistState();
+    this.emitTranscriptUpdated(threadId, message.id, "human_only_created");
+    return message;
+  }
+
+  postSystemMessage(
+    threadId: string,
+    content: string,
+    metadata?: string | null,
+    clearAutoAdmin = false,
+  ): MessageRecord | HumanOnlyMessageRecord | undefined {
+    const thread = this.getThread(threadId);
+    if (!thread) {
+      return undefined;
+    }
+
+    const parsedMetadata = metadata ? JSON.parse(metadata) as Record<string, unknown> : null;
+    if (this.isHumanOnlyMetadata(parsedMetadata)) {
+      return this.postHumanOnlyMessage(threadId, content, parsedMetadata, {
+        clearAutoAdmin,
+      });
     }
 
     this.sequence += 1;
@@ -2071,7 +2354,7 @@ export class MemoryStore {
       author_emoji: "⚙️",
       role: "system",
       content: content,
-      metadata: metadata ? JSON.parse(metadata) : null,
+      metadata: parsedMetadata,
       reactions: [],
       edited_at: null,
       edit_version: 0,
@@ -2892,6 +3175,36 @@ export class MemoryStore {
     return message;
   }
 
+  updateHumanOnlyMessageMetadata(
+    messageId: string,
+    metadataPatch: Record<string, unknown>,
+  ): HumanOnlyMessageRecord | undefined {
+    const message = this.getHumanOnlyMessage(messageId);
+    if (!message) {
+      return undefined;
+    }
+    message.metadata = {
+      ...(message.metadata || {}),
+      ...metadataPatch,
+    };
+    const existing = this.humanOnlyMessages.get(message.thread_id) || [];
+    const nextMessages = existing.filter((entry) => entry.id !== message.id);
+    nextMessages.push(message);
+    this.humanOnlyMessages.set(message.thread_id, this.sortHumanOnlyMessages(nextMessages));
+    this.insertHumanOnlyMessage(message);
+    this.persistState();
+    this.emitTranscriptUpdated(message.thread_id, message.id, "human_only_metadata_updated");
+    return message;
+  }
+
+  updateTranscriptMessageMetadata(
+    messageId: string,
+    metadataPatch: Record<string, unknown>,
+  ): MessageRecord | HumanOnlyMessageRecord | undefined {
+    return this.updateMessageMetadata(messageId, metadataPatch)
+      || this.updateHumanOnlyMessageMetadata(messageId, metadataPatch);
+  }
+
   /**
    * Assign an admin to the thread (automatic coordinator selection).
    * Ported from Python crud.py thread_settings_assign_admin.
@@ -2966,8 +3279,8 @@ export class MemoryStore {
       return null;
     }
 
-    // Get messages without system prompt
-    const msgs = this.getMessages(threadId, 0, false);
+    // Export the human transcript view without the synthetic system prompt.
+    const msgs = this.getHumanTranscript(threadId, 0, false);
 
     const createdLabel = this.formatDate(thread.created_at);
     const exportedLabel = this.formatDate(new Date().toISOString());
@@ -3810,6 +4123,9 @@ export class MemoryStore {
         for (const [threadId, messages] of state.threadMessages || []) {
           this.threadMessages.set(threadId, messages);
         }
+        for (const [threadId, messages] of state.humanOnlyMessages || []) {
+          this.humanOnlyMessages.set(threadId, messages);
+        }
         for (const [threadId, participants] of state.threadParticipants || []) {
           this.threadParticipants.set(threadId, new Set(participants));
         }
@@ -3849,6 +4165,7 @@ export class MemoryStore {
         sequence: this.sequence,
         threads: [...this.threads.values()],
         threadMessages: [...this.threadMessages.entries()],
+        humanOnlyMessages: [...this.humanOnlyMessages.entries()],
         threadParticipants: [...this.threadParticipants.entries()].map(([threadId, participants]) => [threadId, [...participants]]),
         threadWaitStates: [...this.threadWaitStates.entries()].map(([threadId, waits]) => [threadId, [...waits.entries()]]),
         agents: [...this.agents.values()],
@@ -3878,11 +4195,13 @@ export class MemoryStore {
   private hydrateFromRelationalTables(): void {
     this.threads.clear();
     this.threadMessages.clear();
+    this.humanOnlyMessages.clear();
     this.agents.clear();
     this.syncTokens.clear();
     this.threadSettings.clear();
     this.threadWaitStates.clear();
     this.messageEditHistory.clear();
+    this.sequence = 0;
 
     const threads = this.persistenceDb.prepare(
       "SELECT id, topic, status, created_at, updated_at, system_prompt, template_id, metadata, closed_at, summary FROM threads"
@@ -3905,6 +4224,21 @@ export class MemoryStore {
       const group = this.threadMessages.get(message.thread_id) || [];
       group.push(message);
       this.threadMessages.set(message.thread_id, group);
+    }
+
+    const hiddenMessages = this.persistenceDb.prepare(
+      `
+        SELECT id, thread_id, anchor_seq, anchor_order, priority, author, author_id, author_name, author_emoji,
+               role, content, metadata, created_at, edited_at, edit_version
+        FROM human_only_messages
+        ORDER BY thread_id ASC, anchor_seq ASC, anchor_order ASC, created_at ASC
+      `
+    ).all() as Array<Record<string, unknown>>;
+    for (const row of hiddenMessages) {
+      const message = this.rowToHumanOnlyMessageRecord(row);
+      const group = this.humanOnlyMessages.get(message.thread_id) || [];
+      group.push(message);
+      this.humanOnlyMessages.set(message.thread_id, this.sortHumanOnlyMessages(group));
     }
 
     const agents = this.persistenceDb.prepare(
@@ -3984,6 +4318,89 @@ export class MemoryStore {
     this.sequence = Math.max(this.sequence, ...messages.map((row) => Number(row.seq || 0)), 0);
   }
 
+  private migrateHiddenMessagesIntoHumanOnlyTable(): void {
+    const rows = this.persistenceDb.prepare(
+      `
+        SELECT id, thread_id, seq, priority, author, author_id, author_name, author_emoji,
+               role, content, metadata, created_at, edited_at, edit_version
+        FROM messages
+        ORDER BY thread_id ASC, seq ASC
+      `
+    ).all() as Array<Record<string, unknown>>;
+
+    if (rows.length === 0) {
+      return;
+    }
+
+    const insertHidden = this.persistenceDb.prepare(
+      `
+        INSERT OR REPLACE INTO human_only_messages (
+          id, thread_id, anchor_seq, anchor_order, priority, author, author_id, author_name, author_emoji,
+          role, content, metadata, created_at, edited_at, edit_version
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `
+    );
+
+    const hiddenIds: string[] = [];
+    const affectedThreadIds = new Set<string>();
+    const visibleCountByThread = new Map<string, number>();
+    const anchorOrderByKey = new Map<string, number>();
+
+    for (const row of rows) {
+      const metadata = row.metadata ? JSON.parse(String(row.metadata)) as Record<string, unknown> : null;
+      const threadId = String(row.thread_id);
+      if (!this.isHumanOnlyMetadata(metadata)) {
+        visibleCountByThread.set(threadId, (visibleCountByThread.get(threadId) || 0) + 1);
+        continue;
+      }
+
+      const anchorSeq = visibleCountByThread.get(threadId) || 0;
+      const orderKey = `${threadId}:${anchorSeq}`;
+      const anchorOrder = anchorOrderByKey.get(orderKey) || 0;
+      anchorOrderByKey.set(orderKey, anchorOrder + 1);
+      insertHidden.run(
+        String(row.id),
+        threadId,
+        anchorSeq,
+        anchorOrder,
+        String(row.priority || "system"),
+        String(row.author || "system"),
+        row.author_id ? String(row.author_id) : null,
+        row.author_name ? String(row.author_name) : null,
+        row.author_emoji ? String(row.author_emoji) : null,
+        String(row.role || "system"),
+        String(row.content || ""),
+        metadata ? JSON.stringify(metadata) : null,
+        String(row.created_at),
+        row.edited_at ? String(row.edited_at) : null,
+        row.edit_version ? Number(row.edit_version) : 0,
+      );
+      hiddenIds.push(String(row.id));
+      affectedThreadIds.add(threadId);
+    }
+
+    if (hiddenIds.length === 0) {
+      return;
+    }
+
+    const placeholders = hiddenIds.map(() => "?").join(",");
+    this.persistenceDb.prepare(`DELETE FROM message_edits WHERE message_id IN (${placeholders})`).run(...hiddenIds);
+    this.persistenceDb.prepare(`DELETE FROM reactions WHERE message_id IN (${placeholders})`).run(...hiddenIds);
+    this.persistenceDb.prepare(`DELETE FROM messages WHERE id IN (${placeholders})`).run(...hiddenIds);
+
+    const renumberVisible = this.persistenceDb.prepare("UPDATE messages SET seq = ? WHERE id = ?");
+    for (const threadId of affectedThreadIds) {
+      const visibleRows = this.persistenceDb.prepare(
+        "SELECT id FROM messages WHERE thread_id = ? ORDER BY seq ASC"
+      ).all(threadId) as Array<{ id: string }>;
+      let nextSeq = 1;
+      for (const row of visibleRows) {
+        renumberVisible.run(nextSeq, row.id);
+        nextSeq += 1;
+      }
+    }
+  }
+
   private initializeRelationalTables(): void {
     this.persistenceDb.exec(`
       CREATE TABLE IF NOT EXISTS threads (
@@ -4011,6 +4428,23 @@ export class MemoryStore {
         content TEXT NOT NULL,
         metadata TEXT,
         reply_to_msg_id TEXT,
+        created_at TEXT NOT NULL,
+        edited_at TEXT,
+        edit_version INTEGER
+      );
+      CREATE TABLE IF NOT EXISTS human_only_messages (
+        id TEXT PRIMARY KEY,
+        thread_id TEXT NOT NULL,
+        anchor_seq INTEGER NOT NULL,
+        anchor_order INTEGER NOT NULL,
+        priority TEXT NOT NULL,
+        author TEXT NOT NULL,
+        author_id TEXT,
+        author_name TEXT,
+        author_emoji TEXT,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        metadata TEXT,
         created_at TEXT NOT NULL,
         edited_at TEXT,
         edit_version INTEGER
@@ -4132,6 +4566,14 @@ export class MemoryStore {
       addColumnIfMissing("messages", "author_name", "TEXT");
       addColumnIfMissing("messages", "author_emoji", "TEXT");
 
+      // Migration: human_only_messages table
+      addColumnIfMissing("human_only_messages", "priority", "TEXT NOT NULL DEFAULT 'system'");
+      addColumnIfMissing("human_only_messages", "author_id", "TEXT");
+      addColumnIfMissing("human_only_messages", "author_name", "TEXT");
+      addColumnIfMissing("human_only_messages", "author_emoji", "TEXT");
+      addColumnIfMissing("human_only_messages", "edited_at", "TEXT");
+      addColumnIfMissing("human_only_messages", "edit_version", "INTEGER NOT NULL DEFAULT 0");
+
       // Migration: threads table
       addColumnIfMissing("threads", "system_prompt", "TEXT");
       addColumnIfMissing("threads", "template_id", "TEXT");
@@ -4171,6 +4613,8 @@ export class MemoryStore {
       this.persistenceDb.prepare(
         "UPDATE reactions SET created_at = datetime('now') WHERE created_at IS NULL OR created_at = ''"
       ).run();
+
+      this.migrateHiddenMessagesIntoHumanOnlyTable();
     };
 
     runMigrations();
@@ -4233,6 +4677,33 @@ export class MemoryStore {
       message.created_at,
       message.edited_at || null,
       message.edit_version || null
+    );
+  }
+
+  private insertHumanOnlyMessage(message: HumanOnlyMessageRecord): void {
+    this.persistenceDb.prepare(
+      `
+        INSERT OR REPLACE INTO human_only_messages (
+          id, thread_id, anchor_seq, anchor_order, priority, author, author_id, author_name, author_emoji,
+          role, content, metadata, created_at, edited_at, edit_version
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `
+    ).run(
+      message.id,
+      message.thread_id,
+      message.anchor_seq,
+      message.anchor_order,
+      message.priority,
+      message.author,
+      message.author_id || null,
+      message.author_name || null,
+      message.author_emoji || null,
+      message.role,
+      message.content,
+      message.metadata ? JSON.stringify(message.metadata) : null,
+      message.created_at,
+      message.edited_at || null,
+      message.edit_version || null,
     );
   }
 

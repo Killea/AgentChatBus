@@ -183,15 +183,15 @@
   <script src="/static/vendor/xterm/lib/xterm.js"></script>
   <script src="/static/vendor/xterm-addon-fit/lib/addon-fit.js"></script>
   <script src="/static/js/shared-cli-sessions.js?v=18"></script>
-  <script src="/static/js/shared-modals.js?v=21"></script>
-  <script src="/static/js/components/acb-modal-shell.js?v=13"></script>
+  <script src="/static/js/shared-modals.js?v=20"></script>
+  <script src="/static/js/components/acb-modal-shell.js?v=12"></script>
   <script src="/static/js/components/acb-empty-state.js?v=2"></script>
   <script src="/static/js/components/acb-icon-button.js?v=2"></script>
   <script src="/static/js/components/acb-filter-actions.js?v=2"></script>
   <script src="/static/js/components/acb-filter-row.js?v=2"></script>
   <script src="/static/js/components/acb-thread-filter-shell.js?v=2"></script>
   <script src="/static/js/components/acb-thread-context-menu.js?v=2"></script>
-  <script src="/static/js/components/acb-thread-header.js?v=8"></script>
+  <script src="/static/js/components/acb-thread-header.js?v=7"></script>
   <script src="/static/js/components/acb-thread-item.js?v=3"></script>
   <script src="/static/js/components/acb-message-tail-meta.js?v=1"></script>
   <script src="/static/js/components/acb-admin-switch-card.js?v=4"></script>
@@ -1036,6 +1036,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       return window.AcbSSE.startSSE({
         getActiveThreadId: () => activeThreadId,
         onMsgNew: async () => loadNewMessages(),
+        onTranscriptUpdate: async () => reloadTranscript(),
         onMsgEdit: async (message) => applyEditedMessage(message),
         onThreadEvent: async () => refreshThreads(),
         onAgentPresence: async () => refreshThreadSidebarData(),
@@ -1215,6 +1216,23 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         updateStatusBar: refreshAgents,
         setLastSeq: (fn) => { lastSeq = (typeof fn === 'function' ? fn(lastSeq) : fn); },
         scrollBottom,
+      });
+    }
+
+    async function reloadTranscript() {
+      return window.AcbChat.reloadTranscript({
+        getActiveThreadId: () => activeThreadId,
+        api,
+        clearThreadParticipants: () => activeThreadLastSeenMs.clear(),
+        rebuildActiveThreadParticipants,
+        appendBubble,
+        updateOnlinePresence,
+        updateStatusBar: refreshAgents,
+        setLastSeq: (s) => { lastSeq = s; },
+        scrollBottom,
+      }).then(() => {
+        if (window.AcbSearch) window.AcbSearch.rebuild();
+        if (window.AcbNavSidebar) window.AcbNavSidebar.rebuild();
       });
     }
 
@@ -1584,12 +1602,23 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       const box = document.getElementById('messages');
 
       // ---- Deduplication check (also check sys-prompt-area for seq=0) --------
-      const seq = String(m.seq);
+      const messageId = String(m.id ?? '').trim();
+      const hasSeq = typeof m.seq === 'number' && Number.isFinite(m.seq);
+      const seq = hasSeq ? String(m.seq) : '';
       const sysPromptArea = document.getElementById('sys-prompt-area');
-      const existingMsg = box.querySelector(`[data-seq="${seq}"]`) ||
-        (sysPromptArea && sysPromptArea.querySelector(`[data-seq="${seq}"]`));
+      const escapedMessageId = messageId && window.CSS && typeof window.CSS.escape === 'function'
+        ? window.CSS.escape(messageId)
+        : messageId;
+      const existingMsg = (messageId
+        ? box.querySelector(`[data-msg-id="${escapedMessageId}"]`) ||
+          (sysPromptArea && sysPromptArea.querySelector(`[data-msg-id="${escapedMessageId}"]`))
+        : null)
+        || (seq
+          ? box.querySelector(`[data-seq="${seq}"]`) ||
+            (sysPromptArea && sysPromptArea.querySelector(`[data-seq="${seq}"]`))
+          : null);
       if (existingMsg) {
-        console.warn(`[Deduplicate] Message seq ${seq} already exists in DOM, skipping.`);
+        console.warn(`[Deduplicate] Message ${messageId || seq || 'unknown'} already exists in DOM, skipping.`);
         return;
       }
 
@@ -1604,6 +1633,12 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
           || metaObj.ui_type === 'admin_takeover_confirmation_required'
         )) {
           const card = document.createElement('acb-admin-switch-card');
+          if (messageId) {
+            card.setAttribute('data-msg-id', messageId);
+          }
+          if (seq) {
+            card.setAttribute('data-seq', seq);
+          }
           if (typeof card.setData === 'function') {
             card.setData({
               message: m,
@@ -1619,7 +1654,12 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         if (metaObj && metaObj.ui_type === 'admin_coordination_timeout_notice') {
           const wrapper = document.createElement('div');
           wrapper.className = 'msg-sys-admin-timeout';
-          wrapper.setAttribute('data-seq', String(m.seq));
+          if (seq) {
+            wrapper.setAttribute('data-seq', seq);
+          }
+          if (messageId) {
+            wrapper.setAttribute('data-msg-id', messageId);
+          }
 
           const card = document.createElement('div');
           card.className = 'msg-sys-admin-timeout-card';
@@ -1651,6 +1691,9 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
           const wrapper = document.createElement('div');
           wrapper.className = 'msg-sys-prompt';
           wrapper.setAttribute('data-seq', '0');
+          if (messageId) {
+            wrapper.setAttribute('data-msg-id', messageId);
+          }
 
           const promptHeader = document.createElement('button');
           promptHeader.type = 'button';
@@ -1711,6 +1754,12 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         // Other system events: centered pill
         const pill = document.createElement('div');
         pill.className = 'msg-sys-event';
+        if (seq) {
+          pill.setAttribute('data-seq', seq);
+        }
+        if (messageId) {
+          pill.setAttribute('data-msg-id', messageId);
+        }
         const sentAt = fmtTime(m.created_at);
         pill.textContent = sentAt ? `${sentAt}  ${m.content}` : m.content;
         if (m.created_at) {
@@ -1749,12 +1798,23 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
 
       const isAgentMessage = !isHuman && !isSystem;
       const sentAtLabel = fmtTime(m.created_at);
+      const timeLabelParts = [];
+      if (hasSeq) {
+        timeLabelParts.push(`seq ${m.seq}`);
+      } else if (String(m.entry_kind || '').toLowerCase() === 'human_only') {
+        timeLabelParts.push('human-only');
+      }
+      if (sentAtLabel) {
+        timeLabelParts.push(sentAtLabel);
+      }
 
       const row = document.createElement('div');
       row.className = `msg-row ${isHuman ? 'msg-row-right' : 'msg-row-left'}`;
       row.setAttribute('data-author-id', String(m.author_id ?? authorLabel));
-      row.setAttribute('data-seq', String(m.seq));
-      row.setAttribute('data-msg-id', String(m.id ?? ''));
+      if (hasSeq) {
+        row.setAttribute('data-seq', String(m.seq));
+      }
+      row.setAttribute('data-msg-id', messageId);
       row.setAttribute('data-is-human', isHuman ? '1' : '0');
 
       // Check if this message has mentions (look in metadata if string/object)
@@ -1799,7 +1859,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       <div class="msg-col">
         <div class="msg-header">
           <span class="msg-author-label" style="color:${color}">${esc(authorLabel)}</span>
-          <span class="msg-time-label">seq ${m.seq} ${fmtTime(m.created_at)}</span>
+          <span class="msg-time-label">${esc(timeLabelParts.join(' '))}</span>
           ${priorityBadgeHtml}
           ${handoffBadgeHtml}
           <button class="msg-copy-btn" title="Copy message" aria-label="Copy message content" onclick="window.AcbCopyMsg(this)">

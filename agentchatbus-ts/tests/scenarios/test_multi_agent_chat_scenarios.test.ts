@@ -537,13 +537,14 @@ describe('Multi-Agent Chat Scenarios (Ported from Python)', () => {
     ]);
   });
 
-  it('human_only_messages_stay_redacted_across_seq_mismatch_and_recovery', async () => {
+  it('human_only_messages_stay_invisible_across_seq_mismatch_and_recovery', async () => {
     /**
      * Protect visibility filtering when an agent falls behind across hidden system notices.
      *
      * Business requirement:
-     * - SeqMismatch first-read guidance must not leak private human-only content.
-     * - The follow-up recovery msg_wait should return the same redacted projection.
+     * - SeqMismatch first-read guidance must not reveal the existence or body of
+     *   human-only transcript entries.
+     * - The follow-up recovery msg_wait should only return visible messages.
      * - After recovering, the agent must still be able to continue chatting normally.
      */
     const threadName = 'Scenario Human Only Recovery';
@@ -578,8 +579,8 @@ describe('Multi-Agent Chat Scenarios (Ported from Python)', () => {
     );
 
     const waitA1 = await waitAs(threadId, agentAId, 1, 50);
-    expect(waitA1.messages.map(m => m.content)).toEqual(['[human-only content hidden]']);
-    expect(waitA1.messages[0].metadata).not.toHaveProperty('private_body');
+    expect(waitA1.messages).toEqual([]);
+    expect(waitA1.current_seq).toBe(1);
 
     const postA2 = await postAs(
       threadId,
@@ -588,46 +589,34 @@ describe('Multi-Agent Chat Scenarios (Ported from Python)', () => {
       waitA1.current_seq,
       waitA1.reply_token
     );
-    expect(postA2).toHaveProperty('seq', 3);
+    expect(postA2).toHaveProperty('seq', 2);
 
     const stalePostB = await postAs(
       threadId,
       agentBId,
-      'B-stale: this should require redacted recovery',
+      'B-stale: this should require visible-only recovery',
       bStaleSync.current_seq,
       bStaleSync.reply_token
     );
     expect(stalePostB).toHaveProperty('error', 'SeqMismatchError');
     expect((stalePostB as any).new_messages_1st_read?.map((m: any) => m.content)).toEqual([
-      '[human-only content hidden]',
       'A2: visible follow-up after the hidden notice',
     ]);
-    expect((stalePostB as any).new_messages_1st_read?.[0].metadata).toMatchObject({
-      visibility: 'human_only',
-      content_hidden: true,
-      content_hidden_reason: 'human_only',
-      ui_type: 'admin_switch_confirmation_required',
-    });
-    expect((stalePostB as any).new_messages_1st_read?.[0].metadata).not.toHaveProperty('private_body');
-    expect(JSON.stringify((stalePostB as any).new_messages_1st_read?.[0].metadata)).not.toContain('private_body');
 
     const waitBRefresh = await waitAs(threadId, agentBId, 1, 120);
-    expect(waitBRefresh.current_seq).toBe(3);
+    expect(waitBRefresh.current_seq).toBe(2);
     expect(waitBRefresh.messages.map(m => m.content)).toEqual([
-      '[human-only content hidden]',
       'A2: visible follow-up after the hidden notice',
     ]);
-    expect(waitBRefresh.messages[0].metadata).not.toHaveProperty('private_body');
-    expect(JSON.stringify(waitBRefresh.messages[0].metadata)).not.toContain('private_body');
 
     const postB1 = await postAs(
       threadId,
       agentBId,
-      'B1: recovered without seeing the hidden body',
+      'B1: recovered without seeing hidden transcript entries',
       waitBRefresh.current_seq,
       waitBRefresh.reply_token
     );
-    expect(postB1).toHaveProperty('seq', 4);
+    expect(postB1).toHaveProperty('seq', 3);
   });
 
   it('replayed_msg_post_token_failure_triggers_one_shot_fast_refresh_without_fake_new_messages', async () => {

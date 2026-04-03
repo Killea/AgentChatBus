@@ -16,6 +16,7 @@
     const {
       getActiveThreadId,
       onMsgNew,
+      onTranscriptUpdate,
       onMsgEdit,
       onThreadEvent,
       onAgentPresence,
@@ -50,6 +51,12 @@
         }
         if (onThreadEvent) {
           await onThreadEvent();
+        }
+      }
+
+      if (ev.type === "thread.transcript.updated") {
+        if (p.thread_id === activeThreadId && onTranscriptUpdate) {
+          await onTranscriptUpdate();
         }
       }
 

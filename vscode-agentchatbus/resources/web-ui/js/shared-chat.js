@@ -768,6 +768,64 @@
     }
   }
 
+  function getMaxVisibleSeq(messages) {
+    return (Array.isArray(messages) ? messages : []).reduce((maxSeq, message) => {
+      const seq = typeof message?.seq === "number" ? message.seq : Number(message?.seq);
+      return Number.isFinite(seq) ? Math.max(maxSeq, seq) : maxSeq;
+    }, 0);
+  }
+
+  async function loadTranscript({
+    id,
+    api,
+    clearThreadParticipants,
+    rebuildActiveThreadParticipants,
+    appendBubble,
+    updateOnlinePresence,
+    updateStatusBar,
+    setLastSeq,
+    scrollBottom,
+    refreshAdmin = true,
+    clearCliCache = true,
+  }) {
+    const box = document.getElementById("messages");
+    if (!box) {
+      return;
+    }
+    setLastSeq(0);
+    if (typeof clearThreadParticipants === "function") {
+      clearThreadParticipants();
+    }
+    box.innerHTML = "";
+    clearCliActivityRows(id, clearCliCache);
+    const sysPromptAreaEl = document.getElementById("sys-prompt-area");
+    if (sysPromptAreaEl) sysPromptAreaEl.innerHTML = "";
+    box.classList.add("loading-history");
+
+    const msgs =
+      (await api(`/api/threads/${id}/transcript?after_seq=0&limit=400&include_system_prompt=1`)) ||
+      [];
+    rebuildActiveThreadParticipants(msgs);
+    msgs.forEach(appendBubble);
+    const cachedSessions = getThreadActivityCache(id);
+    if (cachedSessions && !clearCliCache) {
+      for (const session of cachedSessions.values()) {
+        renderCliActivitySession(session, false);
+      }
+    }
+    updateOnlinePresence();
+    await updateStatusBar();
+    if (refreshAdmin) {
+      await refreshThreadAdmin(id, api);
+    }
+    setLastSeq(getMaxVisibleSeq(msgs));
+    if (window.AcbMessageRenderer?.renderMermaidBlocks) {
+      await window.AcbMessageRenderer.renderMermaidBlocks(box);
+    }
+    scrollBottom(false);
+    box.classList.remove("loading-history");
+  }
+
   async function selectThread({
     id,
     topic,
@@ -789,8 +847,6 @@
     if (setThreadSyncContext) {
       setThreadSyncContext(id, initialSyncContext || null);
     }
-    setLastSeq(0);
-    clearThreadParticipants();
 
     document.querySelectorAll(".thread-item").forEach((el) => el.classList.remove("active"));
     const ti = document.getElementById(`ti-${id}`);
@@ -799,39 +855,19 @@
     document.getElementById("thread-header").style.display = "flex";
     document.getElementById("thread-title").textContent = topic;
     document.getElementById("compose").classList.toggle("visible", status !== "archived");
-
-    const box = document.getElementById("messages");
-    box.innerHTML = "";
-    clearCliActivityRows(id);
-    const sysPromptAreaEl = document.getElementById("sys-prompt-area");
-    if (sysPromptAreaEl) sysPromptAreaEl.innerHTML = "";
-    box.classList.add("loading-history");
-
-    const msgs =
-      (await api(`/api/threads/${id}/messages?after_seq=0&limit=300&include_system_prompt=1`)) ||
-      [];
-    // DEBUG: Log first few messages to check author fields
-    console.log('[DEBUG] Loaded messages:', msgs.slice(0, 3).map(m => ({
-      seq: m.seq,
-      author: m.author,
-      author_name: m.author_name,
-      author_id: m.author_id,
-      role: m.role,
-      content_preview: m.content?.slice(0, 50)
-    })));
-    rebuildActiveThreadParticipants(msgs);
-    msgs.forEach(appendBubble);
-    updateOnlinePresence();
-    await updateStatusBar();
-    await refreshThreadAdmin(id, api);
-    if (msgs.length) setLastSeq(msgs[msgs.length - 1].seq);
-    // Render any mermaid diagrams in loaded history
-    if (window.AcbMessageRenderer?.renderMermaidBlocks) {
-      await window.AcbMessageRenderer.renderMermaidBlocks(box);
-    }
-    scrollBottom(false);
-    // Remove loading-history class to re-enable animations for new messages
-    box.classList.remove("loading-history");
+    await loadTranscript({
+      id,
+      api,
+      clearThreadParticipants,
+      rebuildActiveThreadParticipants,
+      appendBubble,
+      updateOnlinePresence,
+      updateStatusBar,
+      setLastSeq,
+      scrollBottom,
+      refreshAdmin: true,
+      clearCliCache: true,
+    });
   }
 
   async function loadNewMessages({
@@ -874,6 +910,36 @@
     }
 
     if (msgs.length) scrollBottom(true);
+  }
+
+  async function reloadTranscript({
+    getActiveThreadId,
+    api,
+    clearThreadParticipants,
+    rebuildActiveThreadParticipants,
+    appendBubble,
+    updateOnlinePresence,
+    updateStatusBar,
+    setLastSeq,
+    scrollBottom,
+  }) {
+    const activeThreadId = getActiveThreadId();
+    if (!activeThreadId) {
+      return;
+    }
+    await loadTranscript({
+      id: activeThreadId,
+      api,
+      clearThreadParticipants,
+      rebuildActiveThreadParticipants,
+      appendBubble,
+      updateOnlinePresence,
+      updateStatusBar,
+      setLastSeq,
+      scrollBottom,
+      refreshAdmin: false,
+      clearCliCache: false,
+    });
   }
 
   async function sendMessage({
@@ -1036,6 +1102,7 @@
     clearCliActivityRows,
     refreshThreadAdmin,
     selectThread,
+    reloadTranscript,
     loadNewMessages,
     sendMessage,
     handleKey,

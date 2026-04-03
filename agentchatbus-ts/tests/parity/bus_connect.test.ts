@@ -263,7 +263,7 @@ describe('Bus Connect Parity Tests', () => {
         expect(payload2.agent.agent_id).not.toBe(agentId);
     });
 
-    it('bus_connect projects human-only message for agent view', async () => {
+    it('bus_connect excludes human-only messages from the agent view', async () => {
         // 对应 Python: L96-123
         const threadName = "Hidden-Topic-" + randomUUID().slice(0, 8);
         
@@ -273,16 +273,12 @@ describe('Bus Connect Parity Tests', () => {
             ide: "Human",
             model: "Admin"
         });
-        
-        await callMcpTool('msg_post', {
-            thread_id: payload1.thread.thread_id,
-            author: "system",
-            content: "Only humans should read this.",
-            expected_last_seq: payload1.current_seq,
-            reply_token: payload1.reply_token,
-            role: "system",
-            metadata: { visibility: "human_only", ui_type: "admin_switch_confirmation_required" }
-        });
+
+        const hidden = memoryStoreInstance!.postSystemMessage(
+            payload1.thread.thread_id,
+            "Only humans should read this.",
+            JSON.stringify({ visibility: "human_only", ui_type: "admin_switch_confirmation_required" })
+        );
 
         // Now connect as an agent
         const payload2 = await callMcpTool('bus_connect', {
@@ -290,10 +286,11 @@ describe('Bus Connect Parity Tests', () => {
             ide: "TestIDE",
             model: "TestModel"
         });
-        
-        expect(payload2.messages.length).toBeGreaterThanOrEqual(2); // System prompt + Hidden msg
-        expect(payload2.messages).toHaveLength(2);
-        expect(payload2.messages[1].content).toBe("[human-only content hidden]");
+
+        expect(hidden).toBeDefined();
+        expect(payload2.messages).toHaveLength(1);
+        expect(payload2.messages[0].seq).toBe(0);
+        expect(payload2.messages.some((message: { id?: string }) => message.id === (hidden as { id: string }).id)).toBe(false);
     });
 
     it('msg_post seq mismatch returns first read messages', async () => {
@@ -980,7 +977,7 @@ describe('Bus Connect Parity Tests', () => {
         expect(connectResult.messages.length).toBeGreaterThan(0);
     }, 10000);
 
-    it('msg_get projects human-only message for agent view', async () => {
+    it('msg_get treats human-only message ids as not found', async () => {
         // 对应 Python: L436-460
         const threadResult = await callMcpTool('bus_connect', {
             thread_name: "MsgGet Hidden Card",
@@ -989,30 +986,23 @@ describe('Bus Connect Parity Tests', () => {
         });
         
         const threadId = threadResult.thread.thread_id;
-        const agentId = threadResult.agent.agent_id;
 
-        // 发布 human_only 消息
-        const postResult = await callMcpTool('msg_post', {
-            thread_id: threadId,
-            author: "system",
-            content: "Human-only content",
-            expected_last_seq: threadResult.current_seq,
-            reply_token: threadResult.reply_token,
-            role: "system",
-            metadata: { visibility: "human_only", ui_type: "admin_switch_confirmation_required" }
-        });
+        const hidden = memoryStoreInstance!.postSystemMessage(
+            threadId,
+            "Human-only content",
+            JSON.stringify({ visibility: "human_only", ui_type: "admin_switch_confirmation_required" })
+        ) as { id: string };
 
         // 获取消息
         const getResult = await callMcpTool('msg_get', {
-            message_id: postResult.msg_id
+            message_id: hidden.id
         });
 
-        expect(getResult.found).toBe(true);
-        expect(getResult.message.content).toBe("[human-only content hidden]");
-        expect(getResult.message.metadata?.visibility).toBe("human_only");
+        expect(getResult.found).toBe(false);
+        expect(getResult.message).toBeNull();
     }, 10000);
 
-    it('msg_edit_history projects human-only contents for agent view', async () => {
+    it('msg_edit_history treats human-only message ids as not found', async () => {
         // 对应 Python: L463-495
         const threadResult = await callMcpTool('bus_connect', {
             thread_name: "Hidden Edit History",
@@ -1023,35 +1013,27 @@ describe('Bus Connect Parity Tests', () => {
         const threadId = threadResult.thread.thread_id;
         const agentId = threadResult.agent.agent_id;
 
-        // 发布 human_only 消息
-        const postResult = await callMcpTool('msg_post', {
-            thread_id: threadId,
-            author: agentId,
-            content: "hidden original",
-            expected_last_seq: threadResult.current_seq,
-            reply_token: threadResult.reply_token,
-            role: "assistant",
-            metadata: { visibility: "human_only" }
-        });
-
-        // 编辑消息
-        await callMcpTool('msg_edit', {
-            message_id: postResult.msg_id,
-            new_content: "hidden updated",
-            agent_id: agentId,
-            token: threadResult.agent.token
-        });
+        const hidden = memoryStoreInstance!.postHumanOnlyMessage(
+            threadId,
+            "hidden original",
+            { visibility: "human_only" },
+            {
+                author: agentId,
+                authorId: agentId,
+                role: "assistant"
+            }
+        ) as { id: string };
 
         // 获取编辑历史
         const historyResult = await callMcpTool('msg_edit_history', {
-            message_id: postResult.msg_id
+            message_id: hidden.id
         });
 
-        expect(historyResult.current_content).toBe("[human-only content hidden]");
-        expect(historyResult.edits[0].old_content).toBe("[human-only content hidden]");
+        expect(historyResult.found).toBe(false);
+        expect(historyResult.message_id).toBe(hidden.id);
     }, 10000);
 
-    it('msg_search projects human-only snippet for agent view', async () => {
+    it('msg_search excludes human-only content from search results', async () => {
         // 对应 Python: L498-531
         const threadResult = await callMcpTool('bus_connect', {
             thread_name: "Hidden Search",
@@ -1062,15 +1044,11 @@ describe('Bus Connect Parity Tests', () => {
         const threadId = threadResult.thread.thread_id;
 
         // 发布包含敏感词的 human_only 消息
-        await callMcpTool('msg_post', {
-            thread_id: threadId,
-            author: "system",
-            content: "secret approval token banana",
-            expected_last_seq: threadResult.current_seq,
-            reply_token: threadResult.reply_token,
-            role: "assistant",
-            metadata: { visibility: "human_only" }
-        });
+        memoryStoreInstance!.postSystemMessage(
+            threadId,
+            "secret approval token banana",
+            JSON.stringify({ visibility: "human_only" })
+        );
 
         // 搜索敏感词
         const searchResult = await callMcpTool('msg_search', {
@@ -1079,9 +1057,8 @@ describe('Bus Connect Parity Tests', () => {
             limit: 10
         });
 
-        expect(searchResult.total).toBe(1);
-        expect(searchResult.results[0].snippet).toBe("[human-only content hidden]");
-        expect(searchResult.results[0].snippet).not.toContain("banana");
+        expect(searchResult.total).toBe(0);
+        expect(searchResult.results).toEqual([]);
     }, 10000);
 
     it('msg_edit requires authenticated agent connection', async () => {

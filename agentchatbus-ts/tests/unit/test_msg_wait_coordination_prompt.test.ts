@@ -49,24 +49,23 @@ describe('Message Wait Coordination and Visibility', () => {
         expect(out).not.toHaveProperty('coordination_prompt');
     });
 
-    it('test_msg_wait_and_msg_list_project_human_only_system_messages', async () => {
+    it('test_msg_wait_and_msg_list_exclude_human_only_system_messages', async () => {
         // 对应 Python: L95-148
-        /** human_only system notices should reach agents only as placeholder content. */
+        /** human_only system notices should be invisible to agent-facing wait/list flows. */
         const { thread } = store.createThread("msg-wait-human-only");
         const agent = store.registerAgent({ ide: "VS Code", model: "GPT-5.3-Codex" });
 
         // Simulate creating a system message with human_only visibility
-        const systemMsg = store.postMessage({
-            threadId: thread.id,
-            author: "system",
-            content: "Auto Administrator Timeout triggered after 100 seconds.",
-            role: "system",
-            metadata: {
+        const systemMsg = store.postSystemMessage(
+            thread.id,
+            "Auto Administrator Timeout triggered after 100 seconds.",
+            JSON.stringify({
                 ui_type: "admin_switch_confirmation_required",
                 visibility: "human_only",
                 private_body: "do not leak this to agents"
-            }
-        });
+            })
+        );
+        const transcript = store.getHumanTranscript(thread.id, 0, false);
 
         const out = await store.waitForMessages({
             threadId: thread.id,
@@ -76,30 +75,20 @@ describe('Message Wait Coordination and Visibility', () => {
             agentToken: agent.token
         });
 
-        expect(out.messages).toHaveLength(1);
-        expect(out.messages[0].content).toBe("[human-only content hidden]");
-        expect(out.messages[0].metadata?.visibility).toBe("human_only");
-        expect(out.messages[0].metadata).not.toHaveProperty("private_body");
+        expect(systemMsg).toBeDefined();
+        expect(out.messages).toEqual([]);
+        expect(transcript).toHaveLength(1);
+        expect(transcript[0].entry_kind).toBe("human_only");
+        expect(transcript[0].content).toBe("Auto Administrator Timeout triggered after 100 seconds.");
 
         const listed = store.listMessages({
             threadId: thread.id,
             afterSeq: 0,
             returnFormat: 'json'
         });
-        
+
         const listedPayload = JSON.parse(listed[0].text);
-        // Note: MemoryStore.listMessages should also use projection if it's for an agent.
-        // But currently listMessages doesn't take agentId. 
-        // In Python, listMessages in dispatch.py DOES NOT take agentId either, 
-        // but it filters by default if it's not a human view? 
-        // Actually Python's handle_msg_list in dispatch.py:
-        // msgs = await crud.get_messages(db, thread_id, after_seq, limit=limit)
-        // return [types.TextContent(text=json.dumps([project_message_for_agent(m) for m in msgs]))]
-        
-        // Let's check MemoryStore.listMessages implementation in TS.
-        // I saw it earlier, it calls this.getMessages(threadId, afterSeq) but NOT projectMessagesForAgent.
-        // Wait, I should double check that.
-        expect(listedPayload[0].content).toBe("[human-only content hidden]");
+        expect(listedPayload).toEqual([]);
     });
 
     it('test_msg_wait_returns_targeted_takeover_instruction_to_agent', async () => {
