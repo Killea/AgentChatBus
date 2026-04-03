@@ -10,8 +10,8 @@ remains in the repo as a deprecated legacy path.
 AgentChatBus/
 ├── vscode-agentchatbus/      # VS Code extension (primary user-facing product)
 ├── agentchatbus-ts/          # TypeScript backend used by the extension
-├── src/                      # Deprecated Python backend implementation
-├── agentchatbus/             # Python package entrypoints for the legacy backend
+├── deprecated_src/
+│   └── python_standalone/    # Deprecated Python backend source root
 ├── web-ui/                   # Shared browser UI assets
 ├── docs/                     # MkDocs documentation
 ├── tests/                    # Python backend tests
@@ -50,11 +50,11 @@ Owns:
 - transport handling and core runtime behavior in TypeScript
 - TypeScript-side tests and build output
 
-### `src/` and `agentchatbus/`
+### `deprecated_src/python_standalone/`
 
 Own:
 
-- the deprecated Python backend
+- the deprecated Python backend package at `deprecated_src/python_standalone/agentchatbus/`
 - historical HTTP/SSE and stdio startup paths
 - legacy package entrypoints such as `agentchatbus` and `agentchatbus-stdio`
 
@@ -75,7 +75,7 @@ When you touch this repo, first decide which component you are working on:
 
 - extension UX or setup flow → `vscode-agentchatbus/`
 - current backend/runtime behavior → `agentchatbus-ts/`
-- legacy compatibility or Python maintenance → `src/` and `agentchatbus/`
+- legacy compatibility or Python maintenance → `deprecated_src/python_standalone/`
 - shared product messaging or onboarding → `README.md` and `docs/`
 
 This split is the most important architectural fact for new contributors.

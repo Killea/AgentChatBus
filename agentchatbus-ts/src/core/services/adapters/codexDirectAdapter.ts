@@ -157,6 +157,19 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function clipActivityContent(value: unknown, maxLength = 4000): string | undefined {
+  const normalized = String(value || "")
+    .replace(/\r\n/g, "\n")
+    .trim();
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
 function clipActivityText(value: unknown, maxLength = 260): string | undefined {
   const normalized = String(value || "")
     .replace(/\s+/g, " ")
@@ -183,6 +196,18 @@ function appendActivityDelta(previous: string | undefined, delta: string | undef
     return current;
   }
   return clipActivityText(`${current} ${addition}`, maxLength);
+}
+
+function appendActivityContent(previous: string | undefined, delta: string | undefined, maxLength = 4000): string | undefined {
+  const addition = clipActivityContent(delta, maxLength);
+  if (!addition) {
+    return clipActivityContent(previous, maxLength);
+  }
+  const current = clipActivityContent(previous, maxLength);
+  if (!current) {
+    return addition;
+  }
+  return clipActivityContent(`${current}${addition}`, maxLength);
 }
 
 function extractDirectString(
@@ -518,15 +543,38 @@ export function buildCodexDirectActivityFromItem(
   }
   const turnId = fallbackTurnId;
   const type = String(item.type || "").trim();
+  const status = normalizeActivityStatus(item.status);
+  const startedAt = extractDirectString(item, ["startedAt", "started_at", "createdAt", "created_at"]);
+  const completedAt = status !== "in_progress"
+    ? extractDirectString(item, ["completedAt", "completed_at", "finishedAt", "finished_at", "updatedAt", "updated_at"])
+      || nowIso()
+    : undefined;
   if (type === "reasoning") {
     return {
       at: nowIso(),
       turn_id: turnId,
       item_id: itemId,
       kind: "thinking",
-      status: "in_progress",
+      status,
       label: "Thinking",
       summary: extractReasoningSummary(item) || "Working through the next steps",
+      started_at: startedAt,
+      completed_at: completedAt,
+    };
+  }
+  if (type === "agentMessage") {
+    const content = clipActivityContent(item.text, 6_000);
+    return {
+      at: nowIso(),
+      turn_id: turnId,
+      item_id: itemId,
+      kind: "agent_message",
+      status,
+      label: "Message",
+      summary: clipActivityText(content, 320),
+      content,
+      started_at: startedAt,
+      completed_at: completedAt,
     };
   }
   if (type === "plan") {
@@ -536,9 +584,11 @@ export function buildCodexDirectActivityFromItem(
       turn_id: turnId,
       item_id: itemId,
       kind: "plan",
-      status: "in_progress",
+      status,
       label: "Thinking",
       summary: planSummary || "Updating plan",
+      started_at: startedAt,
+      completed_at: completedAt,
     };
   }
   if (type === "mcpToolCall") {
@@ -547,11 +597,13 @@ export function buildCodexDirectActivityFromItem(
       turn_id: turnId,
       item_id: itemId,
       kind: "mcp_tool_call",
-      status: normalizeActivityStatus(item.status),
+      status,
       label: "Using tool",
       server: typeof item.server === "string" ? item.server.trim() || undefined : undefined,
       tool: typeof item.tool === "string" ? item.tool.trim() || undefined : undefined,
       summary: summarizeMcpToolCallItem(item),
+      started_at: startedAt,
+      completed_at: completedAt,
     };
   }
   if (type === "dynamicToolCall") {
@@ -560,10 +612,12 @@ export function buildCodexDirectActivityFromItem(
       turn_id: turnId,
       item_id: itemId,
       kind: "dynamic_tool_call",
-      status: normalizeActivityStatus(item.status),
+      status,
       label: "Using tool",
       tool: typeof item.tool === "string" ? item.tool.trim() || undefined : undefined,
       summary: clipActivityText(item.success === false ? "Tool call failed" : undefined, 220),
+      started_at: startedAt,
+      completed_at: completedAt,
     };
   }
   if (type === "commandExecution") {
@@ -572,11 +626,14 @@ export function buildCodexDirectActivityFromItem(
       turn_id: turnId,
       item_id: itemId,
       kind: "command_execution",
-      status: normalizeActivityStatus(item.status),
+      status,
       label: "Running command",
       command: typeof item.command === "string" ? item.command.trim() || undefined : undefined,
       cwd: typeof item.cwd === "string" ? item.cwd.trim() || undefined : undefined,
       summary: summarizeCommandExecutionItem(item),
+      content: clipActivityContent(item.aggregatedOutput, 3_000),
+      started_at: startedAt,
+      completed_at: completedAt,
     };
   }
   if (type === "fileChange") {
@@ -589,11 +646,13 @@ export function buildCodexDirectActivityFromItem(
       turn_id: turnId,
       item_id: itemId,
       kind: "file_change",
-      status: normalizeActivityStatus(item.status),
+      status,
       label: "Editing files",
       files,
       diff: files?.[0]?.path ? clipActivityText(firstChange?.diff, 600) : undefined,
       summary: summarizeFileChangeItem(item, files),
+      started_at: startedAt,
+      completed_at: completedAt,
     };
   }
   return null;
@@ -1232,6 +1291,7 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
           status: next.status || previous?.status || "in_progress",
           label: next.label || previous?.label || "Thinking",
           summary: next.summary !== undefined ? next.summary : previous?.summary,
+          content: next.content !== undefined ? next.content : previous?.content,
           server: next.server !== undefined ? next.server : previous?.server,
           tool: next.tool !== undefined ? next.tool : previous?.tool,
           command: next.command !== undefined ? next.command : previous?.command,
@@ -1239,6 +1299,8 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
           files: next.files !== undefined ? next.files : previous?.files,
           diff: next.diff !== undefined ? next.diff : previous?.diff,
           plan_steps: next.plan_steps !== undefined ? next.plan_steps : previous?.plan_steps,
+          started_at: next.started_at !== undefined ? next.started_at : previous?.started_at,
+          completed_at: next.completed_at !== undefined ? next.completed_at : previous?.completed_at,
         };
         emitActivity(activity);
       };
@@ -1690,8 +1752,9 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
           }
 
           if (codexEventMethod === "mcp_tool_call_begin" || codexEventMethod === "mcp_tool_call_end") {
+            const eventAt = nowIso();
             upsertActivity({
-              at: nowIso(),
+              at: eventAt,
               turn_id: nextTurnIdFromParams || activeTurnId,
               item_id: extractCodexEventActivityItemId(params, "codex-tool", activeTurnId, activeThreadId),
               kind: "mcp_tool_call",
@@ -1702,6 +1765,8 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
               server: extractCodexEventToolServer(params),
               tool: extractCodexEventToolName(params),
               summary: extractCodexEventSummary(params, 260) || extractCodexEventError(params, method),
+              started_at: codexEventMethod === "mcp_tool_call_begin" ? eventAt : undefined,
+              completed_at: codexEventMethod === "mcp_tool_call_end" ? eventAt : undefined,
             });
             emitNativeRuntime({
               thread_id: activeThreadId,
@@ -1742,6 +1807,7 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
             || codexEventMethod === "terminal_interaction"
             || codexEventMethod === "exec_command_end"
           ) {
+            const eventAt = nowIso();
             const itemId = extractCodexEventActivityItemId(params, "codex-command", activeTurnId, activeThreadId);
             const summary = codexEventMethod === "exec_command_output_delta"
               ? appendActivityDelta(activityByItemId.get(itemId)?.summary, extractCodexEventOutputDelta(params), 260)
@@ -1749,7 +1815,7 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
                 ? clipActivityText(`Sent input: ${extractCodexEventSummary(params, 220) || "interaction"}`, 220)
                 : extractCodexEventSummary(params, 260) || extractCodexEventError(params, method);
             upsertActivity({
-              at: nowIso(),
+              at: eventAt,
               turn_id: nextTurnIdFromParams || activeTurnId,
               item_id: itemId,
               kind: "command_execution",
@@ -1760,6 +1826,13 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
               command: extractCodexEventCommand(params),
               cwd: extractCodexEventCwd(params),
               summary,
+              content: codexEventMethod === "exec_command_output_delta"
+                ? appendActivityContent(activityByItemId.get(itemId)?.content, extractCodexEventOutputDelta(params), 3_000)
+                : codexEventMethod === "terminal_interaction"
+                  ? appendActivityContent(activityByItemId.get(itemId)?.content, `Sent input: ${extractCodexEventSummary(params, 220) || "interaction"}`, 3_000)
+                  : activityByItemId.get(itemId)?.content,
+              started_at: codexEventMethod === "exec_command_begin" ? eventAt : undefined,
+              completed_at: codexEventMethod === "exec_command_end" ? eventAt : undefined,
             });
             emitNativeRuntime({
               thread_id: activeThreadId,
@@ -1774,8 +1847,9 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
 
           if (codexEventMethod === "patch_apply_begin" || codexEventMethod === "patch_apply_end") {
             const files = extractActivityFiles(params);
+            const eventAt = nowIso();
             upsertActivity({
-              at: nowIso(),
+              at: eventAt,
               turn_id: nextTurnIdFromParams || activeTurnId,
               item_id: extractCodexEventActivityItemId(params, "codex-file-change", activeTurnId, activeThreadId),
               kind: "file_change",
@@ -1787,6 +1861,8 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
               summary: extractCodexEventSummary(params, 220)
                 || clipActivityText(files?.slice(0, 3).map((entry) => entry.path).join(", "), 220)
                 || "Updating files",
+              started_at: codexEventMethod === "patch_apply_begin" ? eventAt : undefined,
+              completed_at: codexEventMethod === "patch_apply_end" ? eventAt : undefined,
             });
             emitNativeRuntime({
               thread_id: activeThreadId,
@@ -1863,6 +1939,18 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
           if (codexEventMethod === "agent_message_delta" || codexEventMethod === "agent_message_content_delta") {
             const delta = extractCodexEventOutputDelta(params);
             if (delta) {
+              const itemId = extractCodexEventActivityItemId(params, "codex-message", activeTurnId, activeThreadId);
+              upsertActivity({
+                at: nowIso(),
+                turn_id: nextTurnIdFromParams || activeTurnId,
+                item_id: itemId,
+                kind: "agent_message",
+                status: "in_progress",
+                label: "Message",
+                content: appendActivityContent(activityByItemId.get(itemId)?.content, delta, 6_000),
+                summary: appendActivityDelta(activityByItemId.get(itemId)?.summary, delta, 320),
+                started_at: activityByItemId.get(itemId)?.started_at || nowIso(),
+              });
               hooks.onOutput("stdout", delta);
             }
             return;
@@ -1871,6 +1959,20 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
           if (codexEventMethod === "agent_message") {
             const messageText = extractCodexEventSummary(params, 20_000);
             if (messageText) {
+              const eventAt = nowIso();
+              const itemId = extractCodexEventActivityItemId(params, "codex-message", activeTurnId, activeThreadId);
+              upsertActivity({
+                at: eventAt,
+                turn_id: nextTurnIdFromParams || activeTurnId,
+                item_id: itemId,
+                kind: "agent_message",
+                status: "completed",
+                label: "Message",
+                content: clipActivityContent(messageText, 6_000),
+                summary: clipActivityText(messageText, 320),
+                started_at: activityByItemId.get(itemId)?.started_at || eventAt,
+                completed_at: eventAt,
+              });
               hooks.onOutput("stdout", messageText.endsWith("\n") ? messageText : `${messageText}\n`);
             }
             return;
@@ -2032,6 +2134,18 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
           const itemId = typeof params.itemId === "string" ? params.itemId.trim() : "";
           if (itemId) {
             streamedAgentMessageItemIds.add(itemId);
+            const eventAt = nowIso();
+            upsertActivity({
+              at: eventAt,
+              turn_id: extractTurnIdFromPayload(params) || activeTurnId,
+              item_id: itemId,
+              kind: "agent_message",
+              status: "in_progress",
+              label: "Message",
+              content: appendActivityContent(activityByItemId.get(itemId)?.content, params.delta, 6_000),
+              summary: appendActivityDelta(activityByItemId.get(itemId)?.summary, params.delta, 320),
+              started_at: activityByItemId.get(itemId)?.started_at || eventAt,
+            });
           }
           hooks.onOutput("stdout", params.delta);
           return;
@@ -2048,6 +2162,7 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
               status: "in_progress",
               label: "Running command",
               summary: appendActivityDelta(activityByItemId.get(itemId)?.summary, params.delta, 260),
+              content: appendActivityContent(activityByItemId.get(itemId)?.content, params.delta, 3_000),
             });
           }
           hooks.onOutput("stdout", params.delta);
@@ -2065,6 +2180,7 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
               status: "in_progress",
               label: "Editing files",
               summary: appendActivityDelta(activityByItemId.get(itemId)?.summary, params.delta, 220),
+              content: appendActivityContent(activityByItemId.get(itemId)?.content, params.delta, 3_000),
             });
           }
           hooks.onOutput("stdout", params.delta);
@@ -2082,6 +2198,11 @@ class CodexDirectExecutor implements CodexDirectCommandExecutor {
               status: "in_progress",
               label: "Running command",
               summary: clipActivityText(`Sent input: ${String(params.stdin || "").trim()}`, 220),
+              content: appendActivityContent(
+                activityByItemId.get(itemId)?.content,
+                `Sent input: ${String(params.stdin || "").trim()}`,
+                3_000,
+              ),
             });
           }
           return;

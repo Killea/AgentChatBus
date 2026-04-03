@@ -52,6 +52,25 @@ describe("parseCodexDirectAppServerResult", () => {
     expect(fileActivity?.diff).toContain("@@ -1 +1 @@");
   });
 
+  it("normalizes agentMessage items into native card activity events", () => {
+    const messageActivity = buildCodexDirectActivityFromItem({
+      id: "msg-1",
+      type: "agentMessage",
+      status: "completed",
+      text: "I am checking the renderer before I update the command rows.",
+    }, "turn-1");
+
+    expect(messageActivity).toMatchObject({
+      turn_id: "turn-1",
+      item_id: "msg-1",
+      kind: "agent_message",
+      status: "completed",
+      label: "Message",
+      summary: "I am checking the renderer before I update the command rows.",
+      content: "I am checking the renderer before I update the command rows.",
+    });
+  });
+
   it("extracts thread and turn ids while aggregating streamed agent message deltas", () => {
     const result = parseCodexDirectAppServerResult([
       "{\"id\":\"1\",\"result\":{\"threadId\":\"thread-42\"}}",

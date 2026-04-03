@@ -1,0 +1,133 @@
+"""
+AgentChatBus Configuration
+"""
+import os
+import json
+from pathlib import Path
+
+# Standalone Python package root: deprecated_src/python_standalone
+PACKAGE_DIR = Path(__file__).resolve().parent
+BASE_DIR = PACKAGE_DIR.parent
+SOURCE_LAYOUT_MARKER = BASE_DIR / "_legacy_wrapper_root"
+USER_BASE_DIR = Path.home() / ".agentchatbus"
+DATA_DIR = BASE_DIR / "data" if SOURCE_LAYOUT_MARKER.exists() else USER_BASE_DIR
+
+# SQLite database file
+_repo_default_db = DATA_DIR / "bus.db"
+_user_default_db = USER_BASE_DIR / "bus.db"
+
+config_data = {}
+_config_file = DATA_DIR / "config.json"
+if _config_file.exists():
+    try:
+        with open(_config_file, "r", encoding="utf-8") as _f:
+            config_data = json.load(_f)
+    except Exception:
+        pass
+
+if os.getenv("AGENTCHATBUS_DB"):
+	DB_PATH = os.getenv("AGENTCHATBUS_DB")
+elif _repo_default_db.parent.exists():
+	DB_PATH = str(_repo_default_db)
+else:
+	# Installed package mode normally runs outside repository checkout.
+	DB_PATH = str(_user_default_db)
+
+# HTTP server - default to localhost only for security
+HOST = os.getenv("AGENTCHATBUS_HOST", config_data.get("HOST", "127.0.0.1"))
+PORT = int(os.getenv("AGENTCHATBUS_PORT", config_data.get("PORT", "39765")))
+
+# Agent heartbeat timeout (seconds). Agents missing this window are marked offline.
+AGENT_HEARTBEAT_TIMEOUT = int(os.getenv("AGENTCHATBUS_HEARTBEAT_TIMEOUT", config_data.get("AGENT_HEARTBEAT_TIMEOUT", "60")))
+
+# SSE long-poll timeout for msg.wait (seconds)
+MSG_WAIT_TIMEOUT = int(os.getenv("AGENTCHATBUS_WAIT_TIMEOUT", config_data.get("MSG_WAIT_TIMEOUT", "300")))
+# MCP msg_wait minimum timeout clamp (milliseconds) for blocking waits.
+# This behavior is ported from the TypeScript backend implementation:
+# - blocking waits are clamped to reduce short-poll churn
+# - fast-return recovery paths are intentionally exempted in dispatch logic
+MSG_WAIT_MIN_TIMEOUT_MS = int(
+    os.getenv("AGENTCHATBUS_WAIT_MIN_TIMEOUT_MS", config_data.get("MSG_WAIT_MIN_TIMEOUT_MS", "60000"))
+)
+BUS_VERSION = "0.1.0"
+
+# Strict message sync mode (mandatory)
+# Default lease must accommodate typical LLM thinking time.
+REPLY_TOKEN_LEASE_SECONDS = int(os.getenv(
+    "AGENTCHATBUS_REPLY_TOKEN_LEASE_SECONDS",
+    config_data.get("REPLY_TOKEN_LEASE_SECONDS", "3600"),
+))
+# Do not allow missing messages
+SEQ_TOLERANCE = int(os.getenv("AGENTCHATBUS_SEQ_TOLERANCE", config_data.get("SEQ_TOLERANCE", "0")))
+SEQ_MISMATCH_MAX_MESSAGES = int(os.getenv(
+    "AGENTCHATBUS_SEQ_MISMATCH_MAX_MESSAGES",
+    config_data.get("SEQ_MISMATCH_MAX_MESSAGES", "100"),
+))
+
+# Rate limiting: max messages per minute per author identity (0 = disabled)
+RATE_LIMIT_MSG_PER_MINUTE = int(os.getenv("AGENTCHATBUS_RATE_LIMIT", "30"))
+RATE_LIMIT_ENABLED = RATE_LIMIT_MSG_PER_MINUTE > 0
+
+# Agent Attention Mechanisms
+ENABLE_HANDOFF_TARGET = str(os.getenv("AGENTCHATBUS_ENABLE_HANDOFF_TARGET", config_data.get("ENABLE_HANDOFF_TARGET", "false"))).lower() in {"1", "true", "yes"}
+ENABLE_STOP_REASON = str(os.getenv("AGENTCHATBUS_ENABLE_STOP_REASON", config_data.get("ENABLE_STOP_REASON", "false"))).lower() in {"1", "true", "yes"}
+ENABLE_PRIORITY = str(os.getenv("AGENTCHATBUS_ENABLE_PRIORITY", config_data.get("ENABLE_PRIORITY", "false"))).lower() in {"1", "true", "yes"}
+# SHOW_AD is intentionally opt-in per process invocation. Only honor an explicit
+# environment variable (`AGENTCHATBUS_SHOW_AD`) passed at startup. Do NOT fall
+# back to the persisted `data/config.json` value. This prevents previously
+# saved config from forcing ad mode when the operator does not request it.
+_show_ad_env = os.getenv("AGENTCHATBUS_SHOW_AD")
+if _show_ad_env is None:
+    SHOW_AD = False
+else:
+    SHOW_AD = str(_show_ad_env).lower() in {"1", "true", "yes"}
+
+# Content filter: block messages containing known secret patterns
+CONTENT_FILTER_ENABLED = os.getenv("AGENTCHATBUS_CONTENT_FILTER_ENABLED", "true").lower() in {"1", "true", "yes"}
+# Conversation timeout: auto-close threads inactive for this many minutes (0 = disabled)
+THREAD_TIMEOUT_MINUTES = int(os.getenv("AGENTCHATBUS_THREAD_TIMEOUT", "0"))
+THREAD_TIMEOUT_ENABLED = THREAD_TIMEOUT_MINUTES > 0
+# How often the timeout sweep runs (seconds)
+THREAD_TIMEOUT_SWEEP_INTERVAL = int(os.getenv("AGENTCHATBUS_TIMEOUT_SWEEP_INTERVAL", "60"))
+# Dev/UI: hot-reload disabled by default (set AGENTCHATBUS_RELOAD=1 to enable for development)
+RELOAD_ENABLED = os.getenv("AGENTCHATBUS_RELOAD", "0") in {"1", "true", "yes"}
+# Expose per-thread resources in MCP server (default: false for cleaner MCP client UI)
+# When enabled, each thread gets transcript, summary (if closed), and state resources
+EXPOSE_THREAD_RESOURCES = os.getenv("AGENTCHATBUS_EXPOSE_THREAD_RESOURCES", "false").lower() in {"1", "true", "yes"}
+# Admin token for settings endpoint (optional — if unset, PUT /api/settings is unprotected)
+ADMIN_TOKEN: str | None = os.getenv("AGENTCHATBUS_ADMIN_TOKEN")
+
+def get_config_dict():
+    return {
+        "HOST": HOST,
+        "PORT": PORT,
+        "AGENT_HEARTBEAT_TIMEOUT": AGENT_HEARTBEAT_TIMEOUT,
+        "MSG_WAIT_TIMEOUT": MSG_WAIT_TIMEOUT,
+        "MSG_WAIT_MIN_TIMEOUT_MS": MSG_WAIT_MIN_TIMEOUT_MS,
+        "REPLY_TOKEN_LEASE_SECONDS": REPLY_TOKEN_LEASE_SECONDS,
+        "SEQ_TOLERANCE": SEQ_TOLERANCE,
+        "SEQ_MISMATCH_MAX_MESSAGES": SEQ_MISMATCH_MAX_MESSAGES,
+        "EXPOSE_THREAD_RESOURCES": EXPOSE_THREAD_RESOURCES,
+        "ENABLE_HANDOFF_TARGET": ENABLE_HANDOFF_TARGET,
+        "ENABLE_STOP_REASON": ENABLE_STOP_REASON,
+        "ENABLE_PRIORITY": ENABLE_PRIORITY,
+        "SHOW_AD": SHOW_AD,
+    }
+
+def save_config_dict(new_data: dict):
+    config_file = DATA_DIR / "config.json"
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    current = {}
+    if config_file.exists():
+        with open(config_file, "r", encoding="utf-8") as f:
+            current = json.load(f)
+            
+    # Prevent saving transient/show-only flags by default. Strip SHOW_AD from
+    # the merged data so it is not persisted unless explicitly intended.
+    merged = dict(current)
+    merged.update(new_data)
+    if "SHOW_AD" in merged:
+        merged.pop("SHOW_AD", None)
+    with open(config_file, "w", encoding="utf-8") as f:
+        json.dump(merged, f, indent=2)

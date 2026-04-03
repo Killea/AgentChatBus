@@ -276,6 +276,7 @@
         || session.created_at
         || "",
       ).trim(),
+      content_blocks: Array.isArray(card.content_blocks) ? card.content_blocks : [],
       content_sections: sections,
     };
   }
@@ -398,6 +399,66 @@
     `;
   }
 
+  function buildBlockItemsHtml(block) {
+    const items = Array.isArray(block?.items) ? block.items : [];
+    if (!items.length) {
+      return "";
+    }
+    if (block.kind === "plan") {
+      return `
+        <div class="msg-native-card__plan">
+          ${items.map((item) => `
+            <div class="msg-native-card__plan-step" data-status="${escapeHtml(item.status || "")}">
+              <span class="msg-native-card__plan-dot"></span>
+              <span>${escapeHtml(item.label || "")}</span>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+    return `
+      <div class="msg-native-card__items">
+        ${items.map((item) => `
+          <div class="msg-native-card__item" data-kind="${escapeHtml(item.kind || "")}" data-status="${escapeHtml(item.status || "")}">
+            <div class="msg-native-card__item-main">
+              <span class="msg-native-card__item-label">${escapeHtml(item.label || "")}</span>
+              ${item.value ? `<span class="msg-native-card__item-value ${(block.kind === "command" || block.kind === "files" || item.kind === "cwd") ? "msg-native-card__item-value--mono" : ""}">${escapeHtml(item.value)}</span>` : ""}
+            </div>
+            ${getItemStatusLabel(item) ? `<span class="msg-native-card__item-badge" data-status="${escapeHtml(item.status || "")}">${escapeHtml(getItemStatusLabel(item))}</span>` : ""}
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  function buildBlockHtml(block) {
+    if (!block || typeof block !== "object") {
+      return "";
+    }
+    const title = String(block.title || "Activity").trim();
+    const summary = String(block.summary || "").trim();
+    const meta = String(block.meta || "").trim();
+    const content = String(block.content || "").trim();
+    const diff = String(block.diff || "").trim();
+    const statusLabel = getSectionStatusLabel(block);
+    const showSummary = block.kind === "message" ? Boolean(summary && !content) : Boolean(summary);
+    const showContent = Boolean(content);
+    const showDiff = Boolean(diff && block.kind === "diff");
+    return `
+      <section class="msg-native-card__block" data-kind="${escapeHtml(block.kind || "placeholder")}" data-status="${escapeHtml(block.status || "placeholder")}">
+        <div class="msg-native-card__block-head">
+          <div class="msg-native-card__block-title">${escapeHtml(title)}</div>
+          ${statusLabel ? `<span class="msg-native-card__block-badge" data-status="${escapeHtml(block.status || "placeholder")}">${escapeHtml(statusLabel)}</span>` : ""}
+        </div>
+        ${showSummary ? `<div class="msg-native-card__block-summary">${escapeHtml(summary)}</div>` : ""}
+        ${meta ? `<div class="msg-native-card__block-meta">${escapeHtml(meta)}</div>` : ""}
+        ${showContent ? `<div class="msg-native-card__block-content ${block.kind === "message" ? "msg-native-card__block-content--message" : ""}">${escapeHtml(content)}</div>` : ""}
+        ${showDiff ? `<pre class="msg-native-card__diff">${escapeHtml(diff)}</pre>` : ""}
+        ${buildBlockItemsHtml(block)}
+      </section>
+    `;
+  }
+
   function getReentryPromptState(session) {
     const state = session?.reentry_prompt;
     return state && typeof state === "object" ? state : null;
@@ -423,13 +484,17 @@
   }
 
   function buildNativeCardHtml(model, actionState) {
+    const blocks = Array.isArray(model.content_blocks) ? model.content_blocks : [];
+    const useBlocks = blocks.length > 0;
     return `
       <div class="msg-native-card__header">
         <span class="msg-native-card__status">${escapeHtml(model.shell_status_text || "Connected")}</span>
         <span class="msg-native-card__time">${escapeHtml(model.updated_at ? formatActivityTime(model.updated_at) : "")}</span>
       </div>
       <div class="msg-native-card__body">
-        ${model.content_sections.map((section) => buildSectionHtml(section)).join("")}
+        ${useBlocks
+          ? blocks.map((block) => buildBlockHtml(block)).join("")
+          : model.content_sections.map((section) => buildSectionHtml(section)).join("")}
       </div>
       ${buildNativePromptPanelsHtml(model.session)}
       <div class="msg-native-card__footer">

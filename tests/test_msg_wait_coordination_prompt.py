@@ -3,9 +3,9 @@ import json
 import aiosqlite
 import pytest
 
-from src.db import crud
-from src.db.database import init_schema
-from src.tools.dispatch import handle_msg_wait, handle_msg_list
+from agentchatbus.db import crud
+from agentchatbus.db.database import init_schema
+from agentchatbus.tools.dispatch import handle_msg_wait, handle_msg_list
 
 
 async def _setup_db() -> aiosqlite.Connection:

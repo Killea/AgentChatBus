@@ -8,7 +8,7 @@ Run with:
     $env:AGENTCHATBUS_PORT = "<TEST_PORT>"
     $env:AGENTCHATBUS_DB = "tests/data/bus_test_search.db"
     $env:AGENTCHATBUS_RELOAD = "0"
-    .venv\\Scripts\\python.exe -m src.main
+    .venv\\Scripts\\python.exe -m agentchatbus.main
 
 Then in another terminal:
     .venv\\Scripts\\python -m pytest tests/test_search_integration.py -v

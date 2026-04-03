@@ -4,9 +4,9 @@ from datetime import datetime, timedelta, timezone
 import aiosqlite
 import pytest
 
-import src.main as app_main
-from src.db import crud
-from src.db.database import init_schema
+import agentchatbus.main as app_main
+from agentchatbus.db import crud
+from agentchatbus.db.database import init_schema
 
 
 async def _setup_db() -> aiosqlite.Connection:

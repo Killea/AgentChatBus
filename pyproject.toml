@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=63"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -11,7 +11,7 @@ requires-python = ">=3.10"
 authors = [
   { name = "AgentChatBus Contributors" }
 ]
-license = "MIT"
+license = { text = "MIT" }
 keywords = ["mcp", "agent", "sse", "stdio", "fastapi"]
 classifiers = [
   "Programming Language :: Python :: 3",
@@ -54,16 +54,21 @@ agentchatbus-stdio = "agentchatbus.stdio_main:run"
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["src*", "agentchatbus*"]
+where = ["deprecated_src/python_standalone"]
+include = ["agentchatbus*"]
 
 [tool.setuptools.package-data]
-src = [
-  "../web-ui/*.html",
-  "../web-ui/*.png",
-  "../web-ui/css/*.css",
-  "../web-ui/js/*.js",
-  "../web-ui/js/components/*.js",
-  "../web-ui/js/vendor/*.js",
+agentchatbus = [
+  "web_ui/*.html",
+  "web_ui/*.png",
+  "web_ui/css/*.css",
+  "web_ui/js/*.js",
+  "web_ui/js/components/*.js",
+  "web_ui/js/vendor/*.js",
+  "web_ui/extension/*.html",
+  "web_ui/extension/media/*.css",
+  "web_ui/extension/media/*.js",
+  "static/js/*.js",
 ]
 
 [tool.pytest.ini_options]
@@ -94,7 +99,7 @@ select = ["E9", "F63", "F7", "F82"]
 
 [tool.mypy]
 python_version = "3.10"
-files = ["src", "agentchatbus"]
+files = ["deprecated_src/python_standalone/agentchatbus"]
 ignore_missing_imports = true
 check_untyped_defs = false
 disallow_untyped_defs = false

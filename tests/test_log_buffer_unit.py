@@ -1,4 +1,4 @@
-from src.log_buffer import _should_skip_line
+from agentchatbus.log_buffer import _should_skip_line
 
 
 def test_skip_shared_log_poll_access_lines() -> None:

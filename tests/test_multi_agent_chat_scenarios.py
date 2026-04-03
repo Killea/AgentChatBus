@@ -23,26 +23,26 @@ import time
 import aiosqlite
 import pytest
 
-from src.db.database import init_schema
-from src.tools.dispatch import handle_bus_connect, handle_msg_list, handle_msg_post, handle_msg_wait
-import src.mcp_server
+from agentchatbus.db.database import init_schema
+from agentchatbus.tools.dispatch import handle_bus_connect, handle_msg_list, handle_msg_post, handle_msg_wait
+import agentchatbus.mcp_server
 
 
 @pytest.fixture(autouse=True)
 def isolated_mcp_context():
     """Keep the in-process MCP connection context deterministic per test."""
-    src.mcp_server._session_id.set("test-session")
-    src.mcp_server._current_agent_id.set(None)
-    src.mcp_server._current_agent_token.set(None)
-    src.mcp_server._connection_agents.clear()
+    agentchatbus.mcp_server._session_id.set("test-session")
+    agentchatbus.mcp_server._current_agent_id.set(None)
+    agentchatbus.mcp_server._current_agent_token.set(None)
+    agentchatbus.mcp_server._connection_agents.clear()
     yield
 
 
 def _activate_agent(agent_id: str, token: str) -> None:
     """Simulate that subsequent dispatch calls come from this agent's session."""
-    src.mcp_server._current_agent_id.set(agent_id)
-    src.mcp_server._current_agent_token.set(token)
-    src.mcp_server.set_connection_agent(agent_id, token)
+    agentchatbus.mcp_server._current_agent_id.set(agent_id)
+    agentchatbus.mcp_server._current_agent_token.set(token)
+    agentchatbus.mcp_server.set_connection_agent(agent_id, token)
 
 
 async def _wait_as(

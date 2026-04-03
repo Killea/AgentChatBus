@@ -5,9 +5,9 @@ import pytest
 
 import mcp.types as types
 
-from src.db import crud
-from src.db.database import init_schema
-from src.tools.dispatch import handle_msg_list
+from agentchatbus.db import crud
+from agentchatbus.db.database import init_schema
+from agentchatbus.tools.dispatch import handle_msg_list
 
 
 async def _post_message(db, thread_id: str, author: str, content: str, role: str = "user", metadata: dict | None = None):

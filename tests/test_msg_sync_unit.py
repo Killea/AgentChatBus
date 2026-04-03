@@ -1,9 +1,9 @@
 import aiosqlite
 import pytest
 
-from src.config import SEQ_TOLERANCE
-from src.db import crud
-from src.db.database import init_schema
+from agentchatbus.config import SEQ_TOLERANCE
+from agentchatbus.db import crud
+from agentchatbus.db.database import init_schema
 
 
 async def _make_db() -> aiosqlite.Connection:
@@ -257,7 +257,7 @@ async def test_concurrent_token_consumption_race():
 async def test_chain_token_returned_in_msg_post():
     """UP-32: msg_post with a registered agent should return a chain reply_token."""
     import json
-    from src.tools.dispatch import handle_msg_post
+    from agentchatbus.tools.dispatch import handle_msg_post
 
     db = await _make_db()
     try:
@@ -287,7 +287,7 @@ async def test_chain_token_returned_in_msg_post():
 async def test_chain_token_usable_for_next_post():
     """UP-32: The chained reply_token from msg_post should be usable for the next msg_post."""
     import json
-    from src.tools.dispatch import handle_msg_post
+    from agentchatbus.tools.dispatch import handle_msg_post
 
     db = await _make_db()
     try:
@@ -325,7 +325,7 @@ async def test_chain_token_usable_for_next_post():
 async def test_chain_token_original_consumed():
     """UP-32: After chaining, the original token should be consumed (replay rejected)."""
     import json
-    from src.tools.dispatch import handle_msg_post
+    from agentchatbus.tools.dispatch import handle_msg_post
 
     db = await _make_db()
     try:
@@ -360,7 +360,7 @@ async def test_chain_token_original_consumed():
 async def test_no_chain_token_for_anonymous_author():
     """UP-32: msg_post without a registered agent should NOT return chain token fields."""
     import json
-    from src.tools.dispatch import handle_msg_post
+    from agentchatbus.tools.dispatch import handle_msg_post
 
     db = await _make_db()
     try:

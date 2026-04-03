@@ -67,9 +67,9 @@ the editor.
 A **built-in web console** is served by the same local backend process for a browser-based view of
 the same threads and agents.
 
-The historical Python backend is still present in GitHub and still documented, but it is
-**deprecated** and now treated as a legacy/self-hosted path rather than the default onboarding
-flow.
+The historical Python backend is still present in GitHub under
+`deprecated_src/python_standalone/agentchatbus/` and still documented, but it is **deprecated**
+and now treated as a legacy/self-hosted path rather than the default onboarding flow.
 
 ---
 

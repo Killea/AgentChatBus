@@ -6,8 +6,8 @@
 
 ## Where It Lives
 
-- `src/` — Python backend implementation
-- `agentchatbus/` — package entrypoints for installed CLI usage
+- `deprecated_src/python_standalone/agentchatbus/` — Python backend implementation package
+- `deprecated_src/python_standalone/` — standalone source root for the deprecated backend
 - `pyproject.toml` — package metadata and CLI script definitions
 
 ## What It Still Owns
@@ -19,10 +19,10 @@
 
 ## Important Files
 
-- `src/main.py` — FastAPI app and REST endpoints
-- `src/mcp_server.py` — MCP tool/resource/prompt definitions
-- `src/tools/dispatch.py` — MCP dispatch logic
-- `src/db/` — SQLite models, schema, and CRUD layer
+- `deprecated_src/python_standalone/agentchatbus/main.py` — FastAPI app and REST endpoints
+- `deprecated_src/python_standalone/agentchatbus/mcp_server.py` — MCP tool/resource/prompt definitions
+- `deprecated_src/python_standalone/agentchatbus/tools/dispatch.py` — MCP dispatch logic
+- `deprecated_src/python_standalone/agentchatbus/db/` — SQLite models, schema, and CRUD layer
 
 ## Contributor Guidance
 

@@ -87,6 +87,7 @@ function makeActivity(overrides: Partial<CliAdapterActivityEvent>): CliAdapterAc
     status: overrides.status || "in_progress",
     label: overrides.label || "Thinking",
     summary: overrides.summary,
+    content: overrides.content,
     server: overrides.server,
     tool: overrides.tool,
     command: overrides.command,
@@ -94,6 +95,8 @@ function makeActivity(overrides: Partial<CliAdapterActivityEvent>): CliAdapterAc
     files: overrides.files,
     diff: overrides.diff,
     plan_steps: overrides.plan_steps,
+    started_at: overrides.started_at,
+    completed_at: overrides.completed_at,
   };
 }
 
@@ -333,6 +336,100 @@ describe("buildNativeActivityCard", () => {
     ]));
     expect(filesSection?.summary).toContain("Edited 2 files");
     expect(filesSection?.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        label: "Edited file",
+        value: "web-ui/js/shared-chat.js",
+      }),
+      expect.objectContaining({
+        label: "Edited file",
+        value: "web-ui/css/main.css",
+      }),
+    ]));
+  });
+
+  it("builds content blocks for agent self-talk, commands, and edited files", () => {
+    const card = buildNativeActivityCard(makeDirectSession({
+      native_turn_runtime: {
+        updated_at: "2026-03-30T12:00:10.000Z",
+        thread_id: "thread-1",
+        active_turn_id: "turn-1",
+        last_turn_id: "turn-1",
+        turn_status: "inProgress",
+        phase: "running",
+        thread_active_flags: [],
+      },
+      recent_activity_events: [
+        makeActivity({
+          at: "2026-03-30T12:00:02.000Z",
+          item_id: "msg-1",
+          kind: "agent_message",
+          status: "in_progress",
+          label: "Message",
+          summary: "Checking the renderer before I update it.",
+          content: "Checking the renderer before I update it.\nThen I'll verify the command rows.",
+        }),
+        makeActivity({
+          at: "2026-03-30T12:00:04.000Z",
+          item_id: "cmd-1",
+          kind: "command_execution",
+          status: "completed",
+          label: "Running command",
+          command: "node --check web-ui/js/shared-chat.js",
+          cwd: "C:\\workspace",
+          summary: "Command finished cleanly.",
+          content: "Command finished cleanly.",
+          started_at: "2026-03-30T12:00:03.000Z",
+          completed_at: "2026-03-30T12:00:05.000Z",
+        }),
+        makeActivity({
+          at: "2026-03-30T12:00:06.000Z",
+          item_id: "files-1",
+          kind: "file_change",
+          status: "completed",
+          label: "Editing files",
+          summary: "Updated the native activity rows.",
+          files: [
+            { path: "web-ui/js/shared-chat.js", change_type: "update" },
+            { path: "web-ui/css/main.css", change_type: "update" },
+          ],
+          diff: "@@ -1 +1 @@",
+        }),
+      ],
+    }));
+
+    expect(card.content_blocks).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "message",
+        title: "Codex",
+      }),
+      expect.objectContaining({
+        kind: "command",
+        title: "Ran node --check web-ui/js/shared-chat.js for 2s",
+      }),
+      expect.objectContaining({
+        kind: "files",
+        title: "Edited 2 files",
+      }),
+      expect.objectContaining({
+        kind: "diff",
+        title: "Diff",
+      }),
+    ]));
+    const messageBlock = card.content_blocks?.find((block) => block.kind === "message");
+    const commandBlock = card.content_blocks?.find((block) => block.kind === "command");
+    const filesBlock = card.content_blocks?.find((block) => block.kind === "files");
+    expect(messageBlock?.content).toContain("Then I'll verify the command rows.");
+    expect(commandBlock?.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        label: "Directory",
+        value: "C:\\workspace",
+      }),
+      expect.objectContaining({
+        label: "Output",
+        value: "Command finished cleanly.",
+      }),
+    ]));
+    expect(filesBlock?.items).toEqual(expect.arrayContaining([
       expect.objectContaining({
         label: "Edited file",
         value: "web-ui/js/shared-chat.js",

@@ -3,7 +3,8 @@ import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
 import { execFile } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
-import { join, resolve as resolvePath } from "node:path";
+import { lstat, readdir, rm } from "node:fs/promises";
+import { join, parse, resolve as resolvePath } from "node:path";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { callTool, listTools, withToolCallContext } from "../../adapters/mcp/tools.js";
@@ -28,7 +29,7 @@ import {
   registerThreadSessionClearer,
 } from "../../core/services/meetingCloseService.js";
 import { CliModelDiscoveryService } from "../../core/services/cliModelDiscovery.js";
-import { CliSessionManager } from "../../core/services/cliSessionManager.js";
+import { CliSessionManager, type CliSessionSnapshot } from "../../core/services/cliSessionManager.js";
 import { CliMeetingOrchestrator } from "../../core/services/cliMeetingOrchestrator.js";
 import { MemoryStore, memoryStore } from "../../core/services/memoryStore.js";
 import { registerStore } from "../../core/services/storeSingleton.js";
@@ -84,6 +85,43 @@ function decorateAgentsForPresentation<T extends Record<string, any>>(agents: T[
 }
 
 const THREAD_CLI_WORKSPACE_METADATA_KEY = "cli_workspace";
+const THREAD_RESTART_BLUEPRINT_METADATA_KEY = "restart_blueprint";
+const RESTART_TOMBSTONE_MARKER = "[restart-tombstone]";
+
+type CliAdapterId = "cursor" | "codex" | "claude" | "gemini" | "copilot";
+type CliAdapterMode = "headless" | "interactive" | "direct";
+
+type ThreadRestartBlueprintAgent = {
+  participant_agent_id?: string;
+  adapter: CliAdapterId;
+  mode: CliAdapterMode;
+  model?: string;
+  reasoning_effort?: string;
+  permission_mode?: string;
+  initial_instruction?: string;
+  prompt_override?: string;
+  reentry_prompt_override?: string;
+  participant_display_name?: string;
+  participant_emoji?: string;
+  launch_order: number;
+  created_at: string;
+};
+
+type ThreadRestartBlueprint = {
+  version: 1;
+  agents: ThreadRestartBlueprintAgent[];
+  updated_at: string;
+};
+
+type WorkspaceCleanupMode = "skipped" | "recycle_bin" | "deleted" | "mixed";
+
+type WorkspaceCleanupResult = {
+  attempted: boolean;
+  target: string | null;
+  mode: WorkspaceCleanupMode;
+  cleared_entries: number;
+  preserved_entries: string[];
+};
 
 function normalizeWorkspaceCandidate(value: unknown): string | undefined {
   const raw = String(value || "").trim();
@@ -119,6 +157,254 @@ function withThreadWorkspace<T extends { metadata?: Record<string, unknown> }>(
   return {
     ...thread,
     workspace: extractThreadCliWorkspace(thread),
+  };
+}
+
+function resolveCliAdapterLabel(adapter: CliAdapterId): string {
+  if (adapter === "cursor") return "Cursor";
+  if (adapter === "claude") return "Claude";
+  if (adapter === "gemini") return "Gemini";
+  if (adapter === "copilot") return "Copilot";
+  return "Codex";
+}
+
+function resolveCliModeFallbackLabel(mode: CliAdapterMode): string {
+  if (mode === "direct") return "Direct App Server";
+  if (mode === "headless") return "Headless CLI";
+  return "Interactive PTY";
+}
+
+function normalizeRestartBlueprintAgent(value: unknown): ThreadRestartBlueprintAgent | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const entry = value as Record<string, unknown>;
+  const adapter = String(entry.adapter || "").trim().toLowerCase() as CliAdapterId;
+  const mode = String(entry.mode || "").trim().toLowerCase() as CliAdapterMode;
+  if (!["cursor", "codex", "claude", "gemini", "copilot"].includes(adapter)) {
+    return null;
+  }
+  if (!["headless", "interactive", "direct"].includes(mode)) {
+    return null;
+  }
+  const launchOrder = Number(entry.launch_order);
+  return {
+    participant_agent_id: String(entry.participant_agent_id || "").trim() || undefined,
+    adapter,
+    mode,
+    model: String(entry.model || "").trim() || undefined,
+    reasoning_effort: String(entry.reasoning_effort || "").trim() || undefined,
+    permission_mode: String(entry.permission_mode || "").trim() || undefined,
+    initial_instruction: typeof entry.initial_instruction === "string"
+      ? entry.initial_instruction
+      : undefined,
+    prompt_override: typeof entry.prompt_override === "string"
+      ? entry.prompt_override
+      : undefined,
+    reentry_prompt_override: typeof entry.reentry_prompt_override === "string"
+      ? entry.reentry_prompt_override
+      : undefined,
+    participant_display_name: String(entry.participant_display_name || "").trim() || undefined,
+    participant_emoji: String(entry.participant_emoji || "").trim() || undefined,
+    launch_order: Number.isFinite(launchOrder) ? Math.max(0, Math.trunc(launchOrder)) : 0,
+    created_at: String(entry.created_at || "").trim() || new Date().toISOString(),
+  };
+}
+
+function normalizeThreadRestartBlueprint(value: unknown): ThreadRestartBlueprint | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const source = value as Record<string, unknown>;
+  const agents = Array.isArray(source.agents)
+    ? source.agents
+      .map((entry) => normalizeRestartBlueprintAgent(entry))
+      .filter((entry): entry is ThreadRestartBlueprintAgent => Boolean(entry))
+      .sort((left, right) => left.launch_order - right.launch_order)
+    : [];
+  return {
+    version: 1,
+    agents,
+    updated_at: String(source.updated_at || "").trim() || new Date().toISOString(),
+  };
+}
+
+function extractThreadRestartBlueprint(
+  thread: { metadata?: Record<string, unknown> } | undefined,
+): ThreadRestartBlueprint | null {
+  return normalizeThreadRestartBlueprint(thread?.metadata?.[THREAD_RESTART_BLUEPRINT_METADATA_KEY]);
+}
+
+function rememberThreadRestartBlueprintEntry(
+  store: MemoryStore,
+  threadId: string,
+  entry: Omit<ThreadRestartBlueprintAgent, "launch_order" | "created_at">,
+): void {
+  store.updateThreadMetadata(threadId, (metadata) => {
+    const current = normalizeThreadRestartBlueprint(metadata[THREAD_RESTART_BLUEPRINT_METADATA_KEY]);
+    const nextAgents = current ? [...current.agents] : [];
+    const existingIndex = entry.participant_agent_id
+      ? nextAgents.findIndex((agent) => agent.participant_agent_id === entry.participant_agent_id)
+      : -1;
+    const now = new Date().toISOString();
+    const normalizedEntry: ThreadRestartBlueprintAgent = {
+      ...entry,
+      launch_order: existingIndex >= 0 ? nextAgents[existingIndex].launch_order : nextAgents.length,
+      created_at: existingIndex >= 0 ? nextAgents[existingIndex].created_at : now,
+    };
+
+    if (existingIndex >= 0) {
+      nextAgents[existingIndex] = normalizedEntry;
+    } else {
+      nextAgents.push(normalizedEntry);
+    }
+
+    metadata[THREAD_RESTART_BLUEPRINT_METADATA_KEY] = {
+      version: 1,
+      agents: nextAgents
+        .sort((left, right) => left.launch_order - right.launch_order)
+        .map((agent, index) => ({
+          ...agent,
+          launch_order: index,
+        })),
+      updated_at: now,
+    } satisfies ThreadRestartBlueprint;
+    return metadata;
+  });
+}
+
+function buildThreadRestartTombstoneTopic(store: MemoryStore, topic: string): string {
+  const suffix = `${RESTART_TOMBSTONE_MARKER} ${new Date().toISOString()}`;
+  let candidate = `${topic} ${suffix}`;
+  let attempt = 2;
+  while (store.getThreadByTopic(candidate)) {
+    candidate = `${topic} ${suffix} ${attempt}`;
+    attempt += 1;
+  }
+  return candidate;
+}
+
+async function tryRecycleWorkspaceEntry(targetPath: string): Promise<boolean> {
+  if (process.platform !== "win32") {
+    return false;
+  }
+
+  const escapedPath = targetPath.replaceAll("'", "''");
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    "Add-Type -AssemblyName Microsoft.VisualBasic",
+    `$target = '${escapedPath}'`,
+    "if (-not (Test-Path -LiteralPath $target)) { exit 0 }",
+    "if (Test-Path -LiteralPath $target -PathType Container) {",
+    "  [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory(",
+    "    $target,",
+    "    [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs,",
+    "    [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin,",
+    "    [Microsoft.VisualBasic.FileIO.UICancelOption]::DoNothing",
+    "  )",
+    "} else {",
+    "  [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile(",
+    "    $target,",
+    "    [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs,",
+    "    [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin,",
+    "    [Microsoft.VisualBasic.FileIO.UICancelOption]::DoNothing",
+    "  )",
+    "}",
+  ].join(" ");
+
+  return await new Promise<boolean>((resolve) => {
+    try {
+      execFile(
+        WINDOWS_POWERSHELL,
+        ["-NoProfile", "-Command", script],
+        {
+          windowsHide: true,
+          timeout: 120_000,
+          maxBuffer: 1024 * 1024,
+        },
+        (error) => {
+          resolve(!error);
+        },
+      );
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+async function clearThreadWorkspaceContents(input: {
+  store: MemoryStore;
+  threadId: string;
+  workspace: string | undefined;
+}): Promise<WorkspaceCleanupResult> {
+  const target = normalizeWorkspaceCandidate(input.workspace);
+  if (!target || !isUsableWorkspaceCandidate(target)) {
+    throw new Error("Thread workspace is unavailable; cannot clear workspace contents.");
+  }
+
+  const gitMarkerPath = join(target, ".git");
+  if (!existsSync(gitMarkerPath)) {
+    throw new Error("Workspace cleanup is only allowed when the thread workspace points at a git repository root.");
+  }
+
+  const parsed = parse(target);
+  if (parsed.root && parsed.root.toLowerCase() === target.toLowerCase()) {
+    throw new Error("Refusing to clear a filesystem root directory.");
+  }
+
+  const serviceRoot = resolvePath(process.cwd());
+  if (serviceRoot.toLowerCase() === target.toLowerCase()) {
+    throw new Error("Refusing to clear the AgentChatBus service workspace.");
+  }
+
+  const sharedWorkspace = input.store.getThreads(true).some((thread) => {
+    if (thread.id === input.threadId) {
+      return false;
+    }
+    const threadWorkspace = normalizeWorkspaceCandidate(extractThreadCliWorkspace(thread));
+    return Boolean(threadWorkspace) && threadWorkspace!.toLowerCase() === target.toLowerCase();
+  });
+  if (sharedWorkspace) {
+    throw new Error("Workspace cleanup is blocked because another thread is using the same workspace.");
+  }
+
+  const children = await readdir(target, { withFileTypes: true });
+  const removableEntries = children.filter((entry) => entry.name !== ".git");
+  let recycledCount = 0;
+  let deletedCount = 0;
+
+  for (const entry of removableEntries) {
+    const entryPath = join(target, entry.name);
+    const recycled = await tryRecycleWorkspaceEntry(entryPath);
+    if (recycled) {
+      recycledCount += 1;
+      continue;
+    }
+
+    const stats = await lstat(entryPath);
+    await rm(entryPath, {
+      recursive: stats.isDirectory(),
+      force: true,
+      maxRetries: 2,
+    });
+    deletedCount += 1;
+  }
+
+  let mode: WorkspaceCleanupMode = "skipped";
+  if (recycledCount > 0 && deletedCount > 0) {
+    mode = "mixed";
+  } else if (recycledCount > 0) {
+    mode = "recycle_bin";
+  } else if (deletedCount > 0) {
+    mode = "deleted";
+  }
+
+  return {
+    attempted: true,
+    target,
+    mode,
+    cleared_entries: removableEntries.length,
+    preserved_entries: [".git"],
   };
 }
 
@@ -239,6 +525,158 @@ function createRequestAbortContext(request: FastifyRequest, reply: FastifyReply)
       reply.raw.off("close", abort);
     },
   };
+}
+
+function createCliThreadSession(input: {
+  store: MemoryStore;
+  cliMeetingOrchestrator: CliMeetingOrchestrator;
+  cliSessionManager: CliSessionManager;
+  buildLaunchEnv: (args: {
+    threadId: string;
+    threadName: string;
+    participantAgentId: string;
+    participantDisplayName?: string;
+  }) => Record<string, string>;
+  threadId: string;
+  requestedByAgentId: string;
+  participantAgentId?: string;
+  participantDisplayName?: string;
+  adapter?: string;
+  mode?: string;
+  model?: string;
+  reasoningEffort?: string;
+  permissionMode?: string;
+  promptOverride?: string;
+  initialInstruction?: string;
+  reentryPromptOverride?: string;
+  workspace?: string;
+  cols?: number;
+  rows?: number;
+  persistRestartBlueprint?: boolean;
+}): CliSessionSnapshot {
+  const thread = input.store.getThread(input.threadId);
+  if (!thread) {
+    throw new Error("Thread not found");
+  }
+
+  const participantAgentId = String(input.participantAgentId || "").trim();
+  const participantDisplayName = String(input.participantDisplayName || "").trim();
+  if (participantAgentId && !input.store.getAgent(participantAgentId)) {
+    throw new Error("participant_agent_id does not reference a registered agent");
+  }
+
+  const promptSeed = typeof input.initialInstruction === "string"
+    ? input.initialInstruction
+    : "";
+  const exactPromptOverride = typeof input.promptOverride === "string" && input.promptOverride.trim().length > 0
+    ? String(input.promptOverride)
+    : "";
+  const reentryPromptOverride = typeof input.reentryPromptOverride === "string"
+    ? input.reentryPromptOverride.trim()
+    : "";
+
+  const explicitWorkspace = normalizeWorkspaceCandidate(input.workspace);
+  const rawWorkspaceProvided = String(input.workspace || "").trim().length > 0;
+  if (rawWorkspaceProvided && (!explicitWorkspace || !isUsableWorkspaceCandidate(explicitWorkspace))) {
+    throw new Error("workspace must be an existing directory");
+  }
+  const threadWorkspace = extractThreadCliWorkspace(thread);
+  const resolvedWorkspace = explicitWorkspace || threadWorkspace;
+  if (resolvedWorkspace && !isUsableWorkspaceCandidate(resolvedWorkspace)) {
+    throw new Error("Thread default workspace is unavailable; update the thread workspace before launching a CLI session");
+  }
+
+  const adapter = (String(input.adapter || "cursor").trim() || "cursor") as CliAdapterId;
+  let finalPrompt = exactPromptOverride || promptSeed;
+  let participantRole: "administrator" | "participant" | undefined;
+  let contextDeliveryMode: "join" | "resume" | "incremental" | undefined;
+  let lastDeliveredSeq: number | undefined;
+  let finalParticipantDisplayName = participantDisplayName || undefined;
+  let launchEnv: Record<string, string> | undefined;
+
+  if (participantAgentId) {
+    const prepared = input.cliMeetingOrchestrator.prepareSession({
+      threadId: input.threadId,
+      participantAgentId,
+      participantDisplayName: participantDisplayName || undefined,
+      initialInstruction: promptSeed,
+    });
+    finalPrompt = prepared.prompt;
+    participantRole = prepared.participantRole;
+    contextDeliveryMode = prepared.contextDeliveryMode;
+    lastDeliveredSeq = prepared.lastDeliveredSeq;
+    finalParticipantDisplayName = prepared.participantDisplayName;
+    if (!exactPromptOverride) {
+      finalPrompt = buildCliMcpMeetingPrompt({
+        store: input.store,
+        threadId: input.threadId,
+        participantAgentId,
+        participantDisplayName: finalParticipantDisplayName,
+        participantRole: prepared.participantRole,
+        initialInstruction: promptSeed,
+        serverUrl: getConfig().host === "0.0.0.0"
+          ? `http://127.0.0.1:${getConfig().port}`
+          : `http://${getConfig().host}:${getConfig().port}`,
+        adapter,
+        mode: typeof input.mode === "string" ? input.mode.trim() : undefined,
+      }).prompt;
+    }
+    launchEnv = input.buildLaunchEnv({
+      threadId: input.threadId,
+      threadName: thread.topic,
+      participantAgentId,
+      participantDisplayName: finalParticipantDisplayName,
+    });
+  }
+
+  const session = input.cliSessionManager.createSession({
+    threadId: input.threadId,
+    threadDisplayName: thread.topic,
+    reentryPromptOverride: reentryPromptOverride || undefined,
+    adapter,
+    mode: typeof input.mode === "string"
+      ? input.mode.trim() as CliAdapterMode
+      : undefined,
+    model: typeof input.model === "string" ? input.model.trim() : undefined,
+    reasoningEffort: typeof input.reasoningEffort === "string"
+      ? input.reasoningEffort.trim()
+      : undefined,
+    permissionMode: typeof input.permissionMode === "string"
+      ? input.permissionMode.trim()
+      : undefined,
+    prompt: finalPrompt,
+    initialInstruction: promptSeed,
+    workspace: resolvedWorkspace,
+    requestedByAgentId: input.requestedByAgentId,
+    participantAgentId: participantAgentId || undefined,
+    participantDisplayName: finalParticipantDisplayName,
+    participantRole,
+    meetingTransport: "agent_mcp",
+    contextDeliveryMode,
+    lastDeliveredSeq,
+    cols: input.cols,
+    rows: input.rows,
+    launchEnv,
+  });
+
+  if (participantAgentId && input.persistRestartBlueprint !== false) {
+    const participantAgent = input.store.getAgent(participantAgentId);
+    rememberThreadRestartBlueprintEntry(input.store, input.threadId, {
+      participant_agent_id: participantAgentId,
+      adapter: session.adapter as CliAdapterId,
+      mode: session.mode as CliAdapterMode,
+      model: session.model || undefined,
+      reasoning_effort: session.reasoning_effort || undefined,
+      permission_mode: session.permission_mode || undefined,
+      initial_instruction: promptSeed || undefined,
+      prompt_override: exactPromptOverride || undefined,
+      reentry_prompt_override: reentryPromptOverride || undefined,
+      participant_display_name: finalParticipantDisplayName || undefined,
+      participant_emoji: participantAgent?.emoji || undefined,
+    });
+  }
+
+  return session;
 }
 
 export function createHttpServer() {
@@ -985,109 +1423,35 @@ export function createHttpServer() {
     if (!requestedByAgentId) {
       return reply;
     }
-
-    const participantAgentId = typeof body.participant_agent_id === "string"
-      ? body.participant_agent_id.trim()
-      : "";
-    const participantDisplayName = typeof body.participant_display_name === "string"
-      ? body.participant_display_name.trim()
-      : "";
-    if (participantAgentId && !store.getAgent(participantAgentId)) {
-      reply.code(400);
-      return { detail: "participant_agent_id does not reference a registered agent" };
-    }
-
-    const promptSeed = typeof body.initial_instruction === "string"
-      ? body.initial_instruction
-      : "";
-    const exactPromptOverride = typeof body.prompt === "string" && body.prompt.trim().length > 0
-      ? String(body.prompt)
-      : "";
-    const reentryPromptOverride = typeof body.reentry_prompt_override === "string"
-      ? body.reentry_prompt_override.trim()
-      : "";
     try {
-      const explicitWorkspace = normalizeWorkspaceCandidate(body.workspace);
-      const rawWorkspaceProvided = String(body.workspace || "").trim().length > 0;
-      if (rawWorkspaceProvided && (!explicitWorkspace || !isUsableWorkspaceCandidate(explicitWorkspace))) {
-        reply.code(400);
-        return { detail: "workspace must be an existing directory" };
-      }
-      const threadWorkspace = extractThreadCliWorkspace(thread);
-      const resolvedWorkspace = explicitWorkspace || threadWorkspace;
-      if (resolvedWorkspace && !isUsableWorkspaceCandidate(resolvedWorkspace)) {
-        reply.code(400);
-        return { detail: "Thread default workspace is unavailable; update the thread workspace before launching a CLI session" };
-      }
-
-      let finalPrompt = exactPromptOverride || promptSeed;
-      let participantRole: "administrator" | "participant" | undefined;
-      let contextDeliveryMode: "join" | "resume" | "incremental" | undefined;
-      let lastDeliveredSeq: number | undefined;
-      let finalParticipantDisplayName = participantDisplayName || undefined;
-      let launchEnv: Record<string, string> | undefined;
-
-      if (participantAgentId) {
-        const prepared = cliMeetingOrchestrator.prepareSession({
-          threadId: params.threadId,
-          participantAgentId,
-          participantDisplayName: participantDisplayName || undefined,
-          initialInstruction: promptSeed,
-        });
-        finalPrompt = prepared.prompt;
-        participantRole = prepared.participantRole;
-        contextDeliveryMode = prepared.contextDeliveryMode;
-        lastDeliveredSeq = prepared.lastDeliveredSeq;
-        finalParticipantDisplayName = prepared.participantDisplayName;
-        if (!exactPromptOverride) {
-          finalPrompt = buildCliMcpMeetingPrompt({
-            store,
-            threadId: params.threadId,
-            participantAgentId,
-            participantDisplayName: finalParticipantDisplayName,
-            participantRole: prepared.participantRole,
-            initialInstruction: promptSeed,
-            serverUrl,
-            adapter: String(body.adapter || "cursor").trim(),
-            mode: typeof body.mode === "string" ? body.mode.trim() : undefined,
-          }).prompt;
-        }
-        launchEnv = buildCliMcpLaunchEnv({
-          threadId: params.threadId,
-          threadName: thread.topic,
-          participantAgentId,
-          participantDisplayName: finalParticipantDisplayName,
-        });
-      }
-
-      const session = cliSessionManager.createSession({
+      const session = createCliThreadSession({
+        store,
+        cliMeetingOrchestrator,
+        cliSessionManager,
+        buildLaunchEnv: buildCliMcpLaunchEnv,
         threadId: params.threadId,
-        threadDisplayName: thread.topic,
-        reentryPromptOverride: reentryPromptOverride || undefined,
-        adapter: String(body.adapter || "cursor").trim() as "cursor" | "codex" | "claude" | "gemini" | "copilot",
-        mode: typeof body.mode === "string"
-          ? body.mode.trim() as "headless" | "interactive" | "direct"
-          : undefined,
-        model: typeof body.model === "string" ? body.model.trim() : undefined,
-        reasoningEffort: typeof body.reasoning_effort === "string"
-          ? body.reasoning_effort.trim()
-          : undefined,
-        permissionMode: typeof body.permission_mode === "string"
-          ? body.permission_mode.trim()
-          : undefined,
-        prompt: finalPrompt,
-        initialInstruction: promptSeed,
-        workspace: resolvedWorkspace,
         requestedByAgentId,
-        participantAgentId: participantAgentId || undefined,
-        participantDisplayName: finalParticipantDisplayName,
-        participantRole,
-        meetingTransport: "agent_mcp",
-        contextDeliveryMode,
-        lastDeliveredSeq,
+        participantAgentId: typeof body.participant_agent_id === "string"
+          ? body.participant_agent_id.trim()
+          : undefined,
+        participantDisplayName: typeof body.participant_display_name === "string"
+          ? body.participant_display_name.trim()
+          : undefined,
+        adapter: typeof body.adapter === "string" ? body.adapter : undefined,
+        mode: typeof body.mode === "string" ? body.mode : undefined,
+        model: typeof body.model === "string" ? body.model.trim() : undefined,
+        reasoningEffort: typeof body.reasoning_effort === "string" ? body.reasoning_effort : undefined,
+        permissionMode: typeof body.permission_mode === "string" ? body.permission_mode : undefined,
+        promptOverride: typeof body.prompt === "string" ? body.prompt : undefined,
+        initialInstruction: typeof body.initial_instruction === "string"
+          ? body.initial_instruction
+          : undefined,
+        reentryPromptOverride: typeof body.reentry_prompt_override === "string"
+          ? body.reentry_prompt_override
+          : undefined,
+        workspace: typeof body.workspace === "string" ? body.workspace : undefined,
         cols: body.cols === undefined ? undefined : Number(body.cols),
         rows: body.rows === undefined ? undefined : Number(body.rows),
-        launchEnv,
       });
       reply.code(201);
       return { session };
@@ -1173,6 +1537,224 @@ export function createHttpServer() {
       reply_token: created.sync.reply_token,
       reply_window: created.sync.reply_window
     };
+  });
+
+  fastify.post("/api/threads/:threadId/restart", async (request, reply) => {
+    const params = request.params as { threadId: string };
+    const body = request.body as JsonBody;
+    const requestedByAgentId = requireAuthorizedAgent(request, reply, body, "requested_by_agent_id");
+    if (!requestedByAgentId) {
+      return reply;
+    }
+
+    const sourceThread = store.getThread(params.threadId);
+    if (!sourceThread) {
+      reply.code(404);
+      return { detail: "Thread not found" };
+    }
+
+    const clearWorkspace = body.clear_workspace === true;
+    const sourceSettings = store.getThreadSettings(params.threadId);
+    const sourceBlueprint = extractThreadRestartBlueprint(sourceThread);
+    const sourceAgents = sourceBlueprint?.agents || [];
+    const sourceWorkspace = extractThreadCliWorkspace(sourceThread);
+    const nextThreadMetadata = { ...(sourceThread.metadata || {}) };
+    delete nextThreadMetadata[THREAD_RESTART_BLUEPRINT_METADATA_KEY];
+
+    const workspaceCleanup: WorkspaceCleanupResult = {
+      attempted: false,
+      target: sourceWorkspace || null,
+      mode: "skipped",
+      cleared_entries: 0,
+      preserved_entries: sourceWorkspace ? [".git"] : [],
+    };
+
+    const tombstoneTopic = buildThreadRestartTombstoneTopic(store, sourceThread.topic);
+    const newParticipantAgents: Array<ReturnType<typeof store.registerAgent>> = [];
+    let renamedSource = false;
+    let newThreadId = "";
+    let newThreadSync: {
+      current_seq: number;
+      reply_token: string;
+      reply_window: { expires_at: string; max_new_messages: number };
+    } | null = null;
+
+    try {
+      const renamedThread = store.renameThread(params.threadId, tombstoneTopic);
+      if (!renamedThread) {
+        throw new Error("Failed to reserve the existing thread topic for restart.");
+      }
+      renamedSource = true;
+
+      await cliSessionManager.clearSessionsForThread(params.threadId);
+
+      if (clearWorkspace) {
+        const cleanupResult = await clearThreadWorkspaceContents({
+          store,
+          threadId: params.threadId,
+          workspace: sourceWorkspace,
+        });
+        workspaceCleanup.attempted = cleanupResult.attempted;
+        workspaceCleanup.target = cleanupResult.target;
+        workspaceCleanup.mode = cleanupResult.mode;
+        workspaceCleanup.cleared_entries = cleanupResult.cleared_entries;
+        workspaceCleanup.preserved_entries = cleanupResult.preserved_entries;
+      }
+
+      for (const blueprintAgent of sourceAgents) {
+        newParticipantAgents.push(store.registerAgent({
+          ide: resolveCliAdapterLabel(blueprintAgent.adapter),
+          model: blueprintAgent.model || resolveCliModeFallbackLabel(blueprintAgent.mode),
+          display_name: blueprintAgent.participant_display_name,
+          emoji: blueprintAgent.participant_emoji,
+        }));
+      }
+
+      const creatorAgent = newParticipantAgents[0];
+      const created = store.createThread(
+        sourceThread.topic,
+        sourceThread.system_prompt,
+        sourceThread.template_id,
+        {
+          metadata: Object.keys(nextThreadMetadata).length > 0 ? nextThreadMetadata : undefined,
+          creatorAdminId: creatorAgent?.id,
+          creatorAdminName: creatorAgent
+            ? resolvePreferredAgentDisplayName(creatorAgent)
+            : undefined,
+          applySystemPromptContentFilter: true,
+        },
+      );
+      newThreadId = created.thread.id;
+      newThreadSync = created.sync;
+
+      if (sourceSettings) {
+        store.updateThreadSettings(newThreadId, {
+          auto_administrator_enabled: sourceSettings.auto_administrator_enabled,
+          timeout_seconds: sourceSettings.timeout_seconds,
+          switch_timeout_seconds: sourceSettings.switch_timeout_seconds,
+        });
+      }
+
+      for (let index = 0; index < sourceAgents.length; index += 1) {
+        const blueprintAgent = sourceAgents[index];
+        const participantAgent = newParticipantAgents[index];
+        if (!participantAgent) {
+          throw new Error(`Missing participant agent registration for launch slot ${index + 1}.`);
+        }
+        createCliThreadSession({
+          store,
+          cliMeetingOrchestrator,
+          cliSessionManager,
+          buildLaunchEnv: buildCliMcpLaunchEnv,
+          threadId: newThreadId,
+          requestedByAgentId,
+          participantAgentId: participantAgent.id,
+          participantDisplayName: blueprintAgent.participant_display_name,
+          adapter: blueprintAgent.adapter,
+          mode: blueprintAgent.mode,
+          model: blueprintAgent.model,
+          reasoningEffort: blueprintAgent.reasoning_effort,
+          permissionMode: blueprintAgent.permission_mode,
+          promptOverride: blueprintAgent.prompt_override,
+          initialInstruction: blueprintAgent.initial_instruction,
+          reentryPromptOverride: blueprintAgent.reentry_prompt_override,
+          workspace: sourceWorkspace,
+          cols: 120,
+          rows: 32,
+        });
+      }
+
+      const sourceParticipantIds = new Set(
+        sourceAgents
+          .map((agent) => String(agent.participant_agent_id || "").trim())
+          .filter(Boolean),
+      );
+
+      const deleted = store.deleteThread(params.threadId);
+      if (!deleted) {
+        throw new Error("Failed to delete the original thread after restart.");
+      }
+
+      const otherThreads = store.getThreads(true);
+      for (const sourceParticipantId of sourceParticipantIds) {
+        const stillReferenced = otherThreads.some((thread) => {
+          if (thread.id === params.threadId || thread.id === newThreadId) {
+            return false;
+          }
+          return store.getThreadAgents(thread.id).some((agent) => agent.id === sourceParticipantId);
+        });
+        if (stillReferenced) {
+          continue;
+        }
+        const sourceParticipant = store.getAgent(sourceParticipantId);
+        if (!sourceParticipant?.token) {
+          continue;
+        }
+        store.unregisterAgent(sourceParticipantId, sourceParticipant.token);
+      }
+
+      const newThread = store.getThread(newThreadId);
+      if (!newThread || !newThreadSync) {
+        throw new Error("Restart succeeded but the new thread could not be loaded.");
+      }
+
+      reply.code(200);
+      return {
+        ok: true,
+        old_thread_id: params.threadId,
+        new_thread: {
+          id: newThread.id,
+          topic: newThread.topic,
+          status: newThread.status,
+          system_prompt: newThread.system_prompt,
+          metadata: newThread.metadata,
+          workspace: extractThreadCliWorkspace(newThread),
+          created_at: newThread.created_at,
+          updated_at: newThread.updated_at,
+          current_seq: newThreadSync.current_seq,
+          reply_token: newThreadSync.reply_token,
+          reply_window: newThreadSync.reply_window,
+        },
+        restarted_agents_count: sourceAgents.length,
+        workspace_cleanup: workspaceCleanup,
+      };
+    } catch (error) {
+      if (newThreadId) {
+        try {
+          await cliSessionManager.clearSessionsForThread(newThreadId);
+        } catch {
+          // Best-effort rollback.
+        }
+        try {
+          store.deleteThread(newThreadId);
+        } catch {
+          // Best-effort rollback.
+        }
+      }
+
+      for (const participantAgent of newParticipantAgents) {
+        const latestAgent = store.getAgent(participantAgent.id);
+        if (!latestAgent?.token) {
+          continue;
+        }
+        try {
+          store.unregisterAgent(latestAgent.id, latestAgent.token);
+        } catch {
+          // Best-effort rollback.
+        }
+      }
+
+      if (renamedSource) {
+        try {
+          store.renameThread(params.threadId, sourceThread.topic);
+        } catch {
+          // Best-effort rollback.
+        }
+      }
+
+      reply.code(400);
+      return { detail: error instanceof Error ? error.message : String(error) };
+    }
   });
 
   fastify.post("/api/threads/:threadId/messages", async (request, reply) => {

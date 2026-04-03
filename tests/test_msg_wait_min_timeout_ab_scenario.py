@@ -5,19 +5,19 @@ import time
 import aiosqlite
 import pytest
 
-import src.mcp_server
-from src.db import crud
-from src.db.database import init_schema
-from src.tools import dispatch
-from src.tools.dispatch import handle_bus_connect, handle_msg_post, handle_msg_wait
+import agentchatbus.mcp_server
+from agentchatbus.db import crud
+from agentchatbus.db.database import init_schema
+from agentchatbus.tools import dispatch
+from agentchatbus.tools.dispatch import handle_bus_connect, handle_msg_post, handle_msg_wait
 
 
 @pytest.fixture(autouse=True)
 def isolated_mcp_context():
-    src.mcp_server._session_id.set("test-session")
-    src.mcp_server._current_agent_id.set(None)
-    src.mcp_server._current_agent_token.set(None)
-    src.mcp_server._connection_agents.clear()
+    agentchatbus.mcp_server._session_id.set("test-session")
+    agentchatbus.mcp_server._current_agent_id.set(None)
+    agentchatbus.mcp_server._current_agent_token.set(None)
+    agentchatbus.mcp_server._connection_agents.clear()
     yield
 
 

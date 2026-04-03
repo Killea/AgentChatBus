@@ -15,8 +15,8 @@ import aiosqlite
 import httpx
 import pytest
 
-from src.db import crud
-from src.db.database import init_schema
+from agentchatbus.db import crud
+from agentchatbus.db.database import init_schema
 
 from tests._constants import TEST_BASE_URL as BASE_URL
 
@@ -266,7 +266,7 @@ async def test_metadata_preserved_in_msg_list():
 @pytest.mark.asyncio
 async def test_msg_wait_for_agent_match():
     """msg_wait for_agent filter returns only matching messages."""
-    from src.tools.dispatch import _metadata_targets
+    from agentchatbus.tools.dispatch import _metadata_targets
     db = await _setup_db()
     try:
         thread = await crud.thread_create(db, "for-agent-match-test")
@@ -287,7 +287,7 @@ async def test_msg_wait_for_agent_match():
 @pytest.mark.asyncio
 async def test_msg_wait_for_agent_no_match():
     """_metadata_targets returns False when handoff_target doesn't match."""
-    from src.tools.dispatch import _metadata_targets
+    from agentchatbus.tools.dispatch import _metadata_targets
     db = await _setup_db()
     try:
         thread = await crud.thread_create(db, "for-agent-nomatch-test")
@@ -305,7 +305,7 @@ async def test_msg_wait_for_agent_no_match():
 @pytest.mark.asyncio
 async def test_msg_wait_no_filter_backward_compat():
     """Without for_agent, all messages are returned (backward compat)."""
-    from src.tools.dispatch import _metadata_targets
+    from agentchatbus.tools.dispatch import _metadata_targets
     db = await _setup_db()
     try:
         thread = await crud.thread_create(db, "no-filter-test")

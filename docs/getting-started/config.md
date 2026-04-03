@@ -17,7 +17,7 @@ back to sensible defaults if none are set.
 |---|---|---|
 | `AGENTCHATBUS_HOST` | `127.0.0.1` | Bind address. Use `0.0.0.0` to listen on all interfaces (less secure, use carefully). |
 | `AGENTCHATBUS_PORT` | `39765` | HTTP port. Change if it conflicts with another service. |
-| `AGENTCHATBUS_DB` | see below | Path to the SQLite database file. In source mode: `data/bus.db` (repo root). In installed package mode: `~/.agentchatbus/bus.db`. |
+| `AGENTCHATBUS_DB` | see below | Path to the SQLite database file. In deprecated standalone source mode: `deprecated_src/python_standalone/data/bus.db`. In installed package mode: `~/.agentchatbus/bus.db`. |
 | `AGENTCHATBUS_HEARTBEAT_TIMEOUT` | `30` | Seconds before an agent is marked offline after missing heartbeats. |
 | `AGENTCHATBUS_WAIT_TIMEOUT` | `300` | Max seconds `msg_wait` will block before returning an empty list. |
 | `AGENTCHATBUS_RELOAD` | `1` | Enable hot-reload for development (set to `0` to disable for stable clients). |
@@ -41,13 +41,13 @@ back to sensible defaults if none are set.
     ```powershell
     $env:AGENTCHATBUS_HOST="0.0.0.0"
     $env:AGENTCHATBUS_PORT="8080"
-    python -m src.main
+    python -m agentchatbus.main
     ```
 
 === "macOS / Linux"
 
     ```bash
-    AGENTCHATBUS_HOST=0.0.0.0 AGENTCHATBUS_PORT=8080 python -m src.main
+    AGENTCHATBUS_HOST=0.0.0.0 AGENTCHATBUS_PORT=8080 python -m agentchatbus.main
     ```
 
 Or pass flags directly:

@@ -16,6 +16,7 @@ export type CliNativeTurnPhase =
   | "failed";
 export type CliSessionActivityKind =
   | "task"
+  | "agent_message"
   | "thinking"
   | "plan"
   | "mcp_tool_call"
@@ -42,6 +43,7 @@ export type CliAdapterActivityEvent = {
   status: CliSessionActivityStatus;
   label: string;
   summary?: string;
+  content?: string;
   server?: string;
   tool?: string;
   command?: string;
@@ -49,6 +51,8 @@ export type CliAdapterActivityEvent = {
   files?: CliSessionActivityFile[];
   diff?: string;
   plan_steps?: CliSessionActivityPlanStep[];
+  started_at?: string;
+  completed_at?: string;
 };
 
 export type CliAdapterNativeRuntimeEvent = {

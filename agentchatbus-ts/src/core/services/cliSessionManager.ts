@@ -50,7 +50,25 @@ export type CliNativeActivityCardSectionKind =
   | "task"
   | "placeholder";
 
+export type CliNativeActivityCardBlockKind =
+  | "message"
+  | "thinking"
+  | "tool"
+  | "command"
+  | "files"
+  | "diff"
+  | "plan"
+  | "task"
+  | "placeholder";
+
 export interface CliNativeActivityCardSectionItem {
+  label: string;
+  value?: string;
+  status?: string;
+  kind?: string;
+}
+
+export interface CliNativeActivityCardBlockItem {
   label: string;
   value?: string;
   status?: string;
@@ -66,12 +84,34 @@ export interface CliNativeActivityCardSection {
   items?: CliNativeActivityCardSectionItem[];
 }
 
+export interface CliNativeActivityCardBlock {
+  id: string;
+  kind: CliNativeActivityCardBlockKind;
+  status: "in_progress" | "completed" | "failed" | "placeholder";
+  updated_at: string;
+  title?: string;
+  summary?: string;
+  content?: string;
+  meta?: string;
+  command?: string;
+  cwd?: string;
+  duration_ms?: number;
+  files?: Array<{
+    path: string;
+    change_type?: "add" | "delete" | "update";
+    move_path?: string | null;
+  }>;
+  diff?: string;
+  items?: CliNativeActivityCardBlockItem[];
+}
+
 export interface CliNativeActivityCard {
   anchor_message_id?: string;
   shell_status: CliNativeActivityCardShellStatus;
   shell_status_text: string;
   updated_at: string;
   placeholder_visible: boolean;
+  content_blocks?: CliNativeActivityCardBlock[];
   content_sections: CliNativeActivityCardSection[];
 }
 
@@ -528,6 +568,46 @@ function clipNativeCardText(value: unknown, maxLength = 240): string {
   return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
 }
 
+function clipNativeCardContent(value: unknown, maxLength = 4_000): string {
+  const normalized = String(value || "")
+    .replace(/\r\n/g, "\n")
+    .trim();
+  if (!normalized) {
+    return "";
+  }
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+function formatNativeCardDuration(durationMs: number | undefined): string {
+  if (!durationMs || !Number.isFinite(durationMs) || durationMs <= 0) {
+    return "";
+  }
+  if (durationMs < 1000) {
+    return `${Math.max(1, Math.round(durationMs))}ms`;
+  }
+  const seconds = durationMs / 1000;
+  if (seconds < 60) {
+    const rounded = seconds >= 10 ? Math.round(seconds) : Math.round(seconds * 10) / 10;
+    return `${rounded}s`;
+  }
+  const wholeSeconds = Math.round(seconds);
+  const minutes = Math.floor(wholeSeconds / 60);
+  const remainder = wholeSeconds % 60;
+  return remainder ? `${minutes}m ${remainder}s` : `${minutes}m`;
+}
+
+function parseIsoMs(value: string | undefined): number | undefined {
+  const normalized = String(value || "").trim();
+  if (!normalized) {
+    return undefined;
+  }
+  const parsed = new Date(normalized).getTime();
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function getLatestActivityEntry(
   entries: CliAdapterActivityEvent[] | undefined,
   predicate: (entry: CliAdapterActivityEvent) => boolean,
@@ -617,11 +697,56 @@ function getPrimaryActiveActivityEntry(
   return undefined;
 }
 
+function getCardActivityTimeline(
+  snapshot: CliSessionSnapshot,
+  entries: CliAdapterActivityEvent[] | undefined,
+): CliAdapterActivityEvent[] {
+  if (!Array.isArray(entries) || !entries.length) {
+    return [];
+  }
+  const timeline = entries.filter(Boolean);
+  if (!timeline.length) {
+    return [];
+  }
+  const primaryActive = getPrimaryActiveActivityEntry(timeline);
+  const terminalStatus: CliAdapterActivityEvent["status"] | undefined = isTerminalNativeTaskState(snapshot)
+    ? snapshot.state === "failed" || snapshot.native_turn_runtime?.phase === "failed"
+      ? "failed"
+      : "completed"
+    : undefined;
+  return timeline.map((entry) => {
+    if (!entry || entry.kind === "task" || entry.status !== "in_progress") {
+      return entry;
+    }
+    if (terminalStatus) {
+      return {
+        ...entry,
+        status: terminalStatus,
+        completed_at: entry.completed_at || nowIso(),
+      };
+    }
+    if (!primaryActive || entry.item_id === primaryActive.item_id) {
+      return entry;
+    }
+    const sameTurn = primaryActive.turn_id && entry.turn_id
+      ? primaryActive.turn_id === entry.turn_id
+      : true;
+    if (!sameTurn) {
+      return entry;
+    }
+    return {
+      ...entry,
+      status: "completed",
+      completed_at: entry.completed_at || primaryActive.at || nowIso(),
+    };
+  });
+}
+
 function getEffectiveCardActivityEntries(
   snapshot: CliSessionSnapshot,
   entries: CliAdapterActivityEvent[] | undefined,
 ): CliAdapterActivityEvent[] {
-  const collapsed = collapseActivityEntries(entries);
+  const collapsed = collapseActivityEntries(getCardActivityTimeline(snapshot, entries));
   if (!collapsed.length) {
     return collapsed;
   }
@@ -639,6 +764,7 @@ function getEffectiveCardActivityEntries(
       return {
         ...entry,
         status: terminalStatus,
+        completed_at: entry.completed_at || nowIso(),
       };
     }
     if (!primaryActive || entry.item_id === primaryActive.item_id) {
@@ -653,6 +779,7 @@ function getEffectiveCardActivityEntries(
     return {
       ...entry,
       status: "completed",
+      completed_at: entry.completed_at || primaryActive.at || nowIso(),
     };
   });
 }
@@ -1089,6 +1216,287 @@ function buildFilesSectionItems(fileEvent: CliAdapterActivityEvent | undefined):
   }));
 }
 
+function mapActivityKindToBlockKind(
+  kind: CliAdapterActivityEvent["kind"] | undefined,
+): CliNativeActivityCardBlockKind | undefined {
+  switch (kind) {
+    case "agent_message":
+      return "message";
+    case "thinking":
+      return "thinking";
+    case "plan":
+      return "plan";
+    case "mcp_tool_call":
+    case "dynamic_tool_call":
+      return "tool";
+    case "command_execution":
+      return "command";
+    case "file_change":
+      return "files";
+    case "task":
+      return "task";
+    default:
+      return undefined;
+  }
+}
+
+function getBlockTitleFromTool(entry: CliAdapterActivityEvent): string {
+  return buildToolHeadline(entry) || "Using tool";
+}
+
+function getBlockTitleFromCommand(
+  entry: CliAdapterActivityEvent,
+  durationMs: number | undefined,
+): string {
+  const command = clipNativeCardText(entry.command, 220);
+  if (!command) {
+    return clipNativeCardText(entry.summary || entry.label, 280) || "Running command";
+  }
+  if (entry.status === "failed" || entry.status === "declined") {
+    return `Command failed ${command}`;
+  }
+  const durationText = formatNativeCardDuration(durationMs);
+  if (entry.status === "completed") {
+    return durationText ? `Ran ${command} for ${durationText}` : `Ran ${command}`;
+  }
+  return `Running ${command}`;
+}
+
+function getBlockTitleFromFiles(entry: CliAdapterActivityEvent): string {
+  const files = Array.isArray(entry.files) ? entry.files.filter((file) => file?.path) : [];
+  if (!files.length) {
+    return clipNativeCardText(entry.summary || entry.label, 260) || "Editing files";
+  }
+  if (files.length === 1) {
+    const file = files[0];
+    if (file?.move_path) {
+      return clipNativeCardText(`Moved ${file.path} -> ${file.move_path}`, 280) || "Moved file";
+    }
+    return clipNativeCardText(`${getFileActionLabel(file.change_type)} ${file.path}`, 280) || "Edited file";
+  }
+  return clipNativeCardText(`Edited ${files.length} files`, 260) || "Editing files";
+}
+
+function appendUniqueBlockItem(
+  items: CliNativeActivityCardBlockItem[],
+  next: CliNativeActivityCardBlockItem | null,
+): void {
+  if (!next || (!next.label && !next.value)) {
+    return;
+  }
+  const key = `${next.kind || ""}::${next.label || ""}::${next.value || ""}::${next.status || ""}`;
+  const exists = items.some((entry) =>
+    `${entry.kind || ""}::${entry.label || ""}::${entry.value || ""}::${entry.status || ""}` === key);
+  if (!exists) {
+    items.push(next);
+  }
+}
+
+function buildCommandBlockItems(
+  entry: CliAdapterActivityEvent,
+): CliNativeActivityCardBlockItem[] | undefined {
+  const items: CliNativeActivityCardBlockItem[] = [];
+  const cwd = clipNativeCardText(entry.cwd, 220);
+  if (cwd) {
+    appendUniqueBlockItem(items, {
+      label: "Directory",
+      value: cwd,
+      status: entry.status,
+      kind: "cwd",
+    });
+  }
+
+  const outputSource = clipNativeCardContent(entry.content || entry.summary, 1_800);
+  const outputLines = outputSource
+    ? outputSource
+      .split(/\r?\n/g)
+      .map((line) => clipNativeCardText(line, 260))
+      .filter(Boolean)
+    : [];
+  const selectedOutputLines = outputLines.length > 3 ? outputLines.slice(-3) : outputLines;
+  for (const line of selectedOutputLines) {
+    appendUniqueBlockItem(items, {
+      label: line.startsWith("Sent input:") ? "Input" : "Output",
+      value: line,
+      status: entry.status,
+      kind: line.startsWith("Sent input:") ? "input" : "output",
+    });
+  }
+
+  return items.length ? items : undefined;
+}
+
+function buildFilesBlockItems(entry: CliAdapterActivityEvent): CliNativeActivityCardBlockItem[] | undefined {
+  const items: CliNativeActivityCardBlockItem[] = [];
+  const files = Array.isArray(entry.files) ? entry.files.filter((file) => file?.path) : [];
+  for (const file of files.slice(0, 8)) {
+    appendUniqueBlockItem(items, {
+      label: file.move_path
+        ? "Moved file"
+        : getFileActionLabel(file.change_type),
+      value: file.move_path
+        ? clipNativeCardText(`${file.path} -> ${file.move_path}`, 280)
+        : clipNativeCardText(file.path, 240),
+      status: entry.status,
+      kind: file.change_type || (file.move_path ? "move" : "update"),
+    });
+  }
+  return items.length ? items : undefined;
+}
+
+function buildToolBlockItems(entry: CliAdapterActivityEvent): CliNativeActivityCardBlockItem[] | undefined {
+  const items: CliNativeActivityCardBlockItem[] = [];
+  const target = clipNativeCardText([entry.server, entry.tool].filter(Boolean).join(" / "), 240);
+  if (target) {
+    appendUniqueBlockItem(items, {
+      label: entry.status === "completed" ? "Used" : "Using",
+      value: target,
+      status: entry.status,
+      kind: "tool_target",
+    });
+  }
+  const progress = clipNativeCardText(entry.summary, 280);
+  if (progress && progress !== target) {
+    appendUniqueBlockItem(items, {
+      label: "Progress",
+      value: progress,
+      status: entry.status,
+      kind: "tool_progress",
+    });
+  }
+  return items.length ? items : undefined;
+}
+
+function buildPlanBlockItems(entry: CliAdapterActivityEvent): CliNativeActivityCardBlockItem[] | undefined {
+  if (!Array.isArray(entry.plan_steps) || !entry.plan_steps.length) {
+    return undefined;
+  }
+  return entry.plan_steps.slice(0, 6).map((step) => ({
+    label: step.step,
+    status: step.status,
+    kind: "plan_step",
+  }));
+}
+
+function buildNativeActivityBlocks(snapshot: CliSessionSnapshot): CliNativeActivityCardBlock[] {
+  const timeline = getCardActivityTimeline(snapshot, snapshot.recent_activity_events);
+  if (!timeline.length) {
+    return [];
+  }
+
+  const orderedIds: string[] = [];
+  const aggregated = new Map<string, {
+    first_seen_at: string;
+    latest: CliAdapterActivityEvent;
+    started_at?: string;
+    completed_at?: string;
+  }>();
+
+  for (const entry of timeline) {
+    if (!entry?.item_id) {
+      continue;
+    }
+    const existing = aggregated.get(entry.item_id);
+    if (!existing) {
+      orderedIds.push(entry.item_id);
+      aggregated.set(entry.item_id, {
+        first_seen_at: entry.started_at || entry.at,
+        latest: entry,
+        started_at: entry.started_at || entry.at,
+        completed_at: entry.completed_at,
+      });
+      continue;
+    }
+    existing.latest = entry;
+    existing.started_at = existing.started_at || entry.started_at || entry.at;
+    existing.completed_at = entry.completed_at || existing.completed_at;
+  }
+
+  const blocks: CliNativeActivityCardBlock[] = [];
+  for (const itemId of orderedIds) {
+    const entry = aggregated.get(itemId);
+    if (!entry) {
+      continue;
+    }
+    const blockKind = mapActivityKindToBlockKind(entry.latest.kind);
+    if (!blockKind) {
+      continue;
+    }
+    const startedAtMs = parseIsoMs(entry.started_at);
+    const completedAtMs = parseIsoMs(entry.completed_at);
+    const durationMs = startedAtMs !== undefined && completedAtMs !== undefined
+      ? Math.max(0, completedAtMs - startedAtMs)
+      : undefined;
+    const block: CliNativeActivityCardBlock = {
+      id: itemId,
+      kind: blockKind,
+      status: mapActivityStatusToCardStatus(entry.latest.status),
+      updated_at: entry.latest.at,
+    };
+
+    switch (blockKind) {
+      case "message":
+        block.title = "Codex";
+        block.summary = clipNativeCardText(entry.latest.summary || entry.latest.content, 320) || undefined;
+        block.content = clipNativeCardContent(entry.latest.content || entry.latest.summary, 6_000) || undefined;
+        break;
+      case "thinking":
+        block.title = "Thinking";
+        block.summary = clipNativeCardText(entry.latest.summary || entry.latest.label, 320) || "Working through the next steps.";
+        break;
+      case "plan":
+        block.title = "Plan";
+        block.summary = clipNativeCardText(entry.latest.summary || entry.latest.label, 320) || "Plan updated";
+        block.items = buildPlanBlockItems(entry.latest);
+        break;
+      case "tool":
+        block.title = getBlockTitleFromTool(entry.latest);
+        block.summary = clipNativeCardText(entry.latest.summary, 320) || undefined;
+        block.meta = clipNativeCardText([entry.latest.server, entry.latest.tool].filter(Boolean).join(" / "), 220) || undefined;
+        block.items = buildToolBlockItems(entry.latest);
+        break;
+      case "command":
+        block.title = getBlockTitleFromCommand(entry.latest, durationMs);
+        block.summary = clipNativeCardText(entry.latest.summary, 320) || undefined;
+        block.command = clipNativeCardText(entry.latest.command, 260) || undefined;
+        block.cwd = clipNativeCardText(entry.latest.cwd, 220) || undefined;
+        block.duration_ms = durationMs;
+        block.items = buildCommandBlockItems(entry.latest);
+        break;
+      case "files":
+        block.title = getBlockTitleFromFiles(entry.latest);
+        block.summary = clipNativeCardText(entry.latest.summary, 320) || undefined;
+        block.files = Array.isArray(entry.latest.files)
+          ? entry.latest.files.map((file) => ({ ...file }))
+          : undefined;
+        block.diff = clipNativeCardContent(entry.latest.diff, 1_600) || undefined;
+        block.items = buildFilesBlockItems(entry.latest);
+        break;
+      case "task":
+        block.title = "Task";
+        block.summary = clipNativeCardText(entry.latest.summary || entry.latest.label, 320) || "Task updated";
+        break;
+      default:
+        break;
+    }
+
+    blocks.push(block);
+    if (blockKind === "files" && block.diff) {
+      blocks.push({
+        id: `${itemId}:diff`,
+        kind: "diff",
+        status: block.status,
+        updated_at: block.updated_at,
+        title: "Diff",
+        summary: clipNativeCardText(block.diff, 320) || "Diff updated",
+        diff: block.diff,
+      });
+    }
+  }
+
+  return blocks;
+}
+
 function buildNativePlaceholderSummary(
   snapshot: CliSessionSnapshot,
   shell: { status: CliNativeActivityCardShellStatus; text: string },
@@ -1282,6 +1690,18 @@ export function buildNativeActivityCard(snapshot: CliSessionSnapshot): CliNative
   }
 
   const sortedSections = sortNativeCardSections(sections, primaryActiveKind);
+  const contentBlocks = buildNativeActivityBlocks(snapshot);
+  const finalizedBlocks = contentBlocks.length
+    ? contentBlocks
+    : [{
+      id: "placeholder",
+      kind: "placeholder" as const,
+      status: "placeholder" as const,
+      updated_at: pickNativeCardUpdatedAt(snapshot, sortedSections),
+      title: "Activity",
+      summary: buildNativePlaceholderSummary(snapshot, shell),
+      meta: shell.text,
+    }];
   const activeSection = sortedSections.find(
     (section) => section.kind !== "task" && section.kind !== "placeholder" && section.status === "in_progress",
   );
@@ -1313,7 +1733,8 @@ export function buildNativeActivityCard(snapshot: CliSessionSnapshot): CliNative
     shell_status: shell.status,
     shell_status_text: shellStatusText,
     updated_at: pickNativeCardUpdatedAt(snapshot, sortedSections),
-    placeholder_visible: sortedSections.length === 1 && sortedSections[0].kind === "placeholder",
+    placeholder_visible: finalizedBlocks.length === 1 && finalizedBlocks[0].kind === "placeholder",
+    content_blocks: finalizedBlocks,
     content_sections: sortedSections,
   };
 }
@@ -3566,11 +3987,14 @@ export class CliSessionManager {
       && latest.kind === normalized.kind
       && latest.status === normalized.status
       && latest.summary === normalized.summary
+      && latest.content === normalized.content
       && latest.diff === normalized.diff
       && latest.command === normalized.command
       && latest.cwd === normalized.cwd
       && latest.server === normalized.server
       && latest.tool === normalized.tool
+      && latest.started_at === normalized.started_at
+      && latest.completed_at === normalized.completed_at
       && JSON.stringify(latest.files || []) === JSON.stringify(normalized.files || [])
       && JSON.stringify(latest.plan_steps || []) === JSON.stringify(normalized.plan_steps || [])
     ) {
@@ -3611,6 +4035,7 @@ export class CliSessionManager {
       status,
       label,
       summary: String(activity.summary || "").trim() || undefined,
+      content: String(activity.content || "").trim() || undefined,
       server: String(activity.server || "").trim() || undefined,
       tool: String(activity.tool || "").trim() || undefined,
       command: String(activity.command || "").trim() || undefined,
@@ -3633,6 +4058,8 @@ export class CliSessionManager {
           }))
           .filter((entry) => entry.step && entry.status)
         : undefined,
+      started_at: String(activity.started_at || "").trim() || undefined,
+      completed_at: String(activity.completed_at || "").trim() || undefined,
     };
   }
 

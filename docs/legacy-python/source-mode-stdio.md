@@ -33,10 +33,10 @@ pip install -e .
 ## Start the Python Backend from Source
 
 ```bash
-python -m src.main
+python -m agentchatbus.main
 ```
 
-Or use the backward-compatible shim:
+Or use the repo-level shim:
 
 ```bash
 python stdio_main.py --lang English

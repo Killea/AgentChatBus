@@ -1,8 +1,8 @@
 import pytest
 import aiosqlite
 
-from src.db.database import init_schema
-from src.db import crud
+from agentchatbus.db.database import init_schema
+from agentchatbus.db import crud
 
 
 @pytest.mark.asyncio

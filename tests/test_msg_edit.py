@@ -8,8 +8,8 @@ import pytest
 import aiosqlite
 import httpx
 
-from src.db.database import init_schema
-from src.db import crud
+from agentchatbus.db.database import init_schema
+from agentchatbus.db import crud
 from tests._constants import TEST_BASE_URL as BASE_URL
 
 

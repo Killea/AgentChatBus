@@ -4,18 +4,18 @@ import aiosqlite
 import pytest
 from mcp import types
 
-from src.db import crud
-from src.db.database import init_schema
-from src.tools.dispatch import handle_bus_connect, handle_msg_edit, handle_msg_edit_history, handle_msg_get, handle_msg_list, handle_msg_post, handle_msg_search, handle_msg_wait
-import src.mcp_server
+from agentchatbus.db import crud
+from agentchatbus.db.database import init_schema
+from agentchatbus.tools.dispatch import handle_bus_connect, handle_msg_edit, handle_msg_edit_history, handle_msg_get, handle_msg_list, handle_msg_post, handle_msg_search, handle_msg_wait
+import agentchatbus.mcp_server
 
 @pytest.fixture(autouse=True)
 def isolated_mcp_context():
     """Ensure MCP connection context is clean for each test."""
-    src.mcp_server._session_id.set("test-session")
-    src.mcp_server._current_agent_id.set(None)
-    src.mcp_server._current_agent_token.set(None)
-    src.mcp_server._connection_agents.clear()
+    agentchatbus.mcp_server._session_id.set("test-session")
+    agentchatbus.mcp_server._current_agent_id.set(None)
+    agentchatbus.mcp_server._current_agent_token.set(None)
+    agentchatbus.mcp_server._connection_agents.clear()
     yield
 
 @pytest.mark.asyncio
@@ -290,8 +290,8 @@ async def test_msg_post_error_invalidate_tokens_uses_validated_author_when_no_co
     wait_payload = json.loads(waited[0].text)
 
     # Simulate lost connection context.
-    src.mcp_server._current_agent_id.set(None)
-    src.mcp_server._current_agent_token.set(None)
+    agentchatbus.mcp_server._current_agent_id.set(None)
+    agentchatbus.mcp_server._current_agent_token.set(None)
 
     # Force seq mismatch using stale expected_last_seq, should trigger token invalidation path.
     err = await handle_msg_post(
@@ -569,8 +569,8 @@ async def test_msg_edit_uses_agent_id_authorization_for_registered_agent():
         role="assistant",
     )
 
-    src.mcp_server._session_id.set("test-session")
-    src.mcp_server.set_connection_agent(agent.id, agent.token)
+    agentchatbus.mcp_server._session_id.set("test-session")
+    agentchatbus.mcp_server.set_connection_agent(agent.id, agent.token)
 
     result = await handle_msg_edit(db, {"message_id": msg.id, "new_content": "edited by owner"})
     payload = json.loads(result[0].text)
@@ -628,9 +628,9 @@ async def test_msg_post_success_clears_wait_state_for_author_not_connection_agen
     await crud.thread_wait_enter(db, thread.id, author_agent.id, 300000)
     await crud.thread_wait_enter(db, thread.id, other_agent.id, 300000)
 
-    src.mcp_server._current_agent_id.set(other_agent.id)
-    src.mcp_server._current_agent_token.set(other_agent.token)
-    src.mcp_server.set_connection_agent(other_agent.id, other_agent.token)
+    agentchatbus.mcp_server._current_agent_id.set(other_agent.id)
+    agentchatbus.mcp_server._current_agent_token.set(other_agent.token)
+    agentchatbus.mcp_server.set_connection_agent(other_agent.id, other_agent.token)
 
     posted = await handle_msg_post(
         db,
@@ -687,9 +687,9 @@ async def test_msg_post_failure_refresh_request_follows_author_not_connection_ag
     )
     wait_payload = json.loads(waited[0].text)
 
-    src.mcp_server._current_agent_id.set(other_agent.id)
-    src.mcp_server._current_agent_token.set(other_agent.token)
-    src.mcp_server.set_connection_agent(other_agent.id, other_agent.token)
+    agentchatbus.mcp_server._current_agent_id.set(other_agent.id)
+    agentchatbus.mcp_server._current_agent_token.set(other_agent.token)
+    agentchatbus.mcp_server.set_connection_agent(other_agent.id, other_agent.token)
 
     failed = await handle_msg_post(
         db,

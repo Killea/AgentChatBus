@@ -763,6 +763,27 @@ export class MemoryStore {
     return thread;
   }
 
+  updateThreadMetadata(
+    threadId: string,
+    updater: (current: Record<string, unknown>) => Record<string, unknown> | undefined,
+  ): ThreadRecord | undefined {
+    const thread = this.getThread(threadId);
+    if (!thread) {
+      return undefined;
+    }
+
+    const currentMetadata = thread.metadata ? { ...thread.metadata } : {};
+    const nextMetadata = updater(currentMetadata);
+    thread.metadata = nextMetadata && Object.keys(nextMetadata).length > 0
+      ? nextMetadata
+      : undefined;
+    thread.updated_at = new Date().toISOString();
+    this.threads.set(threadId, thread);
+    this.upsertThread(thread);
+    this.persistState();
+    return thread;
+  }
+
   closeThread(threadId: string, summary?: string): boolean {
     const thread = this.getThread(threadId);
     if (!thread) {
@@ -1300,10 +1321,15 @@ export class MemoryStore {
   deleteThread(threadId: string): boolean {
     const existing = this.getThread(threadId);
     const deleted = Boolean(existing);
+    const messageIds = (this.threadMessages.get(threadId) || []).map((message) => message.id);
     this.threads.delete(threadId);
     this.threadMessages.delete(threadId);
     this.threadParticipants.delete(threadId);
     this.threadWaitStates.delete(threadId);
+    this._threadEvents.delete(threadId);
+    for (const messageId of messageIds) {
+      this.messageEditHistory.delete(messageId);
+    }
     for (const key of this.waitLifecycle.keys()) {
       if (key.startsWith(`${threadId}:`)) {
         this.waitLifecycle.delete(key);
@@ -1314,8 +1340,15 @@ export class MemoryStore {
       this.appendLog(`thread deleted: ${threadId}`);
       eventBus.emit({ type: "thread.deleted", payload: { thread_id: threadId } });
       this.persistenceDb.prepare("DELETE FROM threads WHERE id = ?").run(threadId);
+      this.persistenceDb.prepare(
+        "DELETE FROM message_edits WHERE message_id IN (SELECT id FROM messages WHERE thread_id = ?)"
+      ).run(threadId);
+      this.persistenceDb.prepare(
+        "DELETE FROM reactions WHERE message_id IN (SELECT id FROM messages WHERE thread_id = ?)"
+      ).run(threadId);
       this.persistenceDb.prepare("DELETE FROM messages WHERE thread_id = ?").run(threadId);
       this.persistenceDb.prepare("DELETE FROM reply_tokens WHERE thread_id = ?").run(threadId);
+      this.persistenceDb.prepare("DELETE FROM msg_wait_refresh_requests WHERE thread_id = ?").run(threadId);
       this.persistenceDb.prepare("DELETE FROM thread_settings WHERE thread_id = ?").run(threadId);
       this.persistenceDb.prepare("DELETE FROM thread_wait_states WHERE thread_id = ?").run(threadId);
       this.persistState();

@@ -10,10 +10,10 @@ import aiosqlite
 
 os.environ["AGENTCHATBUS_CONTENT_FILTER_ENABLED"] = "true"
 
-from src.content_filter import check_content, ContentFilterError, SECRET_PATTERNS
-from src.config import CONTENT_FILTER_ENABLED
-from src.db.database import init_schema
-from src.db import crud
+from agentchatbus.content_filter import check_content, ContentFilterError, SECRET_PATTERNS
+from agentchatbus.config import CONTENT_FILTER_ENABLED
+from agentchatbus.db.database import init_schema
+from agentchatbus.db import crud
 
 
 # ─────────────────────────────────────────────

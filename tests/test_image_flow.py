@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 import aiosqlite
 
-from src.db.database import init_schema
-from src.db import crud
+from agentchatbus.db.database import init_schema
+from agentchatbus.db import crud
 
 
 @pytest.mark.asyncio
@@ -108,8 +108,8 @@ async def test_image_flow():
 async def test_message_to_blocks_async_loads_image_from_file(tmp_path):
     """UP-31: Verify _message_to_blocks reads image bytes asynchronously via asyncio.to_thread."""
     from unittest.mock import patch
-    from src.tools.dispatch import _message_to_blocks
-    from src.db.models import Message
+    from agentchatbus.tools.dispatch import _message_to_blocks
+    from agentchatbus.db.models import Message
 
     img_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
     img_file = tmp_path / "test-async.png"
@@ -127,7 +127,7 @@ async def test_message_to_blocks_async_loads_image_from_file(tmp_path):
         reply_to_msg_id=None,
     )
 
-    with patch("src.tools.dispatch._url_to_local_upload_path", return_value=img_file):
+    with patch("agentchatbus.tools.dispatch._url_to_local_upload_path", return_value=img_file):
         blocks = await _message_to_blocks(msg)
 
     import mcp.types as types
@@ -143,8 +143,8 @@ async def test_message_to_blocks_async_loads_image_from_file(tmp_path):
 @pytest.mark.asyncio
 async def test_message_to_blocks_include_attachments_false():
     """UP-31/33: Verify include_attachments=False skips image processing entirely."""
-    from src.tools.dispatch import _message_to_blocks
-    from src.db.models import Message
+    from agentchatbus.tools.dispatch import _message_to_blocks
+    from agentchatbus.db.models import Message
 
     msg = Message(
         id="test-no-attach",

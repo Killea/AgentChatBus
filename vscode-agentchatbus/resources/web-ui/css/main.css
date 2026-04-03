@@ -2825,7 +2825,8 @@ body[data-theme="light"] .msg-sys-admin-human-note-icon {
   }
 }
 
-.msg-native-card__section {
+.msg-native-card__section,
+.msg-native-card__block {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -2833,12 +2834,14 @@ body[data-theme="light"] .msg-sys-admin-human-note-icon {
   border-top: 1px solid rgba(148, 163, 184, .12);
 }
 
-.msg-native-card__section:first-child {
+.msg-native-card__section:first-child,
+.msg-native-card__block:first-child {
   border-top: none;
   padding-top: 0;
 }
 
-.msg-native-card__section-head {
+.msg-native-card__section-head,
+.msg-native-card__block-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2853,7 +2856,22 @@ body[data-theme="light"] .msg-sys-admin-human-note-icon {
   color: var(--text-3);
 }
 
-.msg-native-card__section-badge {
+.msg-native-card__block-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.msg-native-card__block[data-kind="command"] .msg-native-card__block-title,
+.msg-native-card__block[data-kind="files"] .msg-native-card__block-title {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+}
+
+.msg-native-card__section-badge,
+.msg-native-card__block-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2869,25 +2887,29 @@ body[data-theme="light"] .msg-sys-admin-human-note-icon {
   text-transform: uppercase;
 }
 
-.msg-native-card__section-badge[data-status="in_progress"] {
+.msg-native-card__section-badge[data-status="in_progress"],
+.msg-native-card__block-badge[data-status="in_progress"] {
   border-color: rgba(59, 130, 246, .24);
   background: rgba(59, 130, 246, .12);
   color: #93c5fd;
 }
 
-.msg-native-card__section-badge[data-status="completed"] {
+.msg-native-card__section-badge[data-status="completed"],
+.msg-native-card__block-badge[data-status="completed"] {
   border-color: rgba(34, 197, 94, .24);
   background: rgba(34, 197, 94, .12);
   color: #86efac;
 }
 
-.msg-native-card__section-badge[data-status="failed"] {
+.msg-native-card__section-badge[data-status="failed"],
+.msg-native-card__block-badge[data-status="failed"] {
   border-color: rgba(248, 113, 113, .24);
   background: rgba(248, 113, 113, .12);
   color: #fca5a5;
 }
 
-.msg-native-card__section-summary {
+.msg-native-card__section-summary,
+.msg-native-card__block-summary {
   font-size: 13px;
   line-height: 1.5;
   color: var(--text-1);
@@ -2895,10 +2917,28 @@ body[data-theme="light"] .msg-sys-admin-human-note-icon {
   word-break: break-word;
 }
 
-.msg-native-card__section-meta {
+.msg-native-card__section-meta,
+.msg-native-card__block-meta {
   font-size: 11px;
   color: var(--text-3);
   word-break: break-word;
+}
+
+.msg-native-card__block-content {
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, .14);
+  background: rgba(15, 23, 42, .18);
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.msg-native-card__block-content--message {
+  max-height: 132px;
+  overflow: auto;
 }
 
 .msg-native-card__chips {
@@ -3129,15 +3169,18 @@ body[data-theme="light"] .msg-sys-admin-human-note-icon {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
-.msg-native-card__section[data-kind="placeholder"] .msg-native-card__section-summary {
+.msg-native-card__section[data-kind="placeholder"] .msg-native-card__section-summary,
+.msg-native-card__block[data-kind="placeholder"] .msg-native-card__block-summary {
   color: var(--text-2);
 }
 
-.msg-native-card__section[data-kind="thinking"][data-status="in_progress"] .msg-native-card__section-title {
+.msg-native-card__section[data-kind="thinking"][data-status="in_progress"] .msg-native-card__section-title,
+.msg-native-card__block[data-kind="thinking"][data-status="in_progress"] .msg-native-card__block-title {
   color: var(--accent);
 }
 
-.msg-native-card__section[data-kind="task"][data-status="failed"] .msg-native-card__section-summary {
+.msg-native-card__section[data-kind="task"][data-status="failed"] .msg-native-card__section-summary,
+.msg-native-card__block[data-kind="task"][data-status="failed"] .msg-native-card__block-summary {
   color: #fca5a5;
 }
 
@@ -3163,6 +3206,10 @@ body[data-theme="light"] .msg-native-card__chip[data-kind="update"] {
 
 body[data-theme="light"] .msg-native-card__item {
   background: rgba(248, 250, 252, .92);
+}
+
+body[data-theme="light"] .msg-native-card__block-content {
+  background: rgba(248, 250, 252, .94);
 }
 
 body[data-theme="light"] .msg-native-card__diff {
@@ -3759,7 +3806,8 @@ body[data-theme="light"] .meeting-modal-footer {
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.7) 0%, rgba(248, 250, 252, 0.98) 100%);
 }
 
-#modal-topic {
+#modal-topic,
+#modal-workspace {
   width: 100%;
   background: var(--bg-input);
   border: 1px solid var(--border-light);
@@ -3771,9 +3819,33 @@ body[data-theme="light"] .meeting-modal-footer {
   margin-bottom: 16px;
 }
 
-#modal-topic:focus {
+#modal-topic:focus,
+#modal-workspace:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+.thread-workspace-field {
+  grid-column: 1 / -1;
+}
+
+.thread-workspace-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.thread-workspace-row__button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.settings-field-description--error {
+  color: #fca5a5;
+}
+
+body[data-theme="light"] .settings-field-description--error {
+  color: #b91c1c;
 }
 
 .modal-actions {
@@ -4472,6 +4544,11 @@ body[data-theme="light"] .meeting-modal-placeholder {
 
   .thread-launch-model-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .thread-workspace-row {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .thread-launch-agent-row__header {

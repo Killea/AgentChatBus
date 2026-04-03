@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from src.main import (
+from agentchatbus.main import (
     app,
     DB_TIMEOUT,
     api_threads,
@@ -20,7 +20,7 @@ from src.main import (
     api_messages,
     api_create_thread,
 )
-from src.db.models import Thread, Message, AgentInfo
+from agentchatbus.db.models import Thread, Message, AgentInfo
 
 
 # ─────────────────────────────────────────────
@@ -73,7 +73,7 @@ def suppress_runtime_warnings():
 @pytest.mark.asyncio
 async def test_api_threads_timeout_on_get_db():
     """Test that API returns 503 when get_db() times out."""
-    with patch("src.main.asyncio.wait_for") as mock_wait_for:
+    with patch("agentchatbus.main.asyncio.wait_for") as mock_wait_for:
         # First call to wait_for (get_db) times out
         mock_wait_for.side_effect = asyncio.TimeoutError()
         
@@ -98,7 +98,7 @@ async def test_api_threads_timeout_on_thread_list():
         else:
             raise asyncio.TimeoutError()
 
-    with patch("src.main.asyncio.wait_for", side_effect=mock_wait_for_impl):
+    with patch("agentchatbus.main.asyncio.wait_for", side_effect=mock_wait_for_impl):
         try:
             await api_threads()
             pytest.fail("Expected HTTPException with 503")
@@ -113,7 +113,7 @@ async def test_api_agents_timeout():
     async def mock_wait_for_impl(coro, timeout):
         raise asyncio.TimeoutError()
 
-    with patch("src.main.asyncio.wait_for", side_effect=mock_wait_for_impl):
+    with patch("agentchatbus.main.asyncio.wait_for", side_effect=mock_wait_for_impl):
         try:
             await api_agents()
             pytest.fail("Expected HTTPException with 503")
@@ -146,10 +146,10 @@ async def test_api_threads_success():
 
     mock_db = AsyncMock()
 
-    with patch("src.main.get_db", return_value=mock_db), \
-         patch("src.main.crud.thread_list", new=AsyncMock(return_value=mock_threads)), \
-         patch("src.main.crud.thread_count", new=AsyncMock(return_value=len(mock_threads))), \
-         patch("src.main.crud.threads_agents_map", new=AsyncMock(return_value={})):
+    with patch("agentchatbus.main.get_db", return_value=mock_db), \
+         patch("agentchatbus.main.crud.thread_list", new=AsyncMock(return_value=mock_threads)), \
+         patch("agentchatbus.main.crud.thread_count", new=AsyncMock(return_value=len(mock_threads))), \
+         patch("agentchatbus.main.crud.threads_agents_map", new=AsyncMock(return_value={})):
         result = await api_threads()
 
         # Verify result is an envelope dict with expected structure (UP-20)
@@ -190,7 +190,7 @@ async def test_api_agents_success():
         # Return mock_agents for agent_list calls
         return mock_agents
 
-    with patch("src.main.asyncio.wait_for", side_effect=mock_wait_for_impl):
+    with patch("agentchatbus.main.asyncio.wait_for", side_effect=mock_wait_for_impl):
         result = await api_agents()
 
         assert isinstance(result, list)

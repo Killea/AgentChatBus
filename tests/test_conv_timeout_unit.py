@@ -6,8 +6,8 @@ import asyncio
 import pytest
 import aiosqlite
 from datetime import datetime, timezone, timedelta
-import src.db.crud as crud_mod
-from src.db.database import init_schema
+import agentchatbus.db.crud as crud_mod
+from agentchatbus.db.database import init_schema
 
 
 from contextlib import asynccontextmanager

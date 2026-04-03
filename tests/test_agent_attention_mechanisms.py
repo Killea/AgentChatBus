@@ -6,9 +6,9 @@ import aiosqlite
 import pytest
 from mcp import types
 
-from src.db import crud
-from src.db.database import init_schema
-from src.tools import dispatch
+from agentchatbus.db import crud
+from agentchatbus.db.database import init_schema
+from agentchatbus.tools import dispatch
 
 # Helpers
 async def _make_db():
@@ -32,15 +32,15 @@ async def _post_msg_with_attention(db, thread_id: str):
 
 @pytest.fixture
 def mock_attention_true(monkeypatch):
-    monkeypatch.setattr("src.tools.dispatch.ENABLE_HANDOFF_TARGET", True)
-    monkeypatch.setattr("src.tools.dispatch.ENABLE_STOP_REASON", True)
-    monkeypatch.setattr("src.tools.dispatch.ENABLE_PRIORITY", True)
+    monkeypatch.setattr("agentchatbus.tools.dispatch.ENABLE_HANDOFF_TARGET", True)
+    monkeypatch.setattr("agentchatbus.tools.dispatch.ENABLE_STOP_REASON", True)
+    monkeypatch.setattr("agentchatbus.tools.dispatch.ENABLE_PRIORITY", True)
 
 @pytest.fixture
 def mock_attention_false(monkeypatch):
-    monkeypatch.setattr("src.tools.dispatch.ENABLE_HANDOFF_TARGET", False)
-    monkeypatch.setattr("src.tools.dispatch.ENABLE_STOP_REASON", False)
-    monkeypatch.setattr("src.tools.dispatch.ENABLE_PRIORITY", False)
+    monkeypatch.setattr("agentchatbus.tools.dispatch.ENABLE_HANDOFF_TARGET", False)
+    monkeypatch.setattr("agentchatbus.tools.dispatch.ENABLE_STOP_REASON", False)
+    monkeypatch.setattr("agentchatbus.tools.dispatch.ENABLE_PRIORITY", False)
 
 @pytest.mark.asyncio
 async def test_msg_get_attention_enabled(mock_attention_true):

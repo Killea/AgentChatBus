@@ -7,8 +7,8 @@ import json
 import uuid
 import aiosqlite
 from datetime import datetime, timedelta, timezone
-from src.db import crud
-from src.db.database import init_schema
+from agentchatbus.db import crud
+from agentchatbus.db.database import init_schema
 
 
 @pytest.fixture
@@ -352,7 +352,7 @@ async def test_thread_delete_cleans_future_fk_tables(db):
 # ─────────────────────────────────────────────────────────────────────────────
 
 import json
-from src.tools.dispatch import handle_thread_settings_get, handle_thread_settings_update
+from agentchatbus.tools.dispatch import handle_thread_settings_get, handle_thread_settings_update
 
 
 @pytest.mark.asyncio

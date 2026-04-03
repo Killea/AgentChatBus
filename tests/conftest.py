@@ -14,6 +14,11 @@ from pathlib import Path
 import httpx
 import pytest
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+PYTHON_STANDALONE_ROOT = REPO_ROOT / "deprecated_src" / "python_standalone"
+if str(PYTHON_STANDALONE_ROOT) not in sys.path:
+    sys.path.insert(0, str(PYTHON_STANDALONE_ROOT))
+
 # Use a dedicated test port separate from the production port (39765) to avoid conflicts.
 # See UP-20 / Integration Testing — Port Conflict Resolution in agentchatbus-upstream-improvements.md
 TEST_PORT = 39769
@@ -114,8 +119,7 @@ def enforce_test_database() -> None:
     if db == ":memory:":
         return
 
-    repo_root = Path(__file__).resolve().parents[1]
-    prod_repo_db = (repo_root / "data" / "bus.db").resolve()
+    prod_repo_db = (REPO_ROOT / "data" / "bus.db").resolve()
     prod_home_db = (Path.home() / ".agentchatbus" / "bus.db").resolve()
 
     try:
@@ -153,6 +157,11 @@ def server():
     test_env["AGENTCHATBUS_PORT"] = str(TEST_PORT)
     test_env["AGENTCHATBUS_DB"] = TEST_DB_PATH
     test_env["AGENTCHATBUS_RELOAD"] = "0"  # Disable reload for tests
+    existing_pythonpath = test_env.get("PYTHONPATH", "")
+    pythonpath_parts = [str(PYTHON_STANDALONE_ROOT)]
+    if existing_pythonpath:
+        pythonpath_parts.append(existing_pythonpath)
+    test_env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
     
     # Check if a compatible test server is already running on the test port.
     # Verify /health + all new endpoints from UP-13+16, UP-20, UP-22, UP-14:
@@ -237,7 +246,7 @@ def server():
         # buffer fills the server can block (deadlock), leading to flaky
         # httpx.ReadTimeout errors and the appearance that pytest has "hung".
         _SERVER_PROCESS = subprocess.Popen(
-            [sys.executable, "-m", "src.main"],
+            [sys.executable, "-m", "agentchatbus.main"],
             env=test_env
         )
         started_here = True

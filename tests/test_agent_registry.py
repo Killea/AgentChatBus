@@ -1,9 +1,9 @@
 import aiosqlite
 import pytest
 
-from src.db import crud
-from src.db.database import init_schema
-from src.main import _agent_emoji
+from agentchatbus.db import crud
+from agentchatbus.db.database import init_schema
+from agentchatbus.main import _agent_emoji
 
 
 async def _post_message(db, thread_id: str, author: str, content: str, role: str = "user", metadata: dict | None = None):

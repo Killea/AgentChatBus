@@ -81,4 +81,34 @@ describe("MemoryStore", () => {
     expect(agentIds.has(creator.id)).toBe(true);
     expect(agentIds.has(participant.id)).toBe(true);
   });
+
+  it("deleteThread removes related edit, reaction, and refresh-request records", () => {
+    const store = new MemoryStore(":memory:");
+    const agent = store.registerAgent({ ide: "CLI", model: "cleanup-check" });
+    const { thread, sync } = store.createThread("delete-cleanup");
+
+    const message = store.postMessage({
+      threadId: thread.id,
+      author: agent.id,
+      content: "first draft",
+      expectedLastSeq: sync.current_seq,
+      replyToken: sync.reply_token,
+      role: "assistant",
+    });
+
+    store.editMessage(message.id, "second draft", agent.id);
+    store.addReaction(message.id, agent.id, "thumbs-up");
+    store.setRefreshRequest(thread.id, agent.id, "cleanup-check");
+
+    const db = (store as any).persistenceDb;
+    expect((db.prepare("SELECT COUNT(*) as count FROM message_edits WHERE message_id = ?").get(message.id) as { count: number }).count).toBe(1);
+    expect((db.prepare("SELECT COUNT(*) as count FROM reactions WHERE message_id = ?").get(message.id) as { count: number }).count).toBe(1);
+    expect((db.prepare("SELECT COUNT(*) as count FROM msg_wait_refresh_requests WHERE thread_id = ?").get(thread.id) as { count: number }).count).toBe(1);
+
+    expect(store.deleteThread(thread.id)).toBe(true);
+
+    expect((db.prepare("SELECT COUNT(*) as count FROM message_edits WHERE message_id = ?").get(message.id) as { count: number }).count).toBe(0);
+    expect((db.prepare("SELECT COUNT(*) as count FROM reactions WHERE message_id = ?").get(message.id) as { count: number }).count).toBe(0);
+    expect((db.prepare("SELECT COUNT(*) as count FROM msg_wait_refresh_requests WHERE thread_id = ?").get(thread.id) as { count: number }).count).toBe(0);
+  });
 });

@@ -4,8 +4,8 @@ Tests the rate limit logic and CRUD integration without requiring a running serv
 """
 import pytest
 import aiosqlite
-import src.db.crud as crud_mod
-from src.db.database import init_schema
+import agentchatbus.db.crud as crud_mod
+from agentchatbus.db.database import init_schema
 
 
 # NOTE: Per-test DB cleanup is performed explicitly in each async test's

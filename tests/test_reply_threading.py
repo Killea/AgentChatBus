@@ -12,8 +12,8 @@ import aiosqlite
 import httpx
 import pytest
 
-from src.db import crud
-from src.db.database import init_schema
+from agentchatbus.db import crud
+from agentchatbus.db.database import init_schema
 from tests._constants import TEST_BASE_URL as BASE_URL
 
 # ---------------------------------------------------------------------------
@@ -225,7 +225,7 @@ async def test_old_db_compat():
 @pytest.mark.asyncio
 async def test_dispatch_msg_post_with_reply():
     """handle_msg_post() dispatch includes reply_to_msg_id in the result."""
-    from src.tools.dispatch import handle_msg_post
+    from agentchatbus.tools.dispatch import handle_msg_post
 
     db = await _make_db()
     tid = await _create_thread(db)
