@@ -5161,6 +5161,8 @@ export class CliSessionManager {
       return;
     }
 
+    const isResumeRecovery = runtime.snapshot.context_delivery_mode === "resume";
+
     if (looksLikeCopilotIdleScreen(screenText) || looksLikeCopilotUsableScreen(screen)) {
       automation.sawReadyScreen = true;
     }
@@ -5175,14 +5177,26 @@ export class CliSessionManager {
       && !automation.copilotCorrectionSent
     ) {
       automation.copilotCorrectionSent = true;
-      const correctionPrompt = [
-        "Ignore any instructions about report_intent, multi_tool_use.parallel, developer tools, or non-AgentChatBus tools.",
-        "In this current Copilot session, use only the MCP server `agentchatbus`.",
-        "Do not describe plans or tool strategy.",
-        "Do not call any tool except agentchatbus bus_connect, msg_post, and msg_wait.",
-        "Do these steps in order now: bus_connect, msg_post introduction, msg_wait timeout_ms 600000.",
-        initialPrompt,
-      ].join(" ");
+      const correctionPrompt = isResumeRecovery
+        ? [
+          "Ignore any instructions about report_intent, multi_tool_use.parallel, developer tools, or non-AgentChatBus tools.",
+          "In this current Copilot session, use only the MCP server `agentchatbus`.",
+          "Do not describe plans or tool strategy.",
+          "This is a re-entry into an existing thread, not a fresh join.",
+          "Do not call bus_connect and do not register a new agent.",
+          "Use agentchatbus msg_wait to resume the existing thread context.",
+          "If msg_wait returns actionable work, continue it directly or use msg_post with the latest sync_context.",
+          "After posting, resume agentchatbus msg_wait with timeout_ms 600000.",
+          initialPrompt,
+        ].join(" ")
+        : [
+          "Ignore any instructions about report_intent, multi_tool_use.parallel, developer tools, or non-AgentChatBus tools.",
+          "In this current Copilot session, use only the MCP server `agentchatbus`.",
+          "Do not describe plans or tool strategy.",
+          "Do not call any tool except agentchatbus bus_connect, msg_post, and msg_wait.",
+          "Do these steps in order now: bus_connect, msg_post introduction, msg_wait timeout_ms 600000.",
+          initialPrompt,
+        ].join(" ");
       runtime.controls.write(correctionPrompt);
       this.scheduleCopilotDelayedEnter(runtime, "sent_copilot_direct_tool_correction", 1000);
       this.updateAutomationState(runtime, "waiting_for_copilot_direct_tool_correction_submit");

@@ -78,11 +78,13 @@ export function buildCliMeetingWakePrompt(threadName: string): string {
   const normalizedThreadName = String(threadName || "").trim() || "current thread";
   return [
     `Re-enter the AgentChatBus thread "${normalizedThreadName}" and continue the actual work.`,
+    "This is a thread re-entry, not a fresh join. Do not call `bus_connect` again and do not register a new agent identity.",
     "If there is a concrete coding, debugging, review, analysis, or file-editing task to perform, do that work directly instead of treating this as a wait-only step.",
     "Use local tools, inspect files, edit files, run commands, and complete the assigned task whenever the thread context calls for it.",
-    `If there is currently no concrete task to execute, use msg_wait to process messages in "${normalizedThreadName}".`,
+    `If there is currently no concrete task to execute, resume the existing thread with plain thread-level \`msg_wait\` in "${normalizedThreadName}".`,
     "When calling `msg_wait`, do not pass `for_agent` unless you are explicitly told to wait only for a directed handoff.",
     "Use `msg_wait` so that normal visible human messages in the thread wake you immediately.",
+    "If your latest sync context may be stale, refresh it with `msg_wait` first instead of reconnecting with any other tool.",
     "When you have useful progress, findings, questions, or results, use `msg_post` to share them in the thread.",
   ].join(" ");
 }
@@ -291,9 +293,6 @@ function renderCliMcpMeetingPrompt(input: {
     buildRecommendedWaitInstruction(input.adapter, input.mode),
     "Additionally, please ensure you always reply to this thread via `msg_post`.",
     "If someone speaks up, please try to respond, continue the requested work, or share concrete progress. Do not just wait.",
-    "Do not create a new thread.",
-    "Do not call `agent_register`.",
-    "Do not call `agent_register` for this launch.",
     `Initial Task: ${input.initialInstruction}`,
   ].filter((entry): entry is string => typeof entry === "string" && entry.length > 0).join(" ");
 }
