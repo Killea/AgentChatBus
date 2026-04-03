@@ -144,7 +144,7 @@ function Verify-SynchronizedVersion(
     $mismatches = @()
     if ($extensionVersion -ne $ExpectedVersion) { $mismatches += "vscode-agentchatbus/package.json=$extensionVersion" }
     if ($tsVersion -ne $ExpectedVersion) { $mismatches += "agentchatbus-ts/package.json=$tsVersion" }
-    if ($pyprojectVersion -ne $ExpectedVersion) { $mismatches += "pyproject.toml=$pyprojectVersion" }
+    if ($pyprojectVersion -ne $ExpectedVersion) { $mismatches += "deprecated_src/python_standalone/pyproject.toml=$pyprojectVersion" }
     if ($tsEnvVersion -ne $ExpectedVersion) { $mismatches += "agentchatbus-ts/src/core/config/env.ts=$tsEnvVersion" }
 
     if ($mismatches.Count -gt 0) {
@@ -157,7 +157,7 @@ $RepoRoot = Split-Path -Parent $ScriptDir
 $ExtensionRoot = Join-Path $RepoRoot "vscode-agentchatbus"
 $ExtensionPackagePath = Join-Path $ExtensionRoot "package.json"
 $TsPackagePath = Join-Path $RepoRoot "agentchatbus-ts\package.json"
-$PyprojectPath = Join-Path $RepoRoot "pyproject.toml"
+$PyprojectPath = Join-Path $RepoRoot "deprecated_src\python_standalone\pyproject.toml"
 $TsEnvPath = Join-Path $RepoRoot "agentchatbus-ts\src\core\config\env.ts"
 
 $Target = ""
@@ -266,7 +266,7 @@ if ($Publish) {
     Invoke-Step -Command "git add agentchatbus-ts/package.json" -WorkingDirectory $RepoRoot
     Invoke-Step -Command "git add agentchatbus-ts/package-lock.json" -WorkingDirectory $RepoRoot
     Invoke-Step -Command "git add agentchatbus-ts/src/core/config/env.ts" -WorkingDirectory $RepoRoot
-    Invoke-Step -Command "git add pyproject.toml" -WorkingDirectory $RepoRoot
+    Invoke-Step -Command "git add deprecated_src/python_standalone/pyproject.toml" -WorkingDirectory $RepoRoot
     Invoke-Step -Command "git commit -m `"bump version to $NextVersion`"" -WorkingDirectory $RepoRoot
     Invoke-Step -Command "git tag -a v$NextVersion -m `"Release v$NextVersion`"" -WorkingDirectory $RepoRoot
     Invoke-Step -Command "git push $Remote $Branch" -WorkingDirectory $RepoRoot
