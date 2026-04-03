@@ -2,7 +2,7 @@ import Fastify from "fastify";
 import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
 import { existsSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve as resolvePath } from "node:path";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { callTool, listTools, withToolCallContext } from "../../adapters/mcp/tools.js";
@@ -79,6 +79,45 @@ function decorateAgentsForPresentation<T extends Record<string, any>>(agents: T[
       display_name: configuredDisplayName || legacyFallback,
     };
   });
+}
+
+const THREAD_CLI_WORKSPACE_METADATA_KEY = "cli_workspace";
+
+function normalizeWorkspaceCandidate(value: unknown): string | undefined {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return undefined;
+  }
+  try {
+    return resolvePath(raw);
+  } catch {
+    return undefined;
+  }
+}
+
+function isUsableWorkspaceCandidate(value: string | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+  try {
+    return existsSync(value);
+  } catch {
+    return false;
+  }
+}
+
+function extractThreadCliWorkspace(thread: { metadata?: Record<string, unknown> } | undefined): string | undefined {
+  const candidate = thread?.metadata?.[THREAD_CLI_WORKSPACE_METADATA_KEY];
+  return typeof candidate === "string" && candidate.trim() ? candidate.trim() : undefined;
+}
+
+function withThreadWorkspace<T extends { metadata?: Record<string, unknown> }>(
+  thread: T,
+): T & { workspace?: string } {
+  return {
+    ...thread,
+    workspace: extractThreadCliWorkspace(thread),
+  };
 }
 
 function decorateAgentForPresentation<T extends Record<string, any>>(agent: T | undefined): (T & {
@@ -693,7 +732,7 @@ export function createHttpServer() {
     const threadsWithWaitingAgents = threads.map(thread => {
       const waitingAgents = decorateAgentsForPresentation(store.getWaitingAgentsForThread(thread.id));
       return {
-        ...thread,
+        ...withThreadWorkspace(thread),
         waiting_agents: waitingAgents.map(agent => ({
           id: agent.id,
           display_name: agent.preferred_display_name || agent.display_name || agent.name,
@@ -898,6 +937,19 @@ export function createHttpServer() {
       ? body.reentry_prompt_override.trim()
       : "";
     try {
+      const explicitWorkspace = normalizeWorkspaceCandidate(body.workspace);
+      const rawWorkspaceProvided = String(body.workspace || "").trim().length > 0;
+      if (rawWorkspaceProvided && (!explicitWorkspace || !isUsableWorkspaceCandidate(explicitWorkspace))) {
+        reply.code(400);
+        return { detail: "workspace must be an existing directory" };
+      }
+      const threadWorkspace = extractThreadCliWorkspace(thread);
+      const resolvedWorkspace = explicitWorkspace || threadWorkspace;
+      if (resolvedWorkspace && !isUsableWorkspaceCandidate(resolvedWorkspace)) {
+        reply.code(400);
+        return { detail: "Thread default workspace is unavailable; update the thread workspace before launching a CLI session" };
+      }
+
       let finalPrompt = exactPromptOverride || promptSeed;
       let participantRole: "administrator" | "participant" | undefined;
       let contextDeliveryMode: "join" | "resume" | "incremental" | undefined;
@@ -955,7 +1007,7 @@ export function createHttpServer() {
           : undefined,
         prompt: finalPrompt,
         initialInstruction: promptSeed,
-        workspace: typeof body.workspace === "string" ? body.workspace : undefined,
+        workspace: resolvedWorkspace,
         requestedByAgentId,
         participantAgentId: participantAgentId || undefined,
         participantDisplayName: finalParticipantDisplayName,
@@ -1015,12 +1067,22 @@ export function createHttpServer() {
     }
 
     const assignCreatorAdmin = body.assign_creator_admin !== false;
+    const requestedWorkspace = normalizeWorkspaceCandidate(body.workspace);
+    const rawWorkspaceProvided = String(body.workspace || "").trim().length > 0;
+    if (rawWorkspaceProvided && (!requestedWorkspace || !isUsableWorkspaceCandidate(requestedWorkspace))) {
+      reply.code(400);
+      return { detail: "workspace must be an existing directory" };
+    }
+    const threadMetadata = requestedWorkspace
+      ? { [THREAD_CLI_WORKSPACE_METADATA_KEY]: requestedWorkspace }
+      : undefined;
 
     const created = store.createThread(
       topic,
       typeof body.system_prompt === "string" ? body.system_prompt : undefined,
       undefined,
       {
+        metadata: threadMetadata,
         creatorAdminId: assignCreatorAdmin ? creatorAgentId : undefined,
         creatorAdminName: assignCreatorAdmin ? resolvePreferredAgentDisplayName(creator) : undefined,
         applySystemPromptContentFilter: true
@@ -1033,6 +1095,8 @@ export function createHttpServer() {
       topic: created.thread.topic,
       status: created.thread.status,
       system_prompt: created.thread.system_prompt,
+      metadata: created.thread.metadata,
+      workspace: extractThreadCliWorkspace(created.thread),
       created_at: created.thread.created_at,
       updated_at: created.thread.updated_at,
       current_seq: created.sync.current_seq,

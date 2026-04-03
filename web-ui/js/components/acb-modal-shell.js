@@ -147,7 +147,29 @@
                           </select>
                           <div id="modal-template-desc" class="settings-field-description" style="margin-top:4px; min-height:1.4em;"></div>
                         </div>
+                        <div class="settings-field thread-workspace-field">
+                          <label for="modal-workspace">Working Directory</label>
+                          <div class="thread-workspace-row">
+                            <input id="modal-workspace" type="text" placeholder="Working directory for this thread" />
+                            <button
+                              id="modal-workspace-picker"
+                              class="btn-secondary thread-workspace-row__button"
+                              type="button"
+                              onclick="window.AcbModals && window.AcbModals.pickThreadWorkspace()"
+                            >
+                              Choose Folder
+                            </button>
+                          </div>
+                          <div
+                            id="modal-workspace-desc"
+                            class="settings-field-description"
+                            data-default-text="Default CLI workspace for this thread. All later agent launches in this thread inherit it unless a session overrides the path."
+                          >
+                            Default CLI workspace for this thread. All later agent launches in this thread inherit it unless a session overrides the path.
+                          </div>
+                        </div>
                       </div>
+                      <div id="thread-create-error" class="settings-field-description settings-field-description--error meeting-modal-hidden"></div>
                     </div>
 
                     <div id="thread-agent-config" class="meeting-modal-section meeting-modal-section--compact">

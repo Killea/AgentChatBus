@@ -1142,6 +1142,140 @@
     return Math.round(seconds * 1000);
   }
 
+  function getThreadWorkspaceInput() {
+    const input = document.getElementById("modal-workspace");
+    return input instanceof HTMLInputElement ? input : null;
+  }
+
+  function getThreadWorkspaceDescriptionEl() {
+    const el = document.getElementById("modal-workspace-desc");
+    return el instanceof HTMLElement ? el : null;
+  }
+
+  function getThreadCreateErrorEl() {
+    const el = document.getElementById("thread-create-error");
+    return el instanceof HTMLElement ? el : null;
+  }
+
+  function clearThreadCreateError() {
+    const errorEl = getThreadCreateErrorEl();
+    if (!errorEl) {
+      return;
+    }
+    errorEl.textContent = "";
+    errorEl.classList.add("meeting-modal-hidden");
+  }
+
+  function setThreadCreateError(message) {
+    const errorEl = getThreadCreateErrorEl();
+    if (!errorEl) {
+      return;
+    }
+    errorEl.textContent = String(message || "").trim();
+    errorEl.classList.toggle("meeting-modal-hidden", !errorEl.textContent);
+  }
+
+  function setThreadWorkspaceDescription(message, options = {}) {
+    const descEl = getThreadWorkspaceDescriptionEl();
+    if (!descEl) {
+      return;
+    }
+    const defaultText = String(descEl.dataset.defaultText || "").trim();
+    const nextText = String(message || "").trim() || defaultText;
+    descEl.textContent = nextText;
+    descEl.classList.toggle("settings-field-description--error", options.error === true);
+  }
+
+  function formatThreadWorkspaceSource(source) {
+    switch (String(source || "").trim()) {
+      case "configured":
+        return "configured default";
+      case "process_cwd":
+        return "service working directory";
+      case "user_home":
+        return "user home fallback";
+      default:
+        return "service default";
+    }
+  }
+
+  async function loadThreadWorkspaceDefaults(api, options = {}) {
+    const input = getThreadWorkspaceInput();
+    if (!input || (!options.force && String(input.value || "").trim())) {
+      return;
+    }
+    setThreadWorkspaceDescription("");
+    if (!api) {
+      syncThreadWorkspacePickerState();
+      return;
+    }
+    const defaults = await api("/api/cli-defaults");
+    const workspace = String(defaults?.workspace || "").trim();
+    if (workspace) {
+      input.value = workspace;
+    }
+    const sourceLabel = formatThreadWorkspaceSource(defaults?.source);
+    setThreadWorkspaceDescription(
+      workspace
+        ? `Default from ${sourceLabel}: ${workspace}`
+        : "Default CLI workspace for this thread. All later agent launches in this thread inherit it unless a session overrides the path.",
+    );
+    syncThreadWorkspacePickerState();
+  }
+
+  function syncThreadWorkspacePickerState() {
+    const button = document.getElementById("modal-workspace-picker");
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+    const supported = typeof window.showDirectoryPicker === "function";
+    button.disabled = !supported;
+    button.title = supported
+      ? "Choose a folder when the browser can expose a real filesystem path."
+      : "This environment cannot expose a filesystem path from the browser. Paste the directory manually.";
+  }
+
+  async function pickThreadWorkspace() {
+    const input = getThreadWorkspaceInput();
+    if (!input) {
+      return;
+    }
+    if (typeof window.showDirectoryPicker !== "function") {
+      setThreadWorkspaceDescription(
+        "Directory picking is unavailable here. Paste the full filesystem path manually.",
+        { error: false },
+      );
+      return;
+    }
+
+    try {
+      const handle = await window.showDirectoryPicker({ mode: "read" });
+      const resolvedPath = typeof handle?.path === "string"
+        ? handle.path.trim()
+        : typeof handle?.fullPath === "string"
+          ? handle.fullPath.trim()
+          : "";
+      if (resolvedPath) {
+        input.value = resolvedPath;
+        setThreadWorkspaceDescription(`Selected folder: ${resolvedPath}`);
+        return;
+      }
+      const selectedName = String(handle?.name || "folder").trim() || "folder";
+      setThreadWorkspaceDescription(
+        `Selected "${selectedName}", but this browser cannot reveal its absolute path. Paste the full path manually.`,
+        { error: false },
+      );
+    } catch (error) {
+      if (error && typeof error === "object" && error.name === "AbortError") {
+        return;
+      }
+      setThreadWorkspaceDescription(
+        `Could not read a filesystem path from the picker. Paste the full path manually.`,
+        { error: false },
+      );
+    }
+  }
+
   function getThreadLaunchGlobalInstruction() {
     return String(document.getElementById("thread-launch-global-instruction")?.value || "").trim();
   }
@@ -2015,6 +2149,7 @@
       participantAgent,
       config,
       isFirstAgent,
+      workspace,
     } = options;
     const result = await api(`/api/threads/${threadId}/cli-sessions`, {
       method: "POST",
@@ -2034,6 +2169,7 @@
         requested_by_agent_id: uiAgent.agent_id,
         participant_agent_id: participantAgent.agent_id,
         participant_display_name: participantAgent.display_name || buildDefaultParticipantName(config),
+        workspace: String(workspace || "").trim() || undefined,
         cols: 120,
         rows: 32,
       }),
@@ -2041,7 +2177,7 @@
     return result?.session || null;
   }
 
-  function openThreadModal(api) {
+  async function openThreadModal(api) {
     const launchPreviewDetailsEl = document.getElementById("thread-agent-side");
     const reentryPreviewDetailsEl = document.getElementById("thread-agent-reentry-side");
     if (launchPreviewDetailsEl instanceof HTMLDetailsElement) {
@@ -2058,6 +2194,8 @@
     if (topicInputEl && !String(topicInputEl.value || "").trim()) {
       topicInputEl.value = buildDefaultThreadName();
     }
+    clearThreadCreateError();
+    await loadThreadWorkspaceDefaults(api, { force: true });
     if (topicInputEl && topicInputEl.dataset.threadLaunchBound !== "1") {
       topicInputEl.dataset.threadLaunchBound = "1";
       topicInputEl.addEventListener("input", () => {
@@ -2124,6 +2262,9 @@
     const topicInput = document.getElementById("modal-topic");
     const topic = topicInput.value.trim();
     if (!topic) return;
+    clearThreadCreateError();
+    const workspaceInput = getThreadWorkspaceInput();
+    const workspace = String(workspaceInput?.value || "").trim();
 
     const modelInputs = Array.from(document.querySelectorAll('[data-field="model"]'));
     for (const input of modelInputs) {
@@ -2172,7 +2313,29 @@
       };
     }
 
+    const t = await api("/api/threads", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Agent-Token": creatorAuth.token,
+      },
+      body: JSON.stringify({
+        topic,
+        creator_agent_id: creatorAuth.agent_id,
+        assign_creator_admin: shouldLaunchFirstAgent,
+        workspace: workspace || undefined,
+        ...(template ? { template } : {}),
+      }),
+    });
+    if (!t?.id) {
+      setThreadCreateError(t?.detail || "Failed to create thread.");
+      return;
+    }
+
     topicInput.value = "";
+    if (workspaceInput) {
+      workspaceInput.value = "";
+    }
     if (templateSel) templateSel.value = "";
     const descEl = document.getElementById("modal-template-desc");
     if (descEl) descEl.textContent = "";
@@ -2184,19 +2347,6 @@
     syncThreadLaunchUi();
     closeThreadModal();
 
-    const t = await api("/api/threads", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Agent-Token": creatorAuth.token,
-      },
-      body: JSON.stringify({
-        topic,
-        creator_agent_id: creatorAuth.agent_id,
-        assign_creator_admin: shouldLaunchFirstAgent,
-        ...(template ? { template } : {}),
-      }),
-    });
     if (t) {
       const followupLaunchConfigs = shouldLaunchFirstAgent ? launchAgentConfigs.slice(1) : [];
       if (shouldLaunchFirstAgent && participantAgent && firstAgentConfig) {
@@ -2207,6 +2357,7 @@
           participantAgent,
           config: firstAgentConfig,
           isFirstAgent: true,
+          workspace,
         });
       }
       const syncContext =
@@ -2245,6 +2396,7 @@
           participantAgent: nextParticipantAgent,
           config,
           isFirstAgent: false,
+          workspace,
         });
         if (!session) {
           console.error(`[Thread Create] Failed to create target agent CLI session ${index + 2}`);
@@ -2829,6 +2981,7 @@
     removeThreadLaunchAgent,
     selectThreadLaunchAgent,
     updateThreadLaunchAgentField,
+    pickThreadWorkspace,
     openAddAgentModal,
     closeAddAgentModal,
     submitAddAgentModal,

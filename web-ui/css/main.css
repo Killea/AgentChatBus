@@ -3759,7 +3759,8 @@ body[data-theme="light"] .meeting-modal-footer {
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.7) 0%, rgba(248, 250, 252, 0.98) 100%);
 }
 
-#modal-topic {
+#modal-topic,
+#modal-workspace {
   width: 100%;
   background: var(--bg-input);
   border: 1px solid var(--border-light);
@@ -3771,9 +3772,33 @@ body[data-theme="light"] .meeting-modal-footer {
   margin-bottom: 16px;
 }
 
-#modal-topic:focus {
+#modal-topic:focus,
+#modal-workspace:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+.thread-workspace-field {
+  grid-column: 1 / -1;
+}
+
+.thread-workspace-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.thread-workspace-row__button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.settings-field-description--error {
+  color: #fca5a5;
+}
+
+body[data-theme="light"] .settings-field-description--error {
+  color: #b91c1c;
 }
 
 .modal-actions {
@@ -4472,6 +4497,11 @@ body[data-theme="light"] .meeting-modal-placeholder {
 
   .thread-launch-model-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .thread-workspace-row {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .thread-launch-agent-row__header {
