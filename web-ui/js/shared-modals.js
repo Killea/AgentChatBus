@@ -1228,11 +1228,18 @@
     if (!(button instanceof HTMLButtonElement)) {
       return;
     }
-    const supported = typeof window.showDirectoryPicker === "function";
-    button.disabled = !supported;
-    button.title = supported
-      ? "Choose a folder when the browser can expose a real filesystem path."
-      : "This environment cannot expose a filesystem path from the browser. Paste the directory manually.";
+    button.disabled = false;
+    button.title = "Choose a folder for this thread. On Windows, the local service opens a native directory dialog.";
+  }
+
+  function setThreadWorkspacePickerBusy(busy, label) {
+    const button = document.getElementById("modal-workspace-picker");
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+    const nextLabel = String(label || "").trim() || (busy ? "Opening..." : "Choose Folder");
+    button.disabled = busy;
+    button.textContent = nextLabel;
   }
 
   async function pickThreadWorkspace() {
@@ -1240,15 +1247,48 @@
     if (!input) {
       return;
     }
-    if (typeof window.showDirectoryPicker !== "function") {
+    try {
+      setThreadWorkspacePickerBusy(true);
       setThreadWorkspaceDescription(
-        "Directory picking is unavailable here. Paste the full filesystem path manually.",
+        "Opening the folder picker. If nothing appears, check whether the native dialog opened behind the browser window.",
         { error: false },
       );
-      return;
-    }
 
-    try {
+      const api = window.AcbApi && typeof window.AcbApi.api === "function"
+        ? window.AcbApi.api
+        : null;
+      if (api) {
+        const payload = await api("/api/system/pick-directory", {
+          method: "POST",
+          body: JSON.stringify({
+            current_path: String(input.value || "").trim() || undefined,
+          }),
+        });
+        const resolvedPath = String(payload?.path || "").trim();
+        if (resolvedPath) {
+          input.value = resolvedPath;
+          setThreadWorkspaceDescription(`Selected folder: ${resolvedPath}`);
+          return;
+        }
+        if (payload?.canceled) {
+          setThreadWorkspaceDescription("Folder selection canceled.", { error: false });
+          return;
+        }
+        if (payload?.detail) {
+          setThreadWorkspaceDescription(
+            `Could not open the native folder picker: ${String(payload.detail).trim()}`,
+            { error: true },
+          );
+        }
+      }
+      if (typeof window.showDirectoryPicker !== "function") {
+        setThreadWorkspaceDescription(
+          "Directory picking is unavailable here. Paste the full filesystem path manually.",
+          { error: false },
+        );
+        return;
+      }
+
       const handle = await window.showDirectoryPicker({ mode: "read" });
       const resolvedPath = typeof handle?.path === "string"
         ? handle.path.trim()
@@ -1267,12 +1307,15 @@
       );
     } catch (error) {
       if (error && typeof error === "object" && error.name === "AbortError") {
+        setThreadWorkspaceDescription("Folder selection canceled.", { error: false });
         return;
       }
       setThreadWorkspaceDescription(
-        `Could not read a filesystem path from the picker. Paste the full path manually.`,
-        { error: false },
+        `Could not open the folder picker. Paste the full path manually.`,
+        { error: true },
       );
+    } finally {
+      setThreadWorkspacePickerBusy(false);
     }
   }
 

@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
+import { execFile } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
 import { join, resolve as resolvePath } from "node:path";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
@@ -41,6 +42,7 @@ import {
   getLegacySseTransport,
 } from "../mcp/streamableHttp.js";
 import { resolveDefaultWorkspacePath } from "../../core/services/adapters/utils.js";
+import { WINDOWS_POWERSHELL } from "../../core/services/adapters/constants.js";
 
 // Allow tests to override the global memoryStore instance
 export let memoryStoreInstance: MemoryStore | null = null;
@@ -118,6 +120,53 @@ function withThreadWorkspace<T extends { metadata?: Record<string, unknown> }>(
     ...thread,
     workspace: extractThreadCliWorkspace(thread),
   };
+}
+
+async function pickDirectoryWithWindowsDialog(currentPath?: string): Promise<string | null> {
+  const selectedPath = normalizeWorkspaceCandidate(currentPath);
+  const initialPath = selectedPath && isUsableWorkspaceCandidate(selectedPath) ? selectedPath : "";
+  const escapedInitialPath = initialPath.replaceAll("'", "''");
+  const script = [
+    "Add-Type -AssemblyName System.Windows.Forms",
+    "$owner = New-Object System.Windows.Forms.Form",
+    "$owner.TopMost = $true",
+    "$owner.ShowInTaskbar = $false",
+    "$owner.WindowState = [System.Windows.Forms.FormWindowState]::Minimized",
+    "$owner.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual",
+    "$owner.Location = New-Object System.Drawing.Point(-32000, -32000)",
+    "$owner.Show()",
+    "$owner.Activate()",
+    "$dialog = New-Object System.Windows.Forms.FolderBrowserDialog",
+    "$dialog.Description = 'Select a working directory for this AgentChatBus thread.'",
+    "$dialog.ShowNewFolderButton = $true",
+    escapedInitialPath ? `$dialog.SelectedPath = '${escapedInitialPath}'` : "",
+    "$result = $dialog.ShowDialog($owner)",
+    "$owner.Close()",
+    "$owner.Dispose()",
+    "if ($result -eq [System.Windows.Forms.DialogResult]::OK -and $dialog.SelectedPath) {",
+    "  [Console]::Out.Write($dialog.SelectedPath)",
+    "}",
+  ].filter(Boolean).join("; ");
+
+  return await new Promise<string | null>((resolve, reject) => {
+    execFile(
+      WINDOWS_POWERSHELL,
+      ["-NoProfile", "-STA", "-Command", script],
+      {
+        windowsHide: false,
+        timeout: 600_000,
+        maxBuffer: 1024 * 1024,
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error(String(stderr || error.message || "Directory picker failed").trim()));
+          return;
+        }
+        const resolvedPath = String(stdout || "").trim();
+        resolve(resolvedPath || null);
+      },
+    );
+  });
 }
 
 function decorateAgentForPresentation<T extends Record<string, any>>(agent: T | undefined): (T & {
@@ -840,6 +889,27 @@ export function createHttpServer() {
         "homedir()",
       ],
     };
+  });
+
+  fastify.post("/api/system/pick-directory", async (request, reply) => {
+    if (process.platform !== "win32") {
+      reply.code(501);
+      return { detail: "Native directory picker is only implemented on Windows in this build." };
+    }
+    try {
+      const body = request.body as JsonBody;
+      const path = await pickDirectoryWithWindowsDialog(
+        typeof body?.current_path === "string" ? body.current_path : undefined,
+      );
+      return {
+        ok: true,
+        canceled: !path,
+        path: path || null,
+      };
+    } catch (error) {
+      reply.code(500);
+      return { detail: error instanceof Error ? error.message : String(error) };
+    }
   });
 
   fastify.post("/api/cli/meeting-prompt-preview", async (request, reply) => {
