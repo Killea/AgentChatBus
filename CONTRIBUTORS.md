@@ -9,3 +9,4 @@ Thank you to the following people:
 - Hulkito <olivier.berthet@moodys.com>
 - Killea <5551824+killea@users.noreply.github.com>
 - Olivier Berthet <bertheto@users.noreply.github.com>
+- Olivier BERTHET <olivier.berthet@regnology.net>
