@@ -1,0 +1,20 @@
+# Cursor Indexing Ignore - rhub_ng
+# Excluded from index but still allows @-references
+
+# === Storybook build ===
+storybook-static/
+
+# === Assets (non-code) ===
+src/assets/
+
+# === Generated files ===
+*.d.ts
+*.generated.ts
+*.spec.js.snap
+
+# === Lock files ===
+package-lock.json
+
+# === SpecStory auto-save ===
+.specstory/**
+CLAUDE.md
