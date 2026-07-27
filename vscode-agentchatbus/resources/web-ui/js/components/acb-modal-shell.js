@@ -147,7 +147,29 @@
                           </select>
                           <div id="modal-template-desc" class="settings-field-description" style="margin-top:4px; min-height:1.4em;"></div>
                         </div>
+                        <div class="settings-field thread-workspace-field">
+                          <label for="modal-workspace">Working Directory</label>
+                          <div class="thread-workspace-row">
+                            <input id="modal-workspace" type="text" placeholder="Working directory for this thread" />
+                            <button
+                              id="modal-workspace-picker"
+                              class="btn-secondary thread-workspace-row__button"
+                              type="button"
+                              onclick="window.AcbModals && window.AcbModals.pickThreadWorkspace()"
+                            >
+                              Choose Folder
+                            </button>
+                          </div>
+                          <div
+                            id="modal-workspace-desc"
+                            class="settings-field-description"
+                            data-default-text="Default CLI workspace for this thread. All later agent launches in this thread inherit it unless a session overrides the path."
+                          >
+                            Default CLI workspace for this thread. All later agent launches in this thread inherit it unless a session overrides the path.
+                          </div>
+                        </div>
                       </div>
+                      <div id="thread-create-error" class="settings-field-description settings-field-description--error meeting-modal-hidden"></div>
                     </div>
 
                     <div id="thread-agent-config" class="meeting-modal-section meeting-modal-section--compact">
@@ -373,6 +395,46 @@
             <div class="settings-modal-footer">
               <button class="btn-secondary" onclick="closeAddAgentModal()">Cancel</button>
               <button id="btn-add-agent-submit" class="btn-primary" onclick="submitAddAgentModal()">Add Agent</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="thread-restart-modal-overlay" onclick="closeRestartThreadModal(event)" class="meeting-modal-hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.72);align-items:center;justify-content:center;z-index:100;animation:fade-in .15s ease;">
+          <div id="thread-restart-modal" class="settings-modal-container" style="width:520px; height:auto; max-height:85vh;" onclick="event.stopPropagation()">
+            <div class="settings-modal-header">
+              <h3>Restart Thread</h3>
+              <button class="settings-close-btn" onclick="closeRestartThreadModal()" title="Close">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+
+            <div class="settings-content" style="background:var(--bg-base); padding:24px; display:flex; flex-direction:column; gap:18px;">
+              <div id="thread-restart-modal-context" class="settings-field-description">
+                Restarting creates a brand new thread with new agent identities and tokens, then removes the old thread's discussion history and records after the restart succeeds.
+              </div>
+
+              <div class="settings-field" style="margin-bottom:0;">
+                <label for="thread-restart-modal-workspace">Workspace</label>
+                <input id="thread-restart-modal-workspace" type="text" readonly />
+                <div class="settings-field-description">
+                  Workspace cleanup is only allowed when this path is the git repository root. The repo directory itself is preserved, and the <code>.git</code> entry is kept.
+                </div>
+              </div>
+
+              <label class="meeting-modal-radio" style="cursor:pointer; align-items:flex-start;">
+                <input id="thread-restart-clear-workspace" type="checkbox" />
+                <div>
+                  <strong>Clear workspace contents</strong>
+                  <span>Delete everything inside the repo root except <code>.git</code>. Disabled by default and blocked for non-git folders or unsafe paths.</span>
+                </div>
+              </label>
+
+              <div id="thread-restart-modal-error" class="settings-field-description settings-field-description--error meeting-modal-hidden"></div>
+            </div>
+
+            <div class="settings-modal-footer">
+              <button id="thread-restart-cancel-btn" class="btn-secondary" onclick="closeRestartThreadModal()">Cancel</button>
+              <button id="thread-restart-submit-btn" class="btn-destructive" onclick="submitRestartThreadModal()">Restart Thread</button>
             </div>
           </div>
         </div>

@@ -19,6 +19,11 @@
       visibility: "style",
       styleVisibleValue: "flex",
     },
+    "thread-restart": {
+      overlayId: "thread-restart-modal-overlay",
+      visibility: "style",
+      styleVisibleValue: "flex",
+    },
   };
 
   /**
@@ -2550,6 +2555,150 @@
     }
   }
 
+  function setRestartThreadError(message) {
+    const errorEl = document.getElementById("thread-restart-modal-error");
+    if (!errorEl) {
+      return;
+    }
+    const text = String(message || "").trim();
+    errorEl.textContent = text;
+    errorEl.classList.toggle("meeting-modal-hidden", !text);
+  }
+
+  function setRestartThreadSubmittingState(isSubmitting) {
+    const submitBtn = document.getElementById("thread-restart-submit-btn");
+    const cancelBtn = document.getElementById("thread-restart-cancel-btn");
+    const checkbox = document.getElementById("thread-restart-clear-workspace");
+    if (submitBtn) {
+      submitBtn.disabled = Boolean(isSubmitting);
+      submitBtn.textContent = isSubmitting ? "Restarting..." : "Restart Thread";
+    }
+    if (cancelBtn) {
+      cancelBtn.disabled = Boolean(isSubmitting);
+    }
+    if (checkbox) {
+      checkbox.disabled = Boolean(isSubmitting);
+    }
+  }
+
+  async function loadCurrentThreadSummary(api, threadId) {
+    if (!api || !threadId) {
+      return null;
+    }
+    const response = await api("/api/threads?include_archived=1");
+    const threads = Array.isArray(response?.threads) ? response.threads : [];
+    return threads.find((thread) => String(thread?.id || "").trim() === String(threadId || "").trim()) || null;
+  }
+
+  async function openRestartThreadModal(api) {
+    const threadId = window.currentThreadId;
+    if (!threadId) {
+      return;
+    }
+    setRestartThreadError("");
+    setRestartThreadSubmittingState(false);
+
+    const checkbox = document.getElementById("thread-restart-clear-workspace");
+    const workspaceInput = document.getElementById("thread-restart-modal-workspace");
+    const contextEl = document.getElementById("thread-restart-modal-context");
+    const threadTitle = document.getElementById("thread-title")?.textContent?.trim() || "current thread";
+    const threadSummary = await loadCurrentThreadSummary(api, threadId);
+    const workspace = String(threadSummary?.workspace || "").trim();
+
+    if (checkbox) {
+      checkbox.checked = false;
+    }
+    if (workspaceInput) {
+      workspaceInput.value = workspace || "(No workspace configured)";
+    }
+    if (contextEl) {
+      contextEl.textContent = `Restart "${threadTitle}" as a brand new thread. Existing discussion records are removed only after the replacement thread and agent launches succeed.`;
+    }
+
+    setModalVisible("thread-restart", true);
+  }
+
+  function closeRestartThreadModal(e) {
+    if (!e || isOverlayClick(e, "thread-restart")) {
+      setRestartThreadError("");
+      setRestartThreadSubmittingState(false);
+      setModalVisible("thread-restart", false);
+    }
+  }
+
+  async function submitRestartThreadModal(deps) {
+    const { api, refreshThreads, selectThread } = deps;
+    const threadId = window.currentThreadId;
+    if (!threadId) {
+      return;
+    }
+
+    const uiAgent = window.AcbUiAgent ? await window.AcbUiAgent.ensureUiAgent() : null;
+    if (!uiAgent) {
+      setRestartThreadError("Could not obtain the Browser User token needed to restart this thread.");
+      return;
+    }
+
+    const clearWorkspace = document.getElementById("thread-restart-clear-workspace")?.checked === true;
+    const wasPinned = !!window.AcbThreads?.isThreadPinned?.(threadId);
+    setRestartThreadError("");
+    setRestartThreadSubmittingState(true);
+
+    try {
+      const result = await api(`/api/threads/${threadId}/restart`, {
+        method: "POST",
+        headers: {
+          "X-Agent-Token": uiAgent.token,
+        },
+        body: JSON.stringify({
+          requested_by_agent_id: uiAgent.agent_id,
+          clear_workspace: clearWorkspace,
+        }),
+      });
+
+      if (!result?.ok || !result?.new_thread?.id) {
+        setRestartThreadError(result?.detail || "Failed to restart the thread.");
+        setRestartThreadSubmittingState(false);
+        return;
+      }
+
+      const nextThread = result.new_thread;
+      if (wasPinned && window.AcbThreads?.setThreadPinned) {
+        window.AcbThreads.setThreadPinned(threadId, false);
+        window.AcbThreads.setThreadPinned(nextThread.id, true);
+      }
+
+      closeRestartThreadModal();
+
+      if (typeof refreshThreads === "function") {
+        await refreshThreads();
+      }
+
+      const syncContext =
+        typeof nextThread.current_seq === "number" && nextThread.reply_token
+          ? {
+              current_seq: nextThread.current_seq,
+              reply_token: nextThread.reply_token,
+              reply_window: nextThread.reply_window || null,
+            }
+          : null;
+
+      if (typeof selectThread === "function") {
+        await selectThread(nextThread.id, nextThread.topic, nextThread.status, syncContext);
+      }
+
+      if (window.AcbChat && typeof window.AcbChat.refreshThreadAdmin === "function") {
+        await window.AcbChat.refreshThreadAdmin(nextThread.id, api);
+      }
+      if (window.AcbCliSessions && typeof window.AcbCliSessions.refreshThread === "function") {
+        await window.AcbCliSessions.refreshThread(nextThread.id, api);
+      }
+    } catch (error) {
+      setRestartThreadError(error instanceof Error ? error.message : String(error));
+      setRestartThreadSubmittingState(false);
+    }
+  }
+
   async function submitAddAgentModal(deps) {
     const { api, refreshAgents } = deps;
     const threadId = window.currentThreadId;
@@ -3028,6 +3177,9 @@
     openAddAgentModal,
     closeAddAgentModal,
     submitAddAgentModal,
+    openRestartThreadModal,
+    closeRestartThreadModal,
+    submitRestartThreadModal,
     switchAddAgentTab,
     openSettingsModal,
     closeSettingsModal,
@@ -3055,6 +3207,19 @@
     return openAddAgentModal(api);
   };
   window.closeAddAgentModal = closeAddAgentModal;
+  window.openRestartThreadModal = function() {
+    const api = _resolveApi();
+    return openRestartThreadModal(api);
+  };
+  window.closeRestartThreadModal = closeRestartThreadModal;
+  window.submitRestartThreadModal = function() {
+    const api = _resolveApi();
+    return submitRestartThreadModal({
+      api,
+      refreshThreads: typeof window.refreshThreads === "function" ? window.refreshThreads : null,
+      selectThread: typeof window.selectThread === "function" ? window.selectThread : null,
+    });
+  };
   window.submitAddAgentModal = function() {
     const api = _resolveApi();
     return submitAddAgentModal({
