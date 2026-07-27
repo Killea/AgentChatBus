@@ -29,6 +29,13 @@
               </svg>
               <span>Add Agent</span>
             </button>
+            <button id="thread-restart-btn" class="thread-header-cta" type="button" title="Restart this thread" aria-label="Restart this thread" onclick="window.openRestartThreadModal && window.openRestartThreadModal()">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M23 4v6h-6"/>
+                <path d="M20.49 15A9 9 0 1 1 23 10"/>
+              </svg>
+              <span>Restart Thread</span>
+            </button>
             <button id="export-thread-btn" type="button" title="Export as Markdown" aria-label="Export thread as Markdown" onclick="exportFromHeader()">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                 <path d="M8 1v9M4.5 6.5 8 10l3.5-3.5M2 11v2.5A1.5 1.5 0 0 0 3.5 15h9A1.5 1.5 0 0 0 14 13.5V11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>

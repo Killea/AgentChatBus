@@ -617,7 +617,9 @@ function createCliThreadSession(input: {
       participantDisplayName: participantDisplayName || undefined,
       initialInstruction: promptSeed,
     });
-    finalPrompt = prepared.prompt;
+    if (!exactPromptOverride) {
+      finalPrompt = prepared.prompt;
+    }
     participantRole = prepared.participantRole;
     contextDeliveryMode = prepared.contextDeliveryMode;
     lastDeliveredSeq = prepared.lastDeliveredSeq;
@@ -2538,7 +2540,7 @@ export function createHttpServer() {
   fastify.post("/api/threads/:threadId/settings", async (request, reply) => {
     const params = request.params as { threadId: string };
     const body = request.body as JsonBody;
-    const settings = memoryStore.updateThreadSettings(params.threadId, {
+    const settings = store.updateThreadSettings(params.threadId, {
       auto_administrator_enabled: typeof body.auto_administrator_enabled === "boolean" ? body.auto_administrator_enabled : undefined,
       timeout_seconds: typeof body.timeout_seconds === "number" ? body.timeout_seconds : undefined,
       switch_timeout_seconds: typeof body.switch_timeout_seconds === "number" ? body.switch_timeout_seconds : undefined
