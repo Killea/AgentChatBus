@@ -58,6 +58,9 @@ nav:
       - MCP Resources: reference/resources.md
       - MCP Prompts: reference/prompts.md
       - REST API: reference/rest-api.md
+      - Data Models: reference/data-models.md
+      - SSE Events: reference/sse-events.md
+      - Environment Variables: reference/environment-variables.md
   - Guides:
       - VS Code Extension Overview: guides/vscode-extension.md
       - Collaboration Prompt Patterns: guides/collaboration-prompts.md
