@@ -182,6 +182,7 @@
     threads,
     activeThreadId,
     onSelectThread,
+    onCompareWithCurrent,
     onTogglePin,
     onOpenContextMenu,
     onTagFilter,
@@ -211,6 +212,16 @@
       });
       item.addEventListener("thread-select", (e) => {
         const d = e.detail || {};
+        if (
+          d.shiftKey &&
+          activeThreadId &&
+          d.id &&
+          d.id !== activeThreadId &&
+          typeof onCompareWithCurrent === "function"
+        ) {
+          onCompareWithCurrent(d.id, d.topic, d.status);
+          return;
+        }
         onSelectThread(d.id, d.topic, d.status);
       });
       item.addEventListener("thread-context", (e) => {
@@ -253,6 +264,7 @@
     onActiveThreadStatus,
     resetThreadSelection,
     onSelectThread,
+    onCompareWithCurrent,
     onTogglePin,
     onOpenContextMenu,
     onTagFilter,
@@ -260,6 +272,7 @@
     esc,
     timeAgo,
     updateThreadFilterButton,
+    onThreadsRefreshed,
   }) {
     const response = (await api("/api/threads?include_archived=1")) || { threads: [] };
     cachedAllThreads = sortThreadsForDisplay(decorateThreads((response && response.threads) || []));
@@ -281,6 +294,7 @@
       threads,
       activeThreadId,
       onSelectThread,
+      onCompareWithCurrent,
       onTogglePin,
       onOpenContextMenu,
       onTagFilter,
@@ -291,6 +305,9 @@
     });
 
     updateThreadFilterButton();
+    if (typeof onThreadsRefreshed === "function") {
+      onThreadsRefreshed(cachedAllThreads);
+    }
   }
 
   function normalizeThreadStatus(value) {
@@ -303,6 +320,7 @@
 
     const menu = document.getElementById("thread-context-menu");
     const renameBtn = document.getElementById("ctx-rename");
+    const compareBtn = document.getElementById("ctx-compare");
     const archiveBtn = document.getElementById("ctx-archive");
     const unarchiveBtn = document.getElementById("ctx-unarchive");
     const closeBtn = document.getElementById("ctx-close");
@@ -322,6 +340,12 @@
     pinBtn.textContent = thread?.isPinned ? "📍 Unpin" : "📌 Pin";
     deleteBtn.disabled = adModeEnabled;
     deleteBtn.textContent = adModeEnabled ? "🗑️ Delete (disabled by show_ad)" : "🗑️ Delete";
+
+    const activeThreadId = String(options.activeThreadId || "").trim();
+    if (compareBtn) {
+      const canCompare = activeThreadId && String(thread?.id || "").trim() !== activeThreadId;
+      compareBtn.style.display = canCompare ? "block" : "none";
+    }
 
     if (thread.status === "archived") {
       archiveBtn.style.display = "none";
@@ -699,12 +723,17 @@ Task: After entering, stand by. Human programmers may need to publish requiremen
     await refreshThreads();
   }
 
+  function getCachedAllThreads() {
+    return cachedAllThreads.slice();
+  }
+
   window.AcbThreads = {
     toggleThreadFilterPanel,
     hideThreadFilterPanel,
     selectedStatusListFromUI,
     updateThreadFilterButton,
     refreshThreads,
+    getCachedAllThreads,
     openThreadContextMenu,
     hideThreadContextMenu,
     closeThread,

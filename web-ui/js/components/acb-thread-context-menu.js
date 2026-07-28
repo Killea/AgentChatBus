@@ -6,6 +6,7 @@
       this.innerHTML = `
         <div id="thread-context-menu" role="menu">
           <button id="ctx-copy-name" class="ctx-item" type="button" role="menuitem" onclick="copyThreadNameFromMenu()">🧵 Copy Thread Name</button>
+          <button id="ctx-compare" class="ctx-item" type="button" role="menuitem" onclick="compareThreadFromMenu()" style="display: none;">🔀 Compare with current</button>
           <hr class="ctx-divider" aria-hidden="true">
           <button id="ctx-rename" class="ctx-item" type="button" role="menuitem" onclick="renameThreadFromMenu()">✏️ Rename</button>
           <button id="ctx-add-tag" class="ctx-item" type="button" role="menuitem" onclick="addTagFromMenu()">🏷️ Add tag…</button>
