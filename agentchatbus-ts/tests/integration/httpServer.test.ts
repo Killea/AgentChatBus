@@ -1,4 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createHttpServer, getMemoryStore, memoryStoreInstance } from "../../src/transports/http/server.js";
 
 describe("HTTP compatibility shell", () => {
@@ -975,6 +978,114 @@ describe("HTTP compatibility shell", () => {
     expect(streamResponse.headers.get("content-type")).toContain("text/event-stream");
     await streamResponse.body?.cancel();
     await server.close();
+  });
+
+  it("MCP thread_create stores optional workspace on new threads", async () => {
+    const server = createHttpServer();
+    const workspaceDir = await mkdtemp(join(tmpdir(), "acb-mcp-workspace-"));
+
+    try {
+      const agent = (await server.inject({
+        method: "POST",
+        url: "/api/agents/register",
+        payload: { ide: "VSCode", model: "workspace-thread-create" }
+      })).json();
+
+      const createResponse = await server.inject({
+        method: "POST",
+        url: "/mcp/messages/",
+        payload: {
+          method: "tools/call",
+          params: {
+            name: "thread_create",
+            arguments: {
+              topic: "mcp-workspace-thread",
+              agent_id: agent.agent_id,
+              token: agent.token,
+              workspace: workspaceDir
+            }
+          }
+        }
+      });
+
+      expect(createResponse.statusCode).toBe(200);
+      const created = createResponse.json().result;
+      expect(created.workspace).toBe(workspaceDir);
+      expect(created.thread_id).toBeTruthy();
+
+      const thread = getMemoryStore().getThread(created.thread_id);
+      expect(thread?.metadata?.cli_workspace).toBe(workspaceDir);
+    } finally {
+      await rm(workspaceDir, { recursive: true, force: true });
+      await server.close();
+    }
+  });
+
+  it("MCP thread_create rejects invalid workspace paths", async () => {
+    const server = createHttpServer();
+    const agent = (await server.inject({
+      method: "POST",
+      url: "/api/agents/register",
+      payload: { ide: "VSCode", model: "workspace-thread-create-invalid" }
+    })).json();
+
+    const createResponse = await server.inject({
+      method: "POST",
+      url: "/mcp/messages/",
+      payload: {
+        method: "tools/call",
+        params: {
+          name: "thread_create",
+          arguments: {
+            topic: "mcp-invalid-workspace-thread",
+            agent_id: agent.agent_id,
+            token: agent.token,
+            workspace: join(tmpdir(), "acb-missing-workspace-dir")
+          }
+        }
+      }
+    });
+
+    expect(createResponse.statusCode).toBe(200);
+    const created = createResponse.json().result;
+    expect(created.error).toBe("workspace must be an existing directory");
+
+    await server.close();
+  });
+
+  it("MCP bus_connect stores optional workspace when creating a thread", async () => {
+    const server = createHttpServer();
+    const workspaceDir = await mkdtemp(join(tmpdir(), "acb-mcp-bus-connect-"));
+
+    try {
+      const connectResponse = await server.inject({
+        method: "POST",
+        url: "/mcp/messages/",
+        payload: {
+          method: "tools/call",
+          params: {
+            name: "bus_connect",
+            arguments: {
+              thread_name: "mcp-bus-connect-workspace",
+              ide: "VSCode",
+              model: "GPT-5.4",
+              workspace: workspaceDir
+            }
+          }
+        }
+      });
+
+      expect(connectResponse.statusCode).toBe(200);
+      const connected = JSON.parse(connectResponse.json().result[0].text);
+      expect(connected.thread.created).toBe(true);
+      expect(connected.thread.workspace).toBe(workspaceDir);
+
+      const thread = getMemoryStore().getThread(connected.thread.thread_id);
+      expect(thread?.metadata?.cli_workspace).toBe(workspaceDir);
+    } finally {
+      await rm(workspaceDir, { recursive: true, force: true });
+      await server.close();
+    }
   });
 
   it("serves the deprecated SSE fallback transport on /sse and /messages", async () => {
