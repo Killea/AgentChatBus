@@ -10,7 +10,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet" />
-  <link rel="stylesheet" href="/static/css/main.css?v=30" />
+  <link rel="stylesheet" href="/static/css/main.css?v=31" />
   <link rel="stylesheet" href="/static/vendor/xterm/css/xterm.css" />
 </head>
 
@@ -88,6 +88,10 @@
     <div id="main">
       <acb-thread-header></acb-thread-header>
 
+      <div id="compare-banner" class="compare-banner" hidden role="status" aria-live="polite"></div>
+
+      <div id="main-panels">
+        <div id="primary-panel">
       <!-- UI-02: Search bar -->
       <div id="search-bar" role="search" aria-label="Search messages">
         <div class="search-bar-row">
@@ -162,6 +166,23 @@
           <div id="agent-status-info">ℹ️</div>
         </div>
       </div>
+        </div>
+
+        <div id="compare-panel" class="compare-panel" hidden>
+          <div class="compare-panel-header">
+            <h3 id="compare-panel-title" class="compare-panel-title">Compare</h3>
+            <button id="compare-panel-close" type="button" class="compare-panel-close" aria-label="Close compare view">Close</button>
+          </div>
+          <div id="compare-messages-wrap" class="compare-messages-wrap">
+            <div id="compare-sys-prompt-area"></div>
+            <div id="compare-chat-body" class="compare-chat-body">
+              <div id="compare-messages-scroll" class="compare-messages-scroll">
+                <div id="compare-messages"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -179,7 +200,7 @@
   <script src="/static/js/shared-theme.js?v=2"></script>
   <script src="/static/js/shared-utils.js?v=3"></script>
   <script src="/static/js/shared-message-renderer.js?v=5"></script>
-  <script src="/static/js/shared-sse.js?v=3"></script>
+  <script src="/static/js/shared-sse.js?v=4"></script>
   <script src="/static/vendor/xterm/lib/xterm.js"></script>
   <script src="/static/vendor/xterm-addon-fit/lib/addon-fit.js"></script>
   <script src="/static/js/shared-cli-sessions.js?v=18"></script>
@@ -190,18 +211,19 @@
   <script src="/static/js/components/acb-filter-actions.js?v=2"></script>
   <script src="/static/js/components/acb-filter-row.js?v=2"></script>
   <script src="/static/js/components/acb-thread-filter-shell.js?v=2"></script>
-  <script src="/static/js/components/acb-thread-context-menu.js?v=2"></script>
+  <script src="/static/js/components/acb-thread-context-menu.js?v=3"></script>
   <script src="/static/js/components/acb-thread-header.js?v=7"></script>
-  <script src="/static/js/components/acb-thread-item.js?v=3"></script>
+  <script src="/static/js/components/acb-thread-item.js?v=4"></script>
   <script src="/static/js/components/acb-message-tail-meta.js?v=1"></script>
   <script src="/static/js/components/acb-admin-switch-card.js?v=4"></script>
   <script src="/static/js/components/acb-compose-shell.js?v=3"></script>
   <script src="/static/js/components/acb-agent-status-shell.js?v=3"></script>
-  <script src="/static/js/shared-threads.js?v=8"></script>
+  <script src="/static/js/shared-split-view.js?v=1"></script>
+  <script src="/static/js/shared-threads.js?v=9"></script>
   <script src="/static/js/shared-agent-status.js?v=2"></script>
   <script src="/static/js/components/acb-agent-status-item.js?v=2"></script>
   <script src="/static/js/shared-agents.js?v=4"></script>
-  <script src="/static/js/shared-chat.js?v=7"></script>
+  <script src="/static/js/shared-chat.js?v=8"></script>
   <script src="/static/js/shared-nav-sidebar.js?v=1"></script>
   <script src="/static/js/shared-tooltip.js?v=2"></script>
   <script src="/static/js/components/acb-confirm-dialog.js?v=2"></script>
@@ -377,19 +399,7 @@
       if (window.AcbSearch) window.AcbSearch.init();
       await syncShowAdPolicy();
       await refreshThreadSidebarData();
-      const storedActiveThread = loadStoredActiveThread();
-      if (storedActiveThread?.id) {
-        try {
-          await selectThread(
-            storedActiveThread.id,
-            storedActiveThread.topic || storedActiveThread.id,
-            storedActiveThread.status || 'discuss',
-          );
-        } catch {
-          clearStoredActiveThread();
-          resetThreadSelection();
-        }
-      }
+      await restoreBootThreadSelection();
       updateOnlinePresence();
       startSSE();
       setInterval(refreshThreadSidebarData, 10000);
@@ -425,8 +435,29 @@
       hideAgentTooltip();
     });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') hideThreadContextMenu();
+      if (e.key !== 'Escape') {
+        return;
+      }
+      const menu = document.getElementById('thread-context-menu');
+      if (menu?.classList.contains('visible')) {
+        hideThreadContextMenu();
+        return;
+      }
+      if (window.AcbSplitView?.isCompareMode()) {
+        exitCompare();
+      }
     });
+    window.addEventListener('hashchange', () => {
+      void handleThreadHashChange();
+    });
+
+    const comparePanelCloseBtn = document.getElementById('compare-panel-close');
+    if (comparePanelCloseBtn) {
+      comparePanelCloseBtn.addEventListener('click', () => {
+        exitCompare();
+      });
+    }
+
     window.addEventListener('resize', () => {
       hideThreadContextMenu();
       hideAgentTooltip();
@@ -1035,9 +1066,13 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     function startSSE() {
       return window.AcbSSE.startSSE({
         getActiveThreadId: () => activeThreadId,
+        getCompareThreadId: () => window.AcbSplitView?.getCompareThreadId() || null,
         onMsgNew: async () => loadNewMessages(),
         onTranscriptUpdate: async () => reloadTranscript(),
         onMsgEdit: async (message) => applyEditedMessage(message),
+        onCompareMsgNew: async () => loadCompareNewMessages(),
+        onCompareTranscriptUpdate: async () => reloadCompareTranscript(),
+        onCompareMsgEdit: async (message) => applyCompareEditedMessage(message),
         onThreadEvent: async () => refreshThreads(),
         onAgentPresence: async () => refreshThreadSidebarData(),
         onCliSessionEvent: async (event) => {
@@ -1093,6 +1128,8 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         },
         resetThreadSelection,
         onSelectThread: selectThread,
+        onCompareWithCurrent,
+        onThreadsRefreshed: (threads) => ensureCompareThreadStillExists(threads),
         onTogglePin: async (threadId, pinned) => {
           window.AcbThreads.setThreadPinned(threadId, pinned);
           await refreshThreads();
@@ -1188,7 +1225,16 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     async function selectThread(id, topic, status, initialSyncContext = null) {
       // Close mobile sidebar when selecting thread
       closeMobileSidebar();
+      if (window.AcbSplitView?.getCompareThreadId() === id) {
+        await exitCompare();
+      }
       saveStoredActiveThread({ id, topic, status });
+      if (window.AcbSplitView) {
+        window.AcbSplitView.writeThreadHash({
+          threadId: id,
+          compareId: window.AcbSplitView.getCompareThreadId() || null,
+        });
+      }
       if (window.AcbCliSessions) {
         window.AcbCliSessions.restoreThreadFromCache?.(id);
       }
@@ -1224,6 +1270,230 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     }
     // Expose globally for AcbSearch navigation
     window.selectThread = selectThread;
+
+    function compareScrollBottom(smooth = false) {
+      const box = document.getElementById('compare-messages-scroll');
+      if (!box) return;
+      setTimeout(() => {
+        void box.offsetHeight;
+        if (smooth) {
+          box.scrollTo({ top: box.scrollHeight, behavior: 'smooth' });
+        } else {
+          box.scrollTop = box.scrollHeight;
+        }
+      }, 50);
+    }
+
+    async function loadCompareTranscript(compareId) {
+      const targets = window.AcbSplitView.getMessageTargets(window.AcbSplitView.TARGET_COMPARE);
+      return window.AcbChat.loadTranscript({
+        id: compareId,
+        api,
+        clearThreadParticipants: () => {},
+        rebuildActiveThreadParticipants: () => {},
+        appendBubble: (m) => appendBubble(m, {
+          target: window.AcbSplitView.TARGET_COMPARE,
+          readOnly: true,
+        }),
+        updateOnlinePresence: () => {},
+        updateStatusBar: async () => {},
+        setLastSeq: (s) => window.AcbSplitView.setCompareLastSeq(s),
+        scrollBottom: compareScrollBottom,
+        refreshAdmin: false,
+        clearCliCache: false,
+        messagesEl: targets.messagesEl,
+        sysPromptEl: targets.sysPromptEl,
+        skipCliActivity: true,
+      });
+    }
+
+    async function loadCompareNewMessages() {
+      const compareId = window.AcbSplitView.getCompareThreadId();
+      if (!compareId) return;
+      const targets = window.AcbSplitView.getMessageTargets(window.AcbSplitView.TARGET_COMPARE);
+      return window.AcbChat.loadNewMessagesForThread({
+        threadId: compareId,
+        getLastSeq: () => window.AcbSplitView.getCompareLastSeq(),
+        api,
+        appendBubble: (m) => appendBubble(m, {
+          target: window.AcbSplitView.TARGET_COMPARE,
+          readOnly: true,
+        }),
+        setLastSeq: (fn) => window.AcbSplitView.setCompareLastSeq(fn),
+        scrollBottom: compareScrollBottom,
+        messagesEl: targets.messagesEl,
+        skipPresence: true,
+      });
+    }
+
+    async function reloadCompareTranscript() {
+      const compareId = window.AcbSplitView.getCompareThreadId();
+      if (!compareId) return;
+      const targets = window.AcbSplitView.getMessageTargets(window.AcbSplitView.TARGET_COMPARE);
+      return window.AcbChat.reloadTranscriptForThread({
+        threadId: compareId,
+        api,
+        clearThreadParticipants: () => {},
+        rebuildActiveThreadParticipants: () => {},
+        appendBubble: (m) => appendBubble(m, {
+          target: window.AcbSplitView.TARGET_COMPARE,
+          readOnly: true,
+        }),
+        updateOnlinePresence: () => {},
+        updateStatusBar: async () => {},
+        setLastSeq: (s) => window.AcbSplitView.setCompareLastSeq(s),
+        scrollBottom: compareScrollBottom,
+        messagesEl: targets.messagesEl,
+        sysPromptEl: targets.sysPromptEl,
+        skipCliActivity: true,
+      });
+    }
+
+    async function enterCompare(compareId, topic = '') {
+      if (!window.AcbSplitView || !activeThreadId) {
+        return false;
+      }
+      return window.AcbSplitView.enterCompare(compareId, {
+        activeThreadId,
+        topic,
+        onLoadTranscript: loadCompareTranscript,
+      });
+    }
+
+    async function exitCompare() {
+      if (!window.AcbSplitView) {
+        return false;
+      }
+      return window.AcbSplitView.exitCompare({ activeThreadId });
+    }
+
+    async function onCompareWithCurrent(compareId, topic, status) {
+      void status;
+      if (!window.AcbSplitView?.isCompareViewportOk()) {
+        window.AcbSplitView.showCompareBlockedBanner();
+        return;
+      }
+      await enterCompare(compareId, topic);
+    }
+
+    async function compareThreadFromMenu() {
+      if (!contextMenuThread?.id) return;
+      hideThreadContextMenu();
+      await onCompareWithCurrent(contextMenuThread.id, contextMenuThread.topic, contextMenuThread.status);
+    }
+    window.compareThreadFromMenu = compareThreadFromMenu;
+
+    async function resolveThreadFromList(threadId) {
+      const normalizedId = String(threadId || '').trim();
+      if (!normalizedId) return null;
+      const cached = window.AcbThreads.getCachedAllThreads().find((thread) => thread.id === normalizedId);
+      if (cached) return cached;
+      try {
+        const response = await api('/api/threads?include_archived=1&limit=500');
+        return (response?.threads || []).find((thread) => thread.id === normalizedId) || null;
+      } catch {
+        return null;
+      }
+    }
+
+    async function restoreBootThreadSelection() {
+      if (!window.AcbSplitView) return;
+      const { threadId, compareId } = window.AcbSplitView.parseThreadHash();
+      let bootedPrimary = false;
+
+      if (threadId) {
+        const thread = await resolveThreadFromList(threadId);
+        if (thread) {
+          try {
+            await selectThread(thread.id, thread.topic, thread.status);
+            bootedPrimary = true;
+          } catch {
+            window.AcbSplitView.writeThreadHash({ threadId: null, compareId: null });
+          }
+        } else {
+          window.AcbSplitView.writeThreadHash({ threadId: null, compareId: compareId || null });
+        }
+      }
+
+      if (!bootedPrimary) {
+        const storedActiveThread = loadStoredActiveThread();
+        if (storedActiveThread?.id) {
+          try {
+            await selectThread(
+              storedActiveThread.id,
+              storedActiveThread.topic || storedActiveThread.id,
+              storedActiveThread.status || 'discuss',
+            );
+            bootedPrimary = true;
+          } catch {
+            clearStoredActiveThread();
+            resetThreadSelection();
+          }
+        }
+      }
+
+      if (!bootedPrimary) {
+        return;
+      }
+
+      const hashCompareId = String(compareId || '').trim();
+      if (hashCompareId && hashCompareId !== activeThreadId && window.AcbSplitView.isCompareViewportOk()) {
+        const compareThread = await resolveThreadFromList(hashCompareId);
+        if (compareThread) {
+          await enterCompare(compareThread.id, compareThread.topic);
+          return;
+        }
+      }
+
+      if (!hashCompareId) {
+        const storedCompare = window.AcbSplitView.loadCompareThread();
+        if (storedCompare?.id && storedCompare.id !== activeThreadId && window.AcbSplitView.isCompareViewportOk()) {
+          const compareThread = await resolveThreadFromList(storedCompare.id);
+          if (compareThread) {
+            await enterCompare(compareThread.id, compareThread.topic || storedCompare.topic);
+          }
+        }
+      }
+    }
+
+    async function handleThreadHashChange() {
+      if (!window.AcbSplitView) return;
+      const { threadId, compareId } = window.AcbSplitView.parseThreadHash();
+
+      if (threadId && threadId !== activeThreadId) {
+        const thread = await resolveThreadFromList(threadId);
+        if (thread) {
+          await selectThread(thread.id, thread.topic, thread.status);
+        }
+      }
+
+      const normalizedCompareId = String(compareId || '').trim();
+      if (!normalizedCompareId) {
+        if (window.AcbSplitView.isCompareMode()) {
+          await exitCompare();
+        }
+        return;
+      }
+
+      if (
+        normalizedCompareId !== window.AcbSplitView.getCompareThreadId() &&
+        normalizedCompareId !== activeThreadId
+      ) {
+        const compareThread = await resolveThreadFromList(normalizedCompareId);
+        if (compareThread) {
+          await enterCompare(compareThread.id, compareThread.topic);
+        }
+      }
+    }
+
+    function ensureCompareThreadStillExists(threads) {
+      const compareId = window.AcbSplitView?.getCompareThreadId();
+      if (!compareId) return;
+      const list = Array.isArray(threads) ? threads : [];
+      if (!list.some((thread) => thread.id === compareId)) {
+        void exitCompare();
+      }
+    }
 
     function getThreadSyncContext(threadId = activeThreadId) {
       if (!threadId) return null;
@@ -1290,7 +1560,10 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     }
 
     function openThreadContextMenu(event, thread) {
-      contextMenuThread = window.AcbThreads.openThreadContextMenu(event, thread, { showAd });
+      contextMenuThread = window.AcbThreads.openThreadContextMenu(event, thread, {
+        showAd,
+        activeThreadId,
+      });
       // 保存右键点击的位置，用于确认对话框定位
       contextMenuThread._clickX = event.clientX;
       contextMenuThread._clickY = event.clientY;
@@ -1418,6 +1691,9 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
     }
 
     function resetThreadSelection() {
+      if (window.AcbSplitView?.isCompareMode()) {
+        void exitCompare();
+      }
       if (activeThreadId) {
         threadSyncContexts.delete(activeThreadId);
       }
@@ -1432,9 +1708,16 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       document.querySelectorAll('.thread-item').forEach(el => el.classList.remove('active'));
       document.getElementById('thread-header').style.display = 'none';
       document.getElementById('compose').classList.remove('visible');
-      document.getElementById('messages').innerHTML = EMPTY_STATE_TEMPLATE;
-      const sysArea = document.getElementById('sys-prompt-area');
+      const primaryTargets = window.AcbSplitView?.getMessageTargets(window.AcbSplitView?.TARGET_PRIMARY);
+      const messagesEl = primaryTargets?.messagesEl || document.getElementById('messages');
+      if (messagesEl) {
+        messagesEl.innerHTML = EMPTY_STATE_TEMPLATE;
+      }
+      const sysArea = primaryTargets?.sysPromptEl || document.getElementById('sys-prompt-area');
       if (sysArea) sysArea.innerHTML = '';
+      if (window.AcbSplitView) {
+        window.AcbSplitView.writeThreadHash({ threadId: null, compareId: null });
+      }
       if (window.AcbCliSessions) window.AcbCliSessions.renderThread(null);
       updateOnlinePresence();
       updateCloseThreadButton();
@@ -1617,6 +1900,24 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       setTimeout(() => target.classList.remove('msg-jump-highlight'), 1500);
     };
 
+    function applyCompareEditedMessage(message) {
+      const compareId = window.AcbSplitView?.getCompareThreadId();
+      if (!message?.id || !compareId || message.thread_id !== compareId) {
+        return;
+      }
+      const targets = window.AcbSplitView.getMessageTargets(window.AcbSplitView.TARGET_COMPARE);
+      const root = targets.messagesEl;
+      if (!root) return;
+      const row = root.querySelector(`[data-msg-id="${CSS.escape(String(message.id))}"]`);
+      if (!row || row.classList.contains('msg-editing')) {
+        return;
+      }
+      const bubbleEl = row.querySelector('.bubble-v2');
+      if (!bubbleEl) return;
+      renderMessageBubble(row, bubbleEl, message.content, message.metadata);
+      syncEditedIndicator(row, message);
+    }
+
     // UI-13: event delegation -- intercepts clicks on any .msg-reply-quote in #messages
     document.getElementById('messages')?.addEventListener('click', (e) => {
       const btn = e.target.closest('button.msg-reply-quote');
@@ -1625,14 +1926,21 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       if (targetId) window.AcbScrollToMsg(targetId);
     });
 
-    function appendBubble(m) {
-      const box = document.getElementById('messages');
+    function appendBubble(m, options = {}) {
+      const targetKey = options.target || window.AcbSplitView?.TARGET_PRIMARY || 'primary';
+      const readOnly = Boolean(options.readOnly);
+      const targets = window.AcbSplitView?.getMessageTargets(targetKey) || {
+        messagesEl: document.getElementById('messages'),
+        sysPromptEl: document.getElementById('sys-prompt-area'),
+      };
+      const box = targets.messagesEl;
+      if (!box) return;
 
       // ---- Deduplication check (also check sys-prompt-area for seq=0) --------
       const messageId = String(m.id ?? '').trim();
       const hasSeq = typeof m.seq === 'number' && Number.isFinite(m.seq);
       const seq = hasSeq ? String(m.seq) : '';
-      const sysPromptArea = document.getElementById('sys-prompt-area');
+      const sysPromptArea = targets.sysPromptEl;
       const escapedMessageId = messageId && window.CSS && typeof window.CSS.escape === 'function'
         ? window.CSS.escape(messageId)
         : messageId;
@@ -1655,7 +1963,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
 
         // Frontend fallback: still render legacy human-decision admin switch cards
         // if old messages exist in history.
-        if (metaObj && (
+        if (!readOnly && metaObj && (
           metaObj.ui_type === 'admin_switch_confirmation_required'
           || metaObj.ui_type === 'admin_takeover_confirmation_required'
         )) {
@@ -1772,7 +2080,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
           promptBody.appendChild(promptCopyBtn);
 
           // UI-07: system prompt goes into its own full-width area (above chat-body)
-          const sysArea = document.getElementById('sys-prompt-area') || box;
+          const sysArea = targets.sysPromptEl || box;
           sysArea.innerHTML = '';
           sysArea.appendChild(wrapper);
           return;
@@ -1892,7 +2200,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
           <button class="msg-copy-btn" title="Copy message" aria-label="Copy message content" onclick="window.AcbCopyMsg(this)">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           </button>
-          ${!isSystem ? `<button class="msg-edit-btn toolbar-btn" aria-label="Edit message" onclick="window.AcbMsgEditStart(this)" data-msg-id="${esc(m.id)}" data-author="${esc(m.author)}">
+          ${!isSystem && !readOnly ? `<button class="msg-edit-btn toolbar-btn" aria-label="Edit message" onclick="window.AcbMsgEditStart(this)" data-msg-id="${esc(m.id)}" data-author="${esc(m.author)}">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           </button>` : ''}
         </div>
@@ -1941,7 +2249,7 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
 
       // Set rich tooltip for edit button
       const editBtn = row.querySelector('.msg-edit-btn');
-      if (editBtn && window.AcbTooltip) {
+      if (!readOnly && editBtn && window.AcbTooltip) {
         const helpText = `
           <div style="padding: 10px; max-width: 280px; font-size: 13px; line-height: 1.5; color: var(--text-1);">
             <div style="font-weight: 600; margin-bottom: 4px;">Edit message</div>
@@ -1983,30 +2291,33 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
       }
 
       box.appendChild(row);
-      if (isAgentMessage && window.AcbChat?.refreshCliCardsForAuthor) {
+      if (!readOnly && isAgentMessage && window.AcbChat?.refreshCliCardsForAuthor) {
         window.AcbChat.refreshCliCardsForAuthor(String(m.author_id ?? m.author ?? ''));
       }
-      if (isHuman && window.AcbChat?.refreshHumanDeliveryIndicators) {
+      if (!readOnly && isHuman && window.AcbChat?.refreshHumanDeliveryIndicators) {
         window.AcbChat.refreshHumanDeliveryIndicators(window.currentThreadId || null);
       }
-      if (window.AcbNavSidebar) window.AcbNavSidebar.onNewMessage();
+      if (!readOnly && window.AcbNavSidebar) window.AcbNavSidebar.onNewMessage();
 
-      // UI-07: collapse system prompt on first real message
-      const sysArea = document.getElementById('sys-prompt-area');
-      if (sysArea) {
-        const header = sysArea.querySelector('.msg-sys-prompt-header');
-        const body = sysArea.querySelector('.msg-sys-prompt-body');
-        if (header && body && header.getAttribute('aria-expanded') === 'true') {
-          header.setAttribute('aria-expanded', 'false');
-          header.classList.remove('is-expanded');
-          body.classList.add('collapsed');
-          const chevron = header.querySelector('.msg-sys-prompt-chevron');
-          const label = header.querySelector('.msg-sys-prompt-label');
-          if (chevron) chevron.innerHTML = '&#9660;';
-          if (label) label.textContent = 'Thread Instructions (system) — click to expand';
+      // UI-07: collapse system prompt on first real message (primary only)
+      if (!readOnly && targetKey === (window.AcbSplitView?.TARGET_PRIMARY || 'primary')) {
+        const sysArea = targets.sysPromptEl;
+        if (sysArea) {
+          const header = sysArea.querySelector('.msg-sys-prompt-header');
+          const body = sysArea.querySelector('.msg-sys-prompt-body');
+          if (header && body && header.getAttribute('aria-expanded') === 'true') {
+            header.setAttribute('aria-expanded', 'false');
+            header.classList.remove('is-expanded');
+            body.classList.add('collapsed');
+            const chevron = header.querySelector('.msg-sys-prompt-chevron');
+            const label = header.querySelector('.msg-sys-prompt-label');
+            if (chevron) chevron.innerHTML = '&#9660;';
+            if (label) label.textContent = 'Thread Instructions (system) — click to expand';
+          }
         }
       }
     }
+
     // ---- Typing indicator ----------------------------------------------------------------------------------------------------------
     function showTyping(agentId) {
       const box = document.getElementById('messages');

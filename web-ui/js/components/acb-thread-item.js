@@ -15,7 +15,7 @@
     connectedCallback() {
       this.style.display = "block";
       if (!this._boundClick) {
-        this._boundClick = () => {
+        this._boundClick = (e) => {
           if (!this._thread) return;
           this.dispatchEvent(
             new CustomEvent("thread-select", {
@@ -24,6 +24,7 @@
                 id: this._thread.id,
                 topic: this._thread.topic,
                 status: this._thread.status,
+                shiftKey: Boolean(e.shiftKey),
               },
             })
           );
@@ -157,6 +158,7 @@
       this.setAttribute('data-thread-id', String(this._thread.id));
       this.setAttribute('role', 'listitem');
       this.setAttribute('aria-current', this._active ? 'true' : 'false');
+      this.title = 'Shift+click to compare with current thread';
       this.innerHTML = `
         <button class="ti-pin-btn${pinned ? " is-pinned" : ""}" type="button" aria-label="${pinned ? "Unpin thread" : "Pin thread"}" title="${pinned ? "Unpin thread" : "Pin thread"}">📌</button>
         ${waitingBadgeHtml}

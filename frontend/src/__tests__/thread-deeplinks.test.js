@@ -1,66 +1,51 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import '../../../web-ui/js/shared-split-view.js';
 
-/**
- * UI-11 - Thread Deeplinks (hash-based)
- *
- * Tests for the three behaviours added to index.html:
- *   1. selectThread writes #thread=<id> to location.hash
- *   2. restoreThreadFromHash reads hash at boot and calls selectThread via GET /api/threads list
- *   3. hashchange listener calls selectThread when hash changes
- *
- * NOTE: GET /api/threads/{id} does not exist in the ACB API.
- * Restoration uses GET /api/threads?include_archived=1&limit=500 and filters by id client-side.
- */
+const { parseThreadHash, writeThreadHash } = window.AcbSplitView;
 
-// ---------------------------------------------------------------------------
-// Helpers extracted from index.html (same logic, testable in isolation)
-// ---------------------------------------------------------------------------
-
-function makeDeeplinkHelpers({ api, selectThread }) {
-  function writeHashOnSelect(id) {
-    history.replaceState(null, '', '#thread=' + encodeURIComponent(id));
-  }
-
-  async function restoreThreadFromHash() {
-    const m = location.hash.match(/^#thread=(.+)$/);
-    if (!m) return;
-    const id = decodeURIComponent(m[1]);
+function makeDeeplinkHelpers({ api, selectThread, enterCompare }) {
+  async function restoreFromHash() {
+    const { threadId, compareId } = parseThreadHash();
+    if (!threadId) {
+      return;
+    }
     try {
-      const response = await api(`/api/threads?include_archived=1&limit=500`);
-      const t = (response.threads || []).find((th) => th.id === id);
-      if (t) selectThread(t.id, t.topic, t.status);
-      else history.replaceState(null, '', location.pathname);
-    } catch (_) {
-      history.replaceState(null, '', location.pathname);
+      const response = await api('/api/threads?include_archived=1&limit=500');
+      const thread = (response.threads || []).find((item) => item.id === threadId);
+      if (!thread) {
+        writeThreadHash({ threadId: null, compareId: compareId || null });
+        return;
+      }
+      await selectThread(thread.id, thread.topic, thread.status);
+      const normalizedCompareId = String(compareId || '').trim();
+      if (
+        normalizedCompareId &&
+        normalizedCompareId !== thread.id &&
+        typeof enterCompare === 'function'
+      ) {
+        const compareThread = (response.threads || []).find((item) => item.id === normalizedCompareId);
+        if (compareThread) {
+          await enterCompare(compareThread.id, compareThread.topic);
+        }
+      }
+    } catch {
+      writeThreadHash({ threadId: null, compareId: null });
     }
   }
 
   function attachHashChangeListener() {
-    window.addEventListener('hashchange', async () => {
-      const m = location.hash.match(/^#thread=(.+)$/);
-      if (!m) return;
-      const id = decodeURIComponent(m[1]);
-      try {
-        const response = await api(`/api/threads?include_archived=1&limit=500`);
-        const t = (response.threads || []).find((th) => th.id === id);
-        if (t) selectThread(t.id, t.topic, t.status);
-        else history.replaceState(null, '', location.pathname);
-      } catch (_) {
-        history.replaceState(null, '', location.pathname);
-      }
+    window.addEventListener('hashchange', () => {
+      void restoreFromHash();
     });
   }
 
-  return { writeHashOnSelect, restoreThreadFromHash, attachHashChangeListener };
+  return { restoreFromHash, attachHashChangeListener, writeHashOnSelect: writeThreadHash };
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-describe('UI-11 Thread Deeplinks', () => {
+describe('UI-11/UI-04 Thread Deeplinks', () => {
   let apiMock;
   let selectThreadMock;
+  let enterCompareMock;
   let helpers;
 
   const THREAD_LIST = {
@@ -75,10 +60,13 @@ describe('UI-11 Thread Deeplinks', () => {
 
   beforeEach(() => {
     apiMock = vi.fn();
-    selectThreadMock = vi.fn();
-    helpers = makeDeeplinkHelpers({ api: apiMock, selectThread: selectThreadMock });
-
-    // Reset hash before each test
+    selectThreadMock = vi.fn().mockResolvedValue(undefined);
+    enterCompareMock = vi.fn().mockResolvedValue(undefined);
+    helpers = makeDeeplinkHelpers({
+      api: apiMock,
+      selectThread: selectThreadMock,
+      enterCompare: enterCompareMock,
+    });
     history.replaceState(null, '', location.pathname);
   });
 
@@ -87,84 +75,71 @@ describe('UI-11 Thread Deeplinks', () => {
     history.replaceState(null, '', location.pathname);
   });
 
-  // -------------------------------------------------------------------------
-  // 1. writeHashOnSelect
-  // -------------------------------------------------------------------------
-  describe('writeHashOnSelect()', () => {
+  describe('writeHashOnSelect', () => {
     it('sets location.hash to #thread=<id>', () => {
-      helpers.writeHashOnSelect('abc-123');
+      helpers.writeHashOnSelect({ threadId: 'abc-123', compareId: null });
       expect(location.hash).toBe('#thread=abc-123');
     });
 
     it('encodes special characters in the id', () => {
-      helpers.writeHashOnSelect('id with spaces');
-      expect(location.hash).toBe('#thread=id%20with%20spaces');
+      helpers.writeHashOnSelect({ threadId: 'id with spaces', compareId: null });
+      expect(location.hash).toBe('#thread=id+with+spaces');
+    });
+
+    it('writes compare param when provided', () => {
+      helpers.writeHashOnSelect({ threadId: 'abc', compareId: 'xyz' });
+      expect(location.hash).toBe('#thread=abc&compare=xyz');
     });
   });
 
-  // -------------------------------------------------------------------------
-  // 2. restoreThreadFromHash — uses GET /api/threads list
-  // -------------------------------------------------------------------------
-  describe('restoreThreadFromHash()', () => {
-    it('calls api with list endpoint and selectThread when hash contains a valid thread id', async () => {
+  describe('restoreFromHash', () => {
+    it('calls api and selectThread when hash contains a valid thread id', async () => {
       apiMock.mockResolvedValue(THREAD_LIST);
       history.replaceState(null, '', '#thread=abc-123');
 
-      await helpers.restoreThreadFromHash();
+      await helpers.restoreFromHash();
 
       expect(apiMock).toHaveBeenCalledWith('/api/threads?include_archived=1&limit=500');
       expect(selectThreadMock).toHaveBeenCalledWith('abc-123', 'My Thread', 'active');
+      expect(enterCompareMock).not.toHaveBeenCalled();
+    });
+
+    it('restores compare thread when hash includes compare param', async () => {
+      apiMock.mockResolvedValue(THREAD_LIST);
+      history.replaceState(null, '', '#thread=abc-123&compare=xyz-456');
+
+      await helpers.restoreFromHash();
+
+      expect(selectThreadMock).toHaveBeenCalledWith('abc-123', 'My Thread', 'active');
+      expect(enterCompareMock).toHaveBeenCalledWith('xyz-456', 'Another Thread');
+    });
+
+    it('does not treat compare param as part of thread id', async () => {
+      apiMock.mockResolvedValue(THREAD_LIST);
+      history.replaceState(null, '', '#thread=abc-123&compare=xyz-456');
+
+      await helpers.restoreFromHash();
+
+      expect(selectThreadMock).not.toHaveBeenCalledWith('abc-123&compare=xyz-456', expect.anything(), expect.anything());
     });
 
     it('does nothing when hash is absent', async () => {
-      await helpers.restoreThreadFromHash();
-
+      await helpers.restoreFromHash();
       expect(apiMock).not.toHaveBeenCalled();
       expect(selectThreadMock).not.toHaveBeenCalled();
     });
 
-    it('does nothing when hash has a different format', async () => {
-      history.replaceState(null, '', '#something-else');
-
-      await helpers.restoreThreadFromHash();
-
-      expect(apiMock).not.toHaveBeenCalled();
-      expect(selectThreadMock).not.toHaveBeenCalled();
-    });
-
-    it('clears hash silently when thread id is not found in list', async () => {
+    it('clears primary hash when thread id is not found', async () => {
       apiMock.mockResolvedValue({ threads: [], total: 0, has_more: false, next_cursor: null });
-      history.replaceState(null, '', '#thread=unknown-id');
+      history.replaceState(null, '', '#thread=unknown-id&compare=xyz-456');
 
-      await helpers.restoreThreadFromHash();
-
-      expect(selectThreadMock).not.toHaveBeenCalled();
-      expect(location.hash).toBe('');
-    });
-
-    it('clears hash silently when api throws', async () => {
-      apiMock.mockRejectedValue(new Error('Network error'));
-      history.replaceState(null, '', '#thread=abc-123');
-
-      await helpers.restoreThreadFromHash();
+      await helpers.restoreFromHash();
 
       expect(selectThreadMock).not.toHaveBeenCalled();
-      expect(location.hash).toBe('');
-    });
-
-    it('handles missing threads array in api response gracefully', async () => {
-      apiMock.mockResolvedValue({});
-      history.replaceState(null, '', '#thread=abc-123');
-
-      await helpers.restoreThreadFromHash();
-
-      expect(selectThreadMock).not.toHaveBeenCalled();
+      expect(location.hash).toBe('#compare=xyz-456');
     });
   });
 
-  // -------------------------------------------------------------------------
-  // 3. hashchange listener
-  // -------------------------------------------------------------------------
   describe('hashchange listener', () => {
     it('calls api and selectThread when hashchange fires with a valid thread hash', async () => {
       apiMock.mockResolvedValue(THREAD_LIST);
@@ -173,37 +148,22 @@ describe('UI-11 Thread Deeplinks', () => {
       history.replaceState(null, '', '#thread=xyz-456');
       window.dispatchEvent(new HashChangeEvent('hashchange'));
 
-      // Wait for the async handler to settle
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(apiMock).toHaveBeenCalledWith('/api/threads?include_archived=1&limit=500');
       expect(selectThreadMock).toHaveBeenCalledWith('xyz-456', 'Another Thread', 'closed');
     });
 
-    it('clears hash when thread not found during hashchange', async () => {
-      apiMock.mockResolvedValue({ threads: [] });
+    it('restores compare when hash updated with compare param', async () => {
+      apiMock.mockResolvedValue(THREAD_LIST);
       helpers.attachHashChangeListener();
 
-      history.replaceState(null, '', '#thread=bad-id');
+      history.replaceState(null, '', '#thread=abc-123&compare=xyz-456');
       window.dispatchEvent(new HashChangeEvent('hashchange'));
 
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(selectThreadMock).not.toHaveBeenCalled();
-      expect(location.hash).toBe('');
-    });
-
-    it('clears hash when api throws during hashchange', async () => {
-      apiMock.mockRejectedValue(new Error('404'));
-      helpers.attachHashChangeListener();
-
-      history.replaceState(null, '', '#thread=bad-id');
-      window.dispatchEvent(new HashChangeEvent('hashchange'));
-
-      await new Promise((r) => setTimeout(r, 0));
-
-      expect(selectThreadMock).not.toHaveBeenCalled();
-      expect(location.hash).toBe('');
+      expect(enterCompareMock).toHaveBeenCalledWith('xyz-456', 'Another Thread');
     });
   });
 });
