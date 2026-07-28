@@ -1002,3 +1002,69 @@ describe("HTTP compatibility shell", () => {
     await server.close();
   });
 });
+
+describe("HTTP latency metrics", () => {
+  beforeAll(() => {
+    process.env.AGENTCHATBUS_TEST_DB = ":memory:";
+  });
+
+  beforeEach(() => {
+    if (memoryStoreInstance) {
+      memoryStoreInstance.reset();
+    }
+  });
+
+  it("records per-route latency on GET /api/metrics", async () => {
+    const server = createHttpServer();
+
+    for (let index = 0; index < 3; index += 1) {
+      const healthResponse = await server.inject({
+        method: "GET",
+        url: "/health",
+      });
+      expect(healthResponse.statusCode).toBe(200);
+    }
+
+    const metricsResponse = await server.inject({
+      method: "GET",
+      url: "/api/metrics",
+    });
+    expect(metricsResponse.statusCode).toBe(200);
+
+    const metrics = metricsResponse.json();
+    expect(metrics.http.enabled).toBe(true);
+    expect(metrics.http.endpoints["GET /health"].count).toBeGreaterThanOrEqual(3);
+    expect(metrics.messages.avg_latency_ms).toBeDefined();
+
+    await server.close();
+  });
+
+  it("normalizes dynamic thread routes in http.endpoints keys", async () => {
+    const server = createHttpServer();
+    const auth = (await server.inject({
+      method: "POST",
+      url: "/api/agents/register",
+      payload: { ide: "VSCode", model: "latency-normalize" },
+    })).json();
+
+    const threadResponse = await server.inject({
+      method: "POST",
+      url: "/api/threads",
+      headers: { "x-agent-token": auth.token },
+      payload: { topic: "latency-thread", creator_agent_id: auth.agent_id },
+    });
+    expect(threadResponse.statusCode).toBe(201);
+
+    const metricsResponse = await server.inject({
+      method: "GET",
+      url: "/api/metrics",
+    });
+    expect(metricsResponse.statusCode).toBe(200);
+
+    const endpoints = metricsResponse.json().http.endpoints as Record<string, unknown>;
+    expect(endpoints["POST /api/threads"]).toBeDefined();
+    expect(Object.keys(endpoints).some((key) => /\/api\/threads\/[0-9a-f-]{36}/i.test(key))).toBe(false);
+
+    await server.close();
+  });
+});

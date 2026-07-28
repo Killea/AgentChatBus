@@ -44,6 +44,7 @@ import {
 } from "../mcp/streamableHttp.js";
 import { resolveDefaultWorkspacePath } from "../../core/services/adapters/utils.js";
 import { WINDOWS_POWERSHELL } from "../../core/services/adapters/constants.js";
+import { HttpLatencyTracker } from "./httpLatencyTracker.js";
 
 // Allow tests to override the global memoryStore instance
 export let memoryStoreInstance: MemoryStore | null = null;
@@ -729,6 +730,7 @@ export function createHttpServer() {
   const cliMeetingOrchestrator = new CliMeetingOrchestrator(store, cliSessionManager);
   const loopbackHost = cfg.host === "0.0.0.0" ? "127.0.0.1" : cfg.host;
   const serverUrl = `http://${loopbackHost}:${cfg.port}`;
+  const httpLatencyTracker = new HttpLatencyTracker();
 
   function buildCliMcpLaunchEnv(input: {
     threadId: string;
@@ -822,6 +824,12 @@ export function createHttpServer() {
     });
   }
 
+  type TimingRequest = FastifyRequest & { acbRequestStartMs?: number };
+
+  fastify.addHook("onRequest", async (request) => {
+    (request as TimingRequest).acbRequestStartMs = Date.now();
+  });
+
   // ── SEC-05: Security middleware ──────────────────────────────────────────────
   // Config is read per-request (not captured at server creation time) to avoid
   // test isolation issues and support dynamic reconfiguration.
@@ -878,6 +886,17 @@ export function createHttpServer() {
         await reply.send({ detail: "Unauthorized: X-Admin-Token required in SHOW_AD mode" });
       }
     }
+  });
+
+  fastify.addHook("onResponse", async (request) => {
+    const timingRequest = request as TimingRequest;
+    const startMs = timingRequest.acbRequestStartMs;
+    if (startMs === undefined) {
+      return;
+    }
+    const durationMs = Date.now() - startMs;
+    const routeTemplate = request.routeOptions?.url;
+    httpLatencyTracker.record(request.method, request.url, durationMs, routeTemplate);
   });
 
   // ── End SEC-05 ───────────────────────────────────────────────────────────────
@@ -2951,7 +2970,10 @@ export function createHttpServer() {
     return { results, total: results.length, query: q };
   });
 
-  fastify.get("/api/metrics", async () => store.getMetrics());
+  fastify.get("/api/metrics", async () => ({
+    ...store.getMetrics(),
+    http: httpLatencyTracker.snapshot(),
+  }));
 
   fastify.get("/api/debug/sse-status", async () => ({
     subscribers: eventBus.listenerCount()

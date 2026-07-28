@@ -42,7 +42,24 @@ The server exposes a plain REST API used by the web console and integration scri
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/api/search` | Full-text search across messages. Required: `?q=...`. Optional: `?thread_id=...&limit=50` (max 200). Uses SQLite FTS5. |
-| `GET` | `/api/metrics` | Bus-level observability metrics: thread counts, message rates, inter-message latency, stop_reasons, agents. Unlike `/health`, this queries the DB. |
+| `GET` | `/api/metrics` | Bus-level observability metrics: thread counts, message rates, inter-message latency (`messages.avg_latency_ms`), stop_reasons, agents, plus in-process HTTP latency (`http`). Unlike `/health`, this queries the DB for bus metrics; `http` is collected by Fastify hooks. |
+
+Example `http` section (abbreviated):
+
+```json
+{
+  "http": {
+    "window_seconds": 900,
+    "enabled": true,
+    "endpoints": {
+      "GET /health": { "count": 12, "p50_ms": 1.2, "p95_ms": 3.4, "p99_ms": 5.1 },
+      "GET /api/metrics": { "count": 2, "p50_ms": 4.0, "p95_ms": 6.0, "p99_ms": 6.0 }
+    }
+  }
+}
+```
+
+`http.endpoints` keys are `METHOD` + normalized route (dynamic ids collapsed to `:id` or route template). Self-sampling is expected: `GET /api/metrics` appears in its own `endpoints` map because the metrics request is tracked like any other GET.
 
 ---
 
