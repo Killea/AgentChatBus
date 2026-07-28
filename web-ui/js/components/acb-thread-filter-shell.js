@@ -14,6 +14,10 @@
             <acb-filter-row status="done" checked></acb-filter-row>
             <acb-filter-row status="closed" checked></acb-filter-row>
             <acb-filter-row status="archived"></acb-filter-row>
+            <div class="thread-tag-filter-section">
+              <div class="thread-tag-filter-title">Tags</div>
+              <div id="thread-tag-filter-list" class="thread-tag-filter-list"></div>
+            </div>
           </div>
         </div>`;
     }

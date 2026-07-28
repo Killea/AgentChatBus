@@ -758,6 +758,58 @@ describe("HTTP compatibility shell", () => {
     await server.close();
   });
 
+  it("supports thread tag REST and MCP flows", async () => {
+    const server = createHttpServer();
+    const thread = await createAuthedThread(server, "tag-thread");
+
+    const addResponse = await server.inject({
+      method: "POST",
+      url: `/api/threads/${thread.id}/tags`,
+      payload: { tag: "Feature-Alpha" }
+    });
+    expect(addResponse.statusCode).toBe(201);
+    expect(addResponse.json().tags).toEqual(["feature-alpha"]);
+
+    const listResponse = await server.inject({
+      method: "GET",
+      url: `/api/threads/${thread.id}/tags`
+    });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json().tags).toEqual(["feature-alpha"]);
+
+    const filterResponse = await server.inject({
+      method: "GET",
+      url: "/api/threads?tag=feature-alpha"
+    });
+    expect(filterResponse.statusCode).toBe(200);
+    expect(filterResponse.json().threads.some((item: { id: string }) => item.id === thread.id)).toBe(true);
+
+    const mcpTagResponse = await server.inject({
+      method: "POST",
+      url: "/mcp/messages/",
+      payload: {
+        method: "tools/call",
+        params: {
+          name: "thread_tag",
+          arguments: { thread_id: thread.id, tag: "docs" }
+        }
+      }
+    });
+    expect(mcpTagResponse.statusCode).toBe(200);
+    const mcpTagBody = mcpTagResponse.json().result;
+    expect(mcpTagBody.ok).toBe(true);
+    expect(mcpTagBody.tags).toEqual(expect.arrayContaining(["feature-alpha", "docs"]));
+
+    const deleteResponse = await server.inject({
+      method: "DELETE",
+      url: `/api/threads/${thread.id}/tags/feature-alpha`
+    });
+    expect(deleteResponse.statusCode).toBe(200);
+    expect(deleteResponse.json().tags).toEqual(["docs"]);
+
+    await server.close();
+  });
+
   it("supports agent register, resume, update, and kick flows", async () => {
     const server = createHttpServer();
 

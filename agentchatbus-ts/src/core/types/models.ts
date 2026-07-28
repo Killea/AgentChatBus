@@ -34,6 +34,7 @@ export interface ThreadRecord {
   closed_at?: string;
   summary?: string;
   metadata?: Record<string, unknown>;
+  tags?: string[];
 }
 
 export interface MessageRecord {

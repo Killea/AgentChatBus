@@ -1977,6 +1977,105 @@ body[data-theme="light"] .reaction-pill {
   color: #555;
 }
 
+.ti-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.ti-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 12px;
+  background: rgba(100,100,120,0.12);
+  border: 1px solid rgba(100,100,120,0.22);
+  color: var(--text-secondary, #aaa);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ti-tag.is-active {
+  background: rgba(59,130,246,0.18);
+  border-color: rgba(59,130,246,0.35);
+  color: var(--text-1, #dbeafe);
+}
+
+.ti-tag-remove {
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.75;
+  cursor: pointer;
+}
+
+.ti-tag-remove:hover {
+  opacity: 1;
+}
+
+.thread-tag-filter-section {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(120,120,140,0.18);
+}
+
+.thread-tag-filter-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3, #888);
+  margin-bottom: 6px;
+}
+
+.thread-tag-filter-list,
+.thread-tag-filter-empty {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.thread-tag-filter-chip {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: rgba(100,100,120,0.12);
+  border: 1px solid rgba(100,100,120,0.22);
+  color: var(--text-secondary, #aaa);
+  cursor: pointer;
+}
+
+.thread-tag-filter-chip.is-active {
+  background: rgba(59,130,246,0.18);
+  border-color: rgba(59,130,246,0.35);
+  color: var(--text-1, #dbeafe);
+}
+
+.thread-tag-filter-clear {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: transparent;
+  border: 1px dashed rgba(120,120,140,0.35);
+  color: var(--text-3, #888);
+  cursor: pointer;
+}
+
+body[data-theme="light"] .ti-tag,
+body[data-theme="light"] .thread-tag-filter-chip {
+  background: rgba(0,0,0,0.06);
+  border-color: rgba(0,0,0,0.12);
+  color: #555;
+}
+
+body[data-theme="light"] .ti-tag.is-active,
+body[data-theme="light"] .thread-tag-filter-chip.is-active {
+  background: rgba(37,99,235,0.12);
+  border-color: rgba(37,99,235,0.28);
+  color: #1d4ed8;
+}
+
 body[data-theme="light"] .handoff-badge {
   background: rgba(59,130,246,0.10);
   color: #2563eb;

@@ -1,5 +1,79 @@
 (function () {
   const PINNED_THREADS_STORAGE_KEY = "acb.pinnedThreads.v1";
+  const THREAD_TAG_PATTERN = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+
+  let activeTagFilter = null;
+  let cachedAllThreads = [];
+
+  function normalizeThreadTagInput(tag) {
+    const normalized = String(tag || "").trim().toLowerCase();
+    if (!normalized || !THREAD_TAG_PATTERN.test(normalized)) {
+      return null;
+    }
+    return normalized;
+  }
+
+  function getActiveTagFilter() {
+    return activeTagFilter;
+  }
+
+  function setActiveTagFilter(tag) {
+    activeTagFilter = tag ? normalizeThreadTagInput(tag) : null;
+    updateTagFilterUI(deriveKnownTags(cachedAllThreads));
+  }
+
+  function clearActiveTagFilter() {
+    setActiveTagFilter(null);
+  }
+
+  function deriveKnownTags(threads) {
+    const tags = new Set();
+    for (const thread of Array.isArray(threads) ? threads : []) {
+      for (const tag of Array.isArray(thread?.tags) ? thread.tags : []) {
+        const normalized = normalizeThreadTagInput(tag);
+        if (normalized) {
+          tags.add(normalized);
+        }
+      }
+    }
+    return Array.from(tags).sort();
+  }
+
+  function updateTagFilterUI(knownTags) {
+    const container = document.getElementById("thread-tag-filter-list");
+    if (!container) return;
+
+    const tags = Array.isArray(knownTags) ? knownTags : [];
+    if (!tags.length && !activeTagFilter) {
+      container.innerHTML = `<div class="thread-tag-filter-empty">No tags yet</div>`;
+      return;
+    }
+
+    const chips = tags
+      .map((tag) => {
+        const activeClass = activeTagFilter === tag ? " is-active" : "";
+        return `<button type="button" class="thread-tag-filter-chip${activeClass}" data-tag="${tag}" onclick="setThreadTagFilter('${tag}')">${tag}</button>`;
+      })
+      .join("");
+
+    const clearButton = activeTagFilter
+      ? `<button type="button" class="thread-tag-filter-clear" onclick="clearThreadTagFilter()">Clear tag filter</button>`
+      : "";
+
+    container.innerHTML = `${chips}${clearButton}`;
+  }
+
+  function filterThreadsForDisplay(allThreads, selectedStatuses, tagFilter) {
+    return (Array.isArray(allThreads) ? allThreads : []).filter((thread) => {
+      if (!selectedStatuses.has(thread.status)) {
+        return false;
+      }
+      if (tagFilter && !(Array.isArray(thread.tags) ? thread.tags : []).includes(tagFilter)) {
+        return false;
+      }
+      return true;
+    });
+  }
 
   function loadPinnedThreadIds() {
     try {
@@ -110,8 +184,11 @@
     onSelectThread,
     onTogglePin,
     onOpenContextMenu,
+    onTagFilter,
+    onTagRemove,
     esc,
     timeAgo,
+    activeTagFilter: activeTag = null,
   }) {
     const pane = document.getElementById("thread-pane");
     if (!pane) return;
@@ -130,6 +207,7 @@
         active: t.id === activeThreadId,
         timeAgo,
         esc,
+        activeTagFilter: activeTag,
       });
       item.addEventListener("thread-select", (e) => {
         const d = e.detail || {};
@@ -150,6 +228,20 @@
           onTogglePin(d.id, d.pinned !== false);
         }
       });
+      item.addEventListener("thread-tag-filter", (e) => {
+        const d = e.detail || {};
+        if (!d.tag || typeof onTagFilter !== "function") {
+          return;
+        }
+        onTagFilter(d.tag);
+      });
+      item.addEventListener("thread-tag-remove", (e) => {
+        const d = e.detail || {};
+        if (!d.id || !d.tag || typeof onTagRemove !== "function") {
+          return;
+        }
+        onTagRemove(d.id, d.tag);
+      });
       pane.appendChild(item);
     });
   }
@@ -163,17 +255,20 @@
     onSelectThread,
     onTogglePin,
     onOpenContextMenu,
+    onTagFilter,
+    onTagRemove,
     esc,
     timeAgo,
     updateThreadFilterButton,
   }) {
     const response = (await api("/api/threads?include_archived=1")) || { threads: [] };
-    const allThreads = sortThreadsForDisplay(decorateThreads((response && response.threads) || []));
+    cachedAllThreads = sortThreadsForDisplay(decorateThreads((response && response.threads) || []));
+    updateTagFilterUI(deriveKnownTags(cachedAllThreads));
     const selectedStatuses = getSelectedStatuses();
     const activeThreadId = getActiveThreadId();
-    const threads = allThreads.filter((t) => selectedStatuses.has(t.status));
+    const threads = filterThreadsForDisplay(cachedAllThreads, selectedStatuses, activeTagFilter);
     if (activeThreadId && typeof onActiveThreadStatus === "function") {
-      const activeThread = allThreads.find((t) => t.id === activeThreadId) || null;
+      const activeThread = cachedAllThreads.find((t) => t.id === activeThreadId) || null;
       onActiveThreadStatus(activeThread ? normalizeThreadStatus(activeThread.status) : null);
     }
 
@@ -188,8 +283,11 @@
       onSelectThread,
       onTogglePin,
       onOpenContextMenu,
+      onTagFilter,
+      onTagRemove,
       esc,
       timeAgo,
+      activeTagFilter,
     });
 
     updateThreadFilterButton();
@@ -525,6 +623,70 @@ Task: After entering, stand by. Human programmers may need to publish requiremen
     return result;
   }
 
+  async function addThreadTag(threadId, tag, api) {
+    const normalized = normalizeThreadTagInput(tag);
+    if (!normalized) {
+      return { ok: false, detail: "Invalid tag: use lowercase letters, numbers, underscore, or hyphen (max 32 chars)." };
+    }
+    return api(`/api/threads/${threadId}/tags`, {
+      method: "POST",
+      body: JSON.stringify({ tag: normalized }),
+    });
+  }
+
+  async function removeThreadTag(threadId, tag, api) {
+    const normalized = normalizeThreadTagInput(tag) || String(tag || "").trim().toLowerCase();
+    if (!normalized) {
+      return { ok: false, detail: "Invalid tag" };
+    }
+    return api(`/api/threads/${threadId}/tags/${encodeURIComponent(normalized)}`, {
+      method: "DELETE",
+    });
+  }
+
+  async function addTagFromMenu({
+    getContextMenuThread,
+    hideThreadContextMenu,
+    api,
+    refreshThreads,
+  }) {
+    const ctx = getContextMenuThread();
+    if (!ctx?.id) return null;
+    const inputDialog = document.getElementById("input-dialog");
+    if (!inputDialog || typeof inputDialog.show !== "function") {
+      console.error("[addTagFromMenu] Input dialog not found");
+      return null;
+    }
+
+    const { id, _clickX = null, _clickY = null } = ctx;
+    hideThreadContextMenu();
+
+    const nextTag = await inputDialog.show({
+      title: "Add Tag",
+      message: "Enter a tag slug (lowercase letters, numbers, underscore, hyphen):",
+      placeholder: "feature-alpha",
+      value: "",
+      confirmText: "Add Tag",
+      x: _clickX,
+      y: _clickY,
+    });
+
+    if (nextTag === null) {
+      return null;
+    }
+
+    const result = await addThreadTag(id, nextTag, api);
+    if (!result || result.ok !== true) {
+      if (result?.detail) {
+        alert(result.detail);
+      }
+      return result || null;
+    }
+
+    await refreshThreads();
+    return result;
+  }
+
   async function pinThreadFromMenu({
     getContextMenuThread,
     hideThreadContextMenu,
@@ -557,5 +719,14 @@ Task: After entering, stand by. Human programmers may need to publish requiremen
     setThreadPinned,
     toggleThreadPinned,
     pinThreadFromMenu,
+    getActiveTagFilter,
+    setActiveTagFilter,
+    clearActiveTagFilter,
+    deriveKnownTags,
+    normalizeThreadTagInput,
+    addThreadTag,
+    removeThreadTag,
+    addTagFromMenu,
+    filterThreadsForDisplay,
   };
 })();

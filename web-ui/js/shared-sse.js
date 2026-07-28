@@ -72,7 +72,9 @@
         ev.type === "thread.closed" ||
         ev.type === "thread.archived" ||
         ev.type === "thread.unarchived" ||
-        ev.type === "thread.deleted"
+        ev.type === "thread.deleted" ||
+        ev.type === "thread.tag" ||
+        ev.type === "thread.untag"
       ) {
         if (onThreadEvent) {
           await onThreadEvent();
