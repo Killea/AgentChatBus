@@ -1098,6 +1098,14 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
           await refreshThreads();
         },
         onOpenContextMenu: openThreadContextMenu,
+        onTagFilter: async (tag) => {
+          window.AcbThreads.setActiveTagFilter(tag);
+          await refreshThreads();
+        },
+        onTagRemove: async (threadId, tag) => {
+          await window.AcbThreads.removeThreadTag(threadId, tag, api);
+          await refreshThreads();
+        },
         esc,
         timeAgo,
         updateThreadFilterButton,
@@ -1156,6 +1164,25 @@ Note: Thread name is the topic label. Thread ID is the unique identifier.`;
         NORMAL_THREAD_STATUSES,
         selectedThreadStatuses
       );
+    }
+
+    function setThreadTagFilter(tag) {
+      window.AcbThreads.setActiveTagFilter(tag);
+      refreshThreads();
+    }
+
+    function clearThreadTagFilter() {
+      window.AcbThreads.clearActiveTagFilter();
+      refreshThreads();
+    }
+
+    async function addTagFromMenu() {
+      return window.AcbThreads.addTagFromMenu({
+        getContextMenuThread: () => contextMenuThread,
+        hideThreadContextMenu,
+        api,
+        refreshThreads,
+      });
     }
 
     async function selectThread(id, topic, status, initialSyncContext = null) {

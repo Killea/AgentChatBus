@@ -1226,11 +1226,20 @@ export function createHttpServer() {
     }
   });
 
-  fastify.get("/api/threads", async (request) => {
-    const query = request.query as { include_archived?: boolean; status?: string; limit?: number; before?: string };
+  fastify.get("/api/threads", async (request, reply) => {
+    const query = request.query as { include_archived?: boolean; status?: string; tag?: string; limit?: number; before?: string };
     let threads = store.getThreads(Boolean(query.include_archived));
     if (query.status) {
       threads = threads.filter((thread) => thread.status === query.status);
+    }
+    if (query.tag) {
+      try {
+        const normalizedTag = store.normalizeThreadTag(String(query.tag));
+        threads = threads.filter((thread) => (thread.tags || []).includes(normalizedTag));
+      } catch (error) {
+        reply.code(400);
+        return { detail: error instanceof Error ? error.message : "Invalid tag" };
+      }
     }
     
     // Add waiting_agents for each thread (match Python main.py L990-1002)
@@ -1676,6 +1685,11 @@ export function createHttpServer() {
           timeout_seconds: sourceSettings.timeout_seconds,
           switch_timeout_seconds: sourceSettings.switch_timeout_seconds,
         });
+      }
+
+      const sourceTags = store.getThreadTags(params.threadId);
+      for (const tag of sourceTags) {
+        store.addThreadTag(newThreadId, tag);
       }
 
       for (let index = 0; index < sourceAgents.length; index += 1) {
@@ -2377,6 +2391,43 @@ export function createHttpServer() {
       return { detail: "Message not found" };
     }
     return { removed: result.removed };
+  });
+
+  fastify.get("/api/threads/:threadId/tags", async (request, reply) => {
+    const params = request.params as { threadId: string };
+    const thread = store.getThread(params.threadId);
+    if (!thread) {
+      reply.code(404);
+      return { detail: "Thread not found" };
+    }
+    return { tags: store.getThreadTags(params.threadId) };
+  });
+
+  fastify.post("/api/threads/:threadId/tags", async (request, reply) => {
+    const params = request.params as { threadId: string };
+    const body = request.body as JsonBody;
+    try {
+      const tags = store.addThreadTag(params.threadId, String(body.tag || ""));
+      if (!tags) {
+        reply.code(404);
+        return { detail: "Thread not found" };
+      }
+      reply.code(201);
+      return { ok: true, tags };
+    } catch (error) {
+      reply.code(400);
+      return { detail: error instanceof Error ? error.message : "Invalid tag" };
+    }
+  });
+
+  fastify.delete("/api/threads/:threadId/tags/:tag", async (request, reply) => {
+    const params = request.params as { threadId: string; tag: string };
+    const result = store.removeThreadTag(params.threadId, decodeURIComponent(params.tag));
+    if (!result) {
+      reply.code(404);
+      return { detail: "Thread not found" };
+    }
+    return { ok: true, tags: result.tags };
   });
 
   fastify.put("/api/messages/:messageId", async (request, reply) => {

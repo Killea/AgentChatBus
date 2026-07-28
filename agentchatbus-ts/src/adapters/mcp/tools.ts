@@ -75,6 +75,7 @@ const toolDefinitions: ToolDefinition[] = [
       properties: {
         status: { type: "string", enum: ["discuss", "implement", "review", "done", "closed", "archived"], description: "Filter by lifecycle state. Omit for all threads." },
         include_archived: { type: "boolean", default: false, description: "If true and no status filter is provided, include archived threads." },
+        tag: { type: "string", description: "Filter threads that include this tag slug." },
         limit: { type: "integer", default: 0, description: "Max threads to return. 0 means all (no limit). Hard cap: 200." },
         before: { type: "string", description: "Pagination cursor: ISO datetime string. Returns threads created strictly before this timestamp. Pass `next_cursor` from a previous response to fetch the next page." }
       }
@@ -175,6 +176,44 @@ const toolDefinitions: ToolDefinition[] = [
       properties: {
         thread_id: { type: "string", description: "Thread ID to archive." }
       }
+    }
+  },
+  {
+    name: "thread_tag",
+    description: "Add a tag to a thread. Tags are normalized to lowercase slugs.",
+    inputSchema: {
+      type: "object",
+      required: ["thread_id", "tag"],
+      properties: {
+        thread_id: { type: "string", description: "Thread ID." },
+        tag: { type: "string", description: "Tag slug (lowercase letters, numbers, underscore, hyphen; max 32 chars)." }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: "thread_untag",
+    description: "Remove a tag from a thread.",
+    inputSchema: {
+      type: "object",
+      required: ["thread_id", "tag"],
+      properties: {
+        thread_id: { type: "string", description: "Thread ID." },
+        tag: { type: "string", description: "Tag slug to remove." }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: "thread_tags_list",
+    description: "List tags for a single thread.",
+    inputSchema: {
+      type: "object",
+      required: ["thread_id"],
+      properties: {
+        thread_id: { type: "string", description: "Thread ID." }
+      },
+      additionalProperties: false
     }
   },
   {
@@ -814,6 +853,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
     case "thread_list": {
       const status = typeof args.status === "string" ? args.status : undefined;
       const includeArchived = Boolean(args.include_archived);
+      const tag = typeof args.tag === "string" ? args.tag : undefined;
       const limit = typeof args.limit === "number" ? args.limit : 0;
       const before = typeof args.before === "string" ? args.before : undefined;
 
@@ -822,6 +862,15 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       // Filter by status if provided
       if (status) {
         threads = threads.filter(t => t.status === status);
+      }
+
+      if (tag) {
+        try {
+          const normalizedTag = getStore().normalizeThreadTag(tag);
+          threads = threads.filter((thread) => (thread.tags || []).includes(normalizedTag));
+        } catch (error) {
+          return { error: error instanceof Error ? error.message : "Invalid tag" };
+        }
       }
 
       // Apply pagination
@@ -847,7 +896,8 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
           thread_id: t.id,
           topic: t.topic,
           status: t.status,
-          created_at: t.created_at
+          created_at: t.created_at,
+          tags: t.tags || []
         })),
         total,
         has_more: hasMore,
@@ -865,7 +915,8 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         status: thread.status,
         created_at: thread.created_at,
         closed_at: (thread as any).closed_at || null,
-        summary: (thread as any).summary || null
+        summary: (thread as any).summary || null,
+        tags: thread.tags || []
       };
     }
     case "thread_delete": {
@@ -995,6 +1046,36 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         return { error: "Thread not found" };
       }
       return { ok: true, thread_id: threadId, status: "archived" };
+    }
+    case "thread_tag": {
+      const threadId = String(args.thread_id || "");
+      const tag = String(args.tag || "");
+      try {
+        const tags = getStore().addThreadTag(threadId, tag);
+        if (!tags) {
+          return { error: "Thread not found" };
+        }
+        return { ok: true, thread_id: threadId, tag: getStore().normalizeThreadTag(tag), tags };
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : "Invalid tag" };
+      }
+    }
+    case "thread_untag": {
+      const threadId = String(args.thread_id || "");
+      const tag = String(args.tag || "");
+      const result = getStore().removeThreadTag(threadId, tag);
+      if (!result) {
+        return { error: "Thread not found" };
+      }
+      return { ok: true, thread_id: threadId, removed: result.removed, tags: result.tags };
+    }
+    case "thread_tags_list": {
+      const threadId = String(args.thread_id || "");
+      const thread = getStore().getThread(threadId);
+      if (!thread) {
+        return { error: "Thread not found" };
+      }
+      return { thread_id: threadId, tags: getStore().getThreadTags(threadId) };
     }
     case "thread_wait_state_get": {
       const threadId = String(args.thread_id || "");

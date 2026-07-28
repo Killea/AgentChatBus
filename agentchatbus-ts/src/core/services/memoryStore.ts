@@ -511,12 +511,13 @@ export class MemoryStore {
         ORDER BY created_at DESC
       `
     ).all() as Array<Record<string, unknown>>;
-    return rows
+    const threads = rows
       .map((row) => this.rowToThreadRecord(row))
       .map((thread) => ({
         ...thread,
         waiting_agents: this.getThreadWaitingAgents(thread.id)
       }));
+    return this.attachTagsToThreads(threads);
   }
 
   getMetrics() {
@@ -684,6 +685,7 @@ export class MemoryStore {
       DELETE FROM thread_settings;
       DELETE FROM message_edits;
       DELETE FROM reactions;
+      DELETE FROM thread_tags;
       DELETE FROM msg_wait_refresh_requests;
       DELETE FROM thread_wait_states;
       DELETE FROM templates;
@@ -772,7 +774,12 @@ export class MemoryStore {
     const row = this.persistenceDb.prepare(
       "SELECT id, topic, status, created_at, updated_at, system_prompt, template_id, metadata, closed_at, summary FROM threads WHERE id = ?"
     ).get(threadId) as Record<string, unknown> | undefined;
-    return row ? this.rowToThreadRecord(row) : undefined;
+    if (!row) {
+      return undefined;
+    }
+    const thread = this.rowToThreadRecord(row);
+    thread.tags = this.getThreadTags(threadId);
+    return thread;
   }
 
   addThreadParticipant(threadId: string, agentId: string): boolean {
@@ -1346,12 +1353,14 @@ export class MemoryStore {
     includeArchived?: boolean;
     limit?: number;
     before?: string;
+    tag?: string;
   }): { threads: ThreadRecord[]; has_more: boolean; next_cursor?: string } {
     const {
       status,
       includeArchived = true,
       limit = 0,
-      before
+      before,
+      tag
     } = options || {};
 
     // Build WHERE clauses
@@ -1370,6 +1379,12 @@ export class MemoryStore {
       params.push(before);
     }
 
+    if (tag) {
+      const normalizedTag = this.normalizeThreadTag(tag);
+      clauses.push("id IN (SELECT thread_id FROM thread_tags WHERE tag = ?)");
+      params.push(normalizedTag);
+    }
+
     const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
     
     // Hard cap at 200
@@ -1384,7 +1399,7 @@ export class MemoryStore {
 
     const rows = this.persistenceDb.prepare(sql).all(...params) as Array<Record<string, unknown>>;
     
-    let threads = rows.map(row => this.rowToThreadRecord(row));
+    let threads = this.attachTagsToThreads(rows.map(row => this.rowToThreadRecord(row)));
     let hasMore = false;
     let nextCursor: string | undefined;
 
@@ -1471,6 +1486,7 @@ export class MemoryStore {
       this.persistenceDb.prepare(
         "DELETE FROM reactions WHERE message_id IN (SELECT id FROM messages WHERE thread_id = ?)"
       ).run(threadId);
+      this.persistenceDb.prepare("DELETE FROM thread_tags WHERE thread_id = ?").run(threadId);
       this.persistenceDb.prepare("DELETE FROM messages WHERE thread_id = ?").run(threadId);
       this.persistenceDb.prepare("DELETE FROM human_only_messages WHERE thread_id = ?").run(threadId);
       this.persistenceDb.prepare("DELETE FROM reply_tokens WHERE thread_id = ?").run(threadId);
@@ -2561,6 +2577,102 @@ export class MemoryStore {
       this.persistState();
     }
     return { removed, message };
+  }
+
+  private static readonly THREAD_TAG_PATTERN = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+
+  normalizeThreadTag(tag: string): string {
+    const normalized = String(tag || "").trim().toLowerCase();
+    if (!normalized || !MemoryStore.THREAD_TAG_PATTERN.test(normalized)) {
+      throw new Error("Invalid tag: must match [a-z0-9][a-z0-9_-]{0,31}");
+    }
+    return normalized;
+  }
+
+  getThreadTags(threadId: string): string[] {
+    const rows = this.persistenceDb.prepare(
+      "SELECT tag FROM thread_tags WHERE thread_id = ? ORDER BY tag ASC"
+    ).all(threadId) as Array<{ tag: string }>;
+    return rows.map((row) => String(row.tag));
+  }
+
+  getThreadTagsBulk(threadIds: string[]): Map<string, string[]> {
+    const result = new Map<string, string[]>();
+    if (threadIds.length === 0) {
+      return result;
+    }
+    for (const threadId of threadIds) {
+      result.set(threadId, []);
+    }
+    const placeholders = threadIds.map(() => "?").join(",");
+    const rows = this.persistenceDb.prepare(
+      `SELECT thread_id, tag FROM thread_tags WHERE thread_id IN (${placeholders}) ORDER BY tag ASC`
+    ).all(...threadIds) as Array<{ thread_id: string; tag: string }>;
+    for (const row of rows) {
+      const threadId = String(row.thread_id);
+      const tags = result.get(threadId) || [];
+      tags.push(String(row.tag));
+      result.set(threadId, tags);
+    }
+    return result;
+  }
+
+  listAllTags(): string[] {
+    const rows = this.persistenceDb.prepare(
+      "SELECT DISTINCT tag FROM thread_tags ORDER BY tag ASC"
+    ).all() as Array<{ tag: string }>;
+    return rows.map((row) => String(row.tag));
+  }
+
+  private attachTagsToThreads(threads: ThreadRecord[]): ThreadRecord[] {
+    if (threads.length === 0) {
+      return threads;
+    }
+    const tagMap = this.getThreadTagsBulk(threads.map((thread) => thread.id));
+    return threads.map((thread) => ({
+      ...thread,
+      tags: tagMap.get(thread.id) || []
+    }));
+  }
+
+  addThreadTag(threadId: string, tag: string): string[] | undefined {
+    const exists = this.persistenceDb.prepare("SELECT 1 FROM threads WHERE id = ?").get(threadId);
+    if (!exists) {
+      return undefined;
+    }
+    const normalized = this.normalizeThreadTag(tag);
+    const inserted = this.persistenceDb.prepare(
+      "INSERT OR IGNORE INTO thread_tags (id, thread_id, tag, created_at) VALUES (?, ?, ?, ?)"
+    ).run(randomUUID(), threadId, normalized, new Date().toISOString());
+    const tags = this.getThreadTags(threadId);
+    if (inserted.changes > 0) {
+      eventBus.emit({ type: "thread.tag", payload: { thread_id: threadId, tag: normalized, tags } });
+      this.persistState();
+    }
+    return tags;
+  }
+
+  removeThreadTag(threadId: string, tag: string): { removed: boolean; tags: string[] } | undefined {
+    const exists = this.persistenceDb.prepare("SELECT 1 FROM threads WHERE id = ?").get(threadId);
+    if (!exists) {
+      return undefined;
+    }
+    let normalized: string;
+    try {
+      normalized = this.normalizeThreadTag(tag);
+    } catch {
+      normalized = String(tag || "").trim().toLowerCase();
+    }
+    const deleted = this.persistenceDb.prepare(
+      "DELETE FROM thread_tags WHERE thread_id = ? AND tag = ?"
+    ).run(threadId, normalized);
+    const removed = deleted.changes > 0;
+    const tags = this.getThreadTags(threadId);
+    if (removed) {
+      eventBus.emit({ type: "thread.untag", payload: { thread_id: threadId, tag: normalized, tags } });
+      this.persistState();
+    }
+    return { removed, tags };
   }
 
   issueSyncContext(threadId: string, agentId?: string, source?: string): SyncContext {
@@ -4521,6 +4633,15 @@ export class MemoryStore {
         created_at TEXT NOT NULL,
         UNIQUE (message_id, agent_id, reaction)
       );
+      CREATE TABLE IF NOT EXISTS thread_tags (
+        id TEXT NOT NULL,
+        thread_id TEXT NOT NULL,
+        tag TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE (thread_id, tag)
+      );
+      CREATE INDEX IF NOT EXISTS idx_thread_tags_tag ON thread_tags(tag);
+      CREATE INDEX IF NOT EXISTS idx_thread_tags_thread ON thread_tags(thread_id);
       CREATE TABLE IF NOT EXISTS templates (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,

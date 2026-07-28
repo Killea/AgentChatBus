@@ -58,4 +58,26 @@ describe('acb-thread-item', () => {
     expect(element.innerHTML).not.toContain('🤖');
     expect(element.innerHTML).not.toContain('🧠');
   });
+
+  it('renders tag chips for tagged threads', () => {
+    element.setData({
+      thread: {
+        id: 'thread-3',
+        topic: 'Tagged thread',
+        status: 'discuss',
+        created_at: new Date().toISOString(),
+        isPinned: false,
+        waiting_agents: [],
+        tags: ['feature-alpha', 'docs'],
+      },
+      active: false,
+      timeAgo: () => 'just now',
+      esc: (value) => String(value ?? ''),
+      activeTagFilter: 'docs',
+    });
+
+    const tags = Array.from(element.querySelectorAll('.ti-tag')).map((node) => node.getAttribute('data-tag'));
+    expect(tags).toEqual(['feature-alpha', 'docs']);
+    expect(element.querySelector('.ti-tag.is-active')?.getAttribute('data-tag')).toBe('docs');
+  });
 });
