@@ -274,6 +274,11 @@ describe('Metrics Unit Tests', () => {
     expect(m.agents.online).toBeDefined();
   });
 
+  it('metrics from MemoryStore does not include http transport section', () => {
+    const m = store.getMetrics() as Record<string, unknown>;
+    expect(m.http).toBeUndefined();
+  });
+
   // Ported from Python: test_api_metrics_uptime_positive
   it('metrics uptime is positive after start', () => {
     const m = store.getMetrics();
