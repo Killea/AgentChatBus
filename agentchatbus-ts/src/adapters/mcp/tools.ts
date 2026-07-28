@@ -1,5 +1,6 @@
 import { /* memoryStore replaced by getStore */ } from "../../core/services/memoryStore.js";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { eventBus } from "../../shared/eventBus.js";
@@ -33,6 +34,50 @@ export type ToolDefinition = {
   inputSchema: Record<string, unknown>;
 };
 
+const THREAD_CLI_WORKSPACE_METADATA_KEY = "cli_workspace";
+
+function normalizeWorkspaceCandidate(value: unknown): string | undefined {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return undefined;
+  }
+  try {
+    return path.resolve(raw);
+  } catch {
+    return undefined;
+  }
+}
+
+function isUsableWorkspaceCandidate(value: string | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+  try {
+    return existsSync(value);
+  } catch {
+    return false;
+  }
+}
+
+function extractThreadCliWorkspace(thread: { metadata?: Record<string, unknown> } | undefined): string | undefined {
+  const candidate = thread?.metadata?.[THREAD_CLI_WORKSPACE_METADATA_KEY];
+  return typeof candidate === "string" && candidate.trim() ? candidate.trim() : undefined;
+}
+
+function resolveOptionalThreadWorkspace(workspaceArg: unknown):
+  | { ok: true; metadata?: Record<string, unknown>; workspace?: string }
+  | { ok: false; error: string } {
+  const requestedWorkspace = normalizeWorkspaceCandidate(workspaceArg);
+  const rawWorkspaceProvided = String(workspaceArg || "").trim().length > 0;
+  if (rawWorkspaceProvided && (!requestedWorkspace || !isUsableWorkspaceCandidate(requestedWorkspace))) {
+    return { ok: false, error: "workspace must be an existing directory" };
+  }
+  const metadata = requestedWorkspace
+    ? { [THREAD_CLI_WORKSPACE_METADATA_KEY]: requestedWorkspace }
+    : undefined;
+  return { ok: true, metadata, workspace: requestedWorkspace };
+}
+
 function emitObservedCliToolCall(agentId: string | undefined, toolName: string, threadId?: string): void {
   const normalizedAgentId = String(agentId || "").trim();
   if (!normalizedAgentId) {
@@ -62,6 +107,7 @@ const toolDefinitions: ToolDefinition[] = [
         agent_id: { type: "string", description: "Creator agent id. Required." },
         token: { type: "string", description: "Creator token for authentication. Required." },
         metadata: { type: "object", description: "Optional arbitrary key-value metadata." },
+        workspace: { type: "string", description: "Optional absolute or relative path to an existing directory used as the thread CLI workspace." },
         system_prompt: { type: "string", description: "Optional system prompt defining collaboration rules for this thread. Overrides template default." },
         template: { type: "string", description: "Template ID to apply defaults (system_prompt, metadata). Caller-provided values take precedence." }
       }
@@ -540,6 +586,7 @@ const toolDefinitions: ToolDefinition[] = [
             required: ["id", "name"]
           }
         },
+        workspace: { type: "string", description: "Optional absolute or relative path to an existing directory used as the thread CLI workspace. Only applied when creating a new thread (ignored when joining an existing one)." },
         system_prompt: { type: "string", description: "Optional system prompt for thread creation. Only applied when creating a new thread (ignored when joining an existing one). Overrides template default." },
         template: { type: "string", description: "Optional template ID for thread creation. Only applied when creating a new thread (ignored when joining an existing one)." }
       }
@@ -833,8 +880,13 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
 
       const templateId = typeof args.template === "string" ? args.template : undefined;
       const systemPrompt = typeof args.system_prompt === "string" ? args.system_prompt : undefined;
-      
+      const workspaceResolution = resolveOptionalThreadWorkspace(args.workspace);
+      if (!workspaceResolution.ok) {
+        return { error: workspaceResolution.error };
+      }
+
       const created = getStore().createThread(topic, systemPrompt, templateId, {
+        metadata: workspaceResolution.metadata,
         creatorAdminId: agentId,
         creatorAdminName: resolvePreferredAgentDisplayName(agent),
         applySystemPromptContentFilter: false
@@ -845,6 +897,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         status: created.thread.status,
         system_prompt: created.thread.system_prompt,
         template_id: created.thread.template_id,
+        workspace: extractThreadCliWorkspace(created.thread),
         current_seq: created.sync.current_seq,
         reply_token: created.sync.reply_token,
         reply_window: created.sync.reply_window
@@ -1903,7 +1956,12 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         }
         const templateId = typeof args.template === "string" ? args.template : undefined;
         const systemPrompt = typeof args.system_prompt === "string" ? args.system_prompt : undefined;
+        const workspaceResolution = resolveOptionalThreadWorkspace(args.workspace);
+        if (!workspaceResolution.ok) {
+          return [{ type: "text", text: JSON.stringify({ error: workspaceResolution.error }) }];
+        }
         const created = getStore().createThread(threadName, systemPrompt, templateId, {
+          metadata: workspaceResolution.metadata,
           creatorAdminId: agent.id,
           creatorAdminName: resolvePreferredAgentDisplayName(agent),
           applySystemPromptContentFilter: false
@@ -1955,6 +2013,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
           status: thread.status,
           created: threadCreated,
           ...(threadCreated && thread.system_prompt ? { system_prompt: thread.system_prompt } : {}),
+          ...(extractThreadCliWorkspace(thread) ? { workspace: extractThreadCliWorkspace(thread) } : {}),
           ...(adminId ? { administrator: { agent_id: adminId, name: adminName } } : {})
         },
         messages: getStore().projectMessagesForAgent(messages).map(m => ({
