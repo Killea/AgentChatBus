@@ -15,9 +15,13 @@
   function startSSE(deps) {
     const {
       getActiveThreadId,
+      getCompareThreadId,
       onMsgNew,
       onTranscriptUpdate,
       onMsgEdit,
+      onCompareMsgNew,
+      onCompareTranscriptUpdate,
+      onCompareMsgEdit,
       onThreadEvent,
       onAgentPresence,
       onCliSessionEvent,
@@ -44,10 +48,14 @@
       }
       const p = ev.payload || {};
       const activeThreadId = getActiveThreadId();
+      const compareThreadId = typeof getCompareThreadId === "function" ? getCompareThreadId() : null;
 
       if (ev.type === "msg.new") {
         if (p.thread_id === activeThreadId && onMsgNew) {
           await onMsgNew();
+        }
+        if (compareThreadId && p.thread_id === compareThreadId && onCompareMsgNew) {
+          await onCompareMsgNew();
         }
         if (onThreadEvent) {
           await onThreadEvent();
@@ -58,11 +66,17 @@
         if (p.thread_id === activeThreadId && onTranscriptUpdate) {
           await onTranscriptUpdate();
         }
+        if (compareThreadId && p.thread_id === compareThreadId && onCompareTranscriptUpdate) {
+          await onCompareTranscriptUpdate();
+        }
       }
 
       if (ev.type === "msg.edit") {
         if (p.thread_id === activeThreadId && onMsgEdit) {
           await onMsgEdit(p);
+        }
+        if (compareThreadId && p.thread_id === compareThreadId && onCompareMsgEdit) {
+          await onCompareMsgEdit(p);
         }
       }
 
