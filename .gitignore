@@ -56,6 +56,10 @@ pr-body-*.md
 
 # uploaded files
 src/static/uploads
+deprecated_src/python_standalone/agentchatbus/static/uploads/
+
+# VSIX build artifacts (install from GitHub release)
+vscode-agentchatbus/*.vsix
 
 # MkDocs build output
 site/
