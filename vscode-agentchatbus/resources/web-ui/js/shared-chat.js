@@ -787,8 +787,11 @@
     scrollBottom,
     refreshAdmin = true,
     clearCliCache = true,
+    messagesEl = null,
+    sysPromptEl = null,
+    skipCliActivity = false,
   }) {
-    const box = document.getElementById("messages");
+    const box = messagesEl || document.getElementById("messages");
     if (!box) {
       return;
     }
@@ -797,24 +800,36 @@
       clearThreadParticipants();
     }
     box.innerHTML = "";
-    clearCliActivityRows(id, clearCliCache);
-    const sysPromptAreaEl = document.getElementById("sys-prompt-area");
-    if (sysPromptAreaEl) sysPromptAreaEl.innerHTML = "";
+    if (!skipCliActivity) {
+      clearCliActivityRows(id, clearCliCache);
+    }
+    const sysPromptAreaEl = sysPromptEl || document.getElementById("sys-prompt-area");
+    if (sysPromptAreaEl) {
+      sysPromptAreaEl.innerHTML = "";
+    }
     box.classList.add("loading-history");
 
     const msgs =
       (await api(`/api/threads/${id}/transcript?after_seq=0&limit=400&include_system_prompt=1`)) ||
       [];
-    rebuildActiveThreadParticipants(msgs);
+    if (typeof rebuildActiveThreadParticipants === "function") {
+      rebuildActiveThreadParticipants(msgs);
+    }
     msgs.forEach(appendBubble);
-    const cachedSessions = getThreadActivityCache(id);
-    if (cachedSessions && !clearCliCache) {
-      for (const session of cachedSessions.values()) {
-        renderCliActivitySession(session, false);
+    if (!skipCliActivity) {
+      const cachedSessions = getThreadActivityCache(id);
+      if (cachedSessions && !clearCliCache) {
+        for (const session of cachedSessions.values()) {
+          renderCliActivitySession(session, false);
+        }
       }
     }
-    updateOnlinePresence();
-    await updateStatusBar();
+    if (typeof updateOnlinePresence === "function") {
+      updateOnlinePresence();
+    }
+    if (typeof updateStatusBar === "function") {
+      await updateStatusBar();
+    }
     if (refreshAdmin) {
       await refreshThreadAdmin(id, api);
     }
@@ -822,7 +837,9 @@
     if (window.AcbMessageRenderer?.renderMermaidBlocks) {
       await window.AcbMessageRenderer.renderMermaidBlocks(box);
     }
-    scrollBottom(false);
+    if (typeof scrollBottom === "function") {
+      scrollBottom(false);
+    }
     box.classList.remove("loading-history");
   }
 
@@ -870,6 +887,63 @@
     });
   }
 
+  async function loadNewMessagesForThread({
+    threadId,
+    getLastSeq,
+    api,
+    getAgentPresenceKey,
+    getAgentDisplayName,
+    recordThreadAgentActivity,
+    appendBubble,
+    updateOnlinePresence,
+    updateStatusBar,
+    setLastSeq,
+    scrollBottom,
+    messagesEl = null,
+    skipPresence = false,
+  }) {
+    const normalizedThreadId = String(threadId || "").trim();
+    if (!normalizedThreadId) {
+      return [];
+    }
+
+    const cursor = getLastSeq();
+    const msgs =
+      (await api(`/api/threads/${normalizedThreadId}/messages?after_seq=${cursor}&limit=100`)) || [];
+
+    if (!skipPresence) {
+      msgs.forEach((m) => {
+        const key = getAgentPresenceKey(m);
+        const label = getAgentDisplayName(m);
+        if (key && typeof recordThreadAgentActivity === "function") {
+          recordThreadAgentActivity(key, label, m.created_at);
+        }
+      });
+    }
+
+    msgs.forEach(appendBubble);
+    if (typeof updateOnlinePresence === "function") {
+      updateOnlinePresence();
+    }
+    if (typeof updateStatusBar === "function") {
+      await updateStatusBar();
+    }
+
+    msgs.forEach((m) => {
+      setLastSeq((prev) => Math.max(prev, m.seq));
+    });
+
+    const box = messagesEl || document.getElementById("messages");
+    if (msgs.length && window.AcbMessageRenderer?.renderMermaidBlocks) {
+      await window.AcbMessageRenderer.renderMermaidBlocks(box);
+    }
+
+    if (msgs.length && typeof scrollBottom === "function") {
+      scrollBottom(true);
+    }
+    return msgs;
+  }
+
   async function loadNewMessages({
     getActiveThreadId,
     getLastSeq,
@@ -910,6 +984,42 @@
     }
 
     if (msgs.length) scrollBottom(true);
+  }
+
+  async function reloadTranscriptForThread({
+    threadId,
+    api,
+    clearThreadParticipants,
+    rebuildActiveThreadParticipants,
+    appendBubble,
+    updateOnlinePresence,
+    updateStatusBar,
+    setLastSeq,
+    scrollBottom,
+    messagesEl = null,
+    sysPromptEl = null,
+    skipCliActivity = false,
+  }) {
+    const normalizedThreadId = String(threadId || "").trim();
+    if (!normalizedThreadId) {
+      return;
+    }
+    await loadTranscript({
+      id: normalizedThreadId,
+      api,
+      clearThreadParticipants,
+      rebuildActiveThreadParticipants,
+      appendBubble,
+      updateOnlinePresence,
+      updateStatusBar,
+      setLastSeq,
+      scrollBottom,
+      refreshAdmin: false,
+      clearCliCache: false,
+      messagesEl,
+      sysPromptEl,
+      skipCliActivity,
+    });
   }
 
   async function reloadTranscript({
@@ -1103,6 +1213,9 @@
     refreshThreadAdmin,
     selectThread,
     reloadTranscript,
+    loadTranscript,
+    loadNewMessagesForThread,
+    reloadTranscriptForThread,
     loadNewMessages,
     sendMessage,
     handleKey,
