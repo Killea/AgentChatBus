@@ -243,7 +243,7 @@ export class BusServerManager {
 
         const config = vscode.workspace.getConfiguration('agentchatbus');
         const autoStart = config.get<boolean>('autoStartBusServer', true);
-        const serverUrl = config.get<string>('serverUrl', 'http://127.0.0.1:39765');
+        const serverUrl = this.getConnectionUrl();
 
         if (!autoStart) {
             this.log('Auto-start is disabled in settings.', 'info');
@@ -494,7 +494,7 @@ export class BusServerManager {
     }
 
     private async ensureIdeSessionRegistered(claimOwner: boolean): Promise<boolean> {
-        const serverUrl = this.getServerUrl();
+        const serverUrl = this.getConnectionUrl();
         const requestBody = {
             instance_id: this.ideInstanceId,
             ide_label: this.ideLabel,
@@ -571,7 +571,7 @@ export class BusServerManager {
         }
 
         try {
-            const response = await fetch(`${this.getServerUrl()}/api/ide/heartbeat`, {
+            const response = await fetch(`${this.getConnectionUrl()}/api/ide/heartbeat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -631,7 +631,7 @@ export class BusServerManager {
         }
 
         try {
-            const response = await fetch(`${this.getServerUrl()}/api/ide/unregister`, {
+            const response = await fetch(`${this.getConnectionUrl()}/api/ide/unregister`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -708,7 +708,7 @@ export class BusServerManager {
     }
 
     private async requestApiShutdown(force: boolean): Promise<boolean> {
-        const serverUrl = this.getServerUrl();
+        const serverUrl = this.getConnectionUrl();
         const mode = force ? 'force-shutdown' : 'shutdown';
         this.log(`Attempting ${mode} via API at ${serverUrl}/api/shutdown...`, 'debug-stop');
 
@@ -741,7 +741,7 @@ export class BusServerManager {
 
     private async waitForServerShutdown(timeoutMs: number, pid?: number | null): Promise<boolean> {
         const deadline = Date.now() + timeoutMs;
-        const serverUrl = this.getServerUrl();
+        const serverUrl = this.getConnectionUrl();
         while (Date.now() < deadline) {
             const running = await this.checkServer(serverUrl);
             const processAlive = pid ? this.isProcessAlive(pid) : false;
@@ -765,7 +765,7 @@ export class BusServerManager {
         }
 
         try {
-            const response = await fetch(`${this.getServerUrl()}/api/system/diagnostics`);
+            const response = await fetch(`${this.getConnectionUrl()}/api/system/diagnostics`);
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
@@ -893,6 +893,32 @@ export class BusServerManager {
         return rawUrl.replace(/\/+$/, '');
     }
 
+    /**
+     * Returns a URL suitable for the extension to *connect* to the server.
+     *
+     * `getServerUrl()` returns the raw configured URL, which may use `0.0.0.0`
+     * as its hostname (meaning "bind all interfaces"). While `0.0.0.0` is a
+     * valid *bind* address on all platforms, it is NOT a valid *connect* address
+     * on Windows (and unreliable on some Linux configurations). This method
+     * rewrites `0.0.0.0` → `127.0.0.1` and `::` → `::1` so the extension can
+     * always reach the local server regardless of platform.
+     */
+    private getConnectionUrl(): string {
+        const rawUrl = this.getServerUrl();
+        try {
+            const parsed = new URL(rawUrl);
+            const host = String(parsed.hostname || '').trim().toLowerCase();
+            if (host === '0.0.0.0') {
+                parsed.hostname = '127.0.0.1';
+            } else if (host === '::') {
+                parsed.hostname = '::1';
+            }
+            return parsed.toString().replace(/\/+$/, '');
+        } catch {
+            return rawUrl;
+        }
+    }
+
     notifyMcpDefinitionsChanged() {
         this.mcpDefinitionsChanged.fire();
     }
@@ -900,7 +926,7 @@ export class BusServerManager {
     private createMcpServerDefinition(): vscode.McpHttpServerDefinition {
         return new vscode.McpHttpServerDefinition(
             BusServerManager.MCP_PROVIDER_LABEL,
-            vscode.Uri.parse(`${this.getServerUrl()}/mcp`),
+            vscode.Uri.parse(`${this.getConnectionUrl()}/mcp`),
             undefined,
             '1.0.0'
         );
@@ -1267,7 +1293,7 @@ export class BusServerManager {
             });
 
             this.log('Waiting for health check response...', 'sync~spin');
-            const serverUrl = this.getServerUrl();
+            const serverUrl = this.getConnectionUrl();
             let retries = 20;
             let lastProbeFailureSignature = '';
             while (retries > 0) {

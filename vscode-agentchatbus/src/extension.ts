@@ -458,6 +458,27 @@ function initializeMainViews(context: vscode.ExtensionContext, serverManager: Bu
                 }
             }
 
+             // Derive bind host and LAN IPs for the Server Instance card.
+             const bindHost = (() => {
+                 try {
+                     const u = new URL(serverUrl);
+                     return u.hostname || 'unknown';
+                 } catch {
+                     return 'unknown';
+                 }
+             })();
+             const lanIps: string[] = [];
+             if (bindHost === '0.0.0.0' || bindHost === '::') {
+                 const ifaces = os.networkInterfaces();
+                 for (const name of Object.keys(ifaces)) {
+                     for (const iface of ifaces[name] ?? []) {
+                         if (iface.family === 'IPv4' && !iface.internal) {
+                             lanIps.push(iface.address);
+                         }
+                     }
+                 }
+             }
+
              StatusPanel.createOrShow({
                  ...metadata,
                  backendEngine,
@@ -468,6 +489,9 @@ function initializeMainViews(context: vscode.ExtensionContext, serverManager: Bu
                  backendUptimeSeconds,
                  serverReachable,
                  serverScope,
+                 serverUrl,
+                 bindHost,
+                 lanIps,
                  lmProbe,
                  privacyWarning: localServer
                      ? ''

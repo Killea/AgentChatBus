@@ -86,6 +86,28 @@ export class StatusPanel {
         const backendSource = m.backendEngineSource || 'unknown';
         const backendVersion = m.backendVersion || 'N/A';
         const backendRuntime = m.backendRuntime || 'N/A';
+        const bindHost = String(m.bindHost || 'N/A');
+        const lanIps = Array.isArray(m.lanIps) ? m.lanIps : [];
+        const serverUrlDisplay = String(m.serverUrl || 'N/A');
+        const bindHostDisplay = bindHost === '0.0.0.0'
+            ? `0.0.0.0 (all interfaces)${lanIps.length > 0 ? ' — accessible via: ' + lanIps.join(', ') : ''}`
+            : bindHost;
+        // Build the list of URLs that clients can actually connect to.
+        const port = (() => {
+            try { return String(new URL(serverUrlDisplay).port || '39765'); }
+            catch { return '39765'; }
+        })();
+        const accessUrls: string[] = [];
+        if (bindHost === '0.0.0.0' || bindHost === '::') {
+            if (lanIps.length > 0) {
+                for (const ip of lanIps) { accessUrls.push(`http://${ip}:${port}`); }
+            }
+            accessUrls.push(`http://127.0.0.1:${port}`);
+        } else if (bindHost !== 'N/A' && bindHost !== 'unknown') {
+            accessUrls.push(`http://${bindHost}:${port}`);
+        } else {
+            accessUrls.push(serverUrlDisplay);
+        }
         const appDir = isRemote ? hidden : (m.env?.AGENTCHATBUS_APP_DIR || 'N/A');
         const dbPath = isRemote ? hidden : (m.env?.AGENTCHATBUS_DB || 'N/A');
         const commandDisplay = isRemote ? hidden : (m.command || 'N/A');
@@ -131,6 +153,11 @@ export class StatusPanel {
         .env-item { border-bottom: 1px solid var(--vscode-widget-border); padding: 4px 0; display: flex; justify-content: space-between; }
         .env-key { color: var(--vscode-symbolIcon-variableForeground); }
         .env-val { color: var(--vscode-textLink-foreground); text-align: right; overflow: hidden; text-overflow: ellipsis; }
+        .access-urls { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+        .access-url-row { display: flex; align-items: center; gap: 8px; }
+        .copy-btn { border: 1px solid var(--vscode-button-border, transparent); border-radius: 4px; padding: 2px 10px; font-size: 0.8em; cursor: pointer; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); white-space: nowrap; }
+        .copy-btn:hover { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-secondaryBackground)); }
+        .copy-btn.copied { background: #28a745; color: #fff; border-color: #28a745; }
     </style>
 </head>
 <body>
@@ -141,6 +168,17 @@ export class StatusPanel {
         <div class="card">
             <h2>🌍 Server Instance</h2>
             <div><span class="label">Status:</span> <span class="status-badge">${serverStatus}</span></div>
+            <div><span class="label">Bind Address:</span> <span class="value">${bindHostDisplay}</span></div>
+            <div>
+                <span class="label">Access URLs:</span>
+                <div class="access-urls">
+                    ${accessUrls.map(url => `
+                    <div class="access-url-row">
+                        <span class="value">${this._escapeHtml(url)}</span>
+                        <button class="copy-btn" data-url="${this._escapeHtml(url)}" title="Copy to clipboard">Copy</button>
+                    </div>`).join('')}
+                </div>
+            </div>
             <div><span class="label">PID:</span> <span class="value">${pidDisplay}</span></div>
             <div><span class="label">Uptime:</span> <span class="value">${uptime}</span></div>
             <div><span class="label">Started At:</span> <span class="value">${startedAtDisplay}</span></div>
@@ -248,6 +286,28 @@ export class StatusPanel {
 
     <script>
         const vscode = acquireVsCodeApi();
+        document.querySelectorAll('.copy-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const url = btn.getAttribute('data-url') || '';
+                try {
+                    await navigator.clipboard.writeText(url);
+                    btn.textContent = 'Copied!';
+                    btn.classList.add('copied');
+                    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+                } catch {
+                    // Fallback for environments without clipboard API
+                    const ta = document.createElement('textarea');
+                    ta.value = url;
+                    document.body.appendChild(ta);
+                    ta.select();
+                    try { document.execCommand('copy'); } catch {}
+                    document.body.removeChild(ta);
+                    btn.textContent = 'Copied!';
+                    btn.classList.add('copied');
+                    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+                }
+            });
+        });
     </script>
 </body>
 </html>`;

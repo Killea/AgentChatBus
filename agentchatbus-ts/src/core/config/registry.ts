@@ -401,6 +401,21 @@ function buildVisibleField<T>(
   const effectiveScope: Exclude<ConfigScope, "hidden"> =
     readonlyReason ? "readonly" : (descriptor.scope as Exclude<ConfigScope, "hidden">);
 
+  // For enum fields, ensure the current value is always represented in the
+  // options list so the dropdown shows the actual resolved value even when it
+  // was set via env var or CLI launch override to something outside the
+  // predefined choices.
+  let effectiveOptions = descriptor.options;
+  if (descriptor.type === "enum" && descriptor.options) {
+    const currentValueStr = String(value ?? "");
+    if (currentValueStr && !descriptor.options.some((opt) => opt.value === currentValueStr)) {
+      effectiveOptions = [
+        ...descriptor.options,
+        { value: currentValueStr, label: `${currentValueStr} (set externally)` },
+      ];
+    }
+  }
+
   return {
     key: descriptor.key,
     source: "config",
@@ -419,7 +434,7 @@ function buildVisibleField<T>(
     min: descriptor.min,
     max: descriptor.max,
     step: descriptor.step,
-    options: descriptor.options,
+    options: effectiveOptions,
     editable: descriptor.scope === "editable" && !readonlyReason,
     readonly_reason: readonlyReason,
   };
@@ -499,18 +514,22 @@ export const CONFIG_REGISTRY: ReadonlyArray<ConfigDescriptor> = [
     envVar: "AGENTCHATBUS_HOST",
     resolvedField: "host",
     persistedKey: "HOST",
-    type: "string",
+    type: "enum",
     kind: "host",
     defaultValue: "127.0.0.1",
     label: "Host",
     description:
-      "The IP address or hostname the server binds to. Use '127.0.0.1' for local-only access or '0.0.0.0' for LAN access.",
+      "The IP address the server binds to. '127.0.0.1' = local-only access; '0.0.0.0' = LAN access (all network interfaces).",
     section: "network",
     scope: "editable",
     sensitivity: "public",
     restartRequired: true,
     order: 10,
     inputId: "setting-host",
+    options: [
+      { value: "127.0.0.1", label: "Local only (127.0.0.1)" },
+      { value: "0.0.0.0", label: "LAN access (0.0.0.0)" },
+    ],
     resolve: (ctx) => String(getRawValue(ctx, { envVar: "AGENTCHATBUS_HOST", persistedKey: "HOST" }, "127.0.0.1")),
   },
   {
@@ -1419,7 +1438,7 @@ export function getConfigDict(): Record<string, unknown> {
   return Object.fromEntries(entries);
 }
 
-function coerceUpdateValue(descriptor: ConfigDescriptor, value: unknown): unknown {
+function coerceUpdateValue(descriptor: ConfigDescriptor, value: unknown, currentValue?: unknown): unknown {
   switch (descriptor.type) {
     case "boolean":
       if (typeof value === "boolean" || typeof value === "string" || typeof value === "number") {
@@ -1474,7 +1493,11 @@ function coerceUpdateValue(descriptor: ConfigDescriptor, value: unknown): unknow
     }
     case "enum": {
       const parsed = String(value);
+      const currentStr = currentValue !== undefined ? String(currentValue) : "";
       if (!descriptor.options?.some(option => option.value === parsed)) {
+        if (currentStr && parsed === currentStr) {
+          return parsed;
+        }
         throw new Error(`${descriptor.key} must be one of: ${descriptor.options?.map(option => option.value).join(", ")}`);
       }
       return parsed;
@@ -1497,6 +1520,7 @@ export class ConfigValidationError extends Error {
 export function preparePersistedConfigUpdate(newData: Record<string, unknown>): Record<string, unknown> {
   const errors: string[] = [];
   const update: Record<string, unknown> = {};
+  const currentConfig = getConfig();
 
   for (const descriptor of CONFIG_REGISTRY) {
     if (descriptor.scope !== "editable" || !descriptor.persistedKey) {
@@ -1510,7 +1534,8 @@ export function preparePersistedConfigUpdate(newData: Record<string, unknown>): 
       continue;
     }
     try {
-      update[descriptor.persistedKey] = coerceUpdateValue(descriptor, nextValue);
+      const currentValue = (currentConfig as unknown as Record<string, unknown>)[descriptor.resolvedField];
+      update[descriptor.persistedKey] = coerceUpdateValue(descriptor, nextValue, currentValue);
     } catch (error) {
       errors.push(error instanceof Error ? error.message : `Invalid value for ${descriptor.key}`);
     }

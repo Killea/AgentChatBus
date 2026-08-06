@@ -10,7 +10,7 @@ const {
 
 test('chat panel webview options retain context and allow scripts', () => {
   const root = { path: '/extension-root' };
-  const options = getChatPanelWebviewOptions(root);
+  const options = getChatPanelWebviewOptions([root]);
 
   assert.equal(options.enableScripts, true);
   assert.equal(options.retainContextWhenHidden, true);
@@ -19,7 +19,7 @@ test('chat panel webview options retain context and allow scripts', () => {
 
 test('recovered chat panel disables scripts', () => {
   const root = { path: '/extension-root' };
-  const options = getRecoveredChatPanelWebviewOptions(root);
+  const options = getRecoveredChatPanelWebviewOptions([root]);
 
   assert.equal(options.enableScripts, false);
   assert.deepEqual(options.localResourceRoots, [root]);

@@ -7,7 +7,11 @@ const {
 } = require('../out/logic/testExports');
 
 test('resolveWorkspaceDevContext detects AgentChatBus repo roots from required markers', () => {
-  const repoRoot = path.join('C:\\', 'repo', 'AgentChatBus');
+  const rawRoot = path.join('C:\\', 'repo', 'AgentChatBus');
+  // resolveWorkspaceDevContext internally calls path.resolve on candidate roots,
+  // so we must use the resolved path when building the mock existsSync set and
+  // when asserting the returned context paths.
+  const repoRoot = path.resolve(rawRoot);
   const existing = new Set([
     path.join(repoRoot, 'agentchatbus-ts', 'package.json'),
     path.join(repoRoot, 'agentchatbus-ts', 'src', 'cli', 'index.ts'),
@@ -18,7 +22,7 @@ test('resolveWorkspaceDevContext detects AgentChatBus repo roots from required m
   ]);
 
   const context = resolveWorkspaceDevContext(
-    [path.join('C:\\', 'other'), repoRoot],
+    [path.resolve(path.join('C:\\', 'other')), repoRoot],
     (candidate) => existing.has(candidate),
   );
 

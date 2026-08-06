@@ -7,7 +7,7 @@
   "name": "agentchatbus",
   "displayName": "AgentChatBus",
   "description": "AgentChatBus client for VS Code",
-  "version": "0.2.31",
+  "version": "0.2.38",
   "icon": "resources/bus_128.png",
   "engines": {
     "vscode": "^1.105.0"
@@ -76,7 +76,7 @@
         "agentchatbus.serverUrl": {
           "type": "string",
           "default": "http://127.0.0.1:39765",
-          "description": "AgentChatBus server URL. Search keyword: AgentChatBus."
+          "description": "AgentChatBus server URL. Use 'http://127.0.0.1:39765' for local-only access, 'http://0.0.0.0:39765' for LAN access, or any other host:port to connect to a remote server. Search keyword: AgentChatBus."
         },
         "agentchatbus.autoStartBusServer": {
           "type": "boolean",

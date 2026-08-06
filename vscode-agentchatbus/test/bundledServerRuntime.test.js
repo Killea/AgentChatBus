@@ -74,66 +74,68 @@ async function stopChild(child) {
   }
 }
 
-test('bundled server package metadata stays compatible with CommonJS runtime', async () => {
-  const packageJson = JSON.parse(await fsp.readFile(bundledServerPackageJson, 'utf8'));
+test('bundled server package metadata, health, and web ui', (_, done) => {
+  // Use callback-style test to avoid node:test event loop drain issues
+  // that cancel async tests spawning child processes on Linux/Node v22.
+  (async () => {
+    // Part 1: package metadata
+    const packageJson = JSON.parse(await fsp.readFile(bundledServerPackageJson, 'utf8'));
+    assert.equal(packageJson.type, 'commonjs');
+    assert.equal(packageJson.private, true);
 
-  assert.equal(packageJson.type, 'commonjs');
-  assert.equal(packageJson.private, true);
-});
+    // Part 2: runtime health + web ui
+    assert.ok(fs.existsSync(bundledServerEntry), 'Bundled server entrypoint is missing');
+    assert.ok(fs.existsSync(path.join(bundledWebUiRoot, 'index.html')), 'Bundled web-ui runtime is missing');
 
-test('bundled server starts and serves health plus bundled web ui', async () => {
-  assert.ok(fs.existsSync(bundledServerEntry), 'Bundled server entrypoint is missing');
-  assert.ok(fs.existsSync(path.join(bundledWebUiRoot, 'index.html')), 'Bundled web-ui runtime is missing');
+    const port = await getFreePort();
+    const tmpRoot = path.join(extensionRoot, '.tmp-runtime-test');
+    const appDir = path.join(tmpRoot, `app-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    const dbPath = path.join(appDir, 'bus.db');
+    const configPath = path.join(appDir, 'config.json');
 
-  const port = await getFreePort();
-  const tmpRoot = path.join(extensionRoot, '.tmp-runtime-test');
-  const appDir = path.join(tmpRoot, `app-${Date.now()}-${Math.random().toString(16).slice(2)}`);
-  const dbPath = path.join(appDir, 'bus.db');
-  const configPath = path.join(appDir, 'config.json');
+    await fsp.mkdir(appDir, { recursive: true });
 
-  await fsp.mkdir(appDir, { recursive: true });
+    let stdout = '';
+    let stderr = '';
+    const child = spawn(process.execPath, [bundledServerEntry, 'serve'], {
+      cwd: extensionRoot,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        AGENTCHATBUS_HOST: '127.0.0.1',
+        AGENTCHATBUS_PORT: String(port),
+        AGENTCHATBUS_DB: dbPath,
+        AGENTCHATBUS_APP_DIR: appDir,
+        AGENTCHATBUS_CONFIG_FILE: configPath,
+        AGENTCHATBUS_WEB_UI_DIR: bundledWebUiRoot,
+        AGENTCHATBUS_BOOTSTRAP_DEFAULT_THREAD: '1',
+      },
+      windowsHide: true,
+    });
 
-  let stdout = '';
-  let stderr = '';
-  const child = spawn(process.execPath, [bundledServerEntry, 'serve'], {
-    cwd: extensionRoot,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    env: {
-      ...process.env,
-      AGENTCHATBUS_HOST: '127.0.0.1',
-      AGENTCHATBUS_PORT: String(port),
-      AGENTCHATBUS_DB: dbPath,
-      AGENTCHATBUS_APP_DIR: appDir,
-      AGENTCHATBUS_CONFIG_FILE: configPath,
-      AGENTCHATBUS_WEB_UI_DIR: bundledWebUiRoot,
-      AGENTCHATBUS_BOOTSTRAP_DEFAULT_THREAD: '1',
-    },
-    windowsHide: true,
-  });
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
 
-  child.stdout.on('data', (chunk) => {
-    stdout += chunk.toString();
-  });
-  child.stderr.on('data', (chunk) => {
-    stderr += chunk.toString();
-  });
+    try {
+      const healthResponse = await waitForHttpOk(`http://127.0.0.1:${port}/health`, 8000);
+      const healthPayload = await healthResponse.json();
+      assert.equal(healthPayload.status, 'ok');
 
-  try {
-    const healthResponse = await waitForHttpOk(`http://127.0.0.1:${port}/health`, 8000);
-    const healthPayload = await healthResponse.json();
-    assert.equal(healthPayload.status, 'ok');
+      const staticResponse = await waitForHttpOk(`http://127.0.0.1:${port}/static/index.html`, 4000);
+      const staticHtml = await staticResponse.text();
+      assert.match(staticHtml, /AgentChatBus/i);
 
-    const staticResponse = await waitForHttpOk(`http://127.0.0.1:${port}/static/index.html`, 4000);
-    const staticHtml = await staticResponse.text();
-    assert.match(staticHtml, /AgentChatBus/i);
-
-    assert.match(stdout, /serve mode listening on 127\.0\.0\.1:/);
-  } catch (error) {
-    assert.fail(
-      `Bundled server failed runtime validation.\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}\nERROR:\n${error instanceof Error ? error.stack || error.message : String(error)}`
-    );
-  } finally {
-    await stopChild(child);
-    await fsp.rm(tmpRoot, { recursive: true, force: true });
-  }
+      assert.match(stdout, /serve mode listening on 127\.0\.0\.1:/);
+      done();
+    } catch (error) {
+      done(error instanceof Error ? error : new Error(String(error)));
+    } finally {
+      await stopChild(child);
+      await fsp.rm(tmpRoot, { recursive: true, force: true });
+    }
+  })().catch(done);
 });

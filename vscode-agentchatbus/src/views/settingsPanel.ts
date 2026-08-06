@@ -291,8 +291,12 @@ export class SettingsPanel {
     <div class="card">
         <div class="meta">Current configuration scope: <span class="code">${this.escapeHtml(settings.scopeLabel)}</span></div>
         <label for="serverUrl">Server URL</label>
-        <input id="serverUrl" type="text" value="${escapedServerUrl}" spellcheck="false" />
-        <div class="hint">Examples: <span class="code">http://127.0.0.1:39765</span> or <span class="code">http://192.168.50.186:39765</span></div>
+        <select id="serverUrl">
+            <option value="http://127.0.0.1:39765"${settings.serverUrl === 'http://127.0.0.1:39765' ? ' selected' : ''}>Local only (127.0.0.1:39765)</option>
+            <option value="http://0.0.0.0:39765"${settings.serverUrl === 'http://0.0.0.0:39765' ? ' selected' : ''}>LAN access (0.0.0.0:39765)</option>
+            ${settings.serverUrl !== 'http://127.0.0.1:39765' && settings.serverUrl !== 'http://0.0.0.0:39765' ? `<option value="${this.escapeHtml(settings.serverUrl)}" selected>${this.escapeHtml(settings.serverUrl)} (current)</option>` : ''}
+        </select>
+        <div class="hint">Local only: just this machine. LAN access: other devices on the same network can connect. For a remote server, type the URL directly in VS Code Settings.</div>
         <div class="checkbox-row">
             <input id="autoStartBusServer" type="checkbox" ${checked} />
             <label for="autoStartBusServer">Automatically start the AgentChatBus server when needed</label>
