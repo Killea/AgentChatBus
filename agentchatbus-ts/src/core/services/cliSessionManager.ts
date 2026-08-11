@@ -19,12 +19,30 @@ import { CLAUDE_SESSION_ID_ENV_VAR, ClaudeHeadlessAdapter } from "./adapters/cla
 import { GEMINI_SESSION_ID_ENV_VAR, GeminiHeadlessAdapter } from "./adapters/geminiHeadlessAdapter.js";
 import { isCodexWorkingLine, looksLikeConversationalWorkingScreen } from "./cliInteractiveHeuristics.js";
 import { buildCliMeetingWakePrompt } from "./cliMeetingContextBuilder.js";
+import { AcpAdapter } from "./acpAdapter.js";
+import { ACP_AGENTS, isAcpAgent } from "./acpRegistry.js";
 
 type HeadlessTerminalInstance = import("@xterm/headless").Terminal;
 const { Terminal: HeadlessTerminal } = xtermHeadless;
 
-export type CliSessionAdapterId = "cursor" | "codex" | "claude" | "gemini" | "copilot";
-export type CliSessionMode = "headless" | "interactive" | "direct";
+/**
+ * Adapter IDs for the legacy per-agent adapters.
+ * ACP agent IDs (devin, opencode, glm, qwen, grok, etc.) are dynamic and
+ * resolved at runtime via {@link isAcpAgent}.
+ */
+export type LegacyCliSessionAdapterId = "cursor" | "codex" | "claude" | "gemini" | "copilot";
+
+/**
+ * Full adapter ID type: legacy IDs plus any ACP agent ID.
+ * ACP agent IDs are validated at runtime against the ACP registry.
+ */
+export type CliSessionAdapterId = LegacyCliSessionAdapterId | (string & {});
+
+/**
+ * Session mode. "acp" is the new default mode that uses the ACP protocol.
+ * Legacy modes (headless, interactive, direct) remain for backward compatibility.
+ */
+export type CliSessionMode = "headless" | "interactive" | "direct" | "acp";
 export type CliSessionState =
   | "created"
   | "starting"
@@ -285,6 +303,10 @@ export interface CliSessionPromptPatch {
 }
 
 function getDefaultModeForAdapter(adapterId: CliSessionAdapterId): CliSessionMode {
+  // ACP agents default to "acp" mode
+  if (isAcpAgent(String(adapterId))) {
+    return "acp";
+  }
   return adapterId === "codex" || adapterId === "claude" || adapterId === "copilot" || adapterId === "cursor"
     ? "direct"
     : "interactive";
@@ -2902,6 +2924,7 @@ function getCodexReplyTimeoutMs(
 export class CliSessionManager {
   private readonly runtimes = new Map<string, CliSessionRuntime>();
   private readonly adapters = new Map<string, CliSessionAdapter>();
+  private readonly acpAdapters = new Map<string, CliSessionAdapter>();
 
   constructor(adapters: CliSessionAdapter[] = [
     new CursorDirectAdapter(),
@@ -2942,12 +2965,28 @@ export class CliSessionManager {
     const adapterId = String(input.adapter || "").trim() as CliSessionAdapterId;
     const defaultMode = getDefaultModeForAdapter(adapterId);
     const requestedMode = (String(input.mode || defaultMode).trim() || defaultMode) as CliSessionMode;
-    const mode = requestedMode === "headless"
+    const mode: CliSessionMode = requestedMode === "headless"
       ? "headless"
       : requestedMode === "direct"
         ? "direct"
-        : "interactive";
-    const adapter = this.adapters.get(this.adapterKey(adapterId, mode));
+        : requestedMode === "acp"
+          ? "acp"
+          : "interactive";
+    // For ACP mode, resolve adapter from the ACP registry
+    let adapter: CliSessionAdapter | undefined;
+    if (mode === "acp") {
+      if (!isAcpAgent(adapterId)) {
+        throw new Error(`Unknown ACP agent '${adapterId}'. Check acpRegistry for available agents.`);
+      }
+      adapter = this.acpAdapters.get(adapterId);
+      if (!adapter) {
+        // Lazily create and cache the AcpAdapter instance
+        adapter = new AcpAdapter(adapterId);
+        this.acpAdapters.set(adapterId, adapter);
+      }
+    } else {
+      adapter = this.adapters.get(this.adapterKey(adapterId, mode));
+    }
     if (!adapter) {
       throw new Error(`Unsupported CLI adapter '${adapterId}' in mode '${mode}'`);
     }
@@ -3215,7 +3254,13 @@ export class CliSessionManager {
     if (!runtime) {
       return null;
     }
-    const adapter = this.adapters.get(this.adapterKey(runtime.snapshot.adapter, runtime.snapshot.mode));
+    // Resolve adapter: check ACP registry for "acp" mode, then legacy adapters
+    let adapter: CliSessionAdapter | undefined;
+    if (runtime.snapshot.mode === "acp") {
+      adapter = this.acpAdapters.get(String(runtime.snapshot.adapter));
+    } else {
+      adapter = this.adapters.get(this.adapterKey(runtime.snapshot.adapter, runtime.snapshot.mode));
+    }
     if (!adapter || !adapter.supportsRestart) {
       throw new Error("Session does not support restart");
     }
@@ -3591,7 +3636,19 @@ export class CliSessionManager {
   }
 
   private async runRuntime(runtime: CliSessionRuntime): Promise<void> {
-    const adapter = this.adapters.get(this.adapterKey(runtime.snapshot.adapter, runtime.snapshot.mode));
+    // Resolve adapter: check ACP registry first for "acp" mode, then legacy adapters
+    let adapter: CliSessionAdapter | undefined;
+    if (runtime.snapshot.mode === "acp") {
+      adapter = this.acpAdapters.get(String(runtime.snapshot.adapter));
+      if (!adapter) {
+        // Lazily create the AcpAdapter
+        const acpAdapter = new AcpAdapter(String(runtime.snapshot.adapter));
+        this.acpAdapters.set(String(runtime.snapshot.adapter), acpAdapter);
+        adapter = acpAdapter;
+      }
+    } else {
+      adapter = this.adapters.get(this.adapterKey(runtime.snapshot.adapter, runtime.snapshot.mode));
+    }
     if (!adapter) {
       runtime.snapshot.state = "failed";
       runtime.snapshot.last_error = `Missing adapter '${runtime.snapshot.adapter}'`;

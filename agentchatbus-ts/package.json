@@ -19,6 +19,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "^1.2.1",
     "@fastify/multipart": "^9.0.3",
     "@fastify/static": "^9.0.0",
     "@modelcontextprotocol/sdk": "^1.27.1",

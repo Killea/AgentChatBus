@@ -31,6 +31,9 @@ import {
 import { CliModelDiscoveryService } from "../../core/services/cliModelDiscovery.js";
 import { CliSessionManager, type CliSessionSnapshot } from "../../core/services/cliSessionManager.js";
 import { CliMeetingOrchestrator } from "../../core/services/cliMeetingOrchestrator.js";
+import { isAcpAgent, listAcpAgents, getAcpAgent } from "../../core/services/acpRegistry.js";
+import { detectAllAgentStatuses, updateEnabledState } from "../../core/services/acpStatus.js";
+import { discoverAcpAgentModels, clearModelDiscoveryCache } from "../../core/services/acpModelDiscovery.js";
 import { MemoryStore, memoryStore } from "../../core/services/memoryStore.js";
 import { registerStore } from "../../core/services/storeSingleton.js";
 import { eventBus } from "../../shared/eventBus.js";
@@ -105,8 +108,8 @@ const THREAD_CLI_WORKSPACE_METADATA_KEY = "cli_workspace";
 const THREAD_RESTART_BLUEPRINT_METADATA_KEY = "restart_blueprint";
 const RESTART_TOMBSTONE_MARKER = "[restart-tombstone]";
 
-type CliAdapterId = "cursor" | "codex" | "claude" | "gemini" | "copilot";
-type CliAdapterMode = "headless" | "interactive" | "direct";
+type CliAdapterId = "cursor" | "codex" | "claude" | "gemini" | "copilot" | (string & {});
+type CliAdapterMode = "headless" | "interactive" | "direct" | "acp";
 
 type ThreadRestartBlueprintAgent = {
   participant_agent_id?: string;
@@ -182,12 +185,17 @@ function resolveCliAdapterLabel(adapter: CliAdapterId): string {
   if (adapter === "claude") return "Claude";
   if (adapter === "gemini") return "Gemini";
   if (adapter === "copilot") return "Copilot";
-  return "Codex";
+  if (adapter === "codex") return "Codex";
+  // Check ACP registry for the agent name
+  const acpAgent = getAcpAgent(String(adapter));
+  if (acpAgent) return acpAgent.name;
+  return String(adapter);
 }
 
 function resolveCliModeFallbackLabel(mode: CliAdapterMode): string {
   if (mode === "direct") return "Direct App Server";
   if (mode === "headless") return "Headless CLI";
+  if (mode === "acp") return "ACP (Agent Client Protocol)";
   return "Interactive PTY";
 }
 
@@ -198,10 +206,12 @@ function normalizeRestartBlueprintAgent(value: unknown): ThreadRestartBlueprintA
   const entry = value as Record<string, unknown>;
   const adapter = String(entry.adapter || "").trim().toLowerCase() as CliAdapterId;
   const mode = String(entry.mode || "").trim().toLowerCase() as CliAdapterMode;
-  if (!["cursor", "codex", "claude", "gemini", "copilot"].includes(adapter)) {
+  // Accept legacy adapter IDs plus ACP agent IDs
+  const legacyAdapters = ["cursor", "codex", "claude", "gemini", "copilot"];
+  if (!legacyAdapters.includes(adapter) && !isAcpAgent(adapter)) {
     return null;
   }
-  if (!["headless", "interactive", "direct"].includes(mode)) {
+  if (!["headless", "interactive", "direct", "acp"].includes(mode)) {
     return null;
   }
   const launchOrder = Number(entry.launch_order);
@@ -603,7 +613,10 @@ function createCliThreadSession(input: {
     throw new Error("Thread default workspace is unavailable; update the thread workspace before launching a CLI session");
   }
 
-  const adapter = (String(input.adapter || "cursor").trim() || "cursor") as CliAdapterId;
+  // Default to "devin" (ACP mode) for new sessions. Legacy adapters
+  // (cursor, codex, claude, gemini, copilot) are still accepted when
+  // explicitly specified.
+  const adapter = (String(input.adapter || "devin").trim() || "devin") as CliAdapterId;
   let finalPrompt = exactPromptOverride || promptSeed;
   let participantRole: "administrator" | "participant" | undefined;
   let contextDeliveryMode: "join" | "resume" | "incremental" | undefined;
@@ -1398,6 +1411,60 @@ export function createHttpServer() {
         "homedir()",
       ],
     };
+  });
+
+  // ACP agent registry — returns all ACP-compatible agents with live status detection
+  fastify.get("/api/acp-agents", async () => {
+    return detectAllAgentStatuses(false);
+  });
+
+  // Force re-detection of ACP agent statuses (re-check PATH, etc.)
+  fastify.post("/api/acp-agents/refresh", async () => {
+    return detectAllAgentStatuses(true);
+  });
+
+  // Update which ACP agents are enabled
+  fastify.put("/api/acp-agents/enabled", async (request, reply) => {
+    const body = request.body as JsonBody;
+    if (!body || typeof body !== "object" || !body.updates) {
+      reply.code(400);
+      return { detail: "updates field is required (object of agentId -> boolean)" };
+    }
+    const updates = body.updates as Record<string, unknown>;
+    const normalized: Record<string, boolean> = {};
+    for (const [id, value] of Object.entries(updates)) {
+      if (typeof value === "boolean") {
+        normalized[id] = value;
+      }
+    }
+    return updateEnabledState(normalized);
+  });
+
+  // Discover available models for a specific ACP agent
+  // Spawns the agent, performs ACP handshake, reads configOptions, terminates
+  fastify.get("/api/acp-agents/:agentId/models", async (request, reply) => {
+    const params = request.params as { agentId: string };
+    const agentId = String(params.agentId || "").trim();
+    if (!agentId) {
+      reply.code(400);
+      return { detail: "agentId is required" };
+    }
+    if (!isAcpAgent(agentId)) {
+      reply.code(404);
+      return { detail: `Unknown ACP agent: ${agentId}` };
+    }
+    const query = request.query as { workspace?: string; force?: string };
+    const workspace = typeof query.workspace === "string" ? query.workspace : undefined;
+    const force = query.force === "true" || query.force === "1";
+    return await discoverAcpAgentModels(agentId, workspace, force);
+  });
+
+  // Clear model discovery cache
+  fastify.post("/api/acp-agents/models/clear-cache", async (request) => {
+    const body = request.body as JsonBody;
+    const agentId = typeof body?.agentId === "string" ? body.agentId : undefined;
+    clearModelDiscoveryCache(agentId);
+    return { ok: true };
   });
 
   fastify.post("/api/system/pick-directory", async (request, reply) => {

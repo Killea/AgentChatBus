@@ -50,6 +50,7 @@ export function createMcpServer(sessionId?: string): Server {
   // Call tool handler
   server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const args = request.params || {};
+    console.log(`[mcp-streamable] tools/call: name=${args.name}, args=${JSON.stringify(args.arguments || {}).slice(0, 200)}`);
     const result = await withToolCallContext(
       {
         sessionId: extra.sessionId || sessionId,
@@ -57,6 +58,7 @@ export function createMcpServer(sessionId?: string): Server {
       },
       () => callTool(args.name || "", args.arguments || {})
     );
+    console.log(`[mcp-streamable] tools/call result: ${JSON.stringify(result).slice(0, 200)}`);
 
     // Convert result to MCP content blocks format
     if (Array.isArray(result)) {

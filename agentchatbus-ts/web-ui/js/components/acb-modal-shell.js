@@ -303,13 +303,14 @@
                   <div class="meeting-modal-section__title">Manual</div>
                   <div class="meeting-modal-grid">
                     <div class="settings-field">
-                      <label for="agent-modal-adapter">Adapter</label>
+                      <label for="agent-modal-adapter">Agent</label>
                       <select id="agent-modal-adapter">
-                        <option value="codex">Codex</option>
-                        <option value="cursor">Cursor</option>
-                        <option value="copilot">Copilot</option>
-                        <option value="claude">Claude</option>
-                        <option value="gemini">Gemini</option>
+                        <option value="devin">Devin CLI</option>
+                        <option value="codex">Codex (legacy)</option>
+                        <option value="cursor">Cursor (legacy)</option>
+                        <option value="copilot">Copilot (legacy)</option>
+                        <option value="claude">Claude (legacy)</option>
+                        <option value="gemini">Gemini (legacy)</option>
                       </select>
                     </div>
                     <div class="settings-field">
@@ -333,7 +334,8 @@
                     <div class="settings-field">
                       <label for="agent-modal-mode">Mode</label>
                       <select id="agent-modal-mode">
-                        <option value="direct">Codex Direct (App Server)</option>
+                        <option value="acp">ACP (Agent Client Protocol)</option>
+                        <option value="direct">Direct (App Server)</option>
                         <option value="interactive">Interactive PTY</option>
                         <option value="headless">Headless JSON Resume</option>
                       </select>

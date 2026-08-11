@@ -1,5 +1,6 @@
-export type CliSessionAdapterId = "cursor" | "codex" | "claude" | "gemini" | "copilot";
-export type CliSessionMode = "headless" | "interactive" | "direct";
+export type LegacyCliSessionAdapterId = "cursor" | "codex" | "claude" | "gemini" | "copilot";
+export type CliSessionAdapterId = LegacyCliSessionAdapterId | (string & {});
+export type CliSessionMode = "headless" | "interactive" | "direct" | "acp";
 export type CliSessionStream = "stdout" | "stderr";
 export type CliMeetingTransport = "pty_relay" | "agent_mcp";
 export type CliSessionActivityStatus = "in_progress" | "completed" | "failed" | "declined";
