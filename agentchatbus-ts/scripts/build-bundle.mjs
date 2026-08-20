@@ -22,6 +22,7 @@ async function prepareDistDir() {
 async function copyWorkerAssets() {
   const workers = [
     ['src/core/services/adapters/workers/interactivePtyWorker.mjs', 'dist/workers/interactivePtyWorker.mjs'],
+    ['src/transports/stdio/mcpProxy.mjs', 'dist/workers/mcpProxy.mjs'],
   ];
   for (const [source, target] of workers) {
     await copyFile(path.join(projectRoot, source), path.join(projectRoot, target));

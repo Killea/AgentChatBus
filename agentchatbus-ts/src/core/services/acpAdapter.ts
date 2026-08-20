@@ -26,6 +26,7 @@ import {
   getAcpAgent,
   type AcpAgentConfig,
 } from "./acpRegistry.js";
+import { resolveAcpMcpProxyScript } from "./acpMcpProxyPath.js";
 import type {
   CliAdapterActivityEvent,
   CliAdapterNativeRuntimeEvent,
@@ -406,7 +407,7 @@ export class AcpAdapter implements CliSessionAdapter {
             // Try stdio MCP proxy as a fallback for agents that don't have
             // pre-configured MCP servers. Agents with pre-configured MCP will
             // use their own config.
-            const proxyScript = new URL("../../transports/stdio/mcpProxy.mjs", import.meta.url).pathname;
+            const proxyScript = resolveAcpMcpProxyScript();
             const envVars: acp.EnvVariable[] = [
               { name: "AGENTCHATBUS_BASE_URL", value: baseUrl },
             ];
