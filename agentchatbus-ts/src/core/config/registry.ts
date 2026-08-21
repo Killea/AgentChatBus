@@ -532,7 +532,7 @@ export const CONFIG_REGISTRY: ReadonlyArray<ConfigDescriptor> = [
     defaultValue: "v2-socket",
     label: "Agent Transport",
     description:
-      "V2 (recommended): agents connect via Unix socket / Windows named pipe — no IP or port configuration needed. V1 (legacy): agents connect via HTTP + SSE.",
+      "V2 (recommended): agents connect via Unix socket / Windows named pipe — no IP or port configuration needed. The HTTP /mcp endpoint remains available, so V1 HTTP + SSE connections are also supported. V1 (legacy): agents connect via HTTP + SSE.",
     section: "network",
     scope: "editable",
     sensitivity: "public",

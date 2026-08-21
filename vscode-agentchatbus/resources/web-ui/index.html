@@ -649,8 +649,8 @@
         const agentTransportLabel = isV2 ? 'V2: Socket' : isV1 ? 'V1: HTTP + SSE' : '—';
         const agentTransportDesc = isV2
           ? (isLanAccessible
-              ? 'Agents connect via Unix socket / named pipe (local). LAN agents can also connect via HTTP + SSE using the server IP:port.'
-              : 'Agents connect via Unix socket / named pipe (local only). HTTP + SSE is also available on localhost.')
+              ? 'Agents connect via Unix socket / named pipe (local). V1 HTTP + SSE connections to /mcp are also supported — LAN agents can use the server IP:port.'
+              : 'Agents connect via Unix socket / named pipe (local). V1 HTTP + SSE connections to /mcp are also supported on localhost.')
           : isV1
             ? 'Agents connect via HTTP + SSE to the server IP:port.'
             : '';

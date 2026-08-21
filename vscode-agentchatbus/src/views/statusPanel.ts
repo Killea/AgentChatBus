@@ -129,7 +129,7 @@ export class StatusPanel {
                 : 'N/A';
         const agentTransportBadgeClass = agentTransport === 'v2-socket' ? 'ok' : agentTransport === 'v1-http' ? 'warn' : 'neutral';
         const agentTransportTooltip = agentTransport === 'v2-socket'
-            ? 'V2 (Socket): Agents connect via Unix socket / Windows named pipe. No IP or port configuration needed for agents. The HTTP server still runs for the Web UI only — agents do NOT connect to the IP/port.'
+            ? 'V2 (Socket, recommended): Agents connect via Unix socket / Windows named pipe — no IP or port configuration needed. The HTTP server still runs and its /mcp endpoint remains available, so V1 HTTP + SSE connections are also supported for agents that cannot use sockets.'
             : agentTransport === 'v1-http'
                 ? 'V1 (HTTP + SSE, legacy): Agents connect via HTTP + SSE to the server IP and port. Requires agents to know the server URL.'
                 : 'Agent transport mode could not be determined from the running backend.';
@@ -230,7 +230,7 @@ export class StatusPanel {
             <div><span class="label">Backend Source:</span> <span class="value">${backendSource}</span></div>
             <div title="${this._escapeHtml(agentTransportTooltip)}"><span class="label">Agent Transport:</span> <span class="status-badge ${agentTransportBadgeClass}" title="${this._escapeHtml(agentTransportTooltip)}">${agentTransportLabel}</span></div>
             ${agentTransport === 'v2-socket'
-                ? `<div class="hint" title="In V2 mode, the HTTP server is for Web UI access only. Agents connect via socket, not the IP/port.">ℹ️ In V2 mode, the URLs above are for <strong>Web UI access only</strong>. MCP agents connect via Unix socket / named pipe and do <strong>not</strong> use the IP address or port.</div>`
+                ? `<div class="hint" title="In V2 mode, agents connect via socket by default. The HTTP /mcp endpoint also remains available for V1-compatible HTTP + SSE connections.">ℹ️ In V2 mode, the URLs above are for <strong>Web UI access</strong>. MCP agents connect via Unix socket / named pipe by default, but <strong>V1 HTTP + SSE connections to /mcp are also supported</strong> for agents that cannot use sockets.</div>`
                 : agentTransport === 'v1-http'
                     ? `<div class="hint" title="In V1 mode, agents connect to the server IP and port via HTTP + SSE.">ℹ️ In V1 mode, agents connect to the URLs above via HTTP + SSE.</div>`
                     : ''}

@@ -230,7 +230,7 @@ export class SettingsPanel {
         const isV2 = settings.agentTransport === 'v2-socket';
         const threadTimeoutMinutes = this.escapeHtml(String(settings.threadTimeoutMinutes));
         const serverUrlHint = isV2
-            ? '<strong>V2 mode is active.</strong> This URL is for <strong>Web UI access only</strong>. MCP agents connect via Unix socket / named pipe and do <strong>not</strong> use this IP address or port. The HTTP server still runs regardless of transport mode.'
+            ? '<strong>V2 mode is active.</strong> This URL is for <strong>Web UI access</strong>. MCP agents connect via Unix socket / named pipe by default, but <strong>V1 HTTP + SSE connections to /mcp are also supported</strong> for agents that cannot use sockets. The HTTP server always runs regardless of transport mode.'
             : 'Local only: just this machine. LAN access: other devices on the same network can connect. For a remote server, type the URL directly in VS Code Settings.';
 
         return `<!DOCTYPE html>
@@ -343,7 +343,7 @@ export class SettingsPanel {
             <option value="v2-socket"${agentTransportV2Selected}>V2: Socket (recommended, no IP config for agents)</option>
             <option value="v1-http"${agentTransportV1Selected}>V1: HTTP + SSE (legacy, agents connect to IP:port)</option>
         </select>
-        <div class="hint"><strong>V2 (recommended):</strong> Agents connect via Unix socket / Windows named pipe. No IP or port configuration needed for agents. The HTTP server still runs for the Web UI only.<br><strong>V1 (legacy):</strong> Agents connect via HTTP + SSE to the server IP and port. Requires agents to know the server URL. <strong>Bundled server restart required after change.</strong></div>
+        <div class="hint"><strong>V2 (recommended):</strong> Agents connect via Unix socket / Windows named pipe — no IP or port configuration needed. The HTTP server still runs and its /mcp endpoint remains available, so V1 HTTP + SSE connections are also supported for agents that cannot use sockets.<br><strong>V1 (legacy):</strong> Agents connect via HTTP + SSE to the server IP and port. Requires agents to know the server URL. <strong>Bundled server restart required after change.</strong></div>
         <div class="checkbox-row">
             <input id="autoStartBusServer" type="checkbox" ${checked} />
             <label for="autoStartBusServer">Automatically start the AgentChatBus server when needed</label>
@@ -382,7 +382,7 @@ export class SettingsPanel {
         function updateServerUrlHint() {
             const isV2 = agentTransportEl.value === 'v2-socket';
             serverUrlHintEl.innerHTML = isV2
-                ? '<strong>V2 mode is active.</strong> This URL is for <strong>Web UI access only</strong>. MCP agents connect via Unix socket / named pipe and do <strong>not</strong> use this IP address or port. The HTTP server still runs regardless of transport mode.'
+                ? '<strong>V2 mode is active.</strong> This URL is for <strong>Web UI access</strong>. MCP agents connect via Unix socket / named pipe by default, but <strong>V1 HTTP + SSE connections to /mcp are also supported</strong> for agents that cannot use sockets. The HTTP server always runs regardless of transport mode.'
                 : 'Local only: just this machine. LAN access: other devices on the same network can connect. For a remote server, type the URL directly in VS Code Settings.';
         }
         agentTransportEl.addEventListener('change', updateServerUrlHint);
