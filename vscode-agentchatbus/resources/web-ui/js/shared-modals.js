@@ -130,6 +130,71 @@
   let _manualLaunchPromptPreviewRequestId = 0;
   const SERVER_PROMPT_PREVIEW_PENDING_TEXT = "Resolving launch prompt from server...";
 
+  // ACP model discovery cache: agentId -> { result, time }
+  const _acpModelCache = new Map();
+  const ACP_MODEL_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+  const _acpModelLoading = new Set(); // agentIds currently loading
+
+  /**
+   * Load ACP agent models from the backend (which spawns the agent to discover them).
+   * Returns cached result if fresh enough.
+   */
+  async function loadAcpAgentModels(api, agentId, options = {}) {
+    if (!agentId || !_isAcpAgentId(agentId)) {
+      return null;
+    }
+    const now = Date.now();
+    const cached = _acpModelCache.get(agentId);
+    if (!options.force && cached && now - cached.time < ACP_MODEL_CACHE_TTL_MS) {
+      return cached.result;
+    }
+    if (_acpModelLoading.has(agentId)) {
+      // Already loading — wait for it by polling
+      for (let i = 0; i < 50; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        const entry = _acpModelCache.get(agentId);
+        if (entry && now - entry.time < ACP_MODEL_CACHE_TTL_MS) {
+          return entry.result;
+        }
+      }
+      return null;
+    }
+    _acpModelLoading.add(agentId);
+    try {
+      const result = await api(`/api/acp-agents/${encodeURIComponent(agentId)}/models${options.force ? "?force=true" : ""}`);
+      _acpModelCache.set(agentId, { result, time: Date.now() });
+      return result;
+    } catch (err) {
+      console.error(`[acp-models] Failed to load models for ${agentId}:`, err);
+      return null;
+    } finally {
+      _acpModelLoading.delete(agentId);
+    }
+  }
+
+  /**
+   * Get cached ACP agent models (synchronous, for rendering).
+   */
+  function getCachedAcpAgentModels(agentId) {
+    if (!agentId || !_isAcpAgentId(agentId)) return null;
+    const entry = _acpModelCache.get(agentId);
+    if (!entry) return null;
+    return entry.result;
+  }
+
+  /**
+   * Get model options for an ACP agent from cache.
+   * Returns array of { id, label } for the model suggestion dropdown.
+   */
+  function getAcpAgentModelOptions(adapter) {
+    const cached = getCachedAcpAgentModels(adapter);
+    if (!cached || !Array.isArray(cached.models)) return [];
+    return cached.models.map((m) => ({
+      id: String(m.value || "").trim(),
+      label: String(m.name || m.value || "").trim(),
+    })).filter((m) => m.id);
+  }
+
   function createEmptyCliModelDiscovery() {
     return {
       fetched_at: null,
@@ -141,6 +206,64 @@
         copilot: { adapter: "copilot", status: "ready", strategy: "static", models: [], fetched_at: "", source_label: "Static fallback" },
       },
     };
+  }
+
+  /**
+   * Build <option> elements for the adapter/agent selector dropdown.
+   * Shows enabled ACP agents first, then legacy adapters as a fallback group.
+   */
+  function buildAdapterOptionsHtml(selectedAdapter) {
+    const selected = String(selectedAdapter || "").trim();
+    const parts = [];
+
+    // ACP agents (from cache)
+    const acpAgents = Array.isArray(_acpAgentCache?.agents)
+      ? _acpAgentCache.agents.filter((a) => a.enabled && a.status === "available")
+      : [];
+    if (acpAgents.length > 0) {
+      parts.push('<optgroup label="ACP Agents">');
+      for (const agent of acpAgents) {
+        parts.push(`<option value="${_escapeHtml(agent.id)}"${agent.id === selected ? " selected" : ""}>${_escapeHtml(agent.name)}</option>`);
+      }
+      parts.push("</optgroup>");
+    }
+
+    // Legacy adapters
+    const legacy = [
+      { id: "codex", name: "Codex (legacy)" },
+      { id: "cursor", name: "Cursor (legacy)" },
+      { id: "claude", name: "Claude (legacy)" },
+      { id: "gemini", name: "Gemini (legacy)" },
+      { id: "copilot", name: "Copilot (legacy)" },
+    ];
+    parts.push('<optgroup label="Legacy Adapters">');
+    for (const adapter of legacy) {
+      parts.push(`<option value="${_escapeHtml(adapter.id)}"${adapter.id === selected ? " selected" : ""}>${_escapeHtml(adapter.name)}</option>`);
+    }
+    parts.push("</optgroup>");
+
+    // If the selected adapter is not in any group, add it as a selected option
+    const allIds = [...acpAgents.map((a) => a.id), ...legacy.map((a) => a.id)];
+    if (selected && !allIds.includes(selected)) {
+      parts.unshift(`<option value="${_escapeHtml(selected)}" selected>${_escapeHtml(selected)}</option>`);
+    }
+
+    return parts.join("");
+  }
+
+  /**
+   * Check if an adapter ID is an ACP agent (not a legacy adapter).
+   */
+  function _isAcpAgentId(adapterId) {
+    const id = String(adapterId || "").trim().toLowerCase();
+    const legacyIds = ["codex", "cursor", "claude", "gemini", "copilot"];
+    if (legacyIds.includes(id)) return false;
+    // Check ACP cache
+    if (_acpAgentCache && Array.isArray(_acpAgentCache.agents)) {
+      return _acpAgentCache.agents.some((a) => a.id === id);
+    }
+    // If no cache, assume non-legacy IDs are ACP (the backend will validate)
+    return id.length > 0;
   }
 
   function normalizeCliModelDiscovery(payload) {
@@ -225,9 +348,22 @@
   }
 
   function getThreadLaunchAgentModelOptions(agent) {
-    const entry = getModelDiscoveryEntry(String(agent?.adapter || "codex").trim() || "codex");
-    const models = Array.isArray(entry?.models) ? entry.models : [];
+    const adapter = String(agent?.adapter || "codex").trim() || "codex";
     const currentModel = String(agent?.model || "").trim();
+
+    // For ACP agents, use the ACP model discovery cache
+    if (_isAcpAgentId(adapter)) {
+      const acpModels = getAcpAgentModelOptions(adapter);
+      const normalized = acpModels.map((m) => ({ id: m.id, label: m.label }));
+      if (currentModel && !normalized.some((m) => m.id === currentModel)) {
+        normalized.unshift({ id: currentModel, label: `${currentModel} (Custom)` });
+      }
+      return normalized;
+    }
+
+    // Legacy adapters: use CLI model discovery
+    const entry = getModelDiscoveryEntry(adapter);
+    const models = Array.isArray(entry?.models) ? entry.models : [];
     const normalized = models
       .map((model) => ({
         id: String(model?.id || "").trim(),
@@ -391,12 +527,19 @@
     return _cliModelDiscovery;
   }
 
+  function _isValidAdapterId(value) {
+    const legacyAdapters = ["codex", "cursor", "claude", "gemini", "copilot"];
+    if (legacyAdapters.includes(value)) return true;
+    // Accept any non-empty string as a potential ACP agent ID
+    return value.length > 0 && !value.startsWith("thread-agent-");
+  }
+
   function readThreadLaunchAdapterPreferences() {
     const selectionPreferences = readThreadLaunchSelectionPreferences();
     if (selectionPreferences.length > 0) {
       return selectionPreferences
         .map((entry) => String(entry?.adapter || "").trim().toLowerCase())
-        .filter((value) => value === "codex" || value === "cursor" || value === "claude" || value === "gemini" || value === "copilot");
+        .filter(_isValidAdapterId);
     }
     try {
       const raw = globalThis.localStorage?.getItem(THREAD_LAUNCH_ADAPTER_STORAGE_KEY);
@@ -409,7 +552,7 @@
       }
       return parsed
         .map((value) => String(value || "").trim().toLowerCase())
-        .filter((value) => value === "codex" || value === "cursor" || value === "claude" || value === "gemini" || value === "copilot");
+        .filter(_isValidAdapterId);
     } catch {
       return [];
     }
@@ -449,7 +592,7 @@
     try {
       const adapters = _threadLaunchAgents
         .map((agent) => String(agent?.adapter || "").trim().toLowerCase())
-        .map((value) => (value === "cursor" || value === "claude" || value === "gemini" || value === "copilot" ? value : "codex"));
+        .filter(_isValidAdapterId);
       globalThis.localStorage?.setItem(
         THREAD_LAUNCH_ADAPTER_STORAGE_KEY,
         JSON.stringify(adapters),
@@ -462,7 +605,7 @@
   function writeThreadLaunchSelectionPreferences() {
     try {
       const selections = _threadLaunchAgents.map((agent) => ({
-        adapter: String(agent?.adapter || "").trim().toLowerCase() || "claude",
+        adapter: String(agent?.adapter || "").trim().toLowerCase() || "devin",
         model: normalizeThreadLaunchModelValue(agent?.adapter, agent?.model),
         reasoning_effort: normalizeThreadLaunchReasoningEffort(agent?.adapter, agent?.reasoningEffort),
         permission_mode: normalizeThreadLaunchPermissionMode(agent?.adapter, agent?.permissionMode),
@@ -495,17 +638,19 @@
     }
   }
 
-  function getPreferredThreadLaunchAdapter(slotIndex, fallback = "claude") {
-    const normalizedFallback = String(fallback || "claude").trim().toLowerCase();
+  function getPreferredThreadLaunchAdapter(slotIndex, fallback = "devin") {
+    const normalizedFallback = String(fallback || "devin").trim().toLowerCase();
     const preferences = readThreadLaunchAdapterPreferences();
     const preferred = String(preferences[slotIndex] || "").trim().toLowerCase();
-    if (preferred === "codex" || preferred === "cursor" || preferred === "claude" || preferred === "gemini" || preferred === "copilot") {
+    const legacyAdapters = ["codex", "cursor", "claude", "gemini", "copilot"];
+    // Accept legacy adapters or any ACP agent ID
+    if (preferred && (legacyAdapters.includes(preferred) || _isAcpAgentId(preferred))) {
       return preferred;
     }
-    if (normalizedFallback === "codex" || normalizedFallback === "cursor" || normalizedFallback === "claude" || normalizedFallback === "gemini" || normalizedFallback === "copilot") {
+    if (normalizedFallback && (legacyAdapters.includes(normalizedFallback) || _isAcpAgentId(normalizedFallback))) {
       return normalizedFallback;
     }
-    return "claude";
+    return "devin";
   }
 
   function getPreferredThreadLaunchModel(slotIndex) {
@@ -886,6 +1031,21 @@
     )).join("");
   }
 
+  /**
+   * Trigger async loading of ACP agent models, then re-render the relevant UI.
+   * Called when user selects an ACP agent in any dropdown.
+   */
+  async function ensureAcpModelsLoaded(api, agentId, rerenderFn) {
+    if (!agentId || !_isAcpAgentId(agentId)) return;
+    const cached = getCachedAcpAgentModels(agentId);
+    if (cached) return; // Already have models
+    // Trigger load in background
+    const result = await loadAcpAgentModels(api, agentId);
+    if (result && typeof rerenderFn === "function") {
+      rerenderFn();
+    }
+  }
+
   function syncAddAgentModelControls(prefix) {
     const adapterEl = document.getElementById(`${prefix}-adapter`);
     const modelEl = document.getElementById(`${prefix}-model`);
@@ -898,6 +1058,7 @@
       return;
     }
     const adapter = String(adapterEl.value || "claude").trim() || "claude";
+    const isAcp = _isAcpAgentId(adapter);
     if (modeEl) {
       const currentMode = String(modeEl.value || getThreadLaunchModeForAdapter(adapter)).trim();
       modeEl.innerHTML = buildThreadLaunchModeOptionsHtml(adapter, currentMode);
@@ -905,17 +1066,34 @@
     }
     if (modelEl) {
       modelEl.value = getRequiredThreadLaunchModel(adapter, modelEl.value);
-      modelEl.required = !(adapter === "cursor" || adapter === "gemini");
+      // ACP agents and cursor/gemini don't require a model
+      modelEl.required = !(isAcp || adapter === "cursor" || adapter === "gemini");
     }
     if (suggestionEl) {
       const currentModel = String(modelEl?.value || "").trim();
-      suggestionEl.innerHTML = `<option value="">Suggestions</option>${buildAddAgentModelOptionsHtml(adapter, currentModel)}`;
-      suggestionEl.value = "";
+      if (isAcp) {
+        const acpModels = getAcpAgentModelOptions(adapter);
+        if (acpModels.length > 0) {
+          suggestionEl.innerHTML = `<option value="">Model (optional)</option>${acpModels.map((m) => `<option value="${_escapeHtml(m.id)}">${_escapeHtml(m.label || m.id)}</option>`).join("")}`;
+        } else {
+          suggestionEl.innerHTML = `<option value="">Loading models...</option>`;
+        }
+        suggestionEl.value = "";
+      } else {
+        suggestionEl.innerHTML = `<option value="">Suggestions</option>${buildAddAgentModelOptionsHtml(adapter, currentModel)}`;
+        suggestionEl.value = "";
+      }
     }
     if (reasoningEl) {
-      reasoningEl.innerHTML = buildThreadLaunchReasoningOptionsHtml(adapter, reasoningEl.value);
-      reasoningEl.value = normalizeThreadLaunchReasoningEffort(adapter, reasoningEl.value);
-      reasoningEl.disabled = adapter !== "codex";
+      if (isAcp) {
+        reasoningEl.innerHTML = `<option value="">Not supported for ACP agents</option>`;
+        reasoningEl.value = "";
+        reasoningEl.disabled = true;
+      } else {
+        reasoningEl.innerHTML = buildThreadLaunchReasoningOptionsHtml(adapter, reasoningEl.value);
+        reasoningEl.value = normalizeThreadLaunchReasoningEffort(adapter, reasoningEl.value);
+        reasoningEl.disabled = adapter !== "codex";
+      }
     }
     if (emojiEl && emojiPreviewEl) {
       emojiPreviewEl.textContent = String(emojiEl.value || "").trim() || "🤖";
@@ -926,6 +1104,11 @@
     if (config.displayName) {
       return config.displayName;
     }
+    // Check ACP agent name first
+    if (_acpAgentCache && Array.isArray(_acpAgentCache.agents)) {
+      const acpAgent = _acpAgentCache.agents.find((a) => a.id === config.adapter);
+      if (acpAgent) return acpAgent.name;
+    }
     const adapterLabel = config.adapter === "cursor" ? "Cursor" :
                          config.adapter === "claude" ? "Claude" :
                          config.adapter === "gemini" ? "Gemini" :
@@ -935,6 +1118,10 @@
 
   function getThreadLaunchModeForAdapter(adapter) {
     const normalizedAdapter = String(adapter || "").trim().toLowerCase();
+    // ACP agents always use "acp" mode
+    if (_isAcpAgentId(normalizedAdapter)) {
+      return "acp";
+    }
     if (
       normalizedAdapter === "codex"
       || normalizedAdapter === "claude"
@@ -949,6 +1136,10 @@
   function normalizeThreadLaunchMode(adapter, currentMode) {
     const normalizedAdapter = String(adapter || "").trim().toLowerCase();
     const requested = String(currentMode || "").trim().toLowerCase();
+    // ACP agents always use "acp" mode
+    if (_isAcpAgentId(normalizedAdapter)) {
+      return "acp";
+    }
     if (
       normalizedAdapter === "codex"
       || normalizedAdapter === "claude"
@@ -974,6 +1165,13 @@
     const normalizedAdapter = String(adapter || "").trim().toLowerCase();
     const normalized = normalizeThreadLaunchMode(adapter, currentMode);
     const options = [];
+    // ACP agents: only "acp" mode
+    if (_isAcpAgentId(normalizedAdapter)) {
+      options.push(
+        `<option value="acp" selected>ACP (Agent Client Protocol)</option>`,
+      );
+      return options.join("");
+    }
     if (normalizedAdapter === "codex") {
       options.push(
         `<option value="direct" ${normalized === "direct" ? "selected" : ""}>Codex Direct (App Server)</option>`,
@@ -1083,7 +1281,7 @@
     const requestedAdapter = String(overrides.adapter || "").trim().toLowerCase();
     const adapter = getPreferredThreadLaunchAdapter(
       slotIndex,
-      requestedAdapter || "claude",
+      requestedAdapter || "devin",
     );
     const preferredModel = getRequiredThreadLaunchModel(
       adapter,
@@ -1123,22 +1321,25 @@
   }
 
   function getThreadLaunchAgentConfigs() {
-    return _threadLaunchAgents.map((agent) => ({
-      adapter: agent.adapter || "claude",
-      model: String(agent.model || "").trim(),
-      reasoningEffort: normalizeThreadLaunchReasoningEffort(agent.adapter, agent.reasoningEffort),
-      permissionMode: normalizeThreadLaunchPermissionMode(agent.adapter, agent.permissionMode),
-      emoji: String(agent.emoji || "").trim() || pickRandomThreadLaunchEmoji(agent.id),
-      mode: normalizeThreadLaunchMode(
-        agent.adapter || "claude",
-        String(agent.mode || getThreadLaunchModeForAdapter(agent.adapter || "claude")).trim()
-          || getThreadLaunchModeForAdapter(agent.adapter || "claude"),
-      ),
-      meetingTransport: agent.meetingTransport || "agent_mcp",
-      displayName: "",
-      initialInstruction: String(agent.initialInstruction || "").trim(),
-      promptOverride: String(agent.promptOverride || ""),
-    }));
+    return _threadLaunchAgents.map((agent) => {
+      const adapter = agent.adapter || "devin";
+      return {
+        adapter,
+        model: String(agent.model || "").trim(),
+        reasoningEffort: normalizeThreadLaunchReasoningEffort(adapter, agent.reasoningEffort),
+        permissionMode: normalizeThreadLaunchPermissionMode(adapter, agent.permissionMode),
+        emoji: String(agent.emoji || "").trim() || pickRandomThreadLaunchEmoji(agent.id),
+        mode: normalizeThreadLaunchMode(
+          adapter,
+          String(agent.mode || getThreadLaunchModeForAdapter(adapter)).trim()
+            || getThreadLaunchModeForAdapter(adapter),
+        ),
+        meetingTransport: agent.meetingTransport || "agent_mcp",
+        displayName: "",
+        initialInstruction: String(agent.initialInstruction || "").trim(),
+        promptOverride: String(agent.promptOverride || ""),
+      };
+    });
   }
 
   function getThreadLaunchIntervalMs() {
@@ -1697,98 +1898,16 @@
             onpointerdown="window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
           >
             <div class="settings-field thread-launch-agent-field thread-launch-agent-field--adapter">
-              <label>Adapter</label>
-              <div
-                class="thread-launch-adapter-group"
+              <label>Agent</label>
+              <select
+                data-agent-id="${_escapeHtml(agent.id)}"
+                data-field="adapter"
                 onclick="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
                 onpointerdown="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
+                onchange="window.AcbModals && window.AcbModals.updateThreadLaunchAgentField(this)"
               >
-                <label
-                  class="thread-launch-adapter-option"
-                  onpointerdown="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
-                >
-                  <input
-                    type="radio"
-                    name="thread-launch-adapter-${_escapeHtml(agent.id)}"
-                    value="codex"
-                    data-agent-id="${_escapeHtml(agent.id)}"
-                    data-field="adapter"
-                    ${agent.adapter === "codex" ? "checked" : ""}
-                    onclick="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
-                    onpointerdown="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
-                    onchange="window.AcbModals && window.AcbModals.updateThreadLaunchAgentField(this)"
-                  />
-                  <span>Codex</span>
-                </label>
-                <label
-                  class="thread-launch-adapter-option"
-                  onpointerdown="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
-                >
-                  <input
-                    type="radio"
-                    name="thread-launch-adapter-${_escapeHtml(agent.id)}"
-                    value="cursor"
-                    data-agent-id="${_escapeHtml(agent.id)}"
-                    data-field="adapter"
-                    ${agent.adapter === "cursor" ? "checked" : ""}
-                    onclick="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
-                    onpointerdown="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
-                    onchange="window.AcbModals && window.AcbModals.updateThreadLaunchAgentField(this)"
-                  />
-                  <span>Cursor</span>
-                </label>
-                <label
-                  class="thread-launch-adapter-option"
-                  onpointerdown="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
-                >
-                  <input
-                    type="radio"
-                    name="thread-launch-adapter-${_escapeHtml(agent.id)}"
-                    value="claude"
-                    data-agent-id="${_escapeHtml(agent.id)}"
-                    data-field="adapter"
-                    ${agent.adapter === "claude" ? "checked" : ""}
-                    onclick="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
-                    onpointerdown="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
-                    onchange="window.AcbModals && window.AcbModals.updateThreadLaunchAgentField(this)"
-                  />
-                  <span>Claude</span>
-                </label>
-                <label
-                  class="thread-launch-adapter-option"
-                  onpointerdown="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
-                >
-                  <input
-                    type="radio"
-                    name="thread-launch-adapter-${_escapeHtml(agent.id)}"
-                    value="gemini"
-                    data-agent-id="${_escapeHtml(agent.id)}"
-                    data-field="adapter"
-                    ${agent.adapter === "gemini" ? "checked" : ""}
-                    onclick="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
-                    onpointerdown="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
-                    onchange="window.AcbModals && window.AcbModals.updateThreadLaunchAgentField(this)"
-                  />
-                  <span>Gemini</span>
-                </label>
-                <label
-                  class="thread-launch-adapter-option"
-                  onpointerdown="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
-                >
-                  <input
-                    type="radio"
-                    name="thread-launch-adapter-${_escapeHtml(agent.id)}"
-                    value="copilot"
-                    data-agent-id="${_escapeHtml(agent.id)}"
-                    data-field="adapter"
-                    ${agent.adapter === "copilot" ? "checked" : ""}
-                    onclick="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
-                    onpointerdown="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
-                    onchange="window.AcbModals && window.AcbModals.updateThreadLaunchAgentField(this)"
-                  />
-                  <span>Copilot</span>
-                </label>
-              </div>
+                ${buildAdapterOptionsHtml(agent.adapter)}
+              </select>
             </div>
             <div class="settings-field thread-launch-agent-field thread-launch-agent-field--emoji">
               <label>Emoji</label>
@@ -1813,8 +1932,8 @@
                   value="${_escapeHtml(getRequiredThreadLaunchModel(agent.adapter, agent.model))}"
                   data-agent-id="${_escapeHtml(agent.id)}"
                   data-field="model"
-                  placeholder="Leave blank for adapter default, or type any model"
-                  ${agent.adapter === "cursor" || agent.adapter === "gemini" ? "" : "required"}
+                  placeholder="${_isAcpAgentId(agent.adapter) ? "Leave blank for agent default, or select below" : "Leave blank for adapter default, or type any model"}"
+                  ${_isAcpAgentId(agent.adapter) || agent.adapter === "cursor" || agent.adapter === "gemini" ? "" : "required"}
                   onclick="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
                   onpointerdown="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
                   onfocus="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
@@ -1828,8 +1947,15 @@
                   onpointerdown="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
                   onchange="window.AcbModals && window.AcbModals.updateThreadLaunchAgentField(this)"
                 >
-                  <option value="">Suggestions</option>
-                  ${buildThreadLaunchModelOptionsHtml(agent)}
+                  ${_isAcpAgentId(agent.adapter)
+                    ? (() => {
+                        const acpModels = getAcpAgentModelOptions(agent.adapter);
+                        return acpModels.length > 0
+                          ? `<option value="">Model (optional)</option>${acpModels.map((m) => `<option value="${_escapeHtml(m.id)}">${_escapeHtml(m.label || m.id)}</option>`).join("")}`
+                          : `<option value="">Loading models...</option>`;
+                      })()
+                    : `<option value="">Suggestions</option>${buildThreadLaunchModelOptionsHtml(agent)}`
+                  }
                 </select>
               </div>
               <div class="thread-launch-model-meta">${buildThreadLaunchModelMetaHtml(agent)}</div>
@@ -1839,28 +1965,28 @@
               <select
                 data-agent-id="${_escapeHtml(agent.id)}"
                 data-field="reasoningEffort"
-                ${agent.adapter === "codex" ? "" : "disabled"}
+                ${agent.adapter === "codex" && !_isAcpAgentId(agent.adapter) ? "" : "disabled"}
                 onclick="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
                 onpointerdown="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
                 onchange="window.AcbModals && window.AcbModals.updateThreadLaunchAgentField(this)"
               >
-                ${buildThreadLaunchReasoningOptionsHtml(agent)}
+                ${_isAcpAgentId(agent.adapter) ? `<option value="">N/A for ACP</option>` : buildThreadLaunchReasoningOptionsHtml(agent)}
               </select>
-              <div class="thread-launch-model-meta">${_escapeHtml(getThreadLaunchReasoningMeta(agent))}</div>
+              <div class="thread-launch-model-meta">${_escapeHtml(_isAcpAgentId(agent.adapter) ? "Managed by agent" : getThreadLaunchReasoningMeta(agent))}</div>
             </div>
             <div class="settings-field thread-launch-agent-field">
               <label>Permission Mode</label>
               <select
                 data-agent-id="${_escapeHtml(agent.id)}"
                 data-field="permissionMode"
-                ${agent.adapter === "claude" ? "" : "disabled"}
+                ${agent.adapter === "claude" && !_isAcpAgentId(agent.adapter) ? "" : "disabled"}
                 onclick="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
                 onpointerdown="event.stopPropagation(); window.AcbModals && window.AcbModals.selectThreadLaunchAgent('${_escapeHtml(agent.id)}')"
                 onchange="window.AcbModals && window.AcbModals.updateThreadLaunchAgentField(this)"
               >
-                ${buildThreadLaunchPermissionModeOptionsHtml(agent)}
+                ${_isAcpAgentId(agent.adapter) ? `<option value="">N/A for ACP</option>` : buildThreadLaunchPermissionModeOptionsHtml(agent)}
               </select>
-              <div class="thread-launch-model-meta">${_escapeHtml(getThreadLaunchPermissionModeMeta(agent))}</div>
+              <div class="thread-launch-model-meta">${_escapeHtml(_isAcpAgentId(agent.adapter) ? "Managed by agent" : getThreadLaunchPermissionModeMeta(agent))}</div>
             </div>
             <div class="settings-field thread-launch-agent-field">
               <label>Mode</label>
@@ -1983,6 +2109,13 @@
       }
       writeThreadLaunchAdapterPreferences();
       renderThreadLaunchAgents();
+      // Trigger ACP model loading if an ACP agent was selected
+      if (_isAcpAgentId(agent.adapter)) {
+        const api = window.AcbApi?.api;
+        if (api) {
+          ensureAcpModelsLoaded(api, agent.adapter, () => renderThreadLaunchAgents());
+        }
+      }
       return;
     }
     if (field === "emoji") {
@@ -2167,15 +2300,25 @@
   }
 
   async function registerParticipantAgent(api, config) {
-    const adapterLabel = config.adapter === "cursor" ? "Cursor" :
-                         config.adapter === "claude" ? "Claude" :
-                         config.adapter === "gemini" ? "Gemini" :
-                         config.adapter === "copilot" ? "Copilot" : "Codex";
-    const modeLabel = config.mode === "direct"
-      ? "Direct App Server"
-      : config.mode === "headless"
-        ? "Headless CLI"
-        : "Interactive PTY";
+    // Resolve adapter label — check ACP registry first, then legacy names
+    let adapterLabel;
+    if (_acpAgentCache && Array.isArray(_acpAgentCache.agents)) {
+      const acpAgent = _acpAgentCache.agents.find((a) => a.id === config.adapter);
+      if (acpAgent) adapterLabel = acpAgent.name;
+    }
+    if (!adapterLabel) {
+      adapterLabel = config.adapter === "cursor" ? "Cursor" :
+                     config.adapter === "claude" ? "Claude" :
+                     config.adapter === "gemini" ? "Gemini" :
+                     config.adapter === "copilot" ? "Copilot" : "Codex";
+    }
+    const modeLabel = config.mode === "acp"
+      ? "ACP"
+      : config.mode === "direct"
+        ? "Direct App Server"
+        : config.mode === "headless"
+          ? "Headless CLI"
+          : "Interactive PTY";
     const displayName = buildDefaultParticipantName(config);
     const result = await api("/api/agents/register", {
       method: "POST",
@@ -2296,6 +2439,23 @@
     if (api) {
       void loadCliModelDiscovery(api, { force: false });
       _loadTemplates(api).then((templates) => _populateTemplateDropdown(templates));
+      // Load ACP agents if not cached, then re-render agent rows to populate dropdowns
+      if (!_acpAgentCache) {
+        loadAcpAgents(api).then(() => {
+          renderThreadLaunchAgents();
+          // After rendering, trigger model loading for the default ACP agent
+          const firstAgent = _threadLaunchAgents[0];
+          if (firstAgent && _isAcpAgentId(firstAgent.adapter)) {
+            ensureAcpModelsLoaded(api, firstAgent.adapter, () => renderThreadLaunchAgents());
+          }
+        });
+      } else {
+        // ACP agents already cached — trigger model loading for default agent
+        const firstAgent = _threadLaunchAgents[0];
+        if (firstAgent && _isAcpAgentId(firstAgent.adapter)) {
+          ensureAcpModelsLoaded(api, firstAgent.adapter, () => renderThreadLaunchAgents());
+        }
+      }
     }
   }
 
@@ -2467,6 +2627,23 @@
       void loadCliModelDiscovery(api, { force: false }).then(() => {
         syncAddAgentModelControls("agent-modal");
       });
+      // Load ACP agents and populate the adapter dropdown dynamically
+      const populateAdapter = () => {
+        const adapterEl = document.getElementById("agent-modal-adapter");
+        if (adapterEl) {
+          const currentVal = adapterEl.value;
+          adapterEl.innerHTML = buildAdapterOptionsHtml(currentVal || "devin");
+          // After populating, trigger model loading for the selected ACP agent
+          if (currentVal && _isAcpAgentId(currentVal)) {
+            ensureAcpModelsLoaded(api, currentVal, () => syncAddAgentModelControls("agent-modal"));
+          }
+        }
+      };
+      if (_acpAgentCache) {
+        populateAdapter();
+      } else {
+        loadAcpAgents(api).then(populateAdapter);
+      }
     }
     bindInstructionAutofill("agent-modal", {
       getTopic: () => document.getElementById("thread-title")?.textContent?.trim() || "current thread",
@@ -2482,6 +2659,11 @@
       adapterEl.dataset.addAgentBound = "1";
       adapterEl.addEventListener("change", () => {
         syncAddAgentModelControls("agent-modal");
+        // Trigger ACP model loading if an ACP agent was selected
+        const selectedAdapter = String(adapterEl.value || "").trim();
+        if (selectedAdapter && _isAcpAgentId(selectedAdapter)) {
+          ensureAcpModelsLoaded(api, selectedAdapter, () => syncAddAgentModelControls("agent-modal"));
+        }
         syncDefaultInstructionField("agent-modal", {
           topic: document.getElementById("thread-title")?.textContent?.trim() || "current thread",
           threadId: window.currentThreadId || "",
@@ -2876,6 +3058,28 @@
         </div>`;
     }
 
+    if (section.id === "acp") {
+      return `
+        <div id="pane-acp" class="settings-tab-pane">
+          <div class="settings-section-title">ACP AGENTS</div>
+          <div class="settings-card" style="padding:16px;">
+            <div style="font-size:13px;color:var(--text-2);margin-bottom:12px;">
+              ACP (Agent Client Protocol) agents are spawned via a standardized JSON-RPC protocol.
+              Enable the agents you want to use in multi-agent meetings. Binary agents must be installed and on your PATH.
+              npx agents are auto-downloaded on first use.
+            </div>
+            <div id="acp-agent-list" style="display:flex;flex-direction:column;gap:6px;">
+              <div style="font-size:13px;color:var(--text-3);">Loading agent statuses...</div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:12px;align-items:center;">
+              <button class="btn-secondary" id="btn-acp-refresh" onclick="window.AcbModals && window.AcbModals.refreshAcpAgents()">Refresh Status</button>
+              <span id="acp-refreshed-at" style="font-size:12px;color:var(--text-3);"></span>
+            </div>
+            <div id="acp-agent-message" style="font-size:12px;display:none;margin-top:8px;"></div>
+          </div>
+        </div>`;
+    }
+
     const fieldsHtml = (section.fields || []).map(_renderField).join("");
     const diagnosticsHtml = section.id === "diagnostics" ? _diagnosticsToolsCardHtml() : "";
 
@@ -2902,6 +3106,7 @@
 
     return [
       ...visibleServerSections,
+      { id: "acp", nav_label: "ACP Agents", title: "ACP Agents", fields: [], order: 90 },
       { id: "ui", nav_label: "UI", title: "Preferences", fields: [], order: 95 },
       diagnosticsSection,
     ];
@@ -2967,6 +3172,8 @@
       if (manifest) {
         _settingsManifest = manifest;
         _renderSettingsManifest(manifest);
+        // Load ACP agent statuses after the modal is rendered
+        loadAcpAgents(api);
       }
     } catch (err) {
       console.error(err);
@@ -3162,6 +3369,141 @@
     return await loadCliModelDiscovery(api, { force: true });
   }
 
+  // -------------------------------------------------------------------------
+  // ACP agent management
+  // -------------------------------------------------------------------------
+
+  let _acpAgentCache = null;
+
+  function _acpStatusIcon(status) {
+    if (status === "available") return '<span style="color:var(--green);">&#10003;</span>';
+    if (status === "not_found") return '<span style="color:var(--red,#f05555);">&#10007;</span>';
+    return '<span style="color:var(--text-3);">?</span>';
+  }
+
+  function _acpStatusText(status) {
+    if (status === "available") return "Available";
+    if (status === "not_found") return "Not found";
+    return "Unknown";
+  }
+
+  function _renderAcpAgentList(result) {
+    const container = document.getElementById("acp-agent-list");
+    if (!container) return;
+    const agents = Array.isArray(result?.agents) ? result.agents : [];
+    if (agents.length === 0) {
+      container.innerHTML = '<div style="font-size:13px;color:var(--text-3);">No ACP agents registered.</div>';
+      return;
+    }
+    container.innerHTML = agents.map((agent) => {
+      const canEnable = agent.status === "available";
+      const checkedAttr = agent.enabled ? "checked" : "";
+      const disabledAttr = canEnable ? "" : "disabled";
+      const statusColor = agent.status === "available" ? "var(--green)" : agent.status === "not_found" ? "var(--red,#f05555)" : "var(--text-3)";
+      const detail = agent.status_detail ? `<div style="font-size:11px;color:var(--text-3);margin-top:2px;">${_escapeHtml(agent.status_detail)}</div>` : "";
+      return `
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:600;color:var(--text-1);">${_escapeHtml(agent.name)}</div>
+            <div style="font-size:11px;color:var(--text-3);">${_escapeHtml(agent.id)} &middot; ${_escapeHtml(agent.distribution)}</div>
+            ${detail}
+          </div>
+          <div style="font-size:12px;color:${statusColor};white-space:nowrap;">
+            ${_acpStatusIcon(agent.status)} ${_acpStatusText(agent.status)}
+          </div>
+          <label class="toggle-switch" style="flex-shrink:0;" title="${canEnable ? "Enable/disable this agent" : "Agent not available"}">
+            <input type="checkbox" ${checkedAttr} ${disabledAttr}
+              onchange="window.AcbModals && window.AcbModals.toggleAcpAgent('${_escapeHtml(agent.id)}', this.checked)"
+            />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>`;
+    }).join("");
+
+    const refreshedEl = document.getElementById("acp-refreshed-at");
+    if (refreshedEl && result?.refreshed_at) {
+      refreshedEl.textContent = `Last checked: ${new Date(result.refreshed_at).toLocaleTimeString()}`;
+    }
+  }
+
+  async function loadAcpAgents(api) {
+    try {
+      const result = await api("/api/acp-agents");
+      _acpAgentCache = result;
+      _renderAcpAgentList(result);
+      return result;
+    } catch (err) {
+      console.error("[acp] Failed to load ACP agents:", err);
+      const container = document.getElementById("acp-agent-list");
+      if (container) {
+        container.innerHTML = '<div style="font-size:13px;color:var(--red,#f05555);">Failed to load ACP agents. Check server connection.</div>';
+      }
+      return null;
+    }
+  }
+
+  async function refreshAcpAgents() {
+    const api = _resolveApi();
+    const refreshBtn = document.getElementById("btn-acp-refresh");
+    if (refreshBtn) {
+      refreshBtn.disabled = true;
+      refreshBtn.textContent = "Checking...";
+    }
+    try {
+      const result = await api("/api/acp-agents/refresh", { method: "POST" });
+      _acpAgentCache = result;
+      _renderAcpAgentList(result);
+    } catch (err) {
+      console.error("[acp] Failed to refresh:", err);
+    } finally {
+      if (refreshBtn) {
+        refreshBtn.disabled = false;
+        refreshBtn.textContent = "Refresh Status";
+      }
+    }
+  }
+
+  async function toggleAcpAgent(agentId, enabled) {
+    const api = _resolveApi();
+    const msgEl = document.getElementById("acp-agent-message");
+    try {
+      const result = await api("/api/acp-agents/enabled", {
+        method: "PUT",
+        body: JSON.stringify({ updates: { [agentId]: enabled } }),
+      });
+      _acpAgentCache = result;
+      _renderAcpAgentList(result);
+      if (msgEl) {
+        msgEl.textContent = enabled ? `Enabled ${agentId}` : `Disabled ${agentId}`;
+        msgEl.style.display = "block";
+        msgEl.style.color = "var(--green)";
+        setTimeout(() => { msgEl.style.display = "none"; }, 2000);
+      }
+    } catch (err) {
+      console.error("[acp] Failed to toggle:", err);
+      if (msgEl) {
+        msgEl.textContent = `Failed to update ${agentId}`;
+        msgEl.style.display = "block";
+        msgEl.style.color = "var(--red,#f05555)";
+      }
+      // Revert checkbox
+      loadAcpAgents(api);
+    }
+  }
+
+  /**
+   * Get the list of enabled + available ACP agents for adapter selectors.
+   * Returns cached result or fetches if not loaded.
+   */
+  async function getEnabledAcpAgents(api) {
+    if (_acpAgentCache) {
+      return _acpAgentCache.agents.filter((a) => a.enabled && a.status === "available");
+    }
+    const result = await loadAcpAgents(api);
+    if (!result) return [];
+    return result.agents.filter((a) => a.enabled && a.status === "available");
+  }
+
   window.AcbModals = {
     positionDialogNearClick,
     openThreadModal,
@@ -3187,6 +3529,10 @@
     openThreadSettingsModal,
     closeThreadSettingsModal,
     submitThreadSettings,
+    refreshAcpAgents,
+    toggleAcpAgent,
+    loadAcpAgents,
+    getEnabledAcpAgents,
   };
 
   // Global wrappers for onclick handlers

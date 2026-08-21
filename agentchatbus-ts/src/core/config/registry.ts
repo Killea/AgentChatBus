@@ -27,6 +27,7 @@ export type ConfigSectionId = "agent" | "attention" | "network" | "advanced" | "
 export type ConfigValueSource = "env" | "persisted" | "default" | "derived";
 
 export interface AppConfig {
+  agentTransport: "v1-http" | "v2-socket";
   host: string;
   port: number;
   dbPath: string;
@@ -64,6 +65,7 @@ export interface AppConfig {
   copilotCommand: string | null;
   ptyUseConpty: boolean;
   launchBaseUrl: string | null;
+  launchSocketPath: string | null;
   launchThreadId: string | null;
   launchThreadName: string | null;
   launchAgentId: string | null;
@@ -474,6 +476,17 @@ const DIAGNOSTIC_FIELDS: DiagnosticDescriptor[] = [
     order: 330,
     value: (config) => config.allowedHosts.length > 0,
   },
+  {
+    key: "AGENT_TRANSPORT_MODE",
+    label: "Agent Transport Mode",
+    description: "Current agent transport protocol: V2 socket or V1 HTTP.",
+    type: "string",
+    kind: "feature_flag",
+    sensitivity: "derived",
+    section: "diagnostics",
+    order: 340,
+    value: (config) => config.agentTransport,
+  },
 ];
 
 export const CONFIG_REGISTRY: ReadonlyArray<ConfigDescriptor> = [
@@ -510,6 +523,32 @@ export const CONFIG_REGISTRY: ReadonlyArray<ConfigDescriptor> = [
     resolve: (ctx) => getConfigFileFallback(String(ctx.resolved.appDir || getAppDirFallback())),
   },
   {
+    key: "AGENT_TRANSPORT",
+    envVar: "AGENTCHATBUS_AGENT_TRANSPORT",
+    resolvedField: "agentTransport",
+    persistedKey: "AGENT_TRANSPORT",
+    type: "enum",
+    kind: "feature_flag",
+    defaultValue: "v2-socket",
+    label: "Agent Transport",
+    description:
+      "V2 (recommended): agents connect via Unix socket / Windows named pipe — no IP or port configuration needed. V1 (legacy): agents connect via HTTP + SSE.",
+    section: "network",
+    scope: "editable",
+    sensitivity: "public",
+    restartRequired: true,
+    order: 5,
+    inputId: "setting-agent-transport",
+    options: [
+      { value: "v2-socket", label: "V2: Socket (recommended, no IP config)" },
+      { value: "v1-http", label: "V1: HTTP + SSE (legacy)" },
+    ],
+    resolve: (ctx) => {
+      const raw = String(getRawValue(ctx, { envVar: "AGENTCHATBUS_AGENT_TRANSPORT", persistedKey: "AGENT_TRANSPORT" }, "v2-socket"));
+      return raw === "v1-http" ? "v1-http" : "v2-socket";
+    },
+  },
+  {
     key: "HOST",
     envVar: "AGENTCHATBUS_HOST",
     resolvedField: "host",
@@ -519,7 +558,7 @@ export const CONFIG_REGISTRY: ReadonlyArray<ConfigDescriptor> = [
     defaultValue: "127.0.0.1",
     label: "Host",
     description:
-      "The IP address the server binds to. '127.0.0.1' = local-only access; '0.0.0.0' = LAN access (all network interfaces).",
+      "The IP address the HTTP/Web UI server binds to. '127.0.0.1' = local-only access; '0.0.0.0' = LAN access (all network interfaces). Only affects the Web UI backend, not agent connections in V2 mode.",
     section: "network",
     scope: "editable",
     sensitivity: "public",
@@ -848,9 +887,12 @@ export const CONFIG_REGISTRY: ReadonlyArray<ConfigDescriptor> = [
     persistedKey: "THREAD_TIMEOUT",
     type: "integer",
     kind: "duration_seconds",
-    defaultValue: 0,
-    label: "Thread Timeout (minutes)",
-    description: "Automatic thread close timeout. Use 0 to disable.",
+    defaultValue: 10080,
+    label: "Thread Auto-Close Timeout (minutes)",
+    description:
+      "Threads in 'discuss' state with no new messages for this many minutes are automatically closed. "
+      + "Default: 10080 (7 days). Set to 0 to disable auto-close. "
+      + "Only affects 'discuss' threads; 'implement', 'review', 'done' etc. are never auto-closed.",
     section: "advanced",
     scope: "editable",
     sensitivity: "public",
@@ -859,8 +901,8 @@ export const CONFIG_REGISTRY: ReadonlyArray<ConfigDescriptor> = [
     min: 0,
     step: 1,
     resolve: (ctx) => parseIntegerLike(
-      getRawValue(ctx, { envVar: "AGENTCHATBUS_THREAD_TIMEOUT", persistedKey: "THREAD_TIMEOUT" }, 0),
-      0
+      getRawValue(ctx, { envVar: "AGENTCHATBUS_THREAD_TIMEOUT", persistedKey: "THREAD_TIMEOUT" }, 10080),
+      10080
     ),
   },
   {
@@ -1238,6 +1280,22 @@ export const CONFIG_REGISTRY: ReadonlyArray<ConfigDescriptor> = [
     restartRequired: false,
     order: 285,
     resolve: () => parseNullableString(getEnvValue("AGENTCHATBUS_BASE_URL")),
+  },
+  {
+    key: "LAUNCH_SOCKET_PATH",
+    envVar: "AGENTCHATBUS_SOCKET_PATH",
+    resolvedField: "launchSocketPath",
+    type: "string",
+    kind: "path",
+    defaultValue: null,
+    label: "Launch Socket Path",
+    description: "Runtime launch override for the v2 agent socket path injected into CLI proxy sessions.",
+    section: "internal",
+    scope: "hidden",
+    sensitivity: "runtime",
+    restartRequired: false,
+    order: 286,
+    resolve: () => parseNullableString(getEnvValue("AGENTCHATBUS_SOCKET_PATH")),
   },
   {
     key: "LAUNCH_THREAD_ID",

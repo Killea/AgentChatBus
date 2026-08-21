@@ -44,13 +44,21 @@ function syncTsEnvVersion(filePath, version) {
 }
 
 function syncPyprojectVersion(filePath, version) {
-  const source = readFileSync(filePath, "utf8");
-  const pattern = /^version = "([^"]+)"$/m;
-  if (!pattern.test(source)) {
-    throw new Error(`Could not find project version in ${filePath}`);
+  try {
+    const source = readFileSync(filePath, "utf8");
+    const pattern = /^version = "([^"]+)"$/m;
+    if (!pattern.test(source)) {
+      throw new Error(`Could not find project version in ${filePath}`);
+    }
+    const updated = source.replace(pattern, `version = "${version}"`);
+    writeFileSync(filePath, updated, "utf8");
+  } catch (err) {
+    if (err && err.code === 'ENOENT') {
+      console.log(`[sync-versions] skipped ${filePath} (file not found)`);
+      return;
+    }
+    throw err;
   }
-  const updated = source.replace(pattern, `version = "${version}"`);
-  writeFileSync(filePath, updated, "utf8");
 }
 
 function main() {

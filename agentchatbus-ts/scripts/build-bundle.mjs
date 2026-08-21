@@ -17,13 +17,17 @@ async function prepareDistDir() {
   }
   await mkdir(path.join(distDir, 'cli'), { recursive: true });
   await mkdir(path.join(distDir, 'workers'), { recursive: true });
+  await mkdir(path.join(distDir, 'transports', 'socket'), { recursive: true });
+  await mkdir(path.join(distDir, 'transports', 'stdio'), { recursive: true });
 }
 
 async function copyWorkerAssets() {
-  const workers = [
+  const assets = [
     ['src/core/services/adapters/workers/interactivePtyWorker.mjs', 'dist/workers/interactivePtyWorker.mjs'],
+    ['src/transports/socket/proxy.mjs', 'dist/transports/socket/proxy.mjs'],
+    ['src/transports/stdio/mcpProxy.mjs', 'dist/transports/stdio/mcpProxy.mjs'],
   ];
-  for (const [source, target] of workers) {
+  for (const [source, target] of assets) {
     await copyFile(path.join(projectRoot, source), path.join(projectRoot, target));
   }
 }

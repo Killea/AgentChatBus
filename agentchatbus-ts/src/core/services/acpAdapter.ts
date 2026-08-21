@@ -21,6 +21,8 @@ import * as path from "node:path";
 import * as os from "node:os";
 import * as acp from "@agentclientprotocol/sdk";
 import { logError, logInfo } from "../../shared/logger.js";
+import { getConfig } from "../config/env.js";
+import { getAgentSocketPath } from "../../transports/socket/server.js";
 import {
   resolveAcpSpawnCommand,
   getAcpAgent,
@@ -73,21 +75,44 @@ function readDevinApiKey(): string | undefined {
 }
 
 /**
- * Patch the `agentchatbus` MCP server entry in an agent's MCP config file
- * with the correct server URL. This is needed for agents that self-manage
- * their MCP servers (e.g., Devin CLI reads ~/.config/devin/mcp_config.json
- * at startup and ignores mcpServers passed via ACP session/new).
+ * Patch the `agentchatbus` MCP server entry in an agent's MCP config file.
  *
- * The config file is a JSON object with an `mcpServers` map. We update or
- * add the `agentchatbus` entry with the given URL, preserving all other
- * entries.
+ * In V2 mode (default): writes a stdio command entry that launches the v2
+ * socket proxy. The agent spawns the proxy as a child process; the proxy
+ * connects to the daemon's Unix socket / Windows named pipe. No IP or port
+ * is exposed to the agent.
  *
- * @param configPath  Path (relative to $HOME) to the MCP config JSON file.
- * @param serverUrl   The AgentChatBus HTTP server URL (e.g., http://127.0.0.1:39766).
+ * In V1 mode (legacy): writes a URL entry pointing to the HTTP MCP endpoint.
+ *
+ * @param configPath    Path (relative to $HOME) to the MCP config JSON file.
+ * @param serverUrl     The AgentChatBus HTTP server URL (used for v1 fallback).
+ * @param socketPath    The v2 socket path (when agentTransport is v2-socket).
+ * @param proxyScript   Path to the v2 proxy .mjs script.
  * @returns true if the file was patched, false if it was skipped or failed.
  */
-function patchMcpConfig(configPath: string, serverUrl: string): boolean {
+function patchMcpConfig(
+  configPath: string,
+  serverUrl: string,
+  socketPath?: string,
+  proxyScript?: string,
+): boolean {
   const fullPath = path.join(os.homedir(), configPath);
+  const useV2 = Boolean(socketPath && proxyScript);
+
+  // Build the target entry depending on transport mode.
+  const targetEntry = useV2
+    ? {
+        command: process.execPath,
+        args: [proxyScript!],
+        env: {
+          AGENTCHATBUS_SOCKET_PATH: socketPath!,
+          // If process.execPath is an Electron binary (e.g. VSCode's bundled node),
+          // ELECTRON_RUN_AS_NODE=1 makes it behave as pure Node.js.
+          ELECTRON_RUN_AS_NODE: "1",
+        },
+      }
+    : { url: `${serverUrl}/mcp` };
+
   try {
     let content: string;
     try {
@@ -96,12 +121,16 @@ function patchMcpConfig(configPath: string, serverUrl: string): boolean {
       // File doesn't exist — create a minimal one with just the agentchatbus entry
       const newConfig = {
         mcpServers: {
-          agentchatbus: { url: `${serverUrl}/mcp` },
+          agentchatbus: targetEntry,
         },
       };
       fs.mkdirSync(path.dirname(fullPath), { recursive: true });
       fs.writeFileSync(fullPath, JSON.stringify(newConfig, null, 2) + "\n", "utf-8");
-      logInfo(`[acp-adapter] Created MCP config at ${fullPath} with agentchatbus URL ${serverUrl}/mcp`);
+      logInfo(
+        `[acp-adapter] Created MCP config at ${fullPath} with agentchatbus ${useV2 ? "socket proxy" : "URL"} ${
+          useV2 ? socketPath! : `${serverUrl}/mcp`
+        }`,
+      );
       return true;
     }
 
@@ -110,19 +139,22 @@ function patchMcpConfig(configPath: string, serverUrl: string): boolean {
       config.mcpServers = {};
     }
 
-    const mcpUrl = `${serverUrl}/mcp`;
     const existing = config.mcpServers.agentchatbus;
-    if (existing && existing.url === mcpUrl) {
+    if (existing && JSON.stringify(existing) === JSON.stringify(targetEntry)) {
       // Already correct, no patch needed
-      logInfo(`[acp-adapter] MCP config ${fullPath} already has correct agentchatbus URL (${mcpUrl})`);
+      logInfo(
+        `[acp-adapter] MCP config ${fullPath} already has correct agentchatbus entry (${useV2 ? "v2-socket" : "v1-http"})`,
+      );
       return true;
     }
 
     // Update or add the agentchatbus entry
-    config.mcpServers.agentchatbus = { url: mcpUrl };
+    config.mcpServers.agentchatbus = targetEntry;
 
     fs.writeFileSync(fullPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
-    logInfo(`[acp-adapter] Patched MCP config ${fullPath}: agentchatbus URL -> ${mcpUrl}`);
+    logInfo(
+      `[acp-adapter] Patched MCP config ${fullPath}: agentchatbus -> ${useV2 ? `v2-socket (${socketPath!})` : `URL ${serverUrl}/mcp`}`,
+    );
     return true;
   } catch (err) {
     logError(
@@ -230,16 +262,20 @@ export class AcpAdapter implements CliSessionAdapter {
     );
 
     // For agents that self-manage MCP config (e.g., Devin CLI), patch the
-    // agentchatbus entry in their config file with the correct server URL
-    // before spawning. This ensures the agent connects to the right MCP
-    // endpoint regardless of which port AgentChatBus is running on.
+    // agentchatbus entry in their config file before spawning. In v2 mode this
+    // writes a stdio proxy command (no IP/port); in v1 mode it writes the URL.
     if (this.agentConfig.mcpConfigPath) {
       const baseUrl = String(
         input.env?.AGENTCHATBUS_BASE_URL ||
           process.env.AGENTCHATBUS_BASE_URL ||
           "",
       ).trim();
-      if (baseUrl) {
+      const cfg = getConfig();
+      if (cfg.agentTransport === "v2-socket") {
+        const sockPath = getAgentSocketPath();
+        const proxyScript = new URL("../../transports/socket/proxy.mjs", import.meta.url).pathname;
+        patchMcpConfig(this.agentConfig.mcpConfigPath, baseUrl, sockPath, proxyScript);
+      } else if (baseUrl) {
         patchMcpConfig(this.agentConfig.mcpConfigPath, baseUrl);
       }
     }
@@ -401,12 +437,46 @@ export class AcpAdapter implements CliSessionAdapter {
           // For agents without pre-configured MCP, we also provide a stdio MCP
           // proxy as a fallback.
           const baseUrl = String(input.env?.AGENTCHATBUS_BASE_URL || process.env.AGENTCHATBUS_BASE_URL || "").trim();
+          const cfg = getConfig();
           const mcpServers: acp.McpServer[] = [];
-          if (baseUrl) {
-            // Try stdio MCP proxy as a fallback for agents that don't have
-            // pre-configured MCP servers. Agents with pre-configured MCP will
-            // use their own config.
-            const proxyScript = new URL("../../transports/stdio/mcpProxy.mjs", import.meta.url).pathname;
+          const useV2 = cfg.agentTransport === "v2-socket";
+          const proxyScript = useV2
+            ? new URL("../../transports/socket/proxy.mjs", import.meta.url).pathname
+            : new URL("../../transports/stdio/mcpProxy.mjs", import.meta.url).pathname;
+
+          if (useV2) {
+            // V2: stdio proxy connects to Unix socket / named pipe (no IP/port).
+            const sockPath = getAgentSocketPath();
+            const envVars: acp.EnvVariable[] = [
+              { name: "AGENTCHATBUS_SOCKET_PATH", value: sockPath },
+            ];
+            if (input.env?.AGENTCHATBUS_THREAD_ID) {
+              envVars.push({ name: "AGENTCHATBUS_THREAD_ID", value: input.env.AGENTCHATBUS_THREAD_ID });
+            }
+            if (input.env?.AGENTCHATBUS_THREAD_NAME) {
+              envVars.push({ name: "AGENTCHATBUS_THREAD_NAME", value: input.env.AGENTCHATBUS_THREAD_NAME });
+            }
+            if (input.env?.AGENTCHATBUS_AGENT_ID) {
+              envVars.push({ name: "AGENTCHATBUS_AGENT_ID", value: input.env.AGENTCHATBUS_AGENT_ID });
+            }
+            if (input.env?.AGENTCHATBUS_AGENT_TOKEN) {
+              envVars.push({ name: "AGENTCHATBUS_AGENT_TOKEN", value: input.env.AGENTCHATBUS_AGENT_TOKEN });
+            }
+            if (input.env?.AGENTCHATBUS_AGENT_DISPLAY_NAME) {
+              envVars.push({ name: "AGENTCHATBUS_AGENT_DISPLAY_NAME", value: input.env.AGENTCHATBUS_AGENT_DISPLAY_NAME });
+            }
+
+            logInfo(
+              `[acp-adapter] ${this.agentConfig.name} configuring v2 socket proxy (script=${proxyScript}, socket=${sockPath})`,
+            );
+            mcpServers.push({
+              name: "agentchatbus-acp",
+              command: process.execPath,
+              args: [proxyScript],
+              env: envVars,
+            } as acp.McpServer);
+          } else if (baseUrl) {
+            // V1: stdio proxy connects to HTTP MCP endpoint (legacy).
             const envVars: acp.EnvVariable[] = [
               { name: "AGENTCHATBUS_BASE_URL", value: baseUrl },
             ];
@@ -427,7 +497,7 @@ export class AcpAdapter implements CliSessionAdapter {
             }
 
             logInfo(
-              `[acp-adapter] ${this.agentConfig.name} configuring stdio MCP proxy (script=${proxyScript}, baseUrl=${baseUrl})`,
+              `[acp-adapter] ${this.agentConfig.name} configuring v1 stdio MCP proxy (script=${proxyScript}, baseUrl=${baseUrl})`,
             );
             mcpServers.push({
               name: "agentchatbus-acp",

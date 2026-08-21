@@ -1,16 +1,51 @@
 (function () {
   let _isConnected = false;
+  let _agentTransport = '';
+  let _bindHost = '';
+
+  function _updateLabelText(connected) {
+    const label = document.getElementById("status-label");
+    if (!label) return;
+    if (!connected) {
+      label.textContent = "Reconnecting…";
+      return;
+    }
+    const isV2 = _agentTransport === 'v2-socket';
+    const isLan = _bindHost === '0.0.0.0' || _bindHost === '::' || _bindHost === '';
+    if (isV2 && isLan) {
+      label.textContent = "Connected · V2 Socket + LAN HTTP";
+    } else if (isV2) {
+      label.textContent = "Connected · V2 Socket";
+    } else if (_agentTransport === 'v1-http') {
+      label.textContent = "Connected · V1 HTTP";
+    } else {
+      label.textContent = "Connected";
+    }
+  }
 
   function setConnectedUI(connected) {
     _isConnected = connected;
     const dot = document.getElementById("status-dot");
-    const label = document.getElementById("status-label");
-    if (!dot || !label) return;
+    if (!dot) return;
 
     dot.style.background = connected ? "var(--green)" : "var(--red)";
     dot.style.boxShadow = connected ? "0 0 8px var(--green)" : "0 0 8px var(--red)";
-    label.textContent = connected ? "Connected" : "Reconnecting…";
+    _updateLabelText(connected);
   }
+
+  // Fetch agent_transport + bind_host from /api/metrics to enrich the status label.
+  async function _fetchTransportInfo() {
+    try {
+      const res = await fetch('/api/metrics');
+      if (!res.ok) return;
+      const data = await res.json();
+      _agentTransport = String(data?.agent_transport || '').trim().toLowerCase();
+      _bindHost = String(data?.bind_host || '').trim();
+      _updateLabelText(_isConnected);
+    } catch { /* ignore */ }
+  }
+  _fetchTransportInfo();
+  setInterval(_fetchTransportInfo, 30000);
 
   function startSSE(deps) {
     const {

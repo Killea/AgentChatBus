@@ -65,3 +65,10 @@ export {
     formatSetupStepLabel,
     replaceSetupSteps,
 } from './setup';
+export {
+    AGENT_MCP_CLIENTS,
+    buildAgentMcpEntry,
+    patchAgentMcpConfigContent,
+    patchJsonMcpConfig,
+    patchTomlMcpConfig,
+} from './agentMcpConfig';

@@ -1,4 +1,5 @@
 import * as path from 'path';
+import * as os from 'os';
 
 export type LaunchMode =
     | 'bundled-ts-service'
@@ -237,6 +238,16 @@ export function createSingleFlightRunner<T>(operation: () => Promise<T>): () => 
     };
 }
 
+/**
+ * In V2 mode, all agents on the machine share a single database and socket.
+ * The shared directory is ~/.agentchatbus/ — this ensures multiple IDEs
+ * and CLI agents all use the same data store, unlike V1 where each IDE
+ * had its own per-instance database.
+ */
+function getV2SharedDir(): string {
+    return path.join(os.homedir(), '.agentchatbus');
+}
+
 export function buildBundledLaunchSpec(input: {
     serverEntry: string;
     webUiDir: string;
@@ -248,12 +259,20 @@ export function buildBundledLaunchSpec(input: {
     msgWaitMinTimeoutMs: number;
     enforceMsgWaitMinTimeout: boolean;
     ptyUseConpty: boolean;
+    agentTransport?: 'v2-socket' | 'v1-http';
+    threadTimeoutMinutes?: number;
     processEnv?: NodeJS.ProcessEnv;
 }): BundledLaunchSpec {
     const parsedUrl = new URL(input.serverUrl);
     const port = Number(parsedUrl.port || (parsedUrl.protocol === 'https:' ? '443' : '80'));
-    const dbPath = path.join(input.globalStoragePath, 'bus-ts.db');
-    const configFile = path.join(input.globalStoragePath, 'config.json');
+    const agentTransport = input.agentTransport === 'v1-http' ? 'v1-http' : 'v2-socket';
+
+    // V2: use shared ~/.agentchatbus/ for DB + socket so all agents on the machine
+    // share the same database. V1: use per-IDE globalStoragePath as before.
+    const isV2 = agentTransport === 'v2-socket';
+    const appDir = isV2 ? getV2SharedDir() : input.globalStoragePath;
+    const dbPath = isV2 ? path.join(appDir, 'agentchatbus.db') : path.join(appDir, 'bus-ts.db');
+    const configFile = path.join(appDir, 'config.json');
 
     return {
         command: input.hostNodeExecutable,
@@ -264,7 +283,7 @@ export function buildBundledLaunchSpec(input: {
             AGENTCHATBUS_HOST: parsedUrl.hostname,
             AGENTCHATBUS_PORT: String(port),
             AGENTCHATBUS_DB: dbPath,
-            AGENTCHATBUS_APP_DIR: input.globalStoragePath,
+            AGENTCHATBUS_APP_DIR: appDir,
             AGENTCHATBUS_CONFIG_FILE: configFile,
             AGENTCHATBUS_WEB_UI_DIR: input.webUiDir,
             ...(input.cliWorkspacePath
@@ -273,6 +292,10 @@ export function buildBundledLaunchSpec(input: {
             AGENTCHATBUS_WAIT_MIN_TIMEOUT_MS: String(input.msgWaitMinTimeoutMs),
             AGENTCHATBUS_ENFORCE_MSG_WAIT_MIN_TIMEOUT: input.enforceMsgWaitMinTimeout ? '1' : '0',
             AGENTCHATBUS_PTY_USE_CONPTY: input.ptyUseConpty ? '1' : '0',
+            AGENTCHATBUS_AGENT_TRANSPORT: agentTransport,
+            ...(input.threadTimeoutMinutes !== undefined
+                ? { AGENTCHATBUS_THREAD_TIMEOUT: String(input.threadTimeoutMinutes) }
+                : {}),
         },
         launchMode: 'bundled-ts-service',
         resolvedBy: BUNDLED_RUNTIME_RESOLVED_BY,
@@ -290,12 +313,20 @@ export function buildWorkspaceDevLaunchSpec(input: {
     msgWaitMinTimeoutMs: number;
     enforceMsgWaitMinTimeout: boolean;
     ptyUseConpty: boolean;
+    agentTransport?: 'v2-socket' | 'v1-http';
+    threadTimeoutMinutes?: number;
     processEnv?: NodeJS.ProcessEnv;
 }): BundledLaunchSpec {
     const parsedUrl = new URL(input.serverUrl);
     const port = Number(parsedUrl.port || (parsedUrl.protocol === 'https:' ? '443' : '80'));
-    const dbPath = path.join(input.globalStoragePath, 'bus-ts.db');
-    const configFile = path.join(input.globalStoragePath, 'config.json');
+    const agentTransport = input.agentTransport === 'v1-http' ? 'v1-http' : 'v2-socket';
+
+    // V2: use shared ~/.agentchatbus/ for DB + socket so all agents on the machine
+    // share the same database. V1: use per-IDE globalStoragePath as before.
+    const isV2 = agentTransport === 'v2-socket';
+    const appDir = isV2 ? getV2SharedDir() : input.globalStoragePath;
+    const dbPath = isV2 ? path.join(appDir, 'agentchatbus.db') : path.join(appDir, 'bus-ts.db');
+    const configFile = path.join(appDir, 'config.json');
 
     return {
         command: input.hostNodeExecutable,
@@ -306,7 +337,7 @@ export function buildWorkspaceDevLaunchSpec(input: {
             AGENTCHATBUS_HOST: parsedUrl.hostname,
             AGENTCHATBUS_PORT: String(port),
             AGENTCHATBUS_DB: dbPath,
-            AGENTCHATBUS_APP_DIR: input.globalStoragePath,
+            AGENTCHATBUS_APP_DIR: appDir,
             AGENTCHATBUS_CONFIG_FILE: configFile,
             AGENTCHATBUS_WEB_UI_DIR: input.webUiDir,
             ...(input.cliWorkspacePath
@@ -315,6 +346,10 @@ export function buildWorkspaceDevLaunchSpec(input: {
             AGENTCHATBUS_WAIT_MIN_TIMEOUT_MS: String(input.msgWaitMinTimeoutMs),
             AGENTCHATBUS_ENFORCE_MSG_WAIT_MIN_TIMEOUT: input.enforceMsgWaitMinTimeout ? '1' : '0',
             AGENTCHATBUS_PTY_USE_CONPTY: input.ptyUseConpty ? '1' : '0',
+            AGENTCHATBUS_AGENT_TRANSPORT: agentTransport,
+            ...(input.threadTimeoutMinutes !== undefined
+                ? { AGENTCHATBUS_THREAD_TIMEOUT: String(input.threadTimeoutMinutes) }
+                : {}),
             AGENTCHATBUS_RELOAD: '1',
             AGENTCHATBUS_WORKSPACE_DEV: '1',
         },

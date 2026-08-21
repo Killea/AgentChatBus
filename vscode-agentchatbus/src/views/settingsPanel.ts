@@ -6,6 +6,8 @@ type AgentChatBusSettings = {
     msgWaitMinTimeoutMs: number;
     enforceMsgWaitMinTimeout: boolean;
     ptyUseConpty: boolean;
+    agentTransport: 'v2-socket' | 'v1-http';
+    threadTimeoutMinutes: number;
     scopeLabel: string;
 };
 
@@ -18,6 +20,8 @@ type WebviewMessage =
             msgWaitMinTimeoutMs?: number | string;
             enforceMsgWaitMinTimeout?: boolean;
             ptyUseConpty?: boolean;
+            agentTransport?: string;
+            threadTimeoutMinutes?: number | string;
         };
     }
     | { command: 'openVscodeSettings' };
@@ -116,15 +120,34 @@ export class SettingsPanel {
             ptyUseConpty,
             target
         );
+        const agentTransportRaw = String(payload.agentTransport || '').trim().toLowerCase();
+        const agentTransport = agentTransportRaw === 'v1-http' ? 'v1-http' : 'v2-socket';
+        await config.update(
+            'agentTransport',
+            agentTransport,
+            target
+        );
+
+        const rawThreadTimeout = payload.threadTimeoutMinutes;
+        const parsedThreadTimeout = Number(String(rawThreadTimeout ?? '').trim());
+        if (!Number.isFinite(parsedThreadTimeout) || parsedThreadTimeout < 0) {
+            void vscode.window.showErrorMessage('Thread auto-close timeout must be a non-negative number (minutes).');
+            return;
+        }
+        await config.update(
+            'threadTimeoutMinutes',
+            Math.floor(parsedThreadTimeout),
+            target
+        );
 
         void vscode.window.showInformationMessage(
-            `AgentChatBus settings saved. Strict minimum wait enforcement: ${enforceMin ? 'ON' : 'OFF'}. Windows ConPTY: ${ptyUseConpty ? 'ON' : 'OFF'}.`
+            `AgentChatBus settings saved. Agent transport: ${agentTransport}. Thread auto-close: ${parsedThreadTimeout === 0 ? 'disabled' : `${parsedThreadTimeout} min`}. Strict minimum wait enforcement: ${enforceMin ? 'ON' : 'OFF'}. Windows ConPTY: ${ptyUseConpty ? 'ON' : 'OFF'}.`
         );
         await this.render();
     }
 
     private resolveConfigurationTarget(
-        section: 'serverUrl' | 'autoStartBusServer' | 'msgWaitMinTimeoutMs' | 'enforceMsgWaitMinTimeout' | 'ptyUseConpty'
+        section: 'serverUrl' | 'autoStartBusServer' | 'msgWaitMinTimeoutMs' | 'enforceMsgWaitMinTimeout' | 'ptyUseConpty' | 'agentTransport' | 'threadTimeoutMinutes'
     ): vscode.ConfigurationTarget {
         const config = vscode.workspace.getConfiguration('agentchatbus');
         const inspected = config.inspect(section);
@@ -155,20 +178,29 @@ export class SettingsPanel {
         const msgWaitMinInspect = config.inspect<number>('msgWaitMinTimeoutMs');
         const enforceMinInspect = config.inspect<boolean>('enforceMsgWaitMinTimeout');
         const ptyUseConptyInspect = config.inspect<boolean>('ptyUseConpty');
+        const agentTransportInspect = config.inspect<string>('agentTransport');
+        const threadTimeoutInspect = config.inspect<number>('threadTimeoutMinutes');
 
         const scopeLabel = serverUrlInspect?.workspaceFolderValue !== undefined
             || autoStartInspect?.workspaceFolderValue !== undefined
             || msgWaitMinInspect?.workspaceFolderValue !== undefined
             || enforceMinInspect?.workspaceFolderValue !== undefined
             || ptyUseConptyInspect?.workspaceFolderValue !== undefined
+            || agentTransportInspect?.workspaceFolderValue !== undefined
+            || threadTimeoutInspect?.workspaceFolderValue !== undefined
             ? 'Workspace Folder'
             : serverUrlInspect?.workspaceValue !== undefined
                 || autoStartInspect?.workspaceValue !== undefined
                 || msgWaitMinInspect?.workspaceValue !== undefined
                 || enforceMinInspect?.workspaceValue !== undefined
                 || ptyUseConptyInspect?.workspaceValue !== undefined
+                || agentTransportInspect?.workspaceValue !== undefined
+                || threadTimeoutInspect?.workspaceValue !== undefined
                 ? 'Workspace'
                 : 'User';
+
+        const rawAgentTransport = String(config.get<string>('agentTransport', 'v2-socket') || 'v2-socket').trim().toLowerCase();
+        const agentTransport = rawAgentTransport === 'v1-http' ? 'v1-http' : 'v2-socket';
 
         return {
             serverUrl: config.get<string>('serverUrl', 'http://127.0.0.1:39765'),
@@ -176,6 +208,8 @@ export class SettingsPanel {
             msgWaitMinTimeoutMs: Math.max(0, Math.floor(config.get<number>('msgWaitMinTimeoutMs', 60000))),
             enforceMsgWaitMinTimeout: config.get<boolean>('enforceMsgWaitMinTimeout', false),
             ptyUseConpty: config.get<boolean>('ptyUseConpty', false),
+            agentTransport,
+            threadTimeoutMinutes: Math.max(0, Math.floor(config.get<number>('threadTimeoutMinutes', 10080))),
             scopeLabel,
         };
     }
@@ -191,6 +225,13 @@ export class SettingsPanel {
         const msgWaitMinTimeoutMs = this.escapeHtml(String(settings.msgWaitMinTimeoutMs));
         const enforceMinChecked = settings.enforceMsgWaitMinTimeout ? 'checked' : '';
         const ptyUseConptyChecked = settings.ptyUseConpty ? 'checked' : '';
+        const agentTransportV2Selected = settings.agentTransport === 'v2-socket' ? ' selected' : '';
+        const agentTransportV1Selected = settings.agentTransport === 'v1-http' ? ' selected' : '';
+        const isV2 = settings.agentTransport === 'v2-socket';
+        const threadTimeoutMinutes = this.escapeHtml(String(settings.threadTimeoutMinutes));
+        const serverUrlHint = isV2
+            ? '<strong>V2 mode is active.</strong> This URL is for <strong>Web UI access only</strong>. MCP agents connect via Unix socket / named pipe and do <strong>not</strong> use this IP address or port. The HTTP server still runs regardless of transport mode.'
+            : 'Local only: just this machine. LAN access: other devices on the same network can connect. For a remote server, type the URL directly in VS Code Settings.';
 
         return `<!DOCTYPE html>
 <html lang="en">
@@ -296,7 +337,13 @@ export class SettingsPanel {
             <option value="http://0.0.0.0:39765"${settings.serverUrl === 'http://0.0.0.0:39765' ? ' selected' : ''}>LAN access (0.0.0.0:39765)</option>
             ${settings.serverUrl !== 'http://127.0.0.1:39765' && settings.serverUrl !== 'http://0.0.0.0:39765' ? `<option value="${this.escapeHtml(settings.serverUrl)}" selected>${this.escapeHtml(settings.serverUrl)} (current)</option>` : ''}
         </select>
-        <div class="hint">Local only: just this machine. LAN access: other devices on the same network can connect. For a remote server, type the URL directly in VS Code Settings.</div>
+        <div class="hint" id="serverUrlHint">${serverUrlHint}</div>
+        <label for="agentTransport">Agent Transport</label>
+        <select id="agentTransport">
+            <option value="v2-socket"${agentTransportV2Selected}>V2: Socket (recommended, no IP config for agents)</option>
+            <option value="v1-http"${agentTransportV1Selected}>V1: HTTP + SSE (legacy, agents connect to IP:port)</option>
+        </select>
+        <div class="hint"><strong>V2 (recommended):</strong> Agents connect via Unix socket / Windows named pipe. No IP or port configuration needed for agents. The HTTP server still runs for the Web UI only.<br><strong>V1 (legacy):</strong> Agents connect via HTTP + SSE to the server IP and port. Requires agents to know the server URL. <strong>Bundled server restart required after change.</strong></div>
         <div class="checkbox-row">
             <input id="autoStartBusServer" type="checkbox" ${checked} />
             <label for="autoStartBusServer">Automatically start the AgentChatBus server when needed</label>
@@ -314,6 +361,14 @@ export class SettingsPanel {
             <label for="ptyUseConpty">Use Windows ConPTY for interactive PTY agents</label>
         </div>
         <div class="hint">Recommended OFF if interactive Codex/Cursor/Claude/Gemini/Copilot terminals flicker, freeze, drift, or render incorrectly. Bundled server restart required after change.</div>
+        <label for="threadTimeoutMinutes">Thread Auto-Close Timeout (minutes)</label>
+        <input id="threadTimeoutMinutes" type="text" value="${threadTimeoutMinutes}" spellcheck="false" />
+        <div class="hint">
+            Threads in <strong>'discuss'</strong> state with no new messages for this many minutes are automatically closed.
+            Default: <strong>10080</strong> (7 days). Set to <strong>0</strong> to disable auto-close entirely.
+            Only affects <strong>'discuss'</strong> threads; threads in <strong>'implement'</strong>, <strong>'review'</strong>, <strong>'done'</strong> etc. are <strong>never</strong> auto-closed.
+            <br>Bundled server restart required after change.
+        </div>
         <div class="actions">
             <button class="primary" id="saveButton">Save to VS Code Settings</button>
             <button class="secondary" id="openButton">Open VS Code Settings</button>
@@ -322,6 +377,15 @@ export class SettingsPanel {
     </div>
     <script>
         const vscode = acquireVsCodeApi();
+        const serverUrlHintEl = document.getElementById('serverUrlHint');
+        const agentTransportEl = document.getElementById('agentTransport');
+        function updateServerUrlHint() {
+            const isV2 = agentTransportEl.value === 'v2-socket';
+            serverUrlHintEl.innerHTML = isV2
+                ? '<strong>V2 mode is active.</strong> This URL is for <strong>Web UI access only</strong>. MCP agents connect via Unix socket / named pipe and do <strong>not</strong> use this IP address or port. The HTTP server still runs regardless of transport mode.'
+                : 'Local only: just this machine. LAN access: other devices on the same network can connect. For a remote server, type the URL directly in VS Code Settings.';
+        }
+        agentTransportEl.addEventListener('change', updateServerUrlHint);
         document.getElementById('saveButton').addEventListener('click', () => {
             vscode.postMessage({
                 command: 'saveSettings',
@@ -330,7 +394,9 @@ export class SettingsPanel {
                     autoStartBusServer: document.getElementById('autoStartBusServer').checked,
                     msgWaitMinTimeoutMs: document.getElementById('msgWaitMinTimeoutMs').value,
                     enforceMsgWaitMinTimeout: document.getElementById('enforceMsgWaitMinTimeout').checked,
-                    ptyUseConpty: document.getElementById('ptyUseConpty').checked
+                    ptyUseConpty: document.getElementById('ptyUseConpty').checked,
+                    agentTransport: document.getElementById('agentTransport').value,
+                    threadTimeoutMinutes: document.getElementById('threadTimeoutMinutes').value
                 }
             });
         });

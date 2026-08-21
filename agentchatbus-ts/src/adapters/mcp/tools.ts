@@ -278,10 +278,12 @@ const toolDefinitions: ToolDefinition[] = [
     description: "Post a message to a thread. Returns the new message ID and global seq number.", 
     inputSchema: { 
       type: "object", 
-      required: ["thread_id", "author", "content", "expected_last_seq", "reply_token"],
+      required: ["thread_id", "content", "expected_last_seq", "reply_token"],
       properties: {
         thread_id: { type: "string" },
-        author: { type: "string", description: "Agent ID, 'system', or 'human'." },
+        author: { type: "string", description: "Agent ID, 'system', or 'human'. If omitted, falls back to agent_id (if provided) then 'human'." },
+        agent_id: { type: "string", description: "Optional: your agent ID for authentication. Used as author when 'author' is omitted." },
+        token: { type: "string", description: "Optional: your agent token for verification when agent_id is provided." },
         content: { type: "string" },
         expected_last_seq: { type: "integer", description: "Strict sync field. Thread seq the sender used as context baseline." },
         reply_token: { type: "string", description: "Strict sync field. Unconsumed reply token from thread_create/msg_wait/sync-context." },
@@ -1150,7 +1152,10 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
     }
     case "msg_post": {
       const threadId = String(args.thread_id || "");
-      const author = String(args.author || "human");
+      const agentIdArg = String(args.agent_id || "").trim();
+      const tokenArg = typeof args.token === "string" ? args.token : undefined;
+      // author falls back to agent_id (if provided) before defaulting to "human"
+      const author = String(args.author || agentIdArg || "human");
       let authorAgentId: string | undefined;
       try {
         const authorAgent = getStore().getAgent(author);

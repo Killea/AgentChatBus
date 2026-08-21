@@ -1,12 +1,13 @@
 import * as vscode from 'vscode';
 import * as os from 'os';
+import * as path from 'path';
 import { AgentChatBusApiClient } from './api/client';
 import { ThreadsTreeProvider, ThreadItem } from './providers/threadsProvider';
 import { AgentsTreeProvider } from './providers/agentsProvider';
 import { ChatPanel } from './views/chatPanel';
 import type { Thread } from './api/types';
 import { BusServerManager } from './busServerManager';
-import { CursorMcpConfigManager } from './cursorMcpConfig';
+import { AgentMcpConfigManager } from './agentMcpConfigManager';
 import { SetupProvider } from './providers/setupProvider';
 import { McpLogProvider } from './providers/mcpLogProvider';
 import { SettingsProvider } from './providers/settingsProvider';
@@ -17,7 +18,7 @@ import { formatLmError, getBrowserOpenUrl, isLocalServerUrlWithContext } from '.
 let apiClient: AgentChatBusApiClient | undefined;
 let mcpLogProvider: McpLogProvider | undefined;
 let settingsProvider: SettingsProvider | undefined;
-let cursorConfigManager: CursorMcpConfigManager | undefined;
+let agentMcpConfigManager: AgentMcpConfigManager | undefined;
 let serverManagerInstance: BusServerManager | undefined;
 let mainViewsInitialized = false;
 let workspaceDevUiWatcherRegistered = false;
@@ -186,7 +187,7 @@ export function activate(context: vscode.ExtensionContext) {
     const workspaceDevContext = serverManager.getWorkspaceDevContext();
     ChatPanel.setWorkspaceDevWebUiRoot(workspaceDevContext?.webUiRoot);
     serverManagerInstance = serverManager;
-    cursorConfigManager = new CursorMcpConfigManager();
+    agentMcpConfigManager = new AgentMcpConfigManager();
     const setupProvider = new SetupProvider();
     mcpLogProvider = new McpLogProvider();
     
@@ -211,9 +212,7 @@ export function activate(context: vscode.ExtensionContext) {
             const isReady = await serverManager.ensureServerRunning();
             if (isReady) {
                 console.log('[AgentChatBus] Server is ready, initializing main views.');
-                if (cursorConfigManager) {
-                    initializeMainViews(context, serverManager, cursorConfigManager);
-                }
+                initializeMainViews(context, serverManager);
             } else {
                 console.warn('[AgentChatBus] Server failed to start.');
             }
@@ -237,7 +236,9 @@ export function activate(context: vscode.ExtensionContext) {
                 !event.affectsConfiguration('agentchatbus.autoStartBusServer') &&
                 !event.affectsConfiguration('agentchatbus.msgWaitMinTimeoutMs') &&
                 !event.affectsConfiguration('agentchatbus.enforceMsgWaitMinTimeout') &&
-                !event.affectsConfiguration('agentchatbus.ptyUseConpty')) {
+                !event.affectsConfiguration('agentchatbus.ptyUseConpty') &&
+                !event.affectsConfiguration('agentchatbus.agentTransport') &&
+                !event.affectsConfiguration('agentchatbus.threadTimeoutMinutes')) {
                 return;
             }
 
@@ -256,7 +257,7 @@ export function activate(context: vscode.ExtensionContext) {
     });
 }
 
-function initializeMainViews(context: vscode.ExtensionContext, serverManager: BusServerManager, cursorConfigManager: CursorMcpConfigManager) {
+function initializeMainViews(context: vscode.ExtensionContext, serverManager: BusServerManager) {
     if (mainViewsInitialized) return;
     mainViewsInitialized = true;
 
@@ -344,7 +345,25 @@ function initializeMainViews(context: vscode.ExtensionContext, serverManager: Bu
         vscode.commands.registerCommand('agentchatbus.openWebConsole', () => {
             const config = vscode.workspace.getConfiguration('agentchatbus');
             const url = config.get<string>('serverUrl', 'http://127.0.0.1:39765');
-            const browserUrl = getBrowserOpenUrl(url);
+            // When bound to 0.0.0.0, prefer a LAN IP so the console is reachable
+            // from other devices on the network.
+            const lanIps: string[] = [];
+            try {
+                const parsed = new URL(url);
+                if (parsed.hostname === '0.0.0.0' || parsed.hostname === '::' || parsed.hostname === '[::]') {
+                    const ifaces = os.networkInterfaces();
+                    for (const infos of Object.values(ifaces)) {
+                        for (const iface of infos || []) {
+                            if (iface.family === 'IPv4' && !iface.internal) {
+                                lanIps.push(iface.address);
+                            }
+                        }
+                    }
+                }
+            } catch {
+                // ignore parse errors — fall back to default behavior
+            }
+            const browserUrl = getBrowserOpenUrl(url, lanIps.length > 0 ? lanIps : undefined);
             vscode.env.openExternal(vscode.Uri.parse(browserUrl));
         }),
         vscode.commands.registerCommand('agentchatbus.serverSettings', () => {
@@ -431,6 +450,10 @@ function initializeMainViews(context: vscode.ExtensionContext, serverManager: Bu
                     if (!Number.isNaN(uptimeRaw) && uptimeRaw >= 0) {
                         backendUptimeSeconds = uptimeRaw;
                     }
+                    const metricsAgentTransport = String(metrics?.agent_transport || '').trim().toLowerCase();
+                    if (metricsAgentTransport === 'v2-socket' || metricsAgentTransport === 'v1-http') {
+                        metadata.agentTransport = metricsAgentTransport;
+                    }
                 }
             } catch {
                 // Ignore metrics probe failures and keep fallback heuristics.
@@ -493,50 +516,160 @@ function initializeMainViews(context: vscode.ExtensionContext, serverManager: Bu
                  bindHost,
                  lanIps,
                  lmProbe,
+                 agentTransport: metadata.agentTransport,
                  privacyWarning: localServer
                      ? ''
                      : 'Remote server detected. Sensitive host/process fields are hidden for safety.',
              });
          }),
-        vscode.commands.registerCommand('agentchatbus.configureCursorMcp', async () => {
-            const config = vscode.workspace.getConfiguration('agentchatbus');
-            const serverUrl = config.get<string>('serverUrl', 'http://127.0.0.1:39765');
-            const previewPath = cursorConfigManager.getGlobalConfigPath();
-            const normalizedServerUrl = serverUrl.replace(/\/+$/, '');
-            const mcpUrl = `${normalizedServerUrl}/mcp/sse`;
-
-            const confirmed = await vscode.window.showInformationMessage(
-                `Update Cursor global MCP config at ${previewPath} to point ${'agentchatbus'} at ${mcpUrl}?`,
-                { modal: true },
-                'Configure Cursor'
-            );
-            if (confirmed !== 'Configure Cursor') {
+        vscode.commands.registerCommand('agentchatbus.openAgentMcpConfig', async () => {
+            if (!agentMcpConfigManager) {
+                void vscode.window.showErrorMessage('Agent MCP config manager is not initialized.');
                 return;
             }
-
+            const clients = agentMcpConfigManager.getClients();
+            const items: (vscode.QuickPickItem & { clientIndex: number })[] = clients.map((c, i) => ({
+                label: c.name,
+                description: c.format.toUpperCase(),
+                detail: `~/${c.configPath}`,
+                clientIndex: i,
+            }));
+            const selected = await vscode.window.showQuickPick(items, {
+                title: 'Open Agent MCP Config — select client',
+                placeHolder: 'Choose which agent client\'s MCP config file to open',
+            });
+            if (!selected || selected.clientIndex < 0) return;
+            const client = clients[selected.clientIndex];
+            const fullPath = agentMcpConfigManager.getConfigPath(client);
             try {
-                const result = await cursorConfigManager.configureGlobalAgentChatBus(serverUrl);
-                const action = result.changed ? 'configured' : 'already up to date';
-                const followUp = await vscode.window.showInformationMessage(
-                    `Cursor MCP ${action}: ${result.serverName} -> ${result.serverUrl}`,
-                    'Open Config'
-                );
-                if (followUp === 'Open Config') {
-                    await cursorConfigManager.openGlobalConfig();
-                }
+                const doc = await vscode.workspace.openTextDocument(fullPath);
+                await vscode.window.showTextDocument(doc);
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 const followUp = await vscode.window.showErrorMessage(
-                    `Failed to configure Cursor MCP: ${message}`,
-                    'Open Config'
+                    `Failed to open ${client.name} MCP config (${fullPath}): ${message}`,
+                    'Create File'
                 );
-                if (followUp === 'Open Config') {
-                    await cursorConfigManager.openGlobalConfig();
+                if (followUp === 'Create File') {
+                    try {
+                        const fs = await import('fs/promises');
+                        const pathMod = await import('path');
+                        await fs.mkdir(pathMod.dirname(fullPath), { recursive: true });
+                        const defaultContent = client.format === 'toml'
+                            ? ''
+                            : '{\n  "mcpServers": {}\n}\n';
+                        await fs.writeFile(fullPath, defaultContent, 'utf-8');
+                        const doc = await vscode.workspace.openTextDocument(fullPath);
+                        await vscode.window.showTextDocument(doc);
+                    } catch (err2) {
+                        void vscode.window.showErrorMessage(
+                            `Failed to create config file: ${err2 instanceof Error ? err2.message : String(err2)}`
+                        );
+                    }
                 }
             }
         }),
-        vscode.commands.registerCommand('agentchatbus.openCursorMcpConfig', async () => {
-            await cursorConfigManager.openGlobalConfig();
+        vscode.commands.registerCommand('agentchatbus.configureAgentMcp', async () => {
+            if (!agentMcpConfigManager) {
+                void vscode.window.showErrorMessage('Agent MCP config manager is not initialized.');
+                return;
+            }
+            const config = vscode.workspace.getConfiguration('agentchatbus');
+            const transport = config.get<'v2-socket' | 'v1-http'>('agentTransport', 'v2-socket');
+            const serverUrl = config.get<string>('serverUrl', 'http://127.0.0.1:39765');
+            const clients = agentMcpConfigManager.getClients();
+
+            // Build quick-pick items for each known client
+            const items: (vscode.QuickPickItem & { clientIndex: number })[] = clients.map((c, i) => ({
+                label: c.name,
+                description: c.format.toUpperCase(),
+                detail: `~/${c.configPath} — ${c.description}`,
+                clientIndex: i,
+                picked: true,
+            }));
+            items.push({
+                label: '$(check-all) All known clients',
+                description: '',
+                detail: 'Patch every known MCP config file at once',
+                clientIndex: -1,
+            });
+
+            const selected = await vscode.window.showQuickPick(items, {
+                title: 'Configure Agent MCP — select target client(s)',
+                canPickMany: true,
+                placeHolder: transport === 'v2-socket'
+                    ? 'V2 Socket mode: agents connect via stdio proxy → Unix socket (no IP needed)'
+                    : 'V1 HTTP mode: agents connect via HTTP + SSE to the server URL',
+            });
+            if (!selected || selected.length === 0) return;
+
+            const allSelected = selected.some((s) => s.clientIndex === -1);
+            const targetClients = allSelected
+                ? clients
+                : selected
+                    .filter((s) => s.clientIndex >= 0)
+                    .map((s) => clients[s.clientIndex]);
+
+            if (targetClients.length === 0) return;
+
+            // Build the patch input
+            const v2SharedDir = path.join(os.homedir(), '.agentchatbus');
+            const proxyScriptPath = transport === 'v2-socket'
+                ? path.join(v2SharedDir, 'proxy.mjs')
+                : undefined;
+            const socketPath = transport === 'v2-socket'
+                ? path.join(v2SharedDir, 'agent.sock')
+                : undefined;
+
+            const confirmed = await vscode.window.showInformationMessage(
+                transport === 'v2-socket'
+                    ? `Patch ${targetClients.length} MCP config(s) for V2 Socket mode? Agents will connect via stdio proxy → ${socketPath}.`
+                    : `Patch ${targetClients.length} MCP config(s) for V1 HTTP mode? Agents will connect to ${serverUrl.replace(/\/+$/, '')}/mcp.`,
+                { modal: true },
+                'Patch Config'
+            );
+            if (confirmed !== 'Patch Config') return;
+
+            const input = {
+                transport,
+                proxyScriptPath,
+                socketPath,
+                serverUrl,
+                nodeExecutable: process.execPath,
+            };
+
+            const results: { name: string; changed: boolean; error?: string; path: string }[] = [];
+            for (const client of targetClients) {
+                const result = await agentMcpConfigManager.patchClient(client, input);
+                results.push({
+                    name: client.name,
+                    changed: result.changed,
+                    error: result.error,
+                    path: agentMcpConfigManager.getConfigPath(client),
+                });
+            }
+
+            const changedCount = results.filter((r) => r.changed).length;
+            const errorCount = results.filter((r) => r.error).length;
+            const summary = `${changedCount} patched, ${results.length - changedCount - errorCount} up to date, ${errorCount} errors`;
+            const detailLines = results.map((r) =>
+                `${r.changed ? '✅' : r.error ? '❌' : '⏭️'} ${r.name}: ${r.error || (r.changed ? 'patched' : 'already up to date')} (${r.path})`
+            ).join('\n');
+
+            if (errorCount > 0) {
+                const action = await vscode.window.showErrorMessage(
+                    `Agent MCP config: ${summary}\n${detailLines}`,
+                    'Open Output Channel'
+                );
+            } else {
+                const action = await vscode.window.showInformationMessage(
+                    `Agent MCP config: ${summary}`,
+                    'Show Details'
+                );
+                if (action === 'Show Details') {
+                    void vscode.window.showInformationMessage(detailLines);
+                }
+            }
         }),
         vscode.commands.registerCommand('agentchatbus.copyThreadId', (item: ThreadItem) => {
             if (item?.thread?.id) {

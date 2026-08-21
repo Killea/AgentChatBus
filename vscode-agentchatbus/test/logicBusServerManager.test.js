@@ -85,6 +85,7 @@ test('buildBundledLaunchSpec wires bundled runtime paths and server env', () => 
     cliWorkspacePath: 'C:\\Users\\me\\src\\project-a',
     msgWaitMinTimeoutMs: 45000,
     enforceMsgWaitMinTimeout: true,
+    agentTransport: 'v1-http',
     processEnv: { PATH: 'C:\\Windows\\System32' },
   });
 
@@ -109,6 +110,44 @@ test('buildBundledLaunchSpec wires bundled runtime paths and server env', () => 
   assert.equal(spec.env.AGENTCHATBUS_CLI_WORKSPACE, 'C:\\Users\\me\\src\\project-a');
   assert.equal(spec.env.AGENTCHATBUS_WAIT_MIN_TIMEOUT_MS, '45000');
   assert.equal(spec.env.AGENTCHATBUS_ENFORCE_MSG_WAIT_MIN_TIMEOUT, '1');
+  assert.equal(spec.env.AGENTCHATBUS_AGENT_TRANSPORT, 'v1-http');
+});
+
+test('buildBundledLaunchSpec defaults agentTransport to v2-socket when omitted', () => {
+  const spec = buildBundledLaunchSpec({
+    serverEntry: '/bundle/dist/cli/index.js',
+    webUiDir: '/bundle/web-ui',
+    extensionRoot: '/bundle',
+    globalStoragePath: '/storage',
+    hostNodeExecutable: '/usr/bin/node',
+    serverUrl: 'http://127.0.0.1:39765',
+    msgWaitMinTimeoutMs: 60000,
+    enforceMsgWaitMinTimeout: false,
+    ptyUseConpty: false,
+  });
+  assert.equal(spec.env.AGENTCHATBUS_AGENT_TRANSPORT, 'v2-socket');
+  // V2 uses shared ~/.agentchatbus/ paths
+  assert.equal(spec.env.AGENTCHATBUS_APP_DIR, path.join(require('node:os').homedir(), '.agentchatbus'));
+  assert.equal(spec.env.AGENTCHATBUS_DB, path.join(require('node:os').homedir(), '.agentchatbus', 'agentchatbus.db'));
+});
+
+test('buildBundledLaunchSpec passes v1-http agentTransport when requested', () => {
+  const spec = buildBundledLaunchSpec({
+    serverEntry: '/bundle/dist/cli/index.js',
+    webUiDir: '/bundle/web-ui',
+    extensionRoot: '/bundle',
+    globalStoragePath: '/storage',
+    hostNodeExecutable: '/usr/bin/node',
+    serverUrl: 'http://127.0.0.1:39765',
+    msgWaitMinTimeoutMs: 60000,
+    enforceMsgWaitMinTimeout: false,
+    ptyUseConpty: false,
+    agentTransport: 'v1-http',
+  });
+  assert.equal(spec.env.AGENTCHATBUS_AGENT_TRANSPORT, 'v1-http');
+  // V1 uses per-IDE globalStoragePath
+  assert.equal(spec.env.AGENTCHATBUS_APP_DIR, '/storage');
+  assert.equal(spec.env.AGENTCHATBUS_DB, path.join('/storage', 'bus-ts.db'));
 });
 
 test('buildWorkspaceDevLaunchSpec wires local tsx watcher and dev env', () => {
@@ -122,6 +161,7 @@ test('buildWorkspaceDevLaunchSpec wires local tsx watcher and dev env', () => {
     cliWorkspacePath: 'C:\\repo',
     msgWaitMinTimeoutMs: 1500,
     enforceMsgWaitMinTimeout: false,
+    agentTransport: 'v1-http',
     processEnv: { PATH: 'C:\\Windows\\System32' },
   });
 
@@ -142,6 +182,7 @@ test('buildWorkspaceDevLaunchSpec wires local tsx watcher and dev env', () => {
   assert.equal(spec.env.AGENTCHATBUS_CLI_WORKSPACE, 'C:\\repo');
   assert.equal(spec.env.AGENTCHATBUS_WAIT_MIN_TIMEOUT_MS, '1500');
   assert.equal(spec.env.AGENTCHATBUS_ENFORCE_MSG_WAIT_MIN_TIMEOUT, '0');
+  assert.equal(spec.env.AGENTCHATBUS_AGENT_TRANSPORT, 'v1-http');
   assert.equal(spec.env.AGENTCHATBUS_RELOAD, '1');
   assert.equal(spec.env.AGENTCHATBUS_WORKSPACE_DEV, '1');
   assert.equal(

@@ -252,6 +252,7 @@ export function getPromptResult(
  * Handle initialize request.
  */
 export async function handleInitialize(body: JsonRpcRequest): Promise<Record<string, unknown>> {
+  const cfg = getConfig();
   return {
     jsonrpc: "2.0",
     id: body.id ?? null,
@@ -265,6 +266,7 @@ export async function handleInitialize(body: JsonRpcRequest): Promise<Record<str
       serverInfo: {
         name: "agentchatbus",
         version: BUS_VERSION,
+        agent_transport: cfg.agentTransport,
       },
     },
   };

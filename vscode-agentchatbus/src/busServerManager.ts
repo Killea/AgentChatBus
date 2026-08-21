@@ -39,6 +39,7 @@ type ServerMetadata = {
     backendRuntime?: string;
     externalOwnershipAssignable?: boolean | null;
     resolutionAttempts?: string[];
+    agentTransport?: 'v2-socket' | 'v1-http';
 };
 
 type IdeSessionApiState = {
@@ -1131,6 +1132,8 @@ export class BusServerManager {
         const msgWaitMinTimeoutMs = Math.max(0, Math.floor(config.get<number>('msgWaitMinTimeoutMs', 60000)));
         const enforceMsgWaitMinTimeout = Boolean(config.get<boolean>('enforceMsgWaitMinTimeout', false));
         const ptyUseConpty = Boolean(config.get<boolean>('ptyUseConpty', false));
+        const agentTransport = config.get<'v2-socket' | 'v1-http'>('agentTransport', 'v2-socket');
+        const threadTimeoutMinutes = Math.max(0, Math.floor(config.get<number>('threadTimeoutMinutes', 10080)));
         const parsedUrl = new URL(serverUrl);
         const port = Number(parsedUrl.port || (parsedUrl.protocol === 'https:' ? '443' : '80'));
         const dbPath = path.join(this.globalStoragePath, 'bus-ts.db');
@@ -1141,6 +1144,8 @@ export class BusServerManager {
         this.recordResolutionAttempt(
             `Using IDE host Node runtime ${process.version} from ${this.hostNodeExecutable} to launch bundled MCP.`
         );
+        this.recordResolutionAttempt(`Agent transport: ${agentTransport}`);
+        this.recordResolutionAttempt(`Thread auto-close timeout: ${threadTimeoutMinutes === 0 ? 'disabled' : threadTimeoutMinutes + ' min'}`);
         if (cliWorkspacePath) {
             this.recordResolutionAttempt(`Using VS Code workspace as CLI working root: ${cliWorkspacePath}`);
         } else {
@@ -1158,6 +1163,8 @@ export class BusServerManager {
             msgWaitMinTimeoutMs,
             enforceMsgWaitMinTimeout,
             ptyUseConpty,
+            agentTransport,
+            threadTimeoutMinutes,
             processEnv: process.env,
         });
     }
@@ -1194,6 +1201,8 @@ export class BusServerManager {
         const msgWaitMinTimeoutMs = Math.max(0, Math.floor(config.get<number>('msgWaitMinTimeoutMs', 60000)));
         const enforceMsgWaitMinTimeout = Boolean(config.get<boolean>('enforceMsgWaitMinTimeout', false));
         const ptyUseConpty = Boolean(config.get<boolean>('ptyUseConpty', false));
+        const agentTransport = config.get<'v2-socket' | 'v1-http'>('agentTransport', 'v2-socket');
+        const threadTimeoutMinutes = Math.max(0, Math.floor(config.get<number>('threadTimeoutMinutes', 10080)));
 
         this.recordResolutionAttempt(`Resolved workspace-dev repo root: ${workspaceDevContext.repoRoot}`);
         this.recordResolutionAttempt(`Resolved workspace-dev tsx CLI: ${workspaceDevContext.tsxCliEntrypoint}`);
@@ -1202,6 +1211,8 @@ export class BusServerManager {
         this.recordResolutionAttempt(
             `Using IDE host Node runtime ${process.version} from ${this.hostNodeExecutable} to launch workspace-dev MCP.`
         );
+        this.recordResolutionAttempt(`Agent transport: ${agentTransport}`);
+        this.recordResolutionAttempt(`Thread auto-close timeout: ${threadTimeoutMinutes === 0 ? 'disabled' : threadTimeoutMinutes + ' min'}`);
         if (cliWorkspacePath) {
             this.recordResolutionAttempt(`Using VS Code workspace as CLI working root: ${cliWorkspacePath}`);
         } else {
@@ -1219,6 +1230,8 @@ export class BusServerManager {
             msgWaitMinTimeoutMs,
             enforceMsgWaitMinTimeout,
             ptyUseConpty,
+            agentTransport,
+            threadTimeoutMinutes,
             processEnv: process.env,
         });
     }

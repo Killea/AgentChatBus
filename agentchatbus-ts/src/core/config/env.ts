@@ -29,11 +29,12 @@ export {
 import { getConfig } from "./registry.js";
 import type { AppConfig } from "./registry.js";
 
-export const BUS_VERSION = "0.2.38";
+export const BUS_VERSION = "0.2.45";
 export const ADMIN_TOKEN: string | null = getConfig().adminToken;
 export const ENABLE_HANDOFF_TARGET = getConfig().enableHandoffTarget;
 export const ENABLE_STOP_REASON = getConfig().enableStopReason;
 export const ENABLE_PRIORITY = getConfig().enablePriority;
+export const AGENT_TRANSPORT: "v1-http" | "v2-socket" = getConfig().agentTransport;
 
 export function isNonLocalhostDeployment(config: Pick<AppConfig, "host" | "showAd">): boolean {
   return config.showAd || (config.host !== "127.0.0.1" && config.host !== "::1" && config.host !== "localhost");

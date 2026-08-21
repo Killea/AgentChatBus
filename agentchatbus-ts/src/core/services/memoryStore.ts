@@ -36,6 +36,7 @@ import { registerStore } from "./storeSingleton.js";
 import { checkContentOrThrow, ContentFilterError } from "./contentFilter.js";
 import { checkFilesystemDisclosureOrThrow, FilesystemDisclosureError } from "./filesystemDisclosureFilter.js";
 import { BUS_VERSION, ENABLE_HANDOFF_TARGET, ENABLE_STOP_REASON, ENABLE_PRIORITY, getConfig } from "../config/env.js";
+import { getAgentSocketPath } from "../../transports/socket/server.js";
 
 /** Constant-time string comparison to prevent timing attacks on tokens */
 function safeCompare(a: string, b: string): boolean {
@@ -618,6 +619,11 @@ export class MemoryStore {
       version: BUS_VERSION,
       runtime: `node ${process.version}`,
       transport: "http+sse",
+      agent_transport: cfg.agentTransport,
+      bind_host: cfg.host,
+      ...(cfg.agentTransport === "v2-socket"
+        ? { socket_path: getAgentSocketPath() }
+        : {}),
       pty: {
         mode: cfg.ptyUseConpty ? "conpty" : "winpty",
         conpty_enabled: Boolean(cfg.ptyUseConpty),

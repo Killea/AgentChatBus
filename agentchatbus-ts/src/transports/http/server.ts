@@ -48,6 +48,7 @@ import {
 import { resolveDefaultWorkspacePath } from "../../core/services/adapters/utils.js";
 import { WINDOWS_POWERSHELL } from "../../core/services/adapters/constants.js";
 import { HttpLatencyTracker } from "./httpLatencyTracker.js";
+import { getAgentSocketPath } from "../socket/server.js";
 
 // Allow tests to override the global memoryStore instance
 export let memoryStoreInstance: MemoryStore | null = null;
@@ -937,6 +938,11 @@ export function createHttpServer() {
       version: BUS_VERSION,
       runtime: `node ${process.version}`,
       transport: "http+sse",
+      agent_transport: cfg.agentTransport,
+      bind_host: cfg.host,
+      ...(cfg.agentTransport === "v2-socket"
+        ? { socket_path: getAgentSocketPath() }
+        : {}),
       pty: {
         mode: cfg.ptyUseConpty ? "conpty" : "winpty",
         conpty_enabled: Boolean(cfg.ptyUseConpty),
@@ -3103,10 +3109,12 @@ export function createHttpServer() {
   const cleanupInterval = setInterval(() => {
     try { store.cleanupOldEvents(3600); } catch (_) { /* ignore */ }
   }, 60_000);
-  // Thread timeout sweep — configurable interval
+  // Thread timeout sweep — uses configurable timeout (minutes) and sweep interval (seconds).
+  // threadTimeoutMinutes=0 disables auto-close.
+  const sweepIntervalMs = Math.max(1, cfg.threadTimeoutSweepInterval) * 1000;
   const timeoutInterval = setInterval(() => {
-    try { store.threadTimeoutSweep(30); } catch (_) { /* ignore */ }
-  }, 30_000);
+    try { store.threadTimeoutSweep(cfg.threadTimeoutMinutes); } catch (_) { /* ignore */ }
+  }, sweepIntervalMs);
   const adminCoordinatorInterval = setInterval(() => {
     try { store.adminCoordinatorSweep(); } catch (_) { /* ignore */ }
   }, 10_000);

@@ -13,6 +13,16 @@ test('getBrowserOpenUrl rewrites wildcard bind addresses to localhost for browse
   assert.equal(getBrowserOpenUrl('not a url'), 'not a url');
 });
 
+test('getBrowserOpenUrl prefers LAN IP when provided for wildcard binds', () => {
+  assert.equal(getBrowserOpenUrl('http://0.0.0.0:39765', ['192.168.1.20']), 'http://192.168.1.20:39765/');
+  assert.equal(getBrowserOpenUrl('http://[::]:39765', ['10.0.0.5']), 'http://10.0.0.5:39765/');
+  // Falls back to 127.0.0.1 when no LAN IPs provided
+  assert.equal(getBrowserOpenUrl('http://0.0.0.0:39765', []), 'http://127.0.0.1:39765/');
+  assert.equal(getBrowserOpenUrl('http://0.0.0.0:39765', undefined), 'http://127.0.0.1:39765/');
+  // Non-wildcard hosts are not affected by lanIps
+  assert.equal(getBrowserOpenUrl('http://127.0.0.1:39765', ['192.168.1.20']), 'http://127.0.0.1:39765/');
+});
+
 test('isLocalServerUrlWithContext recognizes localhost, hostname, and local interface IPs', () => {
   const context = {
     localHostName: 'devbox',

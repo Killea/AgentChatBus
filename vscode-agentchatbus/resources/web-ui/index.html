@@ -639,6 +639,37 @@
           ? 'Yes'
           : (ownershipAssignable === false ? 'No' : 'Unknown');
 
+        // Agent transport info
+        const agentTransport = String(m?.agent_transport || '').trim().toLowerCase();
+        const bindHost = String(m?.bind_host || '').trim();
+        const isV2 = agentTransport === 'v2-socket';
+        const isV1 = agentTransport === 'v1-http';
+        const isLanAccessible = bindHost === '0.0.0.0' || bindHost === '::' || bindHost === '';
+        const socketPath = m?.socket_path || '';
+        const agentTransportLabel = isV2 ? 'V2: Socket' : isV1 ? 'V1: HTTP + SSE' : '—';
+        const agentTransportDesc = isV2
+          ? (isLanAccessible
+              ? 'Agents connect via Unix socket / named pipe (local). LAN agents can also connect via HTTP + SSE using the server IP:port.'
+              : 'Agents connect via Unix socket / named pipe (local only). HTTP + SSE is also available on localhost.')
+          : isV1
+            ? 'Agents connect via HTTP + SSE to the server IP:port.'
+            : '';
+        const agentTransportHtml = (isV2 || isV1)
+          ? `
+            <div class="srv-tip-row">
+              <span class="srv-tip-key">Agent Transport</span>
+              <span class="srv-tip-val">${agentTransportLabel}</span>
+            </div>
+            ${isV2 && socketPath ? `<div class="srv-tip-row srv-tip-row--sub"><span class="srv-tip-key">Socket Path</span><span class="srv-tip-val" style="word-break:break-all;font-size:0.85em;">${socketPath}</span></div>` : ''}
+            <div class="srv-tip-row srv-tip-row--sub">
+              <span class="srv-tip-key">Bind Host</span>
+              <span class="srv-tip-val">${bindHost || '—'}</span>
+            </div>
+            <div class="srv-tip-row srv-tip-row--sub">
+              <span class="srv-tip-key" style="white-space:normal;">${agentTransportDesc}</span>
+            </div>`
+          : '';
+
         return `
           <div class="srv-tip-card">
             <div class="srv-tip-header">
@@ -663,6 +694,7 @@
               <span class="srv-tip-key">Transport</span>
               <span class="srv-tip-val">${transport}</span>
             </div>
+            ${agentTransportHtml}
             <div class="srv-tip-row srv-tip-row--sub">
               <span class="srv-tip-key">PTY Mode</span>
               <span class="srv-tip-val">${ptyMode.label} (${ptyMode.detail})</span>

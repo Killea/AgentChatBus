@@ -1,6 +1,6 @@
 {
   "name": "agentchatbus-ts",
-  "version": "0.2.38",
+  "version": "0.2.45",
   "private": true,
   "description": "Initial TypeScript backend workspace for AgentChatBus",
   "type": "module",
@@ -28,6 +28,7 @@
     "@xterm/xterm": "^6.0.0",
     "cross-spawn": "^7.0.6",
     "fastify": "^5.2.1",
+    "xpipe": "^1.0.8",
     "zod": "^4.3.6"
   },
   "devDependencies": {

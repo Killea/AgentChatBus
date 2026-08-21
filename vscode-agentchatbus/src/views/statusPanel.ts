@@ -50,12 +50,40 @@ export class StatusPanel {
         const attempts = Array.isArray(m.resolutionAttempts) ? m.resolutionAttempts : [];
         const isExternalMode = String(m.startupMode || '').startsWith('external-service');
         const serverReachable = Boolean(m.serverReachable);
-        const serverStatus = m.pid || (isExternalMode && serverReachable) ? 'RUNNING' : 'STOPPED';
+        const isLocalHost = Boolean(m.pid) || Boolean(ide.isOwner);
+        const isExternalHost = !isLocalHost && serverReachable;
+        // Status is tri-state: RUNNING · LOCAL (this IDE hosts the process),
+        // RUNNING · EXTERNAL (service is reachable but hosted by another IDE / external process),
+        // or STOPPED (not reachable and no local process).
+        const serverStatus = isLocalHost
+            ? 'RUNNING · LOCAL'
+            : isExternalHost
+                ? 'RUNNING · EXTERNAL'
+                : 'STOPPED';
+        const serverStatusBadgeClass = isLocalHost || isExternalHost ? 'ok' : 'error';
+        // Hint shown directly under Status to disambiguate "EXTERNAL":
+        // tells the user the service is alive but hosted by another IDE,
+        // and identifies the hosting IDE when the backend reports an owner.
+        const ownerLabel = typeof ide.ownerLabel === 'string' && ide.ownerLabel ? ide.ownerLabel : '';
+        const ownerInstanceId = typeof ide.ownerInstanceId === 'string' && ide.ownerInstanceId ? ide.ownerInstanceId : '';
+        const ownerShortId = ownerInstanceId ? ownerInstanceId.slice(0, 8) : '';
+        const registeredIdeCount = typeof ide.registeredSessionsCount === 'number' ? ide.registeredSessionsCount : 0;
+        const serverStatusHint = isLocalHost
+            ? 'This IDE is hosting the server process.'
+            : isExternalHost
+                ? (ownerLabel
+                    ? `Server is running in another IDE: ${ownerLabel}${ownerShortId ? ` (instance ${ownerShortId})` : ''}.${registeredIdeCount > 0 ? ` ${registeredIdeCount} IDE(s) registered.` : ''}`
+                    : 'Server is reachable but hosted by an external process (no IDE owner reported by the backend).')
+                : 'Server is not running. Start it from an IDE or externally.';
         const isRemote = String(m.serverScope || '').toLowerCase() === 'remote';
         const hidden = '[hidden for remote server]';
         const pidDisplay = isRemote
             ? hidden
-            : (m.pid || (isExternalMode && serverReachable ? 'External service' : 'N/A'));
+            : (m.pid
+                ? String(m.pid)
+                : isExternalHost
+                    ? (ownerLabel ? `hosted by ${ownerLabel}` : 'external process')
+                    : 'N/A');
         const uptime = m.startTime
             ? this._getUptime(new Date(m.startTime))
             : (typeof m.backendUptimeSeconds === 'number'
@@ -92,6 +120,19 @@ export class StatusPanel {
         const bindHostDisplay = bindHost === '0.0.0.0'
             ? `0.0.0.0 (all interfaces)${lanIps.length > 0 ? ' — accessible via: ' + lanIps.join(', ') : ''}`
             : bindHost;
+        const agentTransportRaw = String(m.agentTransport || '').trim().toLowerCase();
+        const agentTransport = agentTransportRaw === 'v1-http' ? 'v1-http' : (agentTransportRaw === 'v2-socket' ? 'v2-socket' : 'unknown');
+        const agentTransportLabel = agentTransport === 'v2-socket'
+            ? 'V2: Socket (recommended)'
+            : agentTransport === 'v1-http'
+                ? 'V1: HTTP + SSE (legacy)'
+                : 'N/A';
+        const agentTransportBadgeClass = agentTransport === 'v2-socket' ? 'ok' : agentTransport === 'v1-http' ? 'warn' : 'neutral';
+        const agentTransportTooltip = agentTransport === 'v2-socket'
+            ? 'V2 (Socket): Agents connect via Unix socket / Windows named pipe. No IP or port configuration needed for agents. The HTTP server still runs for the Web UI only — agents do NOT connect to the IP/port.'
+            : agentTransport === 'v1-http'
+                ? 'V1 (HTTP + SSE, legacy): Agents connect via HTTP + SSE to the server IP and port. Requires agents to know the server URL.'
+                : 'Agent transport mode could not be determined from the running backend.';
         // Build the list of URLs that clients can actually connect to.
         const port = (() => {
             try { return String(new URL(serverUrlDisplay).port || '39765'); }
@@ -167,7 +208,8 @@ export class StatusPanel {
     <div class="grid">
         <div class="card">
             <h2>🌍 Server Instance</h2>
-            <div><span class="label">Status:</span> <span class="status-badge">${serverStatus}</span></div>
+            <div><span class="label">Status:</span> <span class="status-badge ${serverStatusBadgeClass}">${serverStatus}</span></div>
+            <div class="hint">${this._escapeHtml(serverStatusHint)}</div>
             <div><span class="label">Bind Address:</span> <span class="value">${bindHostDisplay}</span></div>
             <div>
                 <span class="label">Access URLs:</span>
@@ -186,6 +228,12 @@ export class StatusPanel {
             <div><span class="label">Backend Version:</span> <span class="value">${backendVersion}</span></div>
             <div><span class="label">Backend Runtime:</span> <span class="value">${backendRuntime}</span></div>
             <div><span class="label">Backend Source:</span> <span class="value">${backendSource}</span></div>
+            <div title="${this._escapeHtml(agentTransportTooltip)}"><span class="label">Agent Transport:</span> <span class="status-badge ${agentTransportBadgeClass}" title="${this._escapeHtml(agentTransportTooltip)}">${agentTransportLabel}</span></div>
+            ${agentTransport === 'v2-socket'
+                ? `<div class="hint" title="In V2 mode, the HTTP server is for Web UI access only. Agents connect via socket, not the IP/port.">ℹ️ In V2 mode, the URLs above are for <strong>Web UI access only</strong>. MCP agents connect via Unix socket / named pipe and do <strong>not</strong> use the IP address or port.</div>`
+                : agentTransport === 'v1-http'
+                    ? `<div class="hint" title="In V1 mode, agents connect to the server IP and port via HTTP + SSE.">ℹ️ In V1 mode, agents connect to the URLs above via HTTP + SSE.</div>`
+                    : ''}
         </div>
 
         <div class="card">

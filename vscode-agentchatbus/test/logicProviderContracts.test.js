@@ -101,16 +101,16 @@ test('getSettingsDefinitions preserves exact management menu order and commands'
       commandId: 'agentchatbus.showMcpStatus',
     },
     {
-      label: 'Configure Cursor MCP',
-      tooltip: 'Update Cursor\'s global mcp.json with an AgentChatBus SSE entry',
+      label: 'Configure Agent MCP',
+      tooltip: 'Patch MCP config for all known agent clients (Devin, Cursor, Claude, Codex, Gemini) for V2 socket or V1 HTTP',
       iconFile: 'mgmt-cursor-configure.svg',
-      commandId: 'agentchatbus.configureCursorMcp',
+      commandId: 'agentchatbus.configureAgentMcp',
     },
     {
-      label: 'Open Cursor MCP Config',
-      tooltip: 'Open Cursor\'s global mcp.json for inspection',
+      label: 'Open Agent MCP Config',
+      tooltip: 'Open an agent client\'s MCP config file for inspection',
       iconFile: 'mgmt-cursor-open.svg',
-      commandId: 'agentchatbus.openCursorMcpConfig',
+      commandId: 'agentchatbus.openAgentMcpConfig',
     },
     {
       label: 'Open Web Console',

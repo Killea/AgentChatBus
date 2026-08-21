@@ -7,7 +7,7 @@
   "name": "agentchatbus",
   "displayName": "AgentChatBus",
   "description": "AgentChatBus client for VS Code",
-  "version": "0.2.38",
+  "version": "0.2.45",
   "icon": "resources/bus_128.png",
   "engines": {
     "vscode": "^1.105.0"
@@ -98,6 +98,25 @@
           "type": "boolean",
           "default": false,
           "description": "Use Windows ConPTY for interactive PTY-based CLI agents. Disable this if Codex/Cursor/Claude/Gemini/Copilot terminals render incorrectly, freeze, or show cursor drift. Restart bundled server to apply. Search keyword: AgentChatBus."
+        },
+        "agentchatbus.agentTransport": {
+          "type": "string",
+          "enum": [
+            "v2-socket",
+            "v1-http"
+          ],
+          "default": "v2-socket",
+          "enumDescriptions": [
+            "V2 (recommended): agents connect via Unix socket / Windows named pipe. No IP or port configuration needed for agents. The HTTP server still runs for the Web UI only.",
+            "V1 (legacy): agents connect via HTTP + SSE. Requires agents to know the server IP and port."
+          ],
+          "description": "Agent transport protocol. V2 (recommended): agents connect via Unix socket / Windows named pipe — no IP or port configuration needed. V1 (legacy): agents connect via HTTP + SSE. Restart bundled server to apply. Search keyword: AgentChatBus."
+        },
+        "agentchatbus.threadTimeoutMinutes": {
+          "type": "integer",
+          "default": 10080,
+          "minimum": 0,
+          "description": "Auto-close threads in 'discuss' state after this many minutes of inactivity. Default: 10080 (7 days). Set to 0 to disable. Only affects 'discuss' threads; other statuses are never auto-closed. Restart bundled server to apply. Search keyword: AgentChatBus."
         }
       }
     },
@@ -172,13 +191,15 @@
         "icon": "$(plug)"
       },
       {
-        "command": "agentchatbus.configureCursorMcp",
-        "title": "Configure Cursor MCP",
-        "icon": "$(symbol-event)"
+        "command": "agentchatbus.configureAgentMcp",
+        "title": "Configure Agent MCP (All Clients)",
+        "category": "AgentChatBus",
+        "icon": "$(plug)"
       },
       {
-        "command": "agentchatbus.openCursorMcpConfig",
-        "title": "Open Cursor MCP Config",
+        "command": "agentchatbus.openAgentMcpConfig",
+        "title": "Open Agent MCP Config",
+        "category": "AgentChatBus",
         "icon": "$(go-to-file)"
       },
       {

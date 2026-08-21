@@ -19,11 +19,13 @@ function expandLocalIpSet(localIps: string[]): Set<string> {
     return expanded;
 }
 
-export function getBrowserOpenUrl(rawUrl: string): string {
+export function getBrowserOpenUrl(rawUrl: string, lanIps?: string[]): string {
     try {
         const normalized = new URL(rawUrl);
         if (normalized.hostname === '0.0.0.0' || normalized.hostname === '::' || normalized.hostname === '[::]') {
-            normalized.hostname = '127.0.0.1';
+            // Prefer the first non-internal IPv4 LAN address, if provided.
+            const preferredLanIp = lanIps && lanIps.length > 0 ? lanIps[0] : undefined;
+            normalized.hostname = preferredLanIp || '127.0.0.1';
         }
         return normalized.toString();
     } catch {
