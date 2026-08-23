@@ -28,6 +28,7 @@ import {
   getAcpAgent,
   type AcpAgentConfig,
 } from "./acpRegistry.js";
+import { resolveAcpMcpProxyScript } from "./acpMcpProxyPath.js";
 import type {
   CliAdapterActivityEvent,
   CliAdapterNativeRuntimeEvent,
@@ -442,7 +443,7 @@ export class AcpAdapter implements CliSessionAdapter {
           const useV2 = cfg.agentTransport === "v2-socket";
           const proxyScript = useV2
             ? new URL("../../transports/socket/proxy.mjs", import.meta.url).pathname
-            : new URL("../../transports/stdio/mcpProxy.mjs", import.meta.url).pathname;
+            : resolveAcpMcpProxyScript();
 
           if (useV2) {
             // V2: stdio proxy connects to Unix socket / named pipe (no IP/port).
