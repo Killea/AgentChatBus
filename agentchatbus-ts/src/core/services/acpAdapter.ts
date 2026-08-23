@@ -28,7 +28,7 @@ import {
   getAcpAgent,
   type AcpAgentConfig,
 } from "./acpRegistry.js";
-import { resolveAcpMcpProxyScript } from "./acpMcpProxyPath.js";
+import { resolveAcpMcpProxyScript, resolveAcpSocketProxyScript } from "./acpMcpProxyPath.js";
 import type {
   CliAdapterActivityEvent,
   CliAdapterNativeRuntimeEvent,
@@ -274,7 +274,7 @@ export class AcpAdapter implements CliSessionAdapter {
       const cfg = getConfig();
       if (cfg.agentTransport === "v2-socket") {
         const sockPath = getAgentSocketPath();
-        const proxyScript = new URL("../../transports/socket/proxy.mjs", import.meta.url).pathname;
+        const proxyScript = resolveAcpSocketProxyScript();
         patchMcpConfig(this.agentConfig.mcpConfigPath, baseUrl, sockPath, proxyScript);
       } else if (baseUrl) {
         patchMcpConfig(this.agentConfig.mcpConfigPath, baseUrl);
@@ -442,7 +442,7 @@ export class AcpAdapter implements CliSessionAdapter {
           const mcpServers: acp.McpServer[] = [];
           const useV2 = cfg.agentTransport === "v2-socket";
           const proxyScript = useV2
-            ? new URL("../../transports/socket/proxy.mjs", import.meta.url).pathname
+            ? resolveAcpSocketProxyScript()
             : resolveAcpMcpProxyScript();
 
           if (useV2) {
