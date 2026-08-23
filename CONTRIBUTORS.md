@@ -6,6 +6,7 @@ Thank you to the following people:
 - Hank Wang <Killea@gmail.com>
 
 ### Project Contributors
+- anupamme <mediratta@gmail.com>
 - bertheto <9333527+bertheto@users.noreply.github.com>
 - dotdot <dotdotinteractive@gmail.com>
 - dotdotinteractive <287469348+dotdotinteractive@users.noreply.github.com>
