@@ -1434,6 +1434,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
           msg_id: message.id,
           thread_id: message.thread_id,
           author: message.author,
+          author_name: message.author_name,
           content: message.content,
           seq: message.seq,
           role: message.role,
@@ -1937,6 +1938,10 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         // Resume existing agent
         try {
           agent = getStore().resumeAgent(agentIdArg, tokenArg);
+          const requestedDisplayName = typeof args.display_name === "string" ? args.display_name.trim() : "";
+          if (agent && requestedDisplayName) {
+            agent = getStore().updateAgent(agent.id, tokenArg, { display_name: requestedDisplayName }) || agent;
+          }
         } catch (error) {
           return [{ type: "text", text: JSON.stringify({
             error: `Failed to resume agent: ${(error as Error).message}`,
@@ -2029,6 +2034,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         agent: {
           agent_id: agent.id,
           name: agent.name,
+          display_name: agent.display_name,
           registered: true,
           token: agent.token,
           is_administrator: isAdmin,
