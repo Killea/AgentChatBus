@@ -8,7 +8,7 @@ import { join, parse, resolve as resolvePath } from "node:path";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { callTool, listTools, withToolCallContext } from "../../adapters/mcp/tools.js";
-import { SeqMismatchError, MissingSyncFieldsError, ReplyTokenInvalidError, ReplyTokenExpiredError, ReplyTokenReplayError, BusError } from "../../core/types/errors.js";
+import { SeqMismatchError, MissingSyncFieldsError, ReplyTokenInvalidError, ReplyTokenExpiredError, ReplyTokenReplayError, BusError, AuthorAuthError } from "../../core/types/errors.js";
 import {
   BUS_VERSION,
   ConfigValidationError,
@@ -52,6 +52,9 @@ import { getAgentSocketPath } from "../socket/server.js";
 
 // Allow tests to override the global memoryStore instance
 export let memoryStoreInstance: MemoryStore | null = null;
+
+export const redactTokens = (text: string): string =>
+  text.replace(/(\\?"token\\?"\s*:\s*\\?")[^"\\]*/g, "$1[REDACTED]");
 
 export function getMemoryStore(): MemoryStore {
   return memoryStoreInstance || memoryStore;
@@ -1174,7 +1177,7 @@ export function createHttpServer() {
         const result = await withToolCallContext({ sessionId, abortSignal: abortContext.signal }, () =>
           callTool(String(params?.name || ""), params?.arguments || {})
         );
-        try { console.log(`[mcp-call] ${String(params?.name || "")} => ${JSON.stringify(result).slice(0, 200)}`); } catch (_) {}
+        try { console.log(`[mcp-call] ${String(params?.name || "")} => ${redactTokens(JSON.stringify(result)).slice(0, 200)}`); } catch (_) {}
         return { result };
       } catch (error) {
         try { console.error(`[mcp-call-error] ${String((error as Error).message || error)}`); } catch (_) {}
@@ -1245,7 +1248,7 @@ export function createHttpServer() {
         // Always produce a string payload; if stringify returns falsy, fall back to '{}'
         let payloadText = safeStringify(result) || "{}";
         // debug log to help parity tests diagnose response shape in subprocesses
-        try { console.log(`[mcp-rest] ${params.toolName} -> ${String(payloadText).slice(0,200)}`); } catch (e) { }
+        try { console.log(`[mcp-rest] ${params.toolName} -> ${redactTokens(String(payloadText)).slice(0, 200)}`); } catch (e) { }
         try {
           // write a copy for debugging when running in a child process
           writeFileSync("tmp_last_mcp_response.json", String(payloadText), { encoding: "utf8" });
@@ -1917,6 +1920,24 @@ export function createHttpServer() {
       return { detail: "role 'system' is not allowed for human messages" };
     }
 
+    const headerToken = request.headers["x-agent-token"];
+    const token = Array.isArray(headerToken) ? headerToken[0] : headerToken;
+    const strictAuthorAuth = Boolean(getConfig().strictAuthorAuth);
+    let resolved: { author: string; authorVerified: boolean };
+    try {
+      resolved = store.resolvePostAuthor({
+        author,
+        token: typeof token === "string" ? token : undefined,
+        strict: strictAuthorAuth,
+      });
+    } catch (error) {
+      if (error instanceof AuthorAuthError) {
+        reply.code(401);
+        return { detail: error.message, error: error.code };
+      }
+      throw error;
+    }
+
     let expectedLastSeq = typeof body.expected_last_seq === "number" ? body.expected_last_seq : undefined;
     let replyToken = typeof body.reply_token === "string" ? body.reply_token : undefined;
 
@@ -1939,7 +1960,8 @@ export function createHttpServer() {
     try {
       const message = store.postMessage({
         threadId: params.threadId,
-        author,
+        author: resolved.author,
+        authorVerified: resolved.authorVerified,
         content: String(body.content || ""),
         expectedLastSeq,
         replyToken,
@@ -1957,6 +1979,7 @@ export function createHttpServer() {
         author_id: message.author_id,
         author_name: message.author_name,
         author_emoji: message.author_emoji || "🤖",
+        author_verified: message.author_verified === true,
         role: message.role,
         content: message.content,
         created_at: message.created_at,

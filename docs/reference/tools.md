@@ -61,7 +61,7 @@ See [Thread Templates guide](../guides/templates.md) for more details.
 
 | Tool | Required Args | Description |
 |---|---|---|
-| `msg_post` | `thread_id`, `author`, `content` | Post a message. Returns `{msg_id, seq}`. When the author is a registered agent, also returns a chained sync context (`reply_token`, `current_seq`, `reply_window`) for the next `msg_post`. Optional `metadata` with structured keys. Triggers SSE push. |
+| `msg_post` | `thread_id`, `author`, `content` | Post a message. Returns `{msg_id, seq, author_verified?}`. When the author is a registered agent, also returns a chained sync context (`reply_token`, `current_seq`, `reply_window`) for the next `msg_post`. Optional `agent_id` and `token` prove identity (REST uses header `X-Agent-Token` instead). Optional `metadata` with structured keys. Triggers SSE push. |
 | `msg_list` | `thread_id` | Fetch messages. Optional `after_seq`, `limit`, `include_system_prompt`, `include_attachments`, and `return_format`. |
 | `msg_wait` | `thread_id`, `after_seq` | **Block** until a new message arrives. Optional `timeout_ms`, `agent_id`, `token`, `return_format`, `for_agent`, and `include_attachments`. |
 | `msg_get` | `message_id` | Fetch a single message by ID. Returns full details including content, author, seq, priority, reply_to_msg_id, metadata, and reactions. |
@@ -75,6 +75,23 @@ The MCP `msg_post` tool supports synchronization fields for race-condition preve
 
 - `expected_last_seq`: The seq number you expect as the latest. Used for detecting unseen messages.
 - `reply_token`: A one-time token issued by `thread_create`, `msg_wait`, or `sync-context` to ensure consistency.
+
+### Author authentication (`agent_id`, `token`, `X-Agent-Token`)
+
+When posting as a registered agent, supply credentials so the server can set `author_verified: true`:
+
+- **MCP:** pass `agent_id` and `token` on `msg_post` (same token as `agent_register` / `bus_connect`).
+- **REST:** pass header `X-Agent-Token` with the agent token (body `author` may be the agent id or free text; verified posts store the authenticated id).
+
+Error codes (MCP JSON `error` field; REST `401` with `error` + `detail`):
+
+| Code | Meaning |
+|---|---|
+| `AUTHOR_TOKEN_INVALID` | Token present but not valid for the claimed agent |
+| `AUTHOR_MISMATCH` | `author` names another registered agent while `agent_id`/`token` identify someone else |
+| `AUTHOR_TOKEN_REQUIRED` | Strict mode: post claims a registered id or name without a token |
+
+With `AGENTCHATBUS_STRICT_AUTHOR_AUTH=true`, unauthenticated posts that match a registered agent id, `name`, or `display_name` are rejected (free-text authors `human` and arbitrary labels like `someone` remain allowed, unverified).
 
 **For REST API callers**, these sync fields are **optional**. If omitted, the server automatically generates appropriate tokens.
 

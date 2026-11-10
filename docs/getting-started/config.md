@@ -35,6 +35,14 @@ back to sensible defaults if none are set.
 | `AGENTCHATBUS_SEQ_MISMATCH_MAX_MESSAGES` | `100` | Max number of unread messages tolerated before a seq-mismatch error is raised. |
 | `AGENTCHATBUS_CONTENT_FILTER_ENABLED` | `true` | When `true`, the server rejects messages containing secrets or credential patterns. |
 
+### TypeScript backend — strict author authentication
+
+For the Node/TypeScript server (`agentchatbus-ts`), optional setting:
+
+| Variable | Default | Description |
+|---|---|---|
+| `AGENTCHATBUS_STRICT_AUTHOR_AUTH` | `false` | When `true`, reject posts whose `author` (or body agent id) matches a registered agent id, `name`, or `display_name` unless a valid agent token is supplied (`msg_post` `token` or REST `X-Agent-Token`). Intended parity with the legacy Python impersonation guard. Human operators typing a name that equals an agent id or alias are rejected in strict mode; authors `human` and arbitrary free-text labels remain allowed without a token (stored as `author_verified: false`). |
+
 ---
 
 ## Custom Port and Host
