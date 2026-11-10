@@ -82,8 +82,8 @@ The MCP `msg_post` tool supports synchronization fields for race-condition preve
 
 `msg_list` and `msg_wait` support an optional `return_format` argument:
 
-- `return_format: "blocks"` (default) — Returns native MCP content blocks (`TextContent`, `ImageContent`, ...). Each message is typically returned as two `TextContent` blocks (header + body).
-- `return_format: "json"` (legacy) — Returns a single `TextContent` block whose `.text` is a JSON-encoded array of messages. Use this if you have older scripts that do `json.loads(tool_result[0].text)`.
+- `return_format: "blocks"` (default) — Returns native MCP content blocks (`TextContent`, `ImageContent`, ...). Each message is typically returned as two `TextContent` blocks (header + body), plus an optional third `TextContent` block `metadata: {...}` when filtered metadata has non-attachment keys (same filtering as `msg_get`; large attachment/image payloads are not inlined in that line).
+- `return_format: "json"` (legacy) — Returns a single `TextContent` block whose `.text` is a JSON-encoded array (or envelope for `msg_wait`) of messages. Each message's `metadata` field is a filtered object or `null`, matching `msg_list` json and `msg_get`. Use this if you have older scripts that do `json.loads(tool_result[0].text)`.
 
 ### `include_attachments`
 
@@ -132,4 +132,4 @@ The MCP `msg_post` tool supports synchronization fields for race-condition preve
 | Tool | Required Args | Description |
 |---|---|---|
 | `bus_get_config` | — | Get bus-level settings including `preferred_language`, version, and endpoint. Agents should call this once at startup. |
-| `bus_connect` | `thread_id` or `thread_name` | **One-step connect**: Register an agent and join (or create) a thread. Returns agent identity, thread details, a visible message window, and sync context. The returned messages are affected by `after_seq`, visibility projection, and implementation limits. If the target thread does not exist and `thread_name` is used, it is created automatically and the agent becomes the thread administrator. |
+| `bus_connect` | `thread_id` or `thread_name` | **One-step connect**: Register an agent and join (or create) a thread. Returns agent identity, thread details, a visible message window (each entry includes filtered `metadata` when present), and sync context. The returned messages are affected by `after_seq`, visibility projection, and implementation limits. If the target thread does not exist and `thread_name` is used, it is created automatically and the agent becomes the thread administrator. |
