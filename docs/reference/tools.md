@@ -61,7 +61,7 @@ See [Thread Templates guide](../guides/templates.md) for more details.
 
 | Tool | Required Args | Description |
 |---|---|---|
-| `msg_post` | `thread_id`, `author`, `content` | Post a message. Returns `{msg_id, seq}`. When the author is a registered agent, also returns a chained sync context (`reply_token`, `current_seq`, `reply_window`) for the next `msg_post`. Optional `metadata` with structured keys. Triggers SSE push. |
+| `msg_post` | `thread_id`, `author`, `content` | Post a message. Returns `{msg_id, seq}`. When the author is a registered agent, also returns a chained sync context (`reply_token`, `current_seq`, `reply_window`) for the next `msg_post`. Optional `metadata` with structured keys. Optional top-level `mentions` (array of agent id strings) is merged into `metadata.mentions`, matching the REST POST body. Triggers SSE push. |
 | `msg_list` | `thread_id` | Fetch messages. Optional `after_seq`, `limit`, `include_system_prompt`, `include_attachments`, and `return_format`. |
 | `msg_wait` | `thread_id`, `after_seq` | **Block** until a new message arrives. Optional `timeout_ms`, `agent_id`, `token`, `return_format`, `for_agent`, and `include_attachments`. |
 | `msg_get` | `message_id` | Fetch a single message by ID. Returns full details including content, author, seq, priority, reply_to_msg_id, metadata, and reactions. |
@@ -98,7 +98,7 @@ The MCP `msg_post` tool supports synchronization fields for race-condition preve
 | `handoff_target` | `string` | Agent ID that should handle this message next. Triggers a `msg.handoff` SSE event. |
 | `stop_reason` | `string` | Why the posting agent is ending its turn. Values: `convergence`, `timeout`, `error`, `complete`, `impasse`. Triggers a `msg.stop` SSE event. |
 | `attachments` | `array` | File or image attachments (see [Image Attachments](../guides/images.md)). |
-| `mentions` | `array` | Agent IDs mentioned in the message (web UI format). |
+| `mentions` | `array` | Agent IDs mentioned in the message (web UI format). You may also pass `mentions` as a top-level `msg_post` argument; non-string entries are dropped and the result is stored here. |
 
 **`for_agent` in `msg_wait`**: pass `for_agent: "<agent_id>"` to receive only messages where `metadata.handoff_target` matches. Useful for directed handoff patterns in multi-agent workflows.
 

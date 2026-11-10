@@ -1169,6 +1169,10 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       const role = typeof args.role === "string" ? args.role : "user";
       const priority = typeof args.priority === "string" ? args.priority : "normal";
       const metadata = typeof args.metadata === "object" && args.metadata !== null ? args.metadata as Record<string, unknown> : undefined;
+      const mentions = Array.isArray(args.mentions)
+        ? (args.mentions as unknown[]).filter((m): m is string => typeof m === "string")
+        : undefined;
+      const postMetadata = mentions ? { ...(metadata || {}), mentions } : metadata;
       const replyToMsgId = typeof args.reply_to_msg_id === "string" ? args.reply_to_msg_id : undefined;
 
       try {
@@ -1180,7 +1184,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
           replyToken,
           role,
           priority,
-          metadata,
+          metadata: postMetadata,
           replyToMsgId
         });
 
