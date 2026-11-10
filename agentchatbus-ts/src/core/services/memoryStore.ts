@@ -20,7 +20,8 @@ import {
   ReplyTokenExpiredError, 
   ReplyTokenReplayError,
   RateLimitExceeded,
-  PermissionError
+  PermissionError,
+  AuthorAuthError,
 } from "../types/errors.js";
 import { eventBus } from "../../shared/eventBus.js";
 import { logError } from "../../shared/logger.js";
@@ -1517,7 +1518,7 @@ export class MemoryStore {
     if (priority) {
       sql = `
         SELECT id, thread_id, seq, priority, author, author_id, author_name, author_emoji,
-               role, content, metadata, reply_to_msg_id, created_at, edited_at, edit_version
+               author_verified, role, content, metadata, reply_to_msg_id, created_at, edited_at, edit_version
         FROM messages
         WHERE thread_id = ? AND seq > ? AND priority = ?
         ORDER BY seq ASC
@@ -1526,7 +1527,7 @@ export class MemoryStore {
     } else {
       sql = `
         SELECT id, thread_id, seq, priority, author, author_id, author_name, author_emoji,
-               role, content, metadata, reply_to_msg_id, created_at, edited_at, edit_version
+               author_verified, role, content, metadata, reply_to_msg_id, created_at, edited_at, edit_version
         FROM messages
         WHERE thread_id = ? AND seq > ?
         ORDER BY seq ASC
@@ -2055,6 +2056,7 @@ export class MemoryStore {
     replyToMsgId?: string;
     expectedLastSeq?: number;
     replyToken?: string;
+    authorVerified?: boolean;
   }): MessageRecord {
     const thread = this.getThread(input.threadId);
     if (!thread) {
@@ -2192,6 +2194,7 @@ export class MemoryStore {
       author_id: agent?.id || undefined,
       author_name: agent ? resolvePreferredAgentDisplayName(agent) : input.author,
       author_emoji: agent?.emoji || (input.role === "system" ? "⚙️" : ((input.author === "human" || input.role === "user") ? "👤" : "🤖")),
+      author_verified: Boolean(input.authorVerified && agent),
       role: input.role || "user",
       content: input.content,
       metadata: input.metadata || null,
@@ -2406,7 +2409,7 @@ export class MemoryStore {
     const row = this.persistenceDb.prepare(
       `
         SELECT id, thread_id, seq, priority, author, author_id, author_name, author_emoji,
-               role, content, metadata, reply_to_msg_id, created_at, edited_at, edit_version
+               author_verified, role, content, metadata, reply_to_msg_id, created_at, edited_at, edit_version
         FROM messages WHERE id = ?
       `
     ).get(messageId) as Record<string, unknown> | undefined;
@@ -2976,6 +2979,51 @@ export class MemoryStore {
     return agent !== undefined && agent.token !== undefined && safeCompare(agent.token, token);
   }
 
+  resolvePostAuthor(input: {
+    author: string;
+    agentId?: string;
+    token?: string;
+    strict: boolean;
+  }): { author: string; authorVerified: boolean } {
+    const author = String(input.author ?? "").trim();
+    const agentId = String(input.agentId ?? "").trim();
+    const tokenProvided = input.token !== undefined;
+    const token = typeof input.token === "string" ? input.token.trim() : "";
+    if (tokenProvided && !token) {
+      throw new AuthorAuthError("AUTHOR_TOKEN_INVALID", "Invalid agent token");
+    }
+    if (token) {
+      const claimedId = agentId || author;
+      const agent = this.getAgent(claimedId);
+      if (!agent || !this.verifyAgentToken(agent.id, token)) {
+        throw new AuthorAuthError("AUTHOR_TOKEN_INVALID", "Invalid agent token");
+      }
+      const authorAgent = agentId && author ? this.getAgent(author) : undefined;
+      if (authorAgent && authorAgent.id !== agent.id) {
+        throw new AuthorAuthError("AUTHOR_MISMATCH", "author does not match the authenticated agent");
+      }
+      return { author: agent.id, authorVerified: true };
+    }
+    if (input.strict) {
+      const claims = [author, agentId]
+        .filter((c) => c && c !== "human")
+        .map((c) => c.toLowerCase());
+      const impersonates = claims.some((c) =>
+        this.getAgent(c) !== undefined
+        || this.listAgents().some((a) =>
+          a.id.toLowerCase() === c
+          || a.name.toLowerCase() === c
+          || (a.display_name || "").toLowerCase() === c));
+      if (impersonates) {
+        throw new AuthorAuthError(
+          "AUTHOR_TOKEN_REQUIRED",
+          "X-Agent-Token header required to post as a registered agent",
+        );
+      }
+    }
+    return { author: author || agentId || "human", authorVerified: false };
+  }
+
   getThreadAgents(threadId: string): AgentRecord[] {
     // Ported from Python crud.py thread_agents_list
     // Sources:
@@ -3449,7 +3497,7 @@ export class MemoryStore {
     if (threadId) {
       sql = `
         SELECT id, thread_id, seq, priority, author, author_id, author_name, author_emoji,
-               role, content, metadata, reply_to_msg_id, created_at, edited_at, edit_version
+               author_verified, role, content, metadata, reply_to_msg_id, created_at, edited_at, edit_version
         FROM messages
         WHERE LOWER(content) LIKE ? AND thread_id = ?
         ORDER BY created_at DESC
@@ -3459,7 +3507,7 @@ export class MemoryStore {
     } else {
       sql = `
         SELECT id, thread_id, seq, priority, author, author_id, author_name, author_emoji,
-               role, content, metadata, reply_to_msg_id, created_at, edited_at, edit_version
+               author_verified, role, content, metadata, reply_to_msg_id, created_at, edited_at, edit_version
         FROM messages
         WHERE LOWER(content) LIKE ?
         ORDER BY created_at DESC
@@ -4055,6 +4103,7 @@ export class MemoryStore {
       author_id: row.author_id ? String(row.author_id) : undefined,
       author_name: row.author_name ? String(row.author_name) : undefined,
       author_emoji: row.author_emoji ? String(row.author_emoji) : undefined,
+      author_verified: Number(row.author_verified || 0) === 1,
       role: String(row.role),
       content: String(row.content),
       metadata: row.metadata ? JSON.parse(String(row.metadata)) as Record<string, unknown> : null,
@@ -4332,7 +4381,7 @@ export class MemoryStore {
     const messages = this.persistenceDb.prepare(
       `
         SELECT id, thread_id, seq, priority, author, author_id, author_name, author_emoji,
-               role, content, metadata, reply_to_msg_id, created_at, edited_at, edit_version
+               author_verified, role, content, metadata, reply_to_msg_id, created_at, edited_at, edit_version
         FROM messages
         ORDER BY seq ASC
       `
@@ -4440,7 +4489,7 @@ export class MemoryStore {
     const rows = this.persistenceDb.prepare(
       `
         SELECT id, thread_id, seq, priority, author, author_id, author_name, author_emoji,
-               role, content, metadata, created_at, edited_at, edit_version
+               author_verified, role, content, metadata, created_at, edited_at, edit_version
         FROM messages
         ORDER BY thread_id ASC, seq ASC
       `
@@ -4542,6 +4591,7 @@ export class MemoryStore {
         author_id TEXT,
         author_name TEXT,
         author_emoji TEXT,
+        author_verified INTEGER NOT NULL DEFAULT 0,
         role TEXT NOT NULL,
         content TEXT NOT NULL,
         metadata TEXT,
@@ -4692,6 +4742,7 @@ export class MemoryStore {
       addColumnIfMissing("messages", "author_id", "TEXT");
       addColumnIfMissing("messages", "author_name", "TEXT");
       addColumnIfMissing("messages", "author_emoji", "TEXT");
+      addColumnIfMissing("messages", "author_verified", "INTEGER NOT NULL DEFAULT 0");
 
       // Migration: human_only_messages table
       addColumnIfMissing("human_only_messages", "priority", "TEXT NOT NULL DEFAULT 'system'");
@@ -4785,8 +4836,8 @@ export class MemoryStore {
       `
         INSERT OR REPLACE INTO messages (
           id, thread_id, seq, priority, author, author_id, author_name, author_emoji,
-          role, content, metadata, reply_to_msg_id, created_at, edited_at, edit_version
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          author_verified, role, content, metadata, reply_to_msg_id, created_at, edited_at, edit_version
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `
     ).run(
       message.id,
@@ -4797,6 +4848,7 @@ export class MemoryStore {
       message.author_id || null,
       message.author_name || null,
       message.author_emoji || null,
+      message.author_verified ? 1 : 0,
       message.role,
       message.content,
       message.metadata ? JSON.stringify(message.metadata) : null,

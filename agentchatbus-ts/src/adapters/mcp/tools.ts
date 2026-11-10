@@ -16,7 +16,8 @@ import {
   ReplyTokenInvalidError,
   ReplyTokenExpiredError,
   ReplyTokenReplayError,
-  RateLimitExceeded
+  RateLimitExceeded,
+  AuthorAuthError,
 } from "../../core/types/errors.js";
 import { ContentFilterError } from "../../core/services/contentFilter.js";
 import {
@@ -283,7 +284,7 @@ const toolDefinitions: ToolDefinition[] = [
         thread_id: { type: "string" },
         author: { type: "string", description: "Agent ID, 'system', or 'human'. If omitted, falls back to agent_id (if provided) then 'human'." },
         agent_id: { type: "string", description: "Optional: your agent ID for authentication. Used as author when 'author' is omitted." },
-        token: { type: "string", description: "Optional: your agent token for verification when agent_id is provided." },
+        token: { type: "string", description: "Optional: your agent token. When provided, verifies agent_id if set, otherwise verifies the author claim when agent_id is absent." },
         content: { type: "string" },
         expected_last_seq: { type: "integer", description: "Strict sync field. Thread seq the sender used as context baseline." },
         reply_token: { type: "string", description: "Strict sync field. Unconsumed reply token from thread_create/msg_wait/sync-context." },
@@ -1159,14 +1160,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       const agentIdArg = String(args.agent_id || "").trim();
       const tokenArg = typeof args.token === "string" ? args.token : undefined;
       // author falls back to agent_id (if provided) before defaulting to "human"
-      const author = String(args.author || agentIdArg || "human");
-      let authorAgentId: string | undefined;
-      try {
-        const authorAgent = getStore().getAgent(author);
-        authorAgentId = authorAgent?.id;
-      } catch {
-        authorAgentId = undefined;
-      }
+      const authorRaw = String(args.author || agentIdArg || "human");
       const content = String(args.content || "");
       const expectedLastSeq = typeof args.expected_last_seq === "number" ? args.expected_last_seq : undefined;
       const replyToken = typeof args.reply_token === "string" ? args.reply_token : undefined;
@@ -1179,10 +1173,35 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       const postMetadata = mentions ? { ...(metadata || {}), mentions } : metadata;
       const replyToMsgId = typeof args.reply_to_msg_id === "string" ? args.reply_to_msg_id : undefined;
 
+      const strictAuthorAuth = Boolean(getConfig().strictAuthorAuth);
+      let resolved: { author: string; authorVerified: boolean };
+      try {
+        resolved = getStore().resolvePostAuthor({
+          author: authorRaw,
+          agentId: agentIdArg || undefined,
+          token: tokenArg,
+          strict: strictAuthorAuth,
+        });
+      } catch (error) {
+        if (error instanceof AuthorAuthError) {
+          return [{ type: "text", text: JSON.stringify({ error: error.code, detail: error.message }) }];
+        }
+        throw error;
+      }
+
+      let authorAgentId: string | undefined;
+      try {
+        const authorAgent = getStore().getAgent(resolved.author);
+        authorAgentId = authorAgent?.id;
+      } catch {
+        authorAgentId = undefined;
+      }
+
       try {
         const message = getStore().postMessage({
           threadId,
-          author,
+          author: resolved.author,
+          authorVerified: resolved.authorVerified,
           content,
           expectedLastSeq,
           replyToken,
@@ -1200,7 +1219,8 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
         const postPayload: Record<string, unknown> = {
           msg_id: message.id,
           seq: message.seq,
-          reply_to_msg_id: message.reply_to_msg_id
+          reply_to_msg_id: message.reply_to_msg_id,
+          author_verified: message.author_verified === true,
         };
         emitObservedCliToolCall(authorAgentId, "msg_post", threadId);
 
@@ -1414,6 +1434,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
             metadata: filterMetadataFields(m.metadata as Record<string, unknown> | null | undefined),
             reply_to_msg_id: m.reply_to_msg_id,
             reactions: reactionsMap.get(m.id) || [],
+            author_verified: m.author_verified === true,
             ...(ENABLE_PRIORITY ? { priority: m.priority } : {}),
           }));
         return [{ type: "text", text: JSON.stringify(payload) }];
@@ -1434,6 +1455,8 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
           msg_id: message.id,
           thread_id: message.thread_id,
           author: message.author,
+          author_id: message.author_id,
+          author_verified: message.author_verified === true,
           author_name: message.author_name,
           content: message.content,
           seq: message.seq,
@@ -1655,6 +1678,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
               content: msg.content,
               seq: msg.seq,
               created_at: toPythonUtcIsoString(msg.created_at),
+              author_verified: msg.author_verified === true,
               metadata: filterMetadataFields(msg.metadata as Record<string, unknown> | null | undefined),
             };
             if (ENABLE_PRIORITY) {
@@ -2112,6 +2136,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
             thread_id: m.thread_id,
             thread_topic: thread?.topic || "",
             author: m.author,
+            author_verified: m.author_verified === true,
             seq: m.seq,
             created_at: m.created_at,
             snippet: m.content.length > 200

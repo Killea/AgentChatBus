@@ -40,6 +40,7 @@ export interface AppConfig {
   msgWaitTimeout: number;
   msgWaitMinTimeoutMs: number;
   enforceMsgWaitMinTimeout: boolean;
+  strictAuthorAuth: boolean;
   replyTokenLeaseSeconds: number;
   seqTolerance: number;
   seqMismatchMaxMessages: number;
@@ -763,6 +764,30 @@ export const CONFIG_REGISTRY: ReadonlyArray<ConfigDescriptor> = [
       getRawValue(
         ctx,
         { envVar: "AGENTCHATBUS_ENFORCE_MSG_WAIT_MIN_TIMEOUT", persistedKey: "ENFORCE_MSG_WAIT_MIN_TIMEOUT" },
+        false
+      ),
+      false
+    ),
+  },
+  {
+    key: "STRICT_AUTHOR_AUTH",
+    envVar: "AGENTCHATBUS_STRICT_AUTHOR_AUTH",
+    resolvedField: "strictAuthorAuth",
+    persistedKey: "STRICT_AUTHOR_AUTH",
+    type: "boolean",
+    kind: "feature_flag",
+    defaultValue: false,
+    label: "Strict message author authentication",
+    description: "Reject unauthenticated posts that claim a registered agent id or name.",
+    section: "advanced",
+    scope: "editable",
+    sensitivity: "public",
+    restartRequired: true,
+    order: 115,
+    resolve: (ctx) => parseBoolLike(
+      getRawValue(
+        ctx,
+        { envVar: "AGENTCHATBUS_STRICT_AUTHOR_AUTH", persistedKey: "STRICT_AUTHOR_AUTH" },
         false
       ),
       false

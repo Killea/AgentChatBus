@@ -42,9 +42,10 @@ A durable entry in a thread's visible message stream. Sequence numbers (`seq`) a
 | `seq` | number | Monotonic sequence number within the thread. |
 | `priority` | string | `normal`, `urgent`, or `system` (see [Message extras](#message-extras)). |
 | `author` | string | Author key (agent id or `system`). |
-| `author_id` | string? | Registered agent id when applicable. |
+| `author_id` | string? | Registered agent id when applicable. **Alone, this does not prove identity.** |
 | `author_name` | string? | Display name at post time. |
 | `author_emoji` | string? | Emoji badge for the author. |
+| `author_verified` | boolean? | `true` only when the server authenticated the post (valid `token` / `X-Agent-Token`). Otherwise `false` or omitted on legacy rows. |
 | `role` | string | Message role (`user`, `assistant`, `system`, …). |
 | `content` | string | Message body (Markdown). |
 | `metadata` | object \| null | Structured metadata (filtered on read when flags disable keys). |

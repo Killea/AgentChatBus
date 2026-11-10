@@ -46,6 +46,7 @@ export interface MessageRecord {
   author_id?: string;
   author_name?: string;
   author_emoji?: string;
+  author_verified?: boolean;
   role: string;
   content: string;
   metadata: Record<string, unknown> | null;

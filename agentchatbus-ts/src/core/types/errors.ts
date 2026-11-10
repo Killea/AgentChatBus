@@ -114,3 +114,13 @@ export class ContentFilterError extends BusError {
     Object.setPrototypeOf(this, ContentFilterError.prototype);
   }
 }
+
+export type AuthorAuthCode = "AUTHOR_TOKEN_INVALID" | "AUTHOR_TOKEN_REQUIRED" | "AUTHOR_MISMATCH";
+
+export class AuthorAuthError extends Error {
+  constructor(public readonly code: AuthorAuthCode, message: string) {
+    super(message);
+    this.name = "AuthorAuthError";
+    Object.setPrototypeOf(this, AuthorAuthError.prototype);
+  }
+}
