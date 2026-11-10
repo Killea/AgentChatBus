@@ -102,6 +102,34 @@ describe("message author authentication integration", () => {
     expect(getResult.message.author_id).toBe(agentA.id);
   });
 
+  it("MCP verified post with mentions keeps author_verified and metadata.mentions", async () => {
+    const store = getMemoryStore();
+    const { agentA, agentB, thread, syncA } = bootstrapThread(store);
+
+    const postResult = parseMsgPostResult(await callTool("msg_post", {
+      thread_id: thread.id,
+      agent_id: agentA.id,
+      token: agentA.token,
+      author: agentA.id,
+      content: "verified with mentions",
+      mentions: [agentB.id, 42],
+      expected_last_seq: syncA.current_seq,
+      reply_token: syncA.reply_token,
+    }));
+    expect(postResult.author_verified).toBe(true);
+    expect(postResult.error).toBeUndefined();
+
+    const getResult = (await callTool("msg_get", { message_id: postResult.msg_id })) as {
+      found: boolean;
+      message: Record<string, unknown>;
+    };
+    expect(getResult.found).toBe(true);
+    expect(getResult.message.author_verified).toBe(true);
+    const metadata = getResult.message.metadata as Record<string, unknown> | null;
+    expect(metadata).not.toBeNull();
+    expect(metadata?.mentions).toEqual([agentB.id]);
+  });
+
   it("MCP empty or whitespace token returns AUTHOR_TOKEN_INVALID", async () => {
     const store = getMemoryStore();
     const { agentA, thread, syncA } = bootstrapThread(store);
