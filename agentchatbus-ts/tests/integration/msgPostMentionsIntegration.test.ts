@@ -110,6 +110,38 @@ describe("msg_post mentions integration", () => {
     expect(listed?.metadata).toMatchObject({ mentions: ["agent-x"] });
   });
 
+  it("drops non-string mentions on REST message POST", async () => {
+    const server = createHttpServer();
+    const store = getMemoryStore();
+    const agent = store.registerAgent({ ide: "CLI", model: "mentions-rest-post" });
+    const thread = store.createThread("mentions-rest-post-thread").thread;
+    const sync = store.issueSyncContext(thread.id, agent.id, "bootstrap");
+
+    const postResponse = await server.inject({
+      method: "POST",
+      url: `/api/threads/${thread.id}/messages`,
+      headers: { "x-agent-token": agent.token },
+      payload: {
+        author: agent.id,
+        content: "hello with mentions",
+        expected_last_seq: sync.current_seq,
+        reply_token: sync.reply_token,
+        mentions: ["agent-a", 99, null, "agent-b"],
+      },
+    });
+    expect(postResponse.statusCode).toBe(201);
+    const posted = postResponse.json() as { id: string; metadata?: Record<string, unknown> | null };
+    expect(posted.metadata?.mentions).toEqual(["agent-a", "agent-b"]);
+
+    const got = await callTool("msg_get", { message_id: posted.id }) as {
+      found: boolean;
+      message: { metadata?: Record<string, unknown> | null };
+    };
+    expect(got.found).toBe(true);
+    expect(got.message.metadata?.mentions).toEqual(["agent-a", "agent-b"]);
+    await server.close();
+  });
+
   it("exposes MCP-posted mentions on REST message list", async () => {
     const server = createHttpServer();
     const store = getMemoryStore();

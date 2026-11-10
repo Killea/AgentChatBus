@@ -37,6 +37,7 @@ import { discoverAcpAgentModels, clearModelDiscoveryCache } from "../../core/ser
 import { MemoryStore, memoryStore } from "../../core/services/memoryStore.js";
 import { registerStore } from "../../core/services/storeSingleton.js";
 import { eventBus } from "../../shared/eventBus.js";
+import { normalizeMentions } from "../../shared/normalizeMentions.js";
 import { handleMcpRequest } from "../mcp/handlers.js";
 import {
   getOrCreateTransport,
@@ -1948,8 +1949,9 @@ export function createHttpServer() {
     const msgMetadata = (typeof body.metadata === "object" && body.metadata !== null)
       ? { ...(body.metadata as Record<string, unknown>) }
       : {};
-    if (Array.isArray(body.mentions)) {
-      msgMetadata.mentions = body.mentions;
+    const mentions = normalizeMentions(body.mentions);
+    if (mentions) {
+      msgMetadata.mentions = mentions;
     }
     if (Array.isArray(body.images)) {
       msgMetadata.images = body.images;
