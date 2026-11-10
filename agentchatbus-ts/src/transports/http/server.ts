@@ -51,8 +51,6 @@ import { HttpLatencyTracker } from "./httpLatencyTracker.js";
 import { getAgentSocketPath } from "../socket/server.js";
 import { redactTokens } from "../../shared/redactTokens.js";
 
-export { redactTokens };
-
 // Allow tests to override the global memoryStore instance
 export let memoryStoreInstance: MemoryStore | null = null;
 

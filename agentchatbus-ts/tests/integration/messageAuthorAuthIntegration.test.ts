@@ -8,11 +8,11 @@ import { MemoryStore } from "../../src/core/services/memoryStore.js";
 import { registerStore } from "../../src/core/services/storeSingleton.js";
 import { memoryStore } from "../../src/core/services/memoryStore.js";
 import { eventBus } from "../../src/shared/eventBus.js";
+import { redactTokens } from "../../src/shared/redactTokens.js";
 import {
   createHttpServer,
   getMemoryStore,
   memoryStoreInstance,
-  redactTokens,
 } from "../../src/transports/http/server.js";
 
 function parseMcpTextPayload(response: { json: () => any }) {
