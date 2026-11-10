@@ -109,7 +109,9 @@ describe("agent display_name integration", () => {
       },
     });
     expect(getRes.statusCode).toBe(200);
-    expect(getRes.json().result?.found).toBe(true);
+    const getPayload = getRes.json().result as { found: boolean; message?: { author_name?: string } };
+    expect(getPayload?.found).toBe(true);
+    expect(getPayload.message?.author_name).toBe("Atlas");
 
     await server.close();
   });
@@ -141,6 +143,22 @@ describe("agent display_name integration", () => {
     const listed = await listMessagesJson(server, threadId);
     const row = listed.find((m) => m.msg_id === String(post.msg_id));
     expect(row?.author_name).toBe(autoDisplayName);
+
+    const getRes = await server.inject({
+      method: "POST",
+      url: "/mcp/messages/",
+      payload: {
+        method: "tools/call",
+        params: {
+          name: "msg_get",
+          arguments: { message_id: String(post.msg_id) },
+        },
+      },
+    });
+    expect(getRes.statusCode).toBe(200);
+    const getPayload = getRes.json().result as { found: boolean; message?: { author_name?: string } };
+    expect(getPayload?.found).toBe(true);
+    expect(getPayload.message?.author_name).toBe(autoDisplayName);
 
     await server.close();
   });

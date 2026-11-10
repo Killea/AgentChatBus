@@ -1419,6 +1419,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
           msg_id: message.id,
           thread_id: message.thread_id,
           author: message.author,
+          author_name: message.author_name,
           content: message.content,
           seq: message.seq,
           role: message.role,
