@@ -748,6 +748,25 @@ function metadataLineForBlocks(
   return Object.keys(rest).length > 0 ? `metadata: ${JSON.stringify(rest)}` : null;
 }
 
+function pushMessageContentAndMetadataBlocks(
+  blocks: Array<{ type: string; text: string }>,
+  message: { content?: string | null; metadata?: unknown }
+): void {
+  if (message.content) {
+    blocks.push({
+      type: "text",
+      text: message.content
+    });
+  }
+  const metadataLine = metadataLineForBlocks(message.metadata as Record<string, unknown> | null);
+  if (metadataLine) {
+    blocks.push({
+      type: "text",
+      text: metadataLine
+    });
+  }
+}
+
 function getConnectionAgent(): { agentId?: string; token?: string } {
   const sessionId = toolCallContext.getStore()?.sessionId;
   if (!sessionId) {
@@ -1387,19 +1406,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
             type: "text",
             text: `[${msg.seq}] ${msg.author_name || msg.author} (${msg.role}) ${msg.created_at}`
           });
-          if (msg.content) {
-            blocks.push({
-              type: "text",
-              text: msg.content
-            });
-          }
-          const metadataLine = metadataLineForBlocks(msg.metadata as Record<string, unknown> | null);
-          if (metadataLine) {
-            blocks.push({
-              type: "text",
-              text: metadataLine
-            });
-          }
+          pushMessageContentAndMetadataBlocks(blocks, msg);
           // Add images/attachments if requested
           if (includeAttachments && msg.metadata) {
             const meta = msg.metadata as any;
@@ -1590,19 +1597,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
               type: "text",
               text: `[${msg.seq}] ${msg.author_name || msg.author} (${msg.role}) ${toPythonUtcIsoString(msg.created_at)}`
             });
-            if (msg.content) {
-              blocks.push({
-                type: "text",
-                text: msg.content
-              });
-            }
-            const metadataLine = metadataLineForBlocks(msg.metadata as Record<string, unknown> | null);
-            if (metadataLine) {
-              blocks.push({
-                type: "text",
-                text: metadataLine
-              });
-            }
+            pushMessageContentAndMetadataBlocks(blocks, msg);
             // Add images/attachments if requested (match Python _message_to_blocks)
             if (includeAttachments && msg.metadata) {
               const meta = msg.metadata as any;
