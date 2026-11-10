@@ -735,11 +735,15 @@ function filterMetadataFields(
   return Object.keys(filtered).length > 0 ? filtered : null;
 }
 
-function serializeFilteredMetadata(
-  metadata: Record<string, unknown> | null | undefined
+function metadataLineForBlocks(
+  meta: Record<string, unknown> | null | undefined
 ): string | null {
-  const filtered = filterMetadataFields(metadata);
-  return filtered ? JSON.stringify(filtered) : null;
+  const filtered = filterMetadataFields(meta);
+  if (!filtered) {
+    return null;
+  }
+  const { attachments: _a, images: _i, image: _im, ...rest } = filtered as Record<string, unknown>;
+  return Object.keys(rest).length > 0 ? `metadata: ${JSON.stringify(rest)}` : null;
 }
 
 function getConnectionAgent(): { agentId?: string; token?: string } {
@@ -1169,6 +1173,10 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
       const role = typeof args.role === "string" ? args.role : "user";
       const priority = typeof args.priority === "string" ? args.priority : "normal";
       const metadata = typeof args.metadata === "object" && args.metadata !== null ? args.metadata as Record<string, unknown> : undefined;
+      const mentions = Array.isArray(args.mentions)
+        ? (args.mentions as unknown[]).filter((m): m is string => typeof m === "string")
+        : undefined;
+      const postMetadata = mentions ? { ...(metadata || {}), mentions } : metadata;
       const replyToMsgId = typeof args.reply_to_msg_id === "string" ? args.reply_to_msg_id : undefined;
 
       try {
@@ -1180,7 +1188,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
           replyToken,
           role,
           priority,
-          metadata,
+          metadata: postMetadata,
           replyToMsgId
         });
 
@@ -1364,6 +1372,13 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
             blocks.push({
               type: "text",
               text: msg.content
+            });
+          }
+          const metadataLine = metadataLineForBlocks(msg.metadata as Record<string, unknown> | null);
+          if (metadataLine) {
+            blocks.push({
+              type: "text",
+              text: metadataLine
             });
           }
           // Add images/attachments if requested
@@ -1559,6 +1574,13 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
                 text: msg.content
               });
             }
+            const metadataLine = metadataLineForBlocks(msg.metadata as Record<string, unknown> | null);
+            if (metadataLine) {
+              blocks.push({
+                type: "text",
+                text: metadataLine
+              });
+            }
             // Add images/attachments if requested (match Python _message_to_blocks)
             if (includeAttachments && msg.metadata) {
               const meta = msg.metadata as any;
@@ -1633,7 +1655,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
               content: msg.content,
               seq: msg.seq,
               created_at: toPythonUtcIsoString(msg.created_at),
-              metadata: serializeFilteredMetadata(msg.metadata as Record<string, unknown> | null | undefined),
+              metadata: filterMetadataFields(msg.metadata as Record<string, unknown> | null | undefined),
             };
             if (ENABLE_PRIORITY) {
               out.priority = msg.priority;
@@ -2032,7 +2054,8 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
           author: m.author_name || m.author,
           role: m.role,
           content: m.content,
-          created_at: toPythonUtcIsoString(m.created_at)
+          created_at: toPythonUtcIsoString(m.created_at),
+          metadata: filterMetadataFields(m.metadata as Record<string, unknown> | null | undefined),
         })),
         current_seq: sync.current_seq,
         reply_token: sync.reply_token,
