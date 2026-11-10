@@ -7,6 +7,7 @@ import {
   getMemoryStore,
   memoryStoreInstance,
 } from "../../src/transports/http/server.js";
+import { parseMsgListJson, parseMsgPostResult } from "./helpers/mcpIntegration.js";
 
 type MsgPostPayload = {
   msg_id: string;
@@ -14,19 +15,6 @@ type MsgPostPayload = {
   reply_token?: string;
   current_seq?: number;
 };
-
-function parseMsgPostResult(result: unknown): MsgPostPayload {
-  const blocks = result as Array<{ type: string; text: string }>;
-  expect(blocks).toHaveLength(1);
-  expect(blocks[0]?.type).toBe("text");
-  return JSON.parse(blocks[0].text) as MsgPostPayload;
-}
-
-function parseMsgListJson(result: unknown): Array<Record<string, unknown>> {
-  const blocks = result as Array<{ type: string; text: string }>;
-  expect(blocks).toHaveLength(1);
-  return JSON.parse(blocks[0].text) as Array<Record<string, unknown>>;
-}
 
 describe("msg_post mentions integration", () => {
   beforeAll(() => {
@@ -68,7 +56,7 @@ describe("msg_post mentions integration", () => {
     sync: { current_seq: number; reply_token: string },
     extra: Record<string, unknown>,
   ) {
-    return parseMsgPostResult(
+    return parseMsgPostResult<MsgPostPayload>(
       await callTool("msg_post", {
         thread_id: threadId,
         agent_id: agent.id,

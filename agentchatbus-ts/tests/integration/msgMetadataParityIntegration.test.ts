@@ -2,19 +2,11 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { callTool } from "../../src/adapters/mcp/tools.js";
 import { registerStore } from "../../src/core/services/storeSingleton.js";
 import { memoryStore } from "../../src/core/services/memoryStore.js";
-
-type TextBlock = { type: "text"; text: string };
-
-function asTextBlocks(result: unknown): TextBlock[] {
-  expect(Array.isArray(result)).toBe(true);
-  return result as TextBlock[];
-}
-
-function parseJsonTextBlock(result: unknown): unknown {
-  const blocks = asTextBlocks(result);
-  expect(blocks[0]?.type).toBe("text");
-  return JSON.parse(blocks[0].text);
-}
+import {
+  asTextBlocks,
+  parseJsonTextBlock,
+  type TextBlock,
+} from "./helpers/mcpIntegration.js";
 
 function messageSegments(blocks: TextBlock[]): TextBlock[][] {
   const headerRe = /^\[\d+\] /;
