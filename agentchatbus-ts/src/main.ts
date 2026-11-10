@@ -264,9 +264,13 @@ export function resolvePreferredAgentDisplayName(input: {
   display_name?: string | null;
   name?: string | null;
   id?: string | null;
+  alias_source?: string | null;
   existingDisplayNames?: Iterable<string>;
 }): string {
   const configuredDisplayName = String(input.display_name || "").trim();
+  if (configuredDisplayName && input.alias_source === "user") {
+    return configuredDisplayName;
+  }
   const legacyFallback =
     configuredDisplayName
     || String(input.name || input.id || "").trim()
