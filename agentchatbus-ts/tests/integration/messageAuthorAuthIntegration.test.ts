@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -102,6 +102,34 @@ describe("message author authentication integration", () => {
     expect(getResult.message.author_id).toBe(agentA.id);
   });
 
+  it("MCP empty or whitespace token returns AUTHOR_TOKEN_INVALID", async () => {
+    const store = getMemoryStore();
+    const { agentA, thread, syncA } = bootstrapThread(store);
+
+    const empty = parseMsgPostResult(await callTool("msg_post", {
+      thread_id: thread.id,
+      agent_id: agentA.id,
+      token: "",
+      author: agentA.id,
+      content: "empty token",
+      expected_last_seq: syncA.current_seq,
+      reply_token: syncA.reply_token,
+    }));
+    expect(empty.error).toBe("AUTHOR_TOKEN_INVALID");
+
+    const sync2 = store.issueSyncContext(thread.id, agentA.id, "ws-token");
+    const whitespace = parseMsgPostResult(await callTool("msg_post", {
+      thread_id: thread.id,
+      agent_id: agentA.id,
+      token: "   ",
+      author: agentA.id,
+      content: "whitespace token",
+      expected_last_seq: sync2.current_seq,
+      reply_token: sync2.reply_token,
+    }));
+    expect(whitespace.error).toBe("AUTHOR_TOKEN_INVALID");
+  });
+
   it("MCP wrong token returns AUTHOR_TOKEN_INVALID without advancing seq", async () => {
     const store = getMemoryStore();
     const { agentA, thread, syncA } = bootstrapThread(store);
@@ -192,6 +220,36 @@ describe("message author authentication integration", () => {
       return { auth, thread };
     }
 
+    it("REST strict mode wrong token returns 401 with detail and error", async () => {
+      vi.stubEnv("AGENTCHATBUS_STRICT_AUTHOR_AUTH", "true");
+      const server = createHttpServer();
+      const { auth, thread } = await createThreadForRest(server);
+      const sync = (await server.inject({
+        method: "POST",
+        url: `/api/threads/${thread.id}/sync-context`,
+        payload: {},
+      })).json();
+
+      const wrong = await server.inject({
+        method: "POST",
+        url: `/api/threads/${thread.id}/messages`,
+        headers: { "x-agent-token": "   " },
+        payload: {
+          author: auth.agent_id,
+          content: "strict whitespace token",
+          expected_last_seq: sync.current_seq,
+          reply_token: sync.reply_token,
+        },
+      });
+      expect(wrong.statusCode).toBe(401);
+      const body = wrong.json();
+      expect(body.error).toBe("AUTHOR_TOKEN_INVALID");
+      expect(typeof body.detail).toBe("string");
+      expect(body.detail.length).toBeGreaterThan(0);
+
+      await server.close();
+    });
+
     it("REST verified and unverified plus wrong token 401", async () => {
       const server = createHttpServer();
       const { auth, thread } = await createThreadForRest(server);
@@ -254,6 +312,51 @@ describe("message author authentication integration", () => {
   });
 
   describe("strict author auth", () => {
+    it("rejects padded author and padded agent_id claims", async () => {
+      vi.stubEnv("AGENTCHATBUS_STRICT_AUTHOR_AUTH", "true");
+      const store = getMemoryStore();
+      const { agentA, thread, syncA } = bootstrapThread(store);
+
+      const paddedAuthor = parseMsgPostResult(await callTool("msg_post", {
+        thread_id: thread.id,
+        author: `  ${agentA.id}  `,
+        content: "padded author",
+        expected_last_seq: syncA.current_seq,
+        reply_token: syncA.reply_token,
+      }));
+      expect(paddedAuthor.error).toBe("AUTHOR_TOKEN_REQUIRED");
+
+      const sync2 = store.issueSyncContext(thread.id, agentA.id, "padded-agent");
+      const paddedAgent = parseMsgPostResult(await callTool("msg_post", {
+        thread_id: thread.id,
+        agent_id: `  ${agentA.id}  `,
+        content: "padded agent_id",
+        expected_last_seq: sync2.current_seq,
+        reply_token: sync2.reply_token,
+      }));
+      expect(paddedAgent.error).toBe("AUTHOR_TOKEN_REQUIRED");
+    });
+
+    it("rejects display_name impersonation", async () => {
+      vi.stubEnv("AGENTCHATBUS_STRICT_AUTHOR_AUTH", "true");
+      const store = getMemoryStore();
+      const agent = store.registerAgent({
+        ide: "CLI",
+        model: "display-name-auth",
+        display_name: "Ledger Bot",
+      });
+      const { thread, syncA } = bootstrapThread(store);
+
+      const spoof = parseMsgPostResult(await callTool("msg_post", {
+        thread_id: thread.id,
+        author: agent.display_name!,
+        content: "display name spoof",
+        expected_last_seq: syncA.current_seq,
+        reply_token: syncA.reply_token,
+      }));
+      expect(spoof.error).toBe("AUTHOR_TOKEN_REQUIRED");
+    });
+
     it("rejects impersonation and accepts human labels", async () => {
       vi.stubEnv("AGENTCHATBUS_STRICT_AUTHOR_AUTH", "true");
       const store = getMemoryStore();
@@ -411,6 +514,129 @@ describe("message author authentication integration", () => {
       } catch {
         // ignore teardown errors
       }
+    }
+  });
+
+  it("msg_search includes author_verified", async () => {
+    const store = getMemoryStore();
+    const { agentA, thread, syncA } = bootstrapThread(store);
+
+    await callTool("msg_post", {
+      thread_id: thread.id,
+      agent_id: agentA.id,
+      token: agentA.token,
+      author: agentA.id,
+      content: "searchable verified content",
+      expected_last_seq: syncA.current_seq,
+      reply_token: syncA.reply_token,
+    });
+
+    const search = (await callTool("msg_search", {
+      query: "searchable verified",
+      thread_id: thread.id,
+    })) as { results: Array<Record<string, unknown>> };
+    expect(search.results.length).toBeGreaterThan(0);
+    expect(search.results[0]?.author_verified).toBe(true);
+  });
+
+  it("REST MCP tool debug file stores redacted token values", async () => {
+    const server = createHttpServer();
+    const dir = mkdtempSync(join(tmpdir(), "acb-mcp-debug-"));
+    const previousCwd = process.cwd();
+    process.chdir(dir);
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/mcp/tool/agent_register",
+        payload: { ide: "VSCode", model: "redact-debug-file" },
+      });
+      expect(response.statusCode).toBe(200);
+      const filePath = join(dir, "tmp_last_mcp_response.json");
+      expect(existsSync(filePath)).toBe(true);
+      const text = readFileSync(filePath, "utf8");
+      const payload = JSON.parse(response.payload);
+      const rawToken = JSON.parse(String(payload[0].text)).token as string;
+      expect(text).toContain("[REDACTED]");
+      expect(text).not.toContain(rawToken);
+    } finally {
+      process.chdir(previousCwd);
+      rmSync(dir, { recursive: true, force: true });
+      await server.close();
+    }
+  });
+
+  it("streamable MCP tools/call logs do not leak tokens", async () => {
+    const server = createHttpServer();
+    const store = getMemoryStore();
+    const { agentA, thread, syncA } = bootstrapThread(store);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    await server.listen({ host: "127.0.0.1", port: 0 });
+    const address = server.addresses()[0];
+    const baseUrl = `http://${address.address}:${address.port}`;
+
+    try {
+      const initializeResponse = await fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: "2025-03-26",
+            capabilities: {},
+            clientInfo: { name: "vitest", version: "1.0.0" },
+          },
+        }),
+      });
+      const sessionId = initializeResponse.headers.get("mcp-session-id");
+      expect(sessionId).toBeTruthy();
+      await initializeResponse.body?.cancel();
+
+      const callResponse = await fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+          "mcp-session-id": sessionId!,
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/call",
+          params: {
+            name: "msg_post",
+            arguments: {
+              thread_id: thread.id,
+              agent_id: agentA.id,
+              token: agentA.token,
+              author: agentA.id,
+              content: "streamable redact post",
+              expected_last_seq: syncA.current_seq,
+              reply_token: syncA.reply_token,
+            },
+          },
+        }),
+      });
+      expect(callResponse.ok).toBe(true);
+      await callResponse.text();
+
+      let sawStreamableLog = false;
+      for (const call of logSpy.mock.calls) {
+        const line = String(call.join(" "));
+        if (!line.includes("[mcp-streamable]")) {
+          continue;
+        }
+        sawStreamableLog = true;
+        expect(line).not.toContain(agentA.token);
+      }
+      expect(sawStreamableLog).toBe(true);
+    } finally {
+      logSpy.mockRestore();
+      await server.close();
     }
   });
 

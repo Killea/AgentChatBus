@@ -49,12 +49,12 @@ import { resolveDefaultWorkspacePath } from "../../core/services/adapters/utils.
 import { WINDOWS_POWERSHELL } from "../../core/services/adapters/constants.js";
 import { HttpLatencyTracker } from "./httpLatencyTracker.js";
 import { getAgentSocketPath } from "../socket/server.js";
+import { redactTokens } from "../../shared/redactTokens.js";
+
+export { redactTokens };
 
 // Allow tests to override the global memoryStore instance
 export let memoryStoreInstance: MemoryStore | null = null;
-
-export const redactTokens = (text: string): string =>
-  text.replace(/(\\?"token\\?"\s*:\s*\\?")[^"\\]*/g, "$1[REDACTED]");
 
 export function getMemoryStore(): MemoryStore {
   return memoryStoreInstance || memoryStore;
@@ -1251,7 +1251,7 @@ export function createHttpServer() {
         try { console.log(`[mcp-rest] ${params.toolName} -> ${redactTokens(String(payloadText)).slice(0, 200)}`); } catch (e) { }
         try {
           // write a copy for debugging when running in a child process
-          writeFileSync("tmp_last_mcp_response.json", String(payloadText), { encoding: "utf8" });
+          writeFileSync("tmp_last_mcp_response.json", redactTokens(String(payloadText)), { encoding: "utf8" });
         } catch (e) {}
         // Always return a blocks-style array with a text block containing the JSON payload
         return [ { type: "text", text: payloadText } ];

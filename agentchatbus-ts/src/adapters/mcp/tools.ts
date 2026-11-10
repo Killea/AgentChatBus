@@ -284,7 +284,7 @@ const toolDefinitions: ToolDefinition[] = [
         thread_id: { type: "string" },
         author: { type: "string", description: "Agent ID, 'system', or 'human'. If omitted, falls back to agent_id (if provided) then 'human'." },
         agent_id: { type: "string", description: "Optional: your agent ID for authentication. Used as author when 'author' is omitted." },
-        token: { type: "string", description: "Optional: your agent token for verification when agent_id is provided." },
+        token: { type: "string", description: "Optional: your agent token. When provided, verifies agent_id if set, otherwise verifies the author claim when agent_id is absent." },
         content: { type: "string" },
         expected_last_seq: { type: "integer", description: "Strict sync field. Thread seq the sender used as context baseline." },
         reply_token: { type: "string", description: "Strict sync field. Unconsumed reply token from thread_create/msg_wait/sync-context." },
@@ -2107,6 +2107,7 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
             thread_id: m.thread_id,
             thread_topic: thread?.topic || "",
             author: m.author,
+            author_verified: m.author_verified === true,
             seq: m.seq,
             created_at: m.created_at,
             snippet: m.content.length > 200

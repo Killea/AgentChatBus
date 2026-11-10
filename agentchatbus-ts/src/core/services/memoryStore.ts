@@ -2985,21 +2985,29 @@ export class MemoryStore {
     token?: string;
     strict: boolean;
   }): { author: string; authorVerified: boolean } {
-    const agentId = (input.agentId || "").trim();
-    if (input.token) {
-      const claimedId = agentId || input.author;
+    const author = String(input.author ?? "").trim();
+    const agentId = String(input.agentId ?? "").trim();
+    const tokenProvided = input.token !== undefined;
+    const token = typeof input.token === "string" ? input.token.trim() : "";
+    if (tokenProvided && !token) {
+      throw new AuthorAuthError("AUTHOR_TOKEN_INVALID", "Invalid agent token");
+    }
+    if (token) {
+      const claimedId = agentId || author;
       const agent = this.getAgent(claimedId);
-      if (!agent || !this.verifyAgentToken(agent.id, input.token)) {
+      if (!agent || !this.verifyAgentToken(agent.id, token)) {
         throw new AuthorAuthError("AUTHOR_TOKEN_INVALID", "Invalid agent token");
       }
-      const authorAgent = agentId && input.author ? this.getAgent(input.author) : undefined;
+      const authorAgent = agentId && author ? this.getAgent(author) : undefined;
       if (authorAgent && authorAgent.id !== agent.id) {
         throw new AuthorAuthError("AUTHOR_MISMATCH", "author does not match the authenticated agent");
       }
       return { author: agent.id, authorVerified: true };
     }
     if (input.strict) {
-      const claims = [input.author, agentId].filter((c) => c && c !== "human").map((c) => c.toLowerCase());
+      const claims = [author, agentId]
+        .filter((c) => c && c !== "human")
+        .map((c) => c.toLowerCase());
       const impersonates = claims.some((c) =>
         this.getAgent(c) !== undefined
         || this.listAgents().some((a) =>
@@ -3013,7 +3021,7 @@ export class MemoryStore {
         );
       }
     }
-    return { author: input.author, authorVerified: false };
+    return { author: author || agentId || "human", authorVerified: false };
   }
 
   getThreadAgents(threadId: string): AgentRecord[] {
@@ -4481,7 +4489,7 @@ export class MemoryStore {
     const rows = this.persistenceDb.prepare(
       `
         SELECT id, thread_id, seq, priority, author, author_id, author_name, author_emoji,
-               role, content, metadata, created_at, edited_at, edit_version
+               author_verified, role, content, metadata, created_at, edited_at, edit_version
         FROM messages
         ORDER BY thread_id ASC, seq ASC
       `
