@@ -1,55 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createHttpServer, getMemoryStore, memoryStoreInstance } from "../../src/transports/http/server.js";
-
-function parseMcpTextPayload(response: { json: () => { result: Array<{ type: string; text?: string }> } }) {
-  const result = response.json().result;
-  expect(Array.isArray(result)).toBe(true);
-  expect(result[0]?.type).toBe("text");
-  return JSON.parse(String(result[0].text || "{}"));
-}
-
-async function callMcpTool(
-  server: ReturnType<typeof createHttpServer>,
-  name: string,
-  args: Record<string, unknown>,
-) {
-  const response = await server.inject({
-    method: "POST",
-    url: "/mcp/messages/",
-    payload: {
-      method: "tools/call",
-      params: {
-        name,
-        arguments: args,
-      },
-    },
-  });
-  expect(response.statusCode).toBe(200);
-  return parseMcpTextPayload(response);
-}
-
-async function listMessagesJson(
-  server: ReturnType<typeof createHttpServer>,
-  threadId: string,
-) {
-  const response = await server.inject({
-    method: "POST",
-    url: "/mcp/messages/",
-    payload: {
-      method: "tools/call",
-      params: {
-        name: "msg_list",
-        arguments: {
-          thread_id: threadId,
-          return_format: "json",
-        },
-      },
-    },
-  });
-  expect(response.statusCode).toBe(200);
-  const blocks = response.json().result as Array<{ type: string; text: string }>;
-  return JSON.parse(blocks[0].text) as Array<{ msg_id: string; author_name?: string; content?: string }>;
-}
+import { callMcpTool, listMessagesJson } from "./helpers/mcpIntegration.js";
 
 describe("agent display_name integration", () => {
   beforeAll(() => {

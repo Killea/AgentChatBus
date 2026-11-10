@@ -14,38 +14,7 @@ import {
   getMemoryStore,
   memoryStoreInstance,
 } from "../../src/transports/http/server.js";
-
-function parseMcpTextPayload(response: { json: () => any }) {
-  const result = response.json().result;
-  expect(Array.isArray(result)).toBe(true);
-  expect(result[0]?.type).toBe("text");
-  return JSON.parse(String(result[0].text || "{}"));
-}
-
-async function callMcpTool(
-  server: ReturnType<typeof createHttpServer>,
-  name: string,
-  args: Record<string, unknown>,
-) {
-  const response = await server.inject({
-    method: "POST",
-    url: "/mcp/messages/",
-    payload: {
-      method: "tools/call",
-      params: {
-        name,
-        arguments: args,
-      },
-    },
-  });
-  expect(response.statusCode).toBe(200);
-  return parseMcpTextPayload(response);
-}
-
-function parseMsgPostResult(result: unknown) {
-  expect(Array.isArray(result)).toBe(true);
-  return JSON.parse(String((result as Array<{ text: string }>)[0].text));
-}
+import { callMcpTool, parseMsgPostResult } from "./helpers/mcpIntegration.js";
 
 function bootstrapThread(store: MemoryStore) {
   const agentA = store.registerAgent({ ide: "CLI", model: "agent-a-auth" });
