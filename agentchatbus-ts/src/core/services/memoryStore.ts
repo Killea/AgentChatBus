@@ -1799,6 +1799,9 @@ export class MemoryStore {
     let messages: MessageRecord[] = [];
     let fastReturn = false;
     let waitExitReason: WaitExitReason | undefined;
+    // Match Python dispatch.py: event = _get_thread_event(thread_id) before the poll loop
+    // so msg_post can signal waiters during the first getMessages() slice.
+    const event = this._getThreadEvent(input.threadId);
 
     while (true) {
       if (input.abortSignal?.aborted) {
@@ -1852,7 +1855,6 @@ export class MemoryStore {
       }
 
       const remainingTimeout = Math.min(1000, timeout - elapsed);
-      const event = this._getThreadEvent(input.threadId);
       try {
         const waitResult = await event.wait(remainingTimeout, input.abortSignal);
         if (waitResult === "aborted") {
@@ -2271,14 +2273,10 @@ export class MemoryStore {
       });
     }
 
-    // Notify any msg_wait callers on this thread that a new message is available.
-    // This allows event-driven wake-up instead of waiting for the 1s poll tick.
-    // Matches Python dispatch.py L847-848:
-    //   if thread_id in _thread_events:
-    //       _thread_events[thread_id].set()
-    if (this._threadEvents.has(input.threadId)) {
-      this._threadEvents.get(input.threadId)!.set();
-    }
+    // Notify msg_wait waiters. TS always uses _getThreadEvent().set() (event is
+    // registered before the poll loop in waitForMessages). Python dispatch.py
+    // L847-848 still gates on thread_id in _thread_events.
+    this._getThreadEvent(input.threadId).set();
     return message;
   }
 
