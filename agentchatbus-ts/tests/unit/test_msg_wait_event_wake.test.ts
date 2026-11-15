@@ -14,7 +14,7 @@ describe("msg_wait event wake latency", () => {
     const { thread, sync } = store.createThread("event-wake-thread");
     const waiter = store.registerAgent({ ide: "bench", model: "waiter" });
     const poster = store.registerAgent({ ide: "bench", model: "poster" });
-  const postPayload = {
+    const postPayload = {
       threadId: thread.id,
       author: poster.id,
       content: "wake-now",
